@@ -83,11 +83,10 @@ app.post('/api/propostas', upload.fields([
     }
 });
 
-// Webhook Mercado Pago Blindado contra Erros
+// Webhook Mercado Pago Blindado
 app.post('/api/webhook/mercadopago', async (req, res) => {
     try {
         const body = req.body;
-        console.log('[WEBHOOK RECEBIDO]:', JSON.stringify(body));
         const paymentId = body.data?.id || body.id;
         
         if (paymentId) {
@@ -117,8 +116,7 @@ app.post('/api/webhook/mercadopago', async (req, res) => {
         }
         res.status(200).send('OK');
     } catch (err) {
-        console.error('[ERRO NO WEBHOOK]:', err.message);
-        res.status(200).send('OK'); // Retorna 200 pro MP não ficar reenviando em loop
+        res.status(200).send('OK');
     }
 });
 
@@ -149,9 +147,7 @@ app.post('/api/parcelas/pagar', async (req, res) => {
             copiaEColaPix = result.point_of_interaction.transaction_data.qr_code;
             paymentId = result.id;
         }
-    } catch (mpErr) {
-        console.log('[AVISO MP PARCELA]:', mpErr.message);
-    }
+    } catch (mpErr) {}
 
     parcela.cobrancaPix = { copiaECola: copiaEColaPix, paymentId };
     res.json({ sucesso: true, parcela });
@@ -190,7 +186,7 @@ app.get('/api/carnet/pdf/:cpf', (req, res) => {
     doc.end();
 });
 
-// Consulta cliente com Auto-Check de Pagamento
+// Consulta cliente com Auto-Check
 app.get('/api/propostas/:cpf', async (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
@@ -202,7 +198,6 @@ app.get('/api/propostas/:cpf', async (req, res) => {
                 const paymentInfo = await payment.get({ id: proposta.cobrancaPix.paymentId });
                 if (paymentInfo && paymentInfo.status === 'approved') {
                     proposta.pagamentoEntradaStatus = 'PAGO';
-                    console.log(`[AUTO-CHECK] Entrada confirmada para: ${proposta.nome}`);
                 }
             } catch (e) {}
         }
@@ -212,7 +207,7 @@ app.get('/api/propostas/:cpf', async (req, res) => {
     }
 });
 
-// Listar propostas (Admin) com Auto-Check em lote
+// Listar propostas (Admin) com Auto-Check
 app.get('/api/admin/propostas', verificarAdmin, async (req, res) => {
     for (let p of propostas) {
         if (p.cobrancaPix && p.cobrancaPix.paymentId && p.pagamentoEntradaStatus !== 'PAGO') {
@@ -269,9 +264,7 @@ app.post('/api/admin/atualizar', verificarAdmin, async (req, res) => {
                 copiaEColaPix = result.point_of_interaction.transaction_data.qr_code;
                 paymentId = result.id;
             }
-        } catch (e) {
-            console.log('[AVISO MP ENTRADA]:', e.message);
-        }
+        } catch (e) {}
 
         proposta.cobrancaPix = { valorEntrada, percentualEntrada: pEntrada, valorParcelaMensal, copiaECola: copiaEColaPix, paymentId };
         proposta.parcelas = [];
