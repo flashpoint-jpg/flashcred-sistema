@@ -26,11 +26,32 @@ const upload = multer({ storage });
 
 let propostas = [];
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
-app.get('/consultar.html', (req, res) => res.sendFile(path.join(__dirname, 'consultar.html')));
-app.get('/parcelas.html', (req, res) => res.sendFile(path.join(__dirname, 'parcelas.html')));
-app.get('/admin.html', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+// Rotas explícitas para evitar qualquer "Not Found"
+app.get('/', (req, res) => {
+    const indexPath = path.join(__dirname, 'index.html');
+    if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+    else res.send('Arquivo index.html não encontrado na raiz.');
+});
 
+app.get('/consultar.html', (req, res) => {
+    const p = path.join(__dirname, 'consultar.html');
+    if (fs.existsSync(p)) res.sendFile(p);
+    else res.send('Arquivo consultar.html não encontrado.');
+});
+
+app.get('/parcelas.html', (req, res) => {
+    const p = path.join(__dirname, 'parcelas.html');
+    if (fs.existsSync(p)) res.sendFile(p);
+    else res.send('Arquivo parcelas.html não encontrado.');
+});
+
+app.get('/admin.html', (req, res) => {
+    const p = path.join(__dirname, 'admin.html');
+    if (fs.existsSync(p)) res.sendFile(p);
+    else res.send('Arquivo admin.html não encontrado.');
+});
+
+// Login Admin
 app.post('/api/admin/login', (req, res) => {
     const { usuario, senha } = req.body;
     if (usuario === 'admin' && senha === 'flashcred2026') {
@@ -40,6 +61,7 @@ app.post('/api/admin/login', (req, res) => {
     }
 });
 
+// Envio de proposta do cliente
 app.post('/api/propostas', upload.fields([
     { name: 'selfie', maxCount: 1 },
     { name: 'documento', maxCount: 1 },
@@ -70,6 +92,7 @@ app.post('/api/propostas', upload.fields([
     }
 });
 
+// Webhook Mercado Pago
 app.post('/api/webhook/mercadopago', async (req, res) => {
     try {
         const body = req.body;
@@ -104,6 +127,7 @@ app.post('/api/webhook/mercadopago', async (req, res) => {
     }
 });
 
+// Pagar parcela específica do carnê
 app.post('/api/parcelas/pagar', async (req, res) => {
     const { cpf, numeroParcela } = req.body;
     const cpfLimpo = cpf.replace(/\D/g, '');
@@ -142,6 +166,7 @@ app.post('/api/parcelas/pagar', async (req, res) => {
     res.json({ sucesso: true, parcela });
 });
 
+// Consulta cliente por CPF
 app.get('/api/propostas/:cpf', async (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
@@ -162,6 +187,7 @@ app.get('/api/propostas/:cpf', async (req, res) => {
     }
 });
 
+// Listar propostas para o Admin
 app.get('/api/admin/propostas', async (req, res) => {
     for (let p of propostas) {
         if (p.cobrancaPix && p.cobrancaPix.paymentId && p.pagamentoEntradaStatus !== 'PAGO') {
@@ -177,6 +203,7 @@ app.get('/api/admin/propostas', async (req, res) => {
     res.json(propostas);
 });
 
+// Atualizar e aprovar proposta
 app.post('/api/admin/atualizar', async (req, res) => {
     const { id, nome, cpf, telefone, email, status, pagamentoEntradaStatus, valorSolicitado, qtdParcelas, percentualEntrada, taxaJuros } = req.body;
     const proposta = propostas.find(p => p.id == id);
