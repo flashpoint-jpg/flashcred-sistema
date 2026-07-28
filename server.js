@@ -26,6 +26,23 @@ const upload = multer({ storage });
 
 let propostas = [];
 
+// Rotas Explícitas para as Telas HTML (Evita erro Cannot GET no Render)
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.get('/consultar.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'consultar.html'));
+});
+
+app.get('/parcelas.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'parcelas.html'));
+});
+
+app.get('/admin.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'admin.html'));
+});
+
 // Login do Administrador
 app.post('/api/admin/login', (req, res) => {
     const { usuario, senha } = req.body;
@@ -63,6 +80,7 @@ app.post('/api/propostas', upload.fields([
             ...dados,
             status: 'EM_ANALISE',
             pagamentoEntradaStatus: 'PENDENTE',
+            parcelas: [],
             arquivos: arquivos ? Object.keys(arquivos).reduce((acc, key) => {
                 acc[key] = arquivos[key][0].filename;
                 return acc;
@@ -77,7 +95,7 @@ app.post('/api/propostas', upload.fields([
     }
 });
 
-// Webhook do Mercado Pago (Recebe confirmação automática de pagamento)
+// Webhook do Mercado Pago
 app.post('/api/webhook/mercadopago', async (req, res) => {
     try {
         const body = req.body;
@@ -88,33 +106,88 @@ app.post('/api/webhook/mercadopago', async (req, res) => {
                 const paymentInfo = await payment.get({ id: paymentId });
                 
                 if (paymentInfo && paymentInfo.status === 'approved') {
-                    // Encontrar proposta associada pelo valor ou descrição
-                    const descricao = paymentInfo.description || '';
                     const valorPago = paymentInfo.transaction_amount;
 
-                    // Busca proposta pendente compatível
                     const proposta = propostas.find(p => p.cobrancaPix && parseFloat(p.cobrancaPix.valorEntrada) === valorPago && p.pagamentoEntradaStatus !== 'PAGO');
                     if (proposta) {
                         proposta.pagamentoEntradaStatus = 'PAGO';
-                        console.log(`[AUTOMÁTICO] Pix da proposta ${proposta.id} (${proposta.nome}) confirmado com sucesso pelo Mercado Pago!`);
+                    } else {
+                        for (let p of propostas) {
+                            if (p.parcelas) {
+                                const parcela = p.parcelas.find(parc => parseFloat(parc.valor) === valorPago && parc.status !== 'PAGO');
+                                if (parcela) {
+                                    parcela.status = 'PAGO';
+                                    parcela.dataPagamento = new Date().toLocaleDateString('pt-BR');
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
         res.sendStatus(200);
     } catch (err) {
-        console.error('Erro no webhook:', err.message);
-        res.sendStatus(200); // Sempre retorna 200 para o MP não ficar re-enviando
+        res.sendStatus(200);
     }
 });
 
-// Endpoint para o cliente checar o status em tempo real (Polling automático)
+// Gerar Pix para parcela específica
+app.post('/api/parcelas/pagar', async (req, res) => {
+    const { cpf, numeroParcela } = req.body;
+    const cpfLimpo = cpf.replace(/\D/g, '');
+    const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
+
+    if (!proposta) {
+        return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada.' });
+    }
+
+    const parcela = proposta.parcelas.find(parc => parc.numero == numeroParcela);
+    if (!parcela) {
+        return res.status(404).json({ sucesso: false, erro: 'Parcela não encontrada.' });
+    }
+
+    let copiaEColaPix = `00020126580014br.gov.bcb.pix0136suporte@flashpointdistribuidora.com.br5204000053039865802BR5925FLASHPOINT DISTRIBUIDORA6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`;
+    let qrCodeBase64 = '';
+    let paymentId = null;
+
+    try {
+        const payment = new Payment(client);
+        const result = await payment.create({
+            body: {
+                transaction_amount: parseFloat(parcela.valor),
+                description: `Parcela ${parcela.numero}/${proposta.qtdParcelas} - Flashpoint - ${proposta.nome}`,
+                payment_method_id: 'pix',
+                payer: {
+                    email: proposta.email || 'cliente@flashpoint.com',
+                    first_name: proposta.nome.split(' ')[0],
+                    last_name: proposta.nome.split(' ').slice(1).join(' ') || 'Cliente',
+                    identification: { type: 'CPF', number: proposta.cpf.replace(/\D/g, '') }
+                }
+            }
+        });
+        if (result && result.point_of_interaction && result.point_of_interaction.transaction_data) {
+            copiaEColaPix = result.point_of_interaction.transaction_data.qr_code;
+            qrCodeBase64 = result.point_of_interaction.transaction_data.qr_code_base64;
+            paymentId = result.id;
+        }
+    } catch (mpErr) {}
+
+    parcela.cobrancaPix = {
+        copiaECola: copiaEColaPix,
+        qrCodeBase64: qrCodeBase64,
+        paymentId: paymentId
+    };
+
+    res.json({ sucesso: true, parcela });
+});
+
+// Checar status das parcelas do cliente
 app.get('/api/propostas/:cpf', async (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
     
     if (proposta) {
-        // Se houver cobrança Pix ativa, verifica o status real na API do Mercado Pago por segurança
         if (proposta.cobrancaPix && proposta.cobrancaPix.paymentId && proposta.pagamentoEntradaStatus !== 'PAGO') {
             try {
                 const payment = new Payment(client);
@@ -122,9 +195,7 @@ app.get('/api/propostas/:cpf', async (req, res) => {
                 if (paymentInfo && paymentInfo.status === 'approved') {
                     proposta.pagamentoEntradaStatus = 'PAGO';
                 }
-            } catch (e) {
-                // Ignora erro de requisição pontual
-            }
+            } catch (e) {}
         }
         res.json({ sucesso: true, proposta });
     } else {
@@ -148,7 +219,6 @@ app.post('/api/admin/atualizar', async (req, res) => {
         if (percentualEntrada) proposta.percentualEntrada = percentualEntrada;
         if (vencimentoEntrada) proposta.vencimentoEntrada = vencimentoEntrada;
 
-        // Se foi aprovado e ainda não tem Pix gerado, gera automaticamente
         if (proposta.status === 'APROVADO' && !proposta.cobrancaPix) {
             const valorTotalMercadoria = parseFloat(proposta.valorSolicitado.toString().replace(',', '.'));
             const pEntrada = parseFloat(proposta.percentualEntrada || '20');
@@ -160,7 +230,7 @@ app.post('/api/admin/atualizar', async (req, res) => {
             const fator = Math.pow(1 + taxaJuros, numParcelas);
             const valorParcelaMensal = ((valorFinanciado * taxaJuros * fator) / (fator - 1)).toFixed(2);
 
-            let copiaEColaPix = `00020126580014br.gov.bcb.pix0136suporte@flashcredmoveis.com.br5204000053039865802BR5925FLASHCRED MOVEIS LTDA6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`;
+            let copiaEColaPix = `00020126580014br.gov.bcb.pix0136suporte@flashpointdistribuidora.com.br5204000053039865802BR5925FLASHPOINT DISTRIBUIDORA6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`;
             let qrCodeBase64 = '';
             let paymentId = null;
 
@@ -169,10 +239,10 @@ app.post('/api/admin/atualizar', async (req, res) => {
                 const result = await payment.create({
                     body: {
                         transaction_amount: parseFloat(valorEntrada),
-                        description: `Entrada FlashCred - ${proposta.nome}`,
+                        description: `Entrada Flashpoint - ${proposta.nome}`,
                         payment_method_id: 'pix',
                         payer: {
-                            email: proposta.email || 'cliente@flashcred.com',
+                            email: proposta.email || 'cliente@flashpoint.com',
                             first_name: proposta.nome.split(' ')[0],
                             last_name: proposta.nome.split(' ').slice(1).join(' ') || 'Cliente',
                             identification: { type: 'CPF', number: proposta.cpf.replace(/\D/g, '') }
@@ -184,19 +254,29 @@ app.post('/api/admin/atualizar', async (req, res) => {
                     qrCodeBase64 = result.point_of_interaction.transaction_data.qr_code_base64;
                     paymentId = result.id;
                 }
-            } catch (mpErr) {
-                console.log('Modo de contingência Pix ativado:', mpErr.message);
-            }
+            } catch (mpErr) {}
 
             proposta.cobrancaPix = {
                 valorEntrada: valorEntrada,
                 percentualEntrada: pEntrada,
                 valorParcelaMensal: valorParcelaMensal,
-                vencimento: proposta.vencimentoEntrada || 'Hoje (Liberação Imediata)',
+                vencimento: proposta.vencimentoEntrada || 'Hoje',
                 copiaECola: copiaEColaPix,
                 qrCodeBase64: qrCodeBase64,
                 paymentId: paymentId
             };
+
+            proposta.parcelas = [];
+            for (let i = 1; i <= numParcelas; i++) {
+                let dataVenc = new Date();
+                dataVenc.setMonth(dataVenc.getMonth() + i);
+                proposta.parcelas.push({
+                    numero: i,
+                    valor: valorParcelaMensal,
+                    vencimento: dataVenc.toLocaleDateString('pt-BR'),
+                    status: 'PENDENTE'
+                });
+            }
         }
 
         res.json({ sucesso: true });
