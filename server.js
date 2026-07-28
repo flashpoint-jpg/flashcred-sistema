@@ -18,38 +18,53 @@ function ler() {
     return [];
 }
 
-// Rota para salvar a proposta capturando os dados reais enviados pelo formulário
 app.post('/api/propostas', (req, res) => {
     try {
         const dados = req.body || {};
+        console.log("Dados recebidos do site:", dados); // Ajuda a registrar no console do Render
+        
         let lista = ler();
         
-        // Varre todas as variações possíveis para garantir que o nome e CPF reais sejam salvos
-        const nomeReal = dados.nome || dados.name || dados.cliente || dados.fullName || 'Cliente';
-        const cpfReal = dados.cpf || dados.CPF || dados.documento || dados.doc || '000.000.000-00';
-        const telefoneReal = dados.telefone || dados.celular || dados.phone || dados.whatsapp || '';
-        const produtoReal = dados.produto || dados.modelo || dados.aparelho || 'Não especificado';
-        const enderecoReal = dados.endereco || dados.rua || '';
-        const entradaReal = dados.valorEntrada || dados.entrada || dados.sinal || '0,00';
+        // Pega qualquer chave que contenha nome ou cpf para nunca vir vazio
+        let nomeFinal = 'Cliente';
+        let cpfFinal = '';
+        let telefoneFinal = '';
+        let produtoFinal = 'Não especificado';
+
+        for (let chave in dados) {
+            let valor = dados[chave];
+            if (!valor) continue;
+            let chaveLower = chave.toLowerCase();
+            
+            if (chaveLower.includes('nome') || chaveLower.includes('client')) nomeFinal = valor;
+            if (chaveLower.includes('cpf') || chaveLower.includes('doc') || chaveLower.includes('rg')) cpfFinal = valor;
+            if (chaveLower.includes('tel') || chaveLower.includes('cel') || chaveLower.includes('whats') || chaveLower.includes('fone')) telefoneFinal = valor;
+            if (chaveLower.includes('prod') || chaveLower.includes('model') || chaveLower.includes('aparelh')) produtoFinal = valor;
+        }
+
+        // Se ainda assim não achar, tenta campos diretos
+        nomeFinal = dados.nome || dados.name || nomeFinal;
+        cpfFinal = dados.cpf || dados.CPF || dados.documento || cpfFinal || '000.000.000-00';
+        telefoneFinal = dados.telefone || dados.celular || dados.phone || telefoneFinal;
+        produtoFinal = dados.produto || dados.modelo || produtoFinal;
 
         const nova = {
-            nome: nomeReal,
-            cpf: cpfReal,
-            telefone: telefoneReal,
-            produto: produtoReal,
-            endereco: enderecoReal,
+            nome: nomeFinal,
+            cpf: cpfFinal,
+            telefone: telefoneFinal,
+            produto: produtoFinal,
+            endereco: dados.endereco || '',
             status: 'EM_ANALISE',
             parcelas: dados.parcelas || [],
-            cobrancaPix: { valorEntrada: entradaReal },
+            cobrancaPix: { valorEntrada: dados.valorEntrada || dados.entrada || '0,00' },
             dataCriacao: new Date().toISOString()
         };
 
-        // Remove duplicado se já existir e coloca o novo no topo
-        lista = lista.filter(p => p.cpf !== cpfReal);
+        lista = lista.filter(p => p.cpf !== cpfFinal);
         lista.unshift(nova);
         
         fs.writeFileSync(ARQUIVO, JSON.stringify(lista, null, 2));
-        return res.json({ sucesso: true, mensagem: 'Salvo com sucesso!' });
+        return res.json({ sucesso: true });
     } catch (e) {
         return res.status(500).json({ sucesso: false, erro: e.message });
     }
@@ -76,9 +91,7 @@ app.post('/api/propostas/editar', (req, res) => {
             p.cpf = dados.cpf || p.cpf;
             p.telefone = dados.telefone || p.telefone;
             p.produto = dados.produto || p.produto;
-            p.endereco = dados.endereco || dados.endereco;
-            if (!p.cobrancaPix) p.cobrancaPix = {};
-            if (dados.valorEntrada) p.cobrancaPix.valorEntrada = dados.valorEntrada;
+            p.endereco = dados.endereco || p.endereco;
         }
     });
     fs.writeFileSync(ARQUIVO, JSON.stringify(lista, null, 2));
