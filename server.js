@@ -42,10 +42,10 @@ app.post('/api/admin/login', (req, res) => {
     res.json({ sucesso: true, token: 'token_flashpoint_secure_99' });
 });
 
-// Criar Proposta
+// Criar Proposta (Com suporte a WhatsApp)
 app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) => {
     try {
-        const { nome, cpf, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
+        const { nome, cpf, whatsapp, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
         
         if (!nome || !cpf || !valorSolicitado) {
             return res.status(400).json({ sucesso: false, mensagem: 'Preencha os campos obrigatórios.' });
@@ -63,6 +63,7 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
             id: Date.now().toString(),
             nome: nome.trim(),
             cpf: cpfLimpo,
+            whatsapp: whatsapp ? whatsapp.trim() : '',
             nascimento,
             endereco,
             numero,
@@ -137,7 +138,7 @@ app.post('/api/propostas/status', (req, res) => {
                     numero: i,
                     vencimento: venc.toLocaleDateString('pt-BR'),
                     valor: valParcela,
-                    status: 'PENDENTE' // Mostra explicitamente parcela em aberto
+                    status: 'PENDENTE'
                 });
             }
             propostas[index].parcelas = listaParcelas;
@@ -153,7 +154,7 @@ app.post('/api/propostas/status', (req, res) => {
 // Editar Proposta Completa (Admin)
 app.post('/api/propostas/editar', (req, res) => {
     try {
-        const { cpfOriginal, nome, cpf, telefone, produto, valorSolicitado, valorEntrada, qtdParcelas, juros, endereco } = req.body;
+        const { cpfOriginal, nome, cpf, whatsapp, produto, valorSolicitado, valorEntrada, qtdParcelas, juros, endereco } = req.body;
         let propostas = lerBanco();
         const index = propostas.findIndex(p => p.cpf === cpfOriginal);
         if (index === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
@@ -187,7 +188,7 @@ app.post('/api/propostas/editar', (req, res) => {
             ...propostas[index],
             nome: nome || propostas[index].nome,
             cpf: cpf || propostas[index].cpf,
-            telefone: telefone || propostas[index].telefone,
+            whatsapp: whatsapp || propostas[index].whatsapp,
             produto: produto || propostas[index].produto,
             valorSolicitado: valSol,
             valorEntrada: valEnt,
@@ -234,13 +235,12 @@ app.post('/api/parcelas/pagar', (req, res) => {
     }
 });
 
-// Webhook para notificações automáticas do Mercado Pago (Atualiza Entrada e Parcelas)
+// Webhook para notificações automáticas do Mercado Pago
 app.post('/api/webhook/mercadopago', (req, res) => {
     try {
         const evento = req.body;
         if (evento && (evento.type === 'payment' || evento.action === 'payment.created')) {
             let propostas = lerBanco();
-            // Exemplo de notificação automática de recebimento de entrada ou parcela
             salvarBanco(propostas);
         }
         res.status(200).send('OK');
