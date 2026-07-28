@@ -4,15 +4,21 @@ const path = require('path');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
 const jwt = require('jsonwebtoken');
+const https = require('https');
 
 const app = express();
 const SECRET_KEY = 'flashpoint_secret_jwt_super_seguro';
+
+// ==========================================
+// SEU ACCESS TOKEN REAL DO MERCADO PAGO
+// ==========================================
+const MERCADO_PAGO_ACCESS_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471'; 
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(__dirname));
 
-// Configuração de Upload Seguro de Arquivos
+// Configuração de Upload Seguro de Arquivos[span_0](start_span)[span_0](end_span)
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const dir = './uploads_seguros';
@@ -42,7 +48,7 @@ function salvar(lista) {
     fs.writeFileSync(ARQUIVO, JSON.stringify(lista, null, 2));
 }
 
-// Validador simples de CPF
+// Validador simples de CPF[span_1](start_span)[span_1](end_span)
 function validarCPF(cpf) {
     cpf = cpf.replace(/[^\d]/g, '');
     if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
@@ -58,13 +64,57 @@ function validarCPF(cpf) {
     return resto === parseInt(cpf.substring(10, 11));
 }
 
-// Gerador padrão de Pix Copia e Cola compatível com bancos
-function gerarPayloadPix(valor, identificador) {
-    // String estruturada que simula/formata o Pix perfeitamente para leitura sem dependências
-    return `00020126580014br.gov.bcb.pix0136flashpoint-sistema-pix-${identificador}5204000053039865405${valor}5802BR5925DISTRIBUIDORA FLASHPOINT6009SAO PAULO62070503***6304`;
+// Função para gerar o Pix automático e oficial via API REST do Mercado Pago
+function criarPixMercadoPago(valor, descricao, emailPayer) {
+    return new Promise((resolve) => {
+        const dadosRequisicao = JSON.stringify({
+            transaction_amount: Number(valor),
+            description: descricao,
+            payment_method_id: 'pix',
+            payer: { email: emailPayer || 'cliente@flashpoint.com' }
+        });
+
+        const options = {
+            hostname: 'api.mercadopago.com',
+            path: '/v1/payments',
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${MERCADO_PAGO_ACCESS_TOKEN}`,
+                'Content-Type': 'application/json',
+                'X-Idempotency-Key': Date.now().toString() + Math.random().toString()
+            }
+        };
+
+        const req = https.request(options, (res) => {
+            let responseData = '';
+            res.on('data', (chunk) => { responseData += chunk; });
+            res.on('end', () => {
+                try {
+                    const json = JSON.parse(responseData);
+                    if (json && json.point_of_interaction && json.point_of_interaction.transaction_data) {
+                        resolve({
+                            qrCode: json.point_of_interaction.transaction_data.qr_code,
+                            paymentId: json.id
+                        });
+                    } else {
+                        resolve({ qrCode: "Erro: Verifique o Access Token.", paymentId: null });
+                    }
+                } catch (err) {
+                    resolve({ qrCode: "Erro ao processar resposta.", paymentId: null });
+                }
+            });
+        });
+
+        req.on('error', () => {
+            resolve({ qrCode: "Erro de conexão.", paymentId: null });
+        });
+
+        req.write(dadosRequisicao);
+        req.end();
+    });
 }
 
-// Rota de Login do Admin
+// Rota de Login do Admin[span_2](start_span)[span_2](end_span)
 app.post('/api/admin/login', (req, res) => {
     const { usuario, senha } = req.body;
     if (usuario === 'admin' && senha === 'flashpoint2026') {
@@ -74,7 +124,7 @@ app.post('/api/admin/login', (req, res) => {
     res.status(401).json({ sucesso: false, erro: 'Usuário ou senha inválidos.' });
 });
 
-// Middleware de Proteção Admin
+// Middleware de Proteção Admin[span_3](start_span)[span_3](end_span)
 function verificarJWT(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -87,7 +137,7 @@ function verificarJWT(req, res, next) {
     });
 }
 
-// Cadastro de Proposta
+// Cadastro de Proposta com Geração Automática via Mercado Pago[span_4](start_span)[span_4](end_span)
 app.post('/api/propostas', upload.any(), async (req, res) => {
     try {
         const dados = req.body || {};
@@ -102,7 +152,12 @@ app.post('/api/propostas', upload.any(), async (req, res) => {
         const valorParcela = (valorSolicitado / qtdParcelas).toFixed(2);
         
         const valorEntradaStr = (valorSolicitado * 0.1).toFixed(2);
-        const pixEntradaCopiaECola = gerarPayloadPix(valorEntradaStr, `entrada_${dados.cpf.replace(/[^\d]/g, '')}`);
+        
+        const resEntrada = await criarPixMercadoPago(
+            valorEntradaStr, 
+            `Entrada Crediário - CPF ${dados.cpf}`, 
+            dados.email
+        );
 
         const parcelas = [];
         const hoje = new Date();
@@ -110,14 +165,19 @@ app.post('/api/propostas', upload.any(), async (req, res) => {
             let dataVenc = new Date(hoje);
             dataVenc.setMonth(hoje.getMonth() + i);
             
-            const pixParcelaCopiaECola = gerarPayloadPix(valorParcela, `parc_${i}_${dados.cpf.replace(/[^\d]/g, '')}`);
+            const resParcela = await criarPixMercadoPago(
+                valorParcela, 
+                `Parcela ${i}/${qtdParcelas} - CPF ${dados.cpf}`, 
+                dados.email
+            );
 
             parcelas.push({
                 numero: i,
                 vencimento: dataVenc.toLocaleDateString('pt-BR'),
                 valor: valorParcela,
                 status: 'PENDENTE',
-                cobrancaPix: { copiaECola: pixParcelaCopiaECola }
+                paymentId: resParcela.paymentId,
+                cobrancaPix: { copiaECola: resParcela.qrCode }
             });
         }
 
@@ -131,9 +191,10 @@ app.post('/api/propostas', upload.any(), async (req, res) => {
             valorSolicitado: valorSolicitado.toFixed(2),
             status: 'EM_ANALISE',
             pagamentoEntradaStatus: 'PENDENTE',
+            paymentIdEntrada: resEntrada.paymentId,
             cobrancaPix: { 
                 valorEntrada: valorEntradaStr, 
-                copiaECola: pixEntradaCopiaECola 
+                copiaECola: resEntrada.qrCode 
             },
             parcelas: parcelas,
             arquivos: req.files ? req.files.map(f => f.filename) : [],
@@ -150,12 +211,68 @@ app.post('/api/propostas', upload.any(), async (req, res) => {
     }
 });
 
-// Listar propostas (Admin)
+// WEBHOOK: Recebe notificações automáticas do Mercado Pago quando o cliente paga
+app.post('/api/webhook/mercadopago', async (req, res) => {
+    try {
+        const evento = req.body;
+        if (evento.type === 'payment' || (evento.action && evento.action.includes('payment'))) {
+            const paymentId = evento.data ? evento.data.id : null;
+            if (paymentId) {
+                // Consulta os detalhes do pagamento direto na API do Mercado Pago
+                const options = {
+                    hostname: 'api.mercadopago.com',
+                    path: `/v1/payments/${paymentId}`,
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${MERCADO_PAGO_ACCESS_TOKEN}` }
+                };
+
+                https.get(options, (resp) => {
+                    let data = '';
+                    resp.on('data', (chunk) => { data += chunk; });
+                    resp.on('end', () => {
+                        try {
+                            const pagJson = JSON.parse(data);
+                            if (pagJson.status === 'approved') {
+                                let lista = ler();
+                                let alterado = false;
+
+                                lista.forEach(p => {
+                                    // Verifica se é a entrada
+                                    if (p.paymentIdEntrada && String(p.paymentIdEntrada) === String(paymentId)) {
+                                        p.pagamentoEntradaStatus = 'APROVADO';
+                                        p.status = 'APROVADO'; // Opcional: aprova a proposta automaticamente
+                                        alterado = true;
+                                    }
+                                    // Verifica se é alguma parcela
+                                    if (p.parcelas) {
+                                        p.parcelas.forEach(parc => {
+                                            if (parc.paymentId && String(parc.paymentId) === String(paymentId)) {
+                                                parc.status = 'PAGO';
+                                                alterado = true;
+                                            }
+                                        });
+                                    }
+                                });
+
+                                if (alterado) salvar(lista);
+                            }
+                        } catch (e) {}
+                    });
+                });
+            }
+        }
+        res.status(200).send('OK');
+    } catch (err) {
+        res.status(200).send('OK');
+    }
+});
+
+// Listar propostas (Admin)[span_5](start_span)[span_5](end_span)
 app.get('/api/propostas', verificarJWT, (req, res) => {
     res.json({ sucesso: true, propostas: ler() });
 });
 
-// Buscar proposta por CPF (Cliente)
+// Buscar proposta por CPF (Cliente)[span_6](start_span)[span_6](end_span)
 app.get('/api/propostas/:cpf', (req, res) => {
     const cpfBuscado = req.params.cpf.replace(/[^\d]/g, '');
     const lista = ler();
@@ -167,7 +284,7 @@ app.get('/api/propostas/:cpf', (req, res) => {
     }
 });
 
-// Mudar status (Admin)
+// Mudar status (Admin)[span_7](start_span)[span_7](end_span)
 app.post('/api/propostas/status', verificarJWT, (req, res) => {
     const { cpf, status } = req.body;
     let lista = ler();
@@ -176,7 +293,7 @@ app.post('/api/propostas/status', verificarJWT, (req, res) => {
     res.json({ sucesso: true });
 });
 
-// Editar proposta (Admin)
+// Editar proposta (Admin)[span_8](start_span)[span_8](end_span)
 app.post('/api/propostas/editar', verificarJWT, (req, res) => {
     const dados = req.body;
     let lista = ler();
@@ -198,7 +315,7 @@ app.post('/api/propostas/editar', verificarJWT, (req, res) => {
     res.json({ sucesso: true });
 });
 
-// Pagar parcela específica
+// Pagar parcela específica[span_9](start_span)[span_9](end_span)
 app.post('/api/parcelas/pagar', (req, res) => {
     const { cpf, numeroParcela } = req.body;
     let lista = ler();
@@ -221,7 +338,7 @@ app.post('/api/parcelas/pagar', (req, res) => {
     }
 });
 
-// Gerar Carnê em PDF
+// Gerar Carnê em PDF[span_10](start_span)[span_10](end_span)
 app.get('/api/carnet/pdf/:cpf', (req, res) => {
     const cpfBuscado = req.params.cpf.replace(/[^\d]/g, '');
     const lista = ler();
@@ -253,5 +370,5 @@ app.get('/api/carnet/pdf/:cpf', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor rodando perfeitamente na porta ${PORT}`);
+    console.log(`Servidor rodando com Mercado Pago e Webhook na porta ${PORT}`);
 });
