@@ -33,7 +33,7 @@ app.get('/consultar.html', (req, res) => res.sendFile(path.join(__dirname, 'cons
 app.get('/parcelas.html', (req, res) => res.sendFile(path.join(__dirname, 'parcelas.html')));
 app.get('/admin.html', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 
-// 1. Login Administrativo com JWT Seguro
+// Login Administrativo
 app.post('/api/admin/login', (req, res) => {
     const { usuario, senha } = req.body;
     if (usuario === 'admin' && senha === 'flashcred2026') {
@@ -83,25 +83,28 @@ app.post('/api/propostas', upload.fields([
     }
 });
 
-// Webhook Mercado Pago
+// Webhook Mercado Pago Blindado contra Erros
 app.post('/api/webhook/mercadopago', async (req, res) => {
     try {
         const body = req.body;
+        console.log('[WEBHOOK RECEBIDO]:', JSON.stringify(body));
         const paymentId = body.data?.id || body.id;
+        
         if (paymentId) {
             const payment = new Payment(client);
             const paymentInfo = await payment.get({ id: paymentId });
+            
             if (paymentInfo && paymentInfo.status === 'approved') {
                 const valorPago = paymentInfo.transaction_amount;
                 for (let p of propostas) {
-                    if (p.cobrancaPix && parseFloat(p.cobrancaPix.valorEntrada) === valorPago && p.pagamentoEntradaStatus !== 'PAGO') {
+                    if (p.cobrancaPix && parseFloat(p.cobrancaPix.valorEntrada) === parseFloat(valorPago) && p.pagamentoEntradaStatus !== 'PAGO') {
                         p.pagamentoEntradaStatus = 'PAGO';
                         console.log(`[WEBHOOK] 💰 ENTRADA PAGA! Cliente: ${p.nome}`);
                         break;
                     }
                     if (p.parcelas) {
                         for (let parc of p.parcelas) {
-                            if (parseFloat(parc.valor) === valorPago && parc.status !== 'PAGO') {
+                            if (parseFloat(parc.valor) === parseFloat(valorPago) && parc.status !== 'PAGO') {
                                 parc.status = 'PAGO';
                                 parc.dataPagamento = new Date().toLocaleDateString('pt-BR');
                                 console.log(`[WEBHOOK] 💰 PARCELA ${parc.numero} PAGA! Cliente: ${p.nome}`);
@@ -112,8 +115,11 @@ app.post('/api/webhook/mercadopago', async (req, res) => {
                 }
             }
         }
-        res.sendStatus(200);
-    } catch (err) { res.sendStatus(200); }
+        res.status(200).send('OK');
+    } catch (err) {
+        console.error('[ERRO NO WEBHOOK]:', err.message);
+        res.status(200).send('OK'); // Retorna 200 pro MP não ficar reenviando em loop
+    }
 });
 
 // Pagamento de Parcela Específica via Pix
@@ -143,13 +149,15 @@ app.post('/api/parcelas/pagar', async (req, res) => {
             copiaEColaPix = result.point_of_interaction.transaction_data.qr_code;
             paymentId = result.id;
         }
-    } catch (mpErr) {}
+    } catch (mpErr) {
+        console.log('[AVISO MP PARCELA]:', mpErr.message);
+    }
 
     parcela.cobrancaPix = { copiaECola: copiaEColaPix, paymentId };
     res.json({ sucesso: true, parcela });
 });
 
-// 3. Geração de PDF do Carnê Completo para o Cliente
+// Geração de PDF do Carnê
 app.get('/api/carnet/pdf/:cpf', (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
@@ -182,20 +190,45 @@ app.get('/api/carnet/pdf/:cpf', (req, res) => {
     doc.end();
 });
 
-// Consulta cliente
+// Consulta cliente com Auto-Check de Pagamento
 app.get('/api/propostas/:cpf', async (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
-    if (proposta) res.json({ sucesso: true, proposta });
-    else res.json({ sucesso: false });
+    
+    if (proposta) {
+        if (proposta.cobrancaPix && proposta.cobrancaPix.paymentId && proposta.pagamentoEntradaStatus !== 'PAGO') {
+            try {
+                const payment = new Payment(client);
+                const paymentInfo = await payment.get({ id: proposta.cobrancaPix.paymentId });
+                if (paymentInfo && paymentInfo.status === 'approved') {
+                    proposta.pagamentoEntradaStatus = 'PAGO';
+                    console.log(`[AUTO-CHECK] Entrada confirmada para: ${proposta.nome}`);
+                }
+            } catch (e) {}
+        }
+        res.json({ sucesso: true, proposta });
+    } else {
+        res.json({ sucesso: false });
+    }
 });
 
-// Listar propostas (Admin protegido por JWT)
+// Listar propostas (Admin) com Auto-Check em lote
 app.get('/api/admin/propostas', verificarAdmin, async (req, res) => {
+    for (let p of propostas) {
+        if (p.cobrancaPix && p.cobrancaPix.paymentId && p.pagamentoEntradaStatus !== 'PAGO') {
+            try {
+                const payment = new Payment(client);
+                const paymentInfo = await payment.get({ id: p.cobrancaPix.paymentId });
+                if (paymentInfo && paymentInfo.status === 'approved') {
+                    p.pagamentoEntradaStatus = 'PAGO';
+                }
+            } catch (e) {}
+        }
+    }
     res.json(propostas);
 });
 
-// Atualizar e Recalcular Carnê (Admin protegido por JWT)
+// Atualizar e Recalcular Carnê (Admin)
 app.post('/api/admin/atualizar', verificarAdmin, async (req, res) => {
     const { id, status, pagamentoEntradaStatus, valorSolicitado, qtdParcelas, percentualEntrada, taxaJuros } = req.body;
     const proposta = propostas.find(p => p.id == id);
@@ -220,7 +253,8 @@ app.post('/api/admin/atualizar', verificarAdmin, async (req, res) => {
         const valorParcelaMensal = ((valorFinanciado * jurosMensal * fator) / (fator - 1)).toFixed(2);
 
         let copiaEColaPix = proposta.cobrancaPix?.copiaECola || `00020126580014br.gov.bcb.pix0136suporte@flashpointdistribuidora.com.br5204000053039865802BR5925FLASHPOINT DISTRIBUIDORA6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`;
-        
+        let paymentId = proposta.cobrancaPix?.paymentId || null;
+
         try {
             const payment = new Payment(client);
             const result = await payment.create({
@@ -233,10 +267,13 @@ app.post('/api/admin/atualizar', verificarAdmin, async (req, res) => {
             });
             if (result && result.point_of_interaction?.transaction_data) {
                 copiaEColaPix = result.point_of_interaction.transaction_data.qr_code;
+                paymentId = result.id;
             }
-        } catch (e) {}
+        } catch (e) {
+            console.log('[AVISO MP ENTRADA]:', e.message);
+        }
 
-        proposta.cobrancaPix = { valorEntrada, percentualEntrada: pEntrada, valorParcelaMensal, copiaECola: copiaEColaPix };
+        proposta.cobrancaPix = { valorEntrada, percentualEntrada: pEntrada, valorParcelaMensal, copiaECola: copiaEColaPix, paymentId };
         proposta.parcelas = [];
         for (let i = 1; i <= numParcelas; i++) {
             let dataVenc = new Date();
