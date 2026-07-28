@@ -6,10 +6,9 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Servir arquivos estáticos (HTML, CSS, JS) da pasta raiz ou pública
+// Servir arquivos estáticos (HTML, CSS, JS) da pasta raiz
 app.use(express.static(__dirname));
 
-// Nome do arquivo onde as propostas são salvas (ajuste se o seu for diferente, ex: 'database.json')
 const ARQUIVO_PROPOSTAS = './propostas.json';
 
 // Função auxiliar para ler propostas
@@ -36,13 +35,36 @@ function salvarPropostas(propostas) {
     }
 }
 
-// 1. Rota para listar todas as propostas (usada pelo Admin)
+// 1. Rota para SALVAR nova proposta vinda do formulário do site
+app.post('/api/propostas', (req, res) => {
+    try {
+        const novaProposta = req.body;
+        let propostas = lerPropostas();
+        
+        // Define valores padrão se não existirem
+        novaProposta.status = novaProposta.status || 'EM_ANALISE';
+        novaProposta.parcelas = novaProposta.parcelas || [];
+        
+        // Adiciona no início da lista
+        propostas.unshift(novaProposta);
+        
+        if (salvarPropostas(propostas)) {
+            return res.json({ sucesso: true, mensagem: 'Proposta salva com sucesso!' });
+        } else {
+            return res.status(500).json({ sucesso: false, mensagem: 'Erro ao salvar no servidor.' });
+        }
+    } catch (e) {
+        return res.status(500).json({ sucesso: false, erro: e.message });
+    }
+});
+
+// 2. Rota para LISTAR todas as propostas (usada pelo Admin)
 app.get('/api/propostas', (req, res) => {
     const propostas = lerPropostas();
     res.json({ sucesso: true, propostas: propostas });
 });
 
-// 2. Rota para alterar o status da proposta (Aprovado / Recusado)
+// 3. Rota para alterar o status da proposta (Aprovado / Recusado)
 app.post('/api/propostas/status', (req, res) => {
     const { cpf, status } = req.body;
     let propostas = lerPropostas();
@@ -62,7 +84,7 @@ app.post('/api/propostas/status', (req, res) => {
     return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada' });
 });
 
-// 3. Rota de Controle Total para Editar Dados da Proposta
+// 4. Rota de Controle Total para Editar Dados da Proposta
 app.post('/api/propostas/editar', (req, res) => {
     const dados = req.body;
     let propostas = lerPropostas();
@@ -90,7 +112,7 @@ app.post('/api/propostas/editar', (req, res) => {
     return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada' });
 });
 
-// 4. Rota Webhook para receber confirmação automática de pagamento Pix
+// 5. Rota Webhook para receber confirmação automática de pagamento Pix
 app.post('/api/webhook/pix', (req, res) => {
     try {
         const notificacao = req.body;
@@ -119,7 +141,6 @@ app.post('/api/webhook/pix', (req, res) => {
     }
 });
 
-// Configuração da porta do servidor para o Render
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
