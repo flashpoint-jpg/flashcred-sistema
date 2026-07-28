@@ -16,8 +16,6 @@ const upload = multer({ storage: storage });
 
 const DB_FILE = path.join(__dirname, 'propostas.json');
 
-const MERCADO_PAGO_TOKEN = process.env.MP_TOKEN || "APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471";
-
 function lerBanco() {
     if (!fs.existsSync(DB_FILE)) {
         fs.writeFileSync(DB_FILE, JSON.stringify([]));
@@ -41,7 +39,6 @@ app.post('/api/login', (req, res) => {
 });
 
 app.post('/api/admin/login', (req, res) => {
-    const { usuario, senha } = req.body;
     res.json({ sucesso: true, token: 'token_flashpoint_secure_99' });
 });
 
@@ -124,10 +121,11 @@ app.post('/api/propostas/status', (req, res) => {
 
             propostas[index].valorEntrada = valEntrada;
             propostas[index].pagamentoEntradaStatus = 'PENDENTE';
+            const pixCode = '00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15);
             propostas[index].cobrancaPix = {
                 valorEntrada: valEntrada,
-                copiaECola: '00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15),
-                qrcode: ''
+                copiaECola: pixCode,
+                qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixCode)}`
             };
 
             let listaParcelas = [];
@@ -183,6 +181,8 @@ app.post('/api/propostas/editar', (req, res) => {
             });
         }
 
+        const pixCode = propostas[index].cobrancaPix?.copiaECola || ('00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15));
+
         propostas[index] = {
             ...propostas[index],
             nome: nome || propostas[index].nome,
@@ -196,9 +196,9 @@ app.post('/api/propostas/editar', (req, res) => {
             endereco: endereco || propostas[index].endereco,
             parcelas: listaParcelas,
             cobrancaPix: {
-                ...(propostas[index].cobrancaPix || {}),
                 valorEntrada: valEnt,
-                copiaECola: propostas[index].cobrancaPix?.copiaECola || ('00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15))
+                copiaECola: pixCode,
+                qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixCode)}`
             }
         };
 
@@ -220,8 +220,10 @@ app.post('/api/parcelas/pagar', (req, res) => {
         let parcela = propostas[pIndex].parcelas.find(parc => parc.numero === numeroParcela);
         if (!parcela) return res.status(404).json({ sucesso: false, mensagem: 'Parcela não encontrada.' });
 
+        const pixCode = '00020126580014br.gov.bcb.pix0136PARC' + numeroParcela + Math.random().toString(36).substring(2, 10);
         parcela.cobrancaPix = {
-            copiaECola: '00020126580014br.gov.bcb.pix0136PARC' + numeroParcela + Math.random().toString(36).substring(2, 10)
+            copiaECola: pixCode,
+            qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixCode)}`
         };
 
         salvarBanco(propostas);
@@ -231,22 +233,17 @@ app.post('/api/parcelas/pagar', (req, res) => {
     }
 });
 
-// WEBHOOK PARA NOTIFICAÇÃO AUTOMÁTICA DE PAGAMENTOS (MERCADO PAGO)
+// Webhook para notificações automáticas do Mercado Pago
 app.post('/api/webhook/mercadopago', (req, res) => {
     try {
         const evento = req.body;
-        // Valida se o evento é referente a pagamento aprovado
         if (evento && (evento.type === 'payment' || evento.action === 'payment.created')) {
-            const pagamentoId = evento.data?.id;
-            // Aqui você pode processar a confirmação automática do pagamento e atualizar no JSON
             let propostas = lerBanco();
-            // Lógica de varredura ou identificação pelo ID da cobrança gerada
-            // Exemplo genérico simulando a marcação de pagamento se necessário:
             salvarBanco(propostas);
         }
         res.status(200).send('OK');
     } catch (e) {
-        res.status(200).send('OK'); // Sempre retornar 200 para o gateway não reenviar infinitamente
+        res.status(200).send('OK');
     }
 });
 
