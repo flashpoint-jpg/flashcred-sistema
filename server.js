@@ -95,30 +95,42 @@ app.get('/api/propostas', (req, res) => {
     }
 });
 
-// 4. Atualizar Proposta (Resolve o erro ao clicar em Salvar Alterações)
-app.put('/api/propostas/:cpf', (req, res) => {
+// 4. Rotas de Atualização (Cobre PUT e POST para CPF ou ID)
+const lidarAtualizacao = (req, res) => {
     try {
-        const cpfAlvo = req.params.cpf.trim();
+        const identificador = req.params.idOrCpf ? req.params.idOrCpf.trim() : null;
         let propostas = lerBanco();
-        const index = propostas.findIndex(p => p.cpf === cpfAlvo);
+        
+        let index = -1;
+        if (identificador) {
+            index = propostas.findIndex(p => p.cpf === identificador || p.id === identificador);
+        }
+
+        // Se não achou na URL mas veio no corpo da requisição
+        if (index === -1 && req.body.cpf) {
+            index = propostas.findIndex(p => p.cpf === req.body.cpf.trim());
+        }
 
         if (index === -1) {
             return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada para atualização.' });
         }
 
-        // Atualiza os dados enviados pelo painel mantendo o ID e CPF
         propostas[index] = {
             ...propostas[index],
-            ...req.body,
-            cpf: cpfAlvo
+            ...req.body
         };
 
         salvarBanco(propostas);
         res.json({ sucesso: true, mensagem: 'Proposta atualizada com sucesso!' });
     } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro ao atualizar proposta.' });
+        res.status(500).json({ sucesso: false, mensagem: 'Erro ao atualizar proposta: ' + err.message });
     }
-});
+};
+
+app.put('/api/propostas/:idOrCpf', lidarAtualizacao);
+app.post('/api/propostas/:idOrCpf', lidarAtualizacao);
+app.put('/api/proposta/atualizar', lidarAtualizacao);
+app.post('/api/proposta/atualizar', lidarAtualizacao);
 
 // 5. Consultar por CPF (Query)
 app.get('/api/proposta/consultar', (req, res) => {
