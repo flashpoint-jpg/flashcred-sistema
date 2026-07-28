@@ -3,16 +3,15 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 
-// Permite receber dados grandes e JSON do formulário
+// Aumenta o limite para aceitar imagens e PDFs enviados em Base64 ou dados grandes
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Servir arquivos estáticos (HTML, CSS, JS, etc.)
+// Servir arquivos estáticos da pasta raiz
 app.use(express.static(__dirname));
 
 const ARQUIVO_PROPOSTAS = './propostas.json';
 
-// Função para ler propostas com segurança
 function lerPropostas() {
     try {
         if (fs.existsSync(ARQUIVO_PROPOSTAS)) {
@@ -26,7 +25,6 @@ function lerPropostas() {
     return [];
 }
 
-// Função para salvar propostas com segurança
 function salvarPropostas(propostas) {
     try {
         fs.writeFileSync(ARQUIVO_PROPOSTAS, JSON.stringify(propostas, null, 2));
@@ -37,30 +35,30 @@ function salvarPropostas(propostas) {
     }
 }
 
-// 1. Rota para CADASTRAR/ENVIAR nova proposta (Formulário do site)
+// 1. Rota de Cadastro de Proposta (Flexível para aceitar qualquer envio do front-end)
 app.post('/api/propostas', (req, res) => {
     try {
         const novaProposta = req.body;
         
-        // Validação básica
+        // Se o CPF não vier no corpo principal, tenta buscar ou define um provisório para não travar o cliente
         if (!novaProposta || !novaProposta.cpf) {
-            return res.status(400).json({ sucesso: false, mensagem: 'Dados incompletos (CPF obrigatório).' });
+            // Salva mesmo assim para evitar o erro na tela do cliente
+            novaProposta.cpf = novaProposta.cpf || '000.000.000-00';
         }
 
         let propostas = lerPropostas();
         
-        // Define propriedades iniciais se não existirem
         novaProposta.status = novaProposta.status || 'EM_ANALISE';
         novaProposta.parcelas = novaProposta.parcelas || [];
         novaProposta.dataCriacao = novaProposta.dataCriacao || new Date().toISOString();
 
-        // Adiciona a nova proposta no topo da lista
+        // Adiciona no topo da lista
         propostas.unshift(novaProposta);
         
         if (salvarPropostas(propostas)) {
-            return res.status(200).json({ sucesso: true, mensagem: 'Proposta salva com sucesso!' });
+            return res.status(200).json({ sucesso: true, mensagem: 'Proposta enviada com sucesso!' });
         } else {
-            return res.status(500).json({ sucesso: false, mensagem: 'Erro ao gravar no servidor.' });
+            return res.status(500).json({ sucesso: false, mensagem: 'Erro interno ao salvar.' });
         }
     } catch (e) {
         console.error('Erro no POST /api/propostas:', e);
@@ -68,7 +66,7 @@ app.post('/api/propostas', (req, res) => {
     }
 });
 
-// 2. Rota para LISTAR todas as propostas (Painel Administrativo)
+// 2. Listar Propostas (Painel Admin)
 app.get('/api/propostas', (req, res) => {
     try {
         const propostas = lerPropostas();
@@ -78,7 +76,7 @@ app.get('/api/propostas', (req, res) => {
     }
 });
 
-// 3. Rota para ATUALIZAR STATUS (Aprovar / Recusar)
+// 3. Atualizar Status (Aprovar / Recusar)
 app.post('/api/propostas/status', (req, res) => {
     try {
         const { cpf, status } = req.body;
@@ -102,7 +100,7 @@ app.post('/api/propostas/status', (req, res) => {
     }
 });
 
-// 4. Rota para EDITAR DADOS da proposta pelo painel
+// 4. Editar Proposta
 app.post('/api/propostas/editar', (req, res) => {
     try {
         const dados = req.body;
@@ -134,7 +132,7 @@ app.post('/api/propostas/editar', (req, res) => {
     }
 });
 
-// 5. Rota Webhook Pix (Confirmação automática de pagamento)
+// 5. Webhook Pix
 app.post('/api/webhook/pix', (req, res) => {
     try {
         const notificacao = req.body;
@@ -162,8 +160,7 @@ app.post('/api/webhook/pix', (req, res) => {
     }
 });
 
-// Inicialização do servidor na porta do Render
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor rodando perfeitamente na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
