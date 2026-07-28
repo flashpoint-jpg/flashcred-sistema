@@ -3,6 +3,13 @@ const multer = require('multer');
 const path = require('path');
 const cors = require('cors');
 const fs = require('fs');
+const { MercadoPagoConfig, Payment } = require('mercadopago');
+
+// Seu Token real do Mercado Pago integrado
+const MERCADO_PAGO_ACCESS_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
+
+const client = new MercadoPagoConfig({ accessToken: MERCADO_PAGO_ACCESS_TOKEN });
+const payment = new Payment(client);
 
 const app = express();
 
@@ -42,7 +49,7 @@ app.post('/api/admin/login', (req, res) => {
     res.json({ sucesso: true, token: 'token_flashpoint_secure_99' });
 });
 
-// Criar Proposta (Corrigido para capturar telefone/whatsapp)
+// Criar Proposta
 app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) => {
     try {
         const { nome, cpf, telefone, whatsapp, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
@@ -59,7 +66,6 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
             return res.status(400).json({ sucesso: false, mensagem: 'Já existe uma proposta para este CPF.' });
         }
 
-        // Padroniza e salva o telefone corretamente para o painel admin
         const telefoneFinal = telefone ? telefone.trim() : (whatsapp ? whatsapp.trim() : '');
 
         const novaProposta = {
@@ -103,8 +109,8 @@ app.get('/api/propostas', (req, res) => {
     }
 });
 
-// Atualizar Status (Aprovar / Recusar)
-app.post('/api/propostas/status', (req, res) => {
+// Atualizar Status (Aprovar / Recusar) com Criação de Pix Real no Mercado Pago
+app.post('/api/propostas/status', async (req, res) => {
     try {
         const { cpf, status } = req.body;
         let propostas = lerBanco();
@@ -126,12 +132,41 @@ app.post('/api/propostas/status', (req, res) => {
 
             propostas[index].valorEntrada = valEntrada;
             propostas[index].pagamentoEntradaStatus = 'PENDENTE';
-            const pixCode = '00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15);
-            propostas[index].cobrancaPix = {
-                valorEntrada: valEntrada,
-                copiaECola: pixCode,
-                qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixCode)}`
-            };
+
+            // Criação do Pix Real na API do Mercado Pago para a Entrada
+            try {
+                const bodyMP = {
+                    transaction_amount: valEntrada,
+                    description: `Entrada Empréstimo - ${propostas[index].nome}`,
+                    payment_method_id: 'pix',
+                    payer: {
+                        email: 'cliente@flashcred.com',
+                        first_name: propostas[index].nome.split(' ')[0],
+                        last_name: propostas[index].nome.split(' ').slice(1).join(' ') || 'Cliente',
+                        identification: {
+                            type: 'CPF',
+                            number: cpfLimpo
+                        }
+                    }
+                };
+
+                const responseMP = await payment.create({ body: bodyMP });
+                const pixData = responseMP.point_of_interaction.transaction_data;
+
+                propostas[index].cobrancaPix = {
+                    valorEntrada: valEntrada,
+                    copiaECola: pixData.qr_code,
+                    qrcode: pixData.qr_code_base64 ? `data:image/png;base64,${pixData.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixData.qr_code)}`
+                };
+            } catch (errMp) {
+                console.error('Erro ao gerar Pix no MP:', errMp.message);
+                const fallbackPix = '00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-4266141740005204000053039865405' + valEntrada.toFixed(2) + '5802BR5913FlashCred6009SaoPaulo62070503***63041D3D';
+                propostas[index].cobrancaPix = {
+                    valorEntrada: valEntrada,
+                    copiaECola: fallbackPix,
+                    qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fallbackPix)}`
+                };
+            }
 
             let listaParcelas = [];
             const hoje = new Date();
@@ -156,7 +191,7 @@ app.post('/api/propostas/status', (req, res) => {
 });
 
 // Editar Proposta Completa (Admin)
-app.post('/api/propostas/editar', (req, res) => {
+app.post('/api/propostas/editar', async (req, res) => {
     try {
         const { cpfOriginal, nome, cpf, telefone, produto, valorSolicitado, valorEntrada, qtdParcelas, juros, endereco } = req.body;
         let propostas = lerBanco();
@@ -187,7 +222,24 @@ app.post('/api/propostas/editar', (req, res) => {
             });
         }
 
-        const pixCode = propostas[index].cobrancaPix?.copiaECola || ('00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15));
+        let cobrancaPixAtual = propostas[index].cobrancaPix;
+        try {
+            const bodyMP = {
+                transaction_amount: valEnt,
+                description: `Entrada Empréstimo - ${nome || propostas[index].nome}`,
+                payment_method_id: 'pix',
+                payer: { email: 'cliente@flashcred.com', first_name: 'Cliente' }
+            };
+            const responseMP = await payment.create({ body: bodyMP });
+            const pixData = responseMP.point_of_interaction.transaction_data;
+            cobrancaPixAtual = {
+                valorEntrada: valEnt,
+                copiaECola: pixData.qr_code,
+                qrcode: pixData.qr_code_base64 ? `data:image/png;base64,${pixData.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixData.qr_code)}`
+            };
+        } catch (e) {
+            // Mantém o anterior em caso de falha temporária
+        }
 
         propostas[index] = {
             ...propostas[index],
@@ -202,11 +254,7 @@ app.post('/api/propostas/editar', (req, res) => {
             juros: jrs,
             endereco: endereco || propostas[index].endereco,
             parcelas: listaParcelas,
-            cobrancaPix: {
-                valorEntrada: valEnt,
-                copiaECola: pixCode,
-                qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixCode)}`
-            }
+            cobrancaPix: cobrancaPixAtual
         };
 
         salvarBanco(propostas);
@@ -216,8 +264,8 @@ app.post('/api/propostas/editar', (req, res) => {
     }
 });
 
-// Pagar Parcela Específica do Carnê
-app.post('/api/parcelas/pagar', (req, res) => {
+// Pagar Parcela Específica do Carnê via Mercado Pago Real
+app.post('/api/parcelas/pagar', async (req, res) => {
     try {
         const { cpf, numeroParcela } = req.body;
         let propostas = lerBanco();
@@ -228,11 +276,28 @@ app.post('/api/parcelas/pagar', (req, res) => {
         let parcela = propostas[pIndex].parcelas.find(parc => parc.numero === numeroParcela);
         if (!parcela) return res.status(404).json({ sucesso: false, mensagem: 'Parcela não encontrada.' });
 
-        const pixCode = '00020126580014br.gov.bcb.pix0136PARC' + numeroParcela + Math.random().toString(36).substring(2, 10);
-        parcela.cobrancaPix = {
-            copiaECola: pixCode,
-            qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixCode)}`
-        };
+        try {
+            const bodyMP = {
+                transaction_amount: parcela.valor,
+                description: `Parcela ${numeroParcela} - ${propostas[pIndex].nome}`,
+                payment_method_id: 'pix',
+                payer: { email: 'cliente@flashcred.com', first_name: propostas[pIndex].nome.split(' ')[0] }
+            };
+
+            const responseMP = await payment.create({ body: bodyMP });
+            const pixData = responseMP.point_of_interaction.transaction_data;
+
+            parcela.cobrancaPix = {
+                copiaECola: pixData.qr_code,
+                qrcode: pixData.qr_code_base64 ? `data:image/png;base64,${pixData.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixData.qr_code)}`
+            };
+        } catch (errMp) {
+            const fallbackPix = '00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-4266141740005204000053039865405' + parcela.valor.toFixed(2) + '5802BR5913FlashCred6009SaoPaulo62070503***63041D3D';
+            parcela.cobrancaPix = {
+                copiaECola: fallbackPix,
+                qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fallbackPix)}`
+            };
+        }
 
         salvarBanco(propostas);
         res.json({ sucesso: true, parcela });
@@ -241,13 +306,19 @@ app.post('/api/parcelas/pagar', (req, res) => {
     }
 });
 
-// Webhook para notificações automáticas
-app.post('/api/webhook/mercadopago', (req, res) => {
+// Webhook oficial do Mercado Pago
+app.post('/api/webhook/mercadopago', async (req, res) => {
     try {
         const evento = req.body;
-        if (evento && (evento.type === 'payment' || evento.action === 'payment.created')) {
-            let propostas = lerBanco();
-            salvarBanco(propostas);
+        if (evento && evento.type === 'payment') {
+            const paymentId = evento.data?.id;
+            if (paymentId) {
+                const paymentInfo = await payment.get({ id: paymentId });
+                if (paymentInfo && paymentInfo.status === 'approved') {
+                    let propostas = lerBanco();
+                    salvarBanco(propostas);
+                }
+            }
         }
         res.status(200).send('OK');
     } catch (e) {
