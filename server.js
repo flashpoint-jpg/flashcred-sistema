@@ -52,9 +52,9 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
         }
 
         const propostas = lerBanco();
-        const cpfLimpo = cpf.trim();
+        const cpfLimpo = cpf.replace(/\D/g, '');
 
-        const propostaExistente = propostas.find(p => p.cpf === cpfLimpo);
+        const propostaExistente = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
         if (propostaExistente) {
             return res.status(400).json({ sucesso: false, mensagem: 'Já existe uma proposta para este CPF.' });
         }
@@ -62,7 +62,7 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
         const novaProposta = {
             id: Date.now().toString(),
             nome: nome.trim(),
-            cpf: cpfLimpo,
+            cpf: cpf.trim(),
             whatsapp: whatsapp ? whatsapp.trim() : '',
             nascimento,
             endereco,
@@ -105,7 +105,8 @@ app.post('/api/propostas/status', (req, res) => {
     try {
         const { cpf, status } = req.body;
         let propostas = lerBanco();
-        const index = propostas.findIndex(p => p.cpf === cpf);
+        const cpfLimpo = cpf ? cpf.replace(/\D/g, '') : '';
+        const index = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
         if (index === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
 
         propostas[index].status = status;
@@ -156,7 +157,8 @@ app.post('/api/propostas/editar', (req, res) => {
     try {
         const { cpfOriginal, nome, cpf, whatsapp, produto, valorSolicitado, valorEntrada, qtdParcelas, juros, endereco } = req.body;
         let propostas = lerBanco();
-        const index = propostas.findIndex(p => p.cpf === cpfOriginal);
+        const cpfOrigLimpo = cpfOriginal ? cpfOriginal.replace(/\D/g, '') : '';
+        const index = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfOrigLimpo);
         if (index === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
 
         const qtdP = parseInt(qtdParcelas) || 6;
@@ -216,7 +218,8 @@ app.post('/api/parcelas/pagar', (req, res) => {
     try {
         const { cpf, numeroParcela } = req.body;
         let propostas = lerBanco();
-        const pIndex = propostas.findIndex(p => p.cpf === cpf);
+        const cpfLimpo = cpf ? cpf.replace(/\D/g, '') : '';
+        const pIndex = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
         if (pIndex === -1) return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada.' });
 
         let parcela = propostas[pIndex].parcelas.find(parc => parc.numero === numeroParcela);
@@ -235,7 +238,7 @@ app.post('/api/parcelas/pagar', (req, res) => {
     }
 });
 
-// Webhook para notificações automáticas do Mercado Pago (Atualiza status automaticamente)
+// Webhook para notificações automáticas do Mercado Pago
 app.post('/api/webhook/mercadopago', (req, res) => {
     try {
         const evento = req.body;
@@ -252,9 +255,9 @@ app.post('/api/webhook/mercadopago', (req, res) => {
 // Consultas por CPF
 app.get('/api/proposta/consultar', (req, res) => {
     try {
-        const cpf = req.query.cpf;
+        const cpfParam = req.query.cpf ? req.query.cpf.replace(/\D/g, '') : '';
         const propostas = lerBanco();
-        const proposta = propostas.find(p => p.cpf === (cpf ? cpf.trim() : ''));
+        const proposta = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfParam);
         
         if (proposta) {
             res.json({ sucesso: true, proposta });
@@ -268,8 +271,9 @@ app.get('/api/proposta/consultar', (req, res) => {
 
 app.get('/api/propostas/:cpf', (req, res) => {
     try {
+        const cpfParam = req.params.cpf ? req.params.cpf.replace(/\D/g, '') : '';
         const propostas = lerBanco();
-        const proposta = propostas.find(p => p.cpf === req.params.cpf.trim());
+        const proposta = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfParam);
         
         if (proposta) {
             res.json({ sucesso: true, proposta });
