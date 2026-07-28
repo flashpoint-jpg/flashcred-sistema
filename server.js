@@ -38,11 +38,9 @@ app.post('/api/propostas', upload.fields([
             const nascimento = new Date(dados.dataNascimento);
             let idade = hoje.getFullYear() - nascimento.getFullYear();
             const m = hoje.getMonth() - nascimento.getMonth();
-            if (m < 0 || (m === 0 && hoje.getDate() < nascimento.getDate())) {
-                idade--;
-            }
+            if (m < 0 || (m === 0 && hoje.getDate() < nascimento.getDate())) idade--;
             if (idade < 18) {
-                return res.status(400).json({ sucesso: false, erro: 'Você precisa ter pelo menos 18 anos para solicitar o empréstimo.' });
+                return res.status(400).json({ sucesso: false, erro: 'Você precisa ter pelo menos 18 anos.' });
             }
         }
 
@@ -67,7 +65,6 @@ app.post('/api/propostas', upload.fields([
 app.get('/api/propostas/:cpf', (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
-    
     if (proposta) {
         res.json({ sucesso: true, proposta });
     } else {
@@ -79,11 +76,27 @@ app.get('/api/admin/propostas', (req, res) => {
     res.json(propostas);
 });
 
-app.post('/api/admin/status', (req, res) => {
-    const { id, status } = req.body;
+// Atualizar status, valor, parcelas e gerar Pix/Simulação de Carnê
+app.post('/api/admin/atualizar', (req, res) => {
+    const { id, status, valorSolicitado, qtdParcelas } = req.body;
     const proposta = propostas.find(p => p.id == id);
     if (proposta) {
-        proposta.status = status;
+        if (status) proposta.status = status;
+        if (valorSolicitado) proposta.valorSolicitado = valorSolicitado;
+        if (qtdParcelas) proposta.qtdParcelas = qtdParcelas;
+
+        // Se aprovado, gera os dados simulados do Pix copia e cola e QR Code de pagamento
+        if (proposta.status === 'APROVADO') {
+            const valorTotalNum = parseFloat(proposta.valorSolicitado.toString().replace(',', '.')) * 1.35; // Exemplo com juros
+            const valorParcelaCalc = (valorTotalNum / parseInt(proposta.qtdParcelas)).toFixed(2);
+            
+            proposta.cobrancaPix = {
+                copiaECola: `00020126580014br.gov.bcb.pix0136suporte@flashcredmoveis.com.br5204000053039865802BR5925FLASHCRED MOVEIS LTDA6009SAO PAULO62070503***6304ABCD`,
+                valorParcela: valorParcelaCalc,
+                vencimento: '30 dias após liberação'
+            };
+        }
+
         res.json({ sucesso: true });
     } else {
         res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
