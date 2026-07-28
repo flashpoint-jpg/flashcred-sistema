@@ -44,58 +44,76 @@
         document.addEventListener("DOMContentLoaded", carregarPropostas);
 
         async function carregarPropostas() {
+            const container = document.getElementById('listaPropostas');
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+            loading.innerText = 'Carregando propostas...';
+
+            let propostas = [];
+
             try {
                 const res = await fetch('/api/propostas');
                 const data = await res.json();
-                const container = document.getElementById('listaPropostas');
-                document.getElementById('loading').style.display = 'none';
-
-                if (data.sucesso && data.propostas && data.propostas.length > 0) {
-                    container.innerHTML = data.propostas.map(p => {
-                        let telefoneLimpo = (p.telefone || '').replace(/\D/g, '');
-                        if (!telefoneLimpo.startsWith('55')) {
-                            telefoneLimpo = '55' + telefoneLimpo;
-                        }
-
-                        const linkCarne = `https://flashcred-sistema.onrender.com/parcelas.html?cpf=${p.cpf}`;
-                        const textoMsg = `Olá ${p.nome}! *Parabéns, você foi aprovado!* Sua proposta na Distribuidora Flashpoint foi processada. Acesse o link para visualizar seu carnê e efetuar o pagamento da entrada: ${linkCarne}`;
-                        const whatsappUrl = `https://api.whatsapp.com/send?phone=${telefoneLimpo}&text=${encodeURIComponent(textoMsg)}`;
-
-                        let statusBadge = p.status === 'APROVADO' 
-                            ? '<span class="px-3 py-1 bg-green-500/10 text-green-400 text-xs font-bold rounded-xl border border-green-500/20">Aprovado</span>'
-                            : (p.status === 'RECUSADO' 
-                                ? '<span class="px-3 py-1 bg-red-500/10 text-red-400 text-xs font-bold rounded-xl border border-red-500/20">Recusado</span>'
-                                : '<span class="px-3 py-1 bg-amber-500/10 text-amber-400 text-xs font-bold rounded-xl border border-amber-500/20">Em Análise</span>');
-
-                        return `
-                            <div class="bg-gradient-to-b from-gray-900 to-[#121824] border border-gray-800/80 p-6 rounded-3xl space-y-4 shadow-xl">
-                                <div class="flex justify-between items-start">
-                                    <div>
-                                        <h3 class="font-bold text-white text-base">${p.nome || 'Cliente'}</h3>
-                                        <p class="text-xs text-gray-400 mt-0.5">CPF: <span class="font-mono text-gray-200">${p.cpf}</span></p>
-                                    </div>
-                                    <div>${statusBadge}</div>
-                                </div>
-
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-gray-950/80 p-4 rounded-2xl border border-gray-800">
-                                    <div><span class="text-gray-500 font-semibold">Telefone:</span> <span class="text-gray-200 font-mono">${p.telefone || 'Não informado'}</span></div>
-                                    <div><span class="text-gray-500 font-semibold">Produto / Modelo:</span> <span class="text-gray-200 font-semibold">${p.produto || p.modelo || 'Não especificado'}</span></div>
-                                    <div class="sm:col-span-2"><span class="text-gray-500 font-semibold">Endereço:</span> <span class="text-gray-200">${p.endereco || 'Endereço não cadastrado'}</span></div>
-                                </div>
-
-                                <div class="flex justify-end pt-2">
-                                    <a href="${whatsappUrl}" target="_blank" class="bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-2.5 rounded-xl transition text-xs flex items-center gap-2 shadow-lg shadow-green-600/20">
-                                        <span>💬</span> Enviar WhatsApp (Aprovado)
-                                    </a>
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-                } else {
-                    container.innerHTML = '<div class="text-center py-20 text-gray-500 text-xs">Nenhuma proposta cadastrada no sistema.</div>';
+                if (data.sucesso && data.propostas) {
+                    propostas = data.propostas;
                 }
             } catch (err) {
-                document.getElementById('loading').innerText = 'Erro ao carregar propostas do servidor.';
+                console.warn('Servidor offline ou rota indisponível, tentando dados locais...');
+            }
+
+            // Fallback de segurança caso o fetch falhe
+            if (propostas.length === 0) {
+                const localData = localStorage.getItem('propostas_flashpoint');
+                if (localData) {
+                    propostas = JSON.parse(localData);
+                }
+            }
+
+            loading.style.display = 'none';
+
+            if (propostas.length > 0) {
+                container.innerHTML = propostas.map(p => {
+                    let telefoneLimpo = (p.telefone || '').replace(/\D/g, '');
+                    if (!telefoneLimpo.startsWith('55')) {
+                        telefoneLimpo = '55' + telefoneLimpo;
+                    }
+
+                    const linkCarne = `https://flashcred-sistema.onrender.com/parcelas.html?cpf=${p.cpf}`;
+                    const textoMsg = `Olá ${p.nome}! *Parabéns, você foi aprovado!* Sua proposta na Distribuidora Flashpoint foi processada. Acesse o link para visualizar seu carnê e efetuar o pagamento da entrada: ${linkCarne}`;
+                    const whatsappUrl = `https://api.whatsapp.com/send?phone=${telefoneLimpo}&text=${encodeURIComponent(textoMsg)}`;
+
+                    let statusBadge = p.status === 'APROVADO' 
+                        ? '<span class="px-3 py-1 bg-green-500/10 text-green-400 text-xs font-bold rounded-xl border border-green-500/20">Aprovado</span>'
+                        : (p.status === 'RECUSADO' 
+                            ? '<span class="px-3 py-1 bg-red-500/10 text-red-400 text-xs font-bold rounded-xl border border-red-500/20">Recusado</span>'
+                            : '<span class="px-3 py-1 bg-amber-500/10 text-amber-400 text-xs font-bold rounded-xl border border-amber-500/20">Em Análise</span>');
+
+                    return `
+                        <div class="bg-gradient-to-b from-gray-900 to-[#121824] border border-gray-800/80 p-6 rounded-3xl space-y-4 shadow-xl">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h3 class="font-bold text-white text-base">${p.nome || 'Cliente'}</h3>
+                                    <p class="text-xs text-gray-400 mt-0.5">CPF: <span class="font-mono text-gray-200">${p.cpf}</span></p>
+                                </div>
+                                <div>${statusBadge}</div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-gray-950/80 p-4 rounded-2xl border border-gray-800">
+                                <div><span class="text-gray-500 font-semibold">Telefone:</span> <span class="text-gray-200 font-mono">${p.telefone || 'Não informado'}</span></div>
+                                <div><span class="text-gray-500 font-semibold">Produto / Modelo:</span> <span class="text-gray-200 font-semibold">${p.produto || p.modelo || 'Não especificado'}</span></div>
+                                <div class="sm:col-span-2"><span class="text-gray-500 font-semibold">Endereço:</span> <span class="text-gray-200">${p.endereco || 'Endereço não cadastrado'}</span></div>
+                            </div>
+
+                            <div class="flex justify-end pt-2">
+                                <a href="${whatsappUrl}" target="_blank" class="bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-2.5 rounded-xl transition text-xs flex items-center gap-2 shadow-lg shadow-green-600/20">
+                                    <span>💬</span> Enviar WhatsApp (Aprovado)
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                container.innerHTML = '<div class="text-center py-20 text-gray-500 text-xs">Nenhuma proposta cadastrada no sistema.</div>';
             }
         }
     </script>
