@@ -3,16 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlashCred - Solicitação de Crédito</title>
+    <title>FlashCred - Solicitação e Consulta de Crédito</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-950 text-white min-h-screen flex flex-col items-center justify-between p-4">
 
     <div class="w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl p-6 shadow-xl my-auto">
-        <h1 class="text-2xl font-bold text-center text-amber-500 mb-2">FlashCred</h1>
+        <h1 class="text-2xl font-bold text-center text-amber-500 mb-1">FlashCred</h1>
         <p class="text-xs text-center text-gray-400 mb-6">Solicite seu crédito ou acompanhe sua proposta</p>
 
-        <!-- Formulário de Envio -->
+        <!-- Botões de Alternância (Pedir Empréstimo / Consultar Status) -->
+        <div class="flex gap-2 mb-6">
+            <button onclick="mostrarAba('consultar')" id="btnTabConsultar" class="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-2 rounded-lg text-sm transition">Consultar Status</button>
+            <button onclick="mostrarAba('pedir')" id="btnTabPedir" class="flex-1 bg-amber-500 text-gray-950 font-bold py-2 rounded-lg text-sm transition">Pedir Empréstimo</button>
+        </div>
+
+        <!-- ABA DE CONSULTAR STATUS -->
+        <div id="abaConsultar" class="hidden space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Digite seu CPF</label>
+                <input type="text" id="cpfConsulta" placeholder="Apenas números" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
+            </div>
+            <button onclick="consultarProposta()" class="w-full bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold py-2.5 rounded-lg transition">CONSULTAR</button>
+            
+            <div id="resultadoConsulta" class="mt-4 hidden space-y-3">
+                <!-- Informações e Status da Proposta -->
+            </div>
+        </div>
+
+        <!-- ABA DE PEDIR EMPRÉSTIMO (FORMULÁRIO) -->
         <form id="formProposta" class="space-y-4">
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1">Nome Completo</label>
@@ -24,7 +43,7 @@
                 <input type="text" id="cpf" required placeholder="Apenas números" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
             </div>
 
-            <!-- Campo WhatsApp Adicionado -->
+            <!-- Campo WhatsApp Mantido e Integrado -->
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1">WhatsApp</label>
                 <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-amber-500">
@@ -63,11 +82,6 @@
 
             <button type="submit" class="w-full bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold py-2.5 rounded-lg transition">ENVIAR PARA ANÁLISE</button>
         </form>
-
-        <!-- Bloco de Resultado / Status -->
-        <div id="resultadoProposta" class="mt-6 hidden">
-            <!-- Dados da proposta e PIX -->
-        </div>
     </div>
 
     <footer class="text-xs text-gray-500 mt-4 text-center">
@@ -75,6 +89,25 @@
     </footer>
 
     <script>
+        function mostrarAba(aba) {
+            const formPedir = document.getElementById('formProposta');
+            const abaConsultar = document.getElementById('abaConsultar');
+            const btnPedir = document.getElementById('btnTabPedir');
+            const btnConsultar = document.getElementById('btnTabConsultar');
+
+            if (aba === 'consultar') {
+                formPedir.classList.add('hidden');
+                abaConsultar.classList.remove('hidden');
+                btnConsultar.className = "flex-1 bg-amber-500 text-gray-950 font-bold py-2 rounded-lg text-sm transition";
+                btnPedir.className = "flex-1 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-2 rounded-lg text-sm transition";
+            } else {
+                formPedir.classList.remove('hidden');
+                abaConsultar.classList.add('hidden');
+                btnPedir.className = "flex-1 bg-amber-500 text-gray-950 font-bold py-2 rounded-lg text-sm transition";
+                btnConsultar.className = "flex-1 bg-gray-800 hover:bg-gray-700 text-white font-semibold py-2 rounded-lg text-sm transition";
+            }
+        }
+
         document.getElementById('formProposta').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -109,6 +142,46 @@
                 alert('Erro ao enviar proposta.');
             }
         });
+
+        async function consultarProposta() {
+            const cpf = document.getElementById('cpfConsulta').value.trim();
+            const divResultado = document.getElementById('resultadoConsulta');
+            
+            if (!cpf) {
+                alert('Digite o CPF para consultar.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/proposta/consultar?cpf=${cpf}`);
+                const data = await response.json();
+
+                divResultado.classList.remove('hidden');
+                if (data.sucesso && data.proposta) {
+                    const p = data.proposta;
+                    divResultado.innerHTML = `
+                        <div class="bg-gray-800 p-4 rounded-lg text-sm space-y-2 border border-gray-700">
+                            <p><strong>Nome:</strong> ${p.nome}</p>
+                            <p><strong>Status:</strong> <span class="text-amber-400 font-bold">${p.status}</span></p>
+                            <p><strong>Valor Solicitado:</strong> R$ ${p.valorSolicitado}</p>
+                            ${p.cobrancaPix ? `
+                                <div class="mt-3 pt-3 border-t border-gray-700 text-center">
+                                    <p class="text-xs text-amber-300 mb-2">QR Code da Entrada</p>
+                                    <div class="bg-white p-2 rounded inline-block">
+                                        <img src="${p.cobrancaPix.qrcode}" class="w-36 h-36 mx-auto object-contain">
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                } else {
+                    divResultado.innerHTML = `<p class="text-red-400 text-center text-sm">Proposta não encontrada.</p>`;
+                }
+            } catch (e) {
+                divResultado.classList.remove('hidden');
+                divResultado.innerHTML = `<p class="text-red-400 text-center text-sm">Erro ao consultar proposta.</p>`;
+            }
+        }
     </script>
 </body>
 </html>
