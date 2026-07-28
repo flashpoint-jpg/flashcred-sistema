@@ -3,11 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const app = express();
 
-// Aumenta o limite para aceitar imagens e PDFs enviados em Base64 ou dados grandes
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Servir arquivos estáticos da pasta raiz
 app.use(express.static(__dirname));
 
 const ARQUIVO_PROPOSTAS = './propostas.json';
@@ -35,30 +32,42 @@ function salvarPropostas(propostas) {
     }
 }
 
-// 1. Rota de Cadastro de Proposta (Flexível para aceitar qualquer envio do front-end)
+// 1. Rota para receber o formulário do site e salvar os dados reais
 app.post('/api/propostas', (req, res) => {
     try {
-        const novaProposta = req.body;
+        const dados = req.body;
         
-        // Se o CPF não vier no corpo principal, tenta buscar ou define um provisório para não travar o cliente
-        if (!novaProposta || !novaProposta.cpf) {
-            // Salva mesmo assim para evitar o erro na tela do cliente
-            novaProposta.cpf = novaProposta.cpf || '000.000.000-00';
+        // Captura o CPF de qualquer formato que o formulário envie
+        const cpfRecebido = dados.cpf || dados.CPF || dados.documento;
+
+        if (!cpfRecebido) {
+            return res.status(400).json({ sucesso: false, mensagem: 'CPF não informado.' });
         }
 
         let propostas = lerPropostas();
         
-        novaProposta.status = novaProposta.status || 'EM_ANALISE';
-        novaProposta.parcelas = novaProposta.parcelas || [];
-        novaProposta.dataCriacao = novaProposta.dataCriacao || new Date().toISOString();
+        const novaProposta = {
+            nome: dados.nome || dados.name || 'Cliente',
+            cpf: cpfRecebido,
+            telefone: dados.telefone || dados.celular || dados.phone || '',
+            produto: dados.produto || dados.modelo || '',
+            endereco: dados.endereco || '',
+            status: 'EM_ANALISE',
+            parcelas: dados.parcelas || [],
+            cobrancaPix: {
+                valorEntrada: dados.valorEntrada || dados.entrada || '0,00'
+            },
+            dataCriacao: new Date().toISOString()
+        };
 
-        // Adiciona no topo da lista
+        // Remove duplicadas do mesmo CPF e insere a nova no topo
+        propostas = propostas.filter(p => p.cpf !== cpfRecebido);
         propostas.unshift(novaProposta);
         
         if (salvarPropostas(propostas)) {
-            return res.status(200).json({ sucesso: true, mensagem: 'Proposta enviada com sucesso!' });
+            return res.status(200).json({ sucesso: true, mensagem: 'Proposta salva com sucesso!' });
         } else {
-            return res.status(500).json({ sucesso: false, mensagem: 'Erro interno ao salvar.' });
+            return res.status(500).json({ sucesso: false, mensagem: 'Erro ao salvar no arquivo.' });
         }
     } catch (e) {
         console.error('Erro no POST /api/propostas:', e);
@@ -66,97 +75,81 @@ app.post('/api/propostas', (req, res) => {
     }
 });
 
-// 2. Listar Propostas (Painel Admin)
+// 2. Rota para listar propostas no Painel Admin
 app.get('/api/propostas', (req, res) => {
-    try {
-        const propostas = lerPropostas();
-        return res.status(200).json({ sucesso: true, propostas: propostas });
-    } catch (e) {
-        return res.status(500).json({ sucesso: false, erro: e.message });
-    }
+    const propostas = lerPropostas();
+    res.json({ sucesso: true, propostas: propostas });
 });
 
-// 3. Atualizar Status (Aprovar / Recusar)
+// 3. Rota para alterar status (Aprovar / Recusar)
 app.post('/api/propostas/status', (req, res) => {
-    try {
-        const { cpf, status } = req.body;
-        let propostas = lerPropostas();
-        let encontrada = false;
+    const { cpf, status } = req.body;
+    let propostas = lerPropostas();
+    let encontrada = false;
 
-        propostas.forEach(p => {
-            if (p.cpf === cpf) {
-                p.status = status;
-                encontrada = true;
-            }
-        });
-
-        if (encontrada) {
-            salvarPropostas(propostas);
-            return res.status(200).json({ sucesso: true });
+    propostas.forEach(p => {
+        if (p.cpf === cpf) {
+            p.status = status;
+            encontrada = true;
         }
-        return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada' });
-    } catch (e) {
-        return res.status(500).json({ sucesso: false, erro: e.message });
+    });
+
+    if (encontrada) {
+        salvarPropostas(propostas);
+        return res.json({ sucesso: true });
     }
+    return res.status(404).json({ sucesso: false, mensagem: 'Não encontrada' });
 });
 
-// 4. Editar Proposta
+// 4. Rota para editar dados pelo painel
 app.post('/api/propostas/editar', (req, res) => {
-    try {
-        const dados = req.body;
-        let propostas = lerPropostas();
-        let encontrada = false;
+    const dados = req.body;
+    let propostas = lerPropostas();
+    let encontrada = false;
 
-        propostas.forEach(p => {
-            if (p.cpf === dados.cpfOriginal) {
-                p.nome = dados.nome || p.nome;
-                p.cpf = dados.cpf || p.cpf;
-                p.telefone = dados.telefone || p.telefone;
-                p.produto = dados.produto || p.produto;
-                p.endereco = dados.endereco || p.endereco;
-                if (!p.cobrancaPix) p.cobrancaPix = {};
-                if (dados.valorEntrada) {
-                    p.cobrancaPix.valorEntrada = dados.valorEntrada;
-                }
-                encontrada = true;
-            }
-        });
-
-        if (encontrada) {
-            salvarPropostas(propostas);
-            return res.status(200).json({ sucesso: true });
+    propostas.forEach(p => {
+        if (p.cpf === dados.cpfOriginal) {
+            p.nome = dados.nome || p.nome;
+            p.cpf = dados.cpf || p.cpf;
+            p.telefone = dados.telefone || p.telefone;
+            p.produto = dados.produto || p.produto;
+            p.endereco = dados.endereco || p.endereco;
+            if (!p.cobrancaPix) p.cobrancaPix = {};
+            if (dados.valorEntrada) p.cobrancaPix.valorEntrada = dados.valorEntrada;
+            encontrada = true;
         }
-        return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada' });
-    } catch (e) {
-        return res.status(500).json({ sucesso: false, erro: e.message });
+    });
+
+    if (encontrada) {
+        salvarPropostas(propostas);
+        return res.json({ sucesso: true });
     }
+    return res.status(404).json({ sucesso: false, mensagem: 'Não encontrada' });
 });
 
-// 5. Webhook Pix
+// 5. Webhook Pix automático
 app.post('/api/webhook/pix', (req, res) => {
     try {
         const notificacao = req.body;
         const idTransacao = notificacao?.data?.id || notificacao?.id;
-        
         let propostas = lerPropostas();
-        let propostaEncontrada = false;
+        let encontrada = false;
 
         propostas.forEach(p => {
             if (p.cobrancaPix && (p.cobrancaPix.idTransacao === idTransacao || p.cobrancaPix.id === idTransacao)) {
                 p.status = 'APROVADO';
                 p.cobrancaPix.status = 'PAGO';
-                propostaEncontrada = true;
+                encontrada = true;
             }
         });
 
-        if (propostaEncontrada) {
+        if (encontrada) {
             salvarPropostas(propostas);
-            return res.status(200).json({ sucesso: true, mensagem: 'Pagamento confirmado!' });
+            return res.status(200).json({ sucesso: true });
         }
-
-        return res.status(404).json({ sucesso: false, mensagem: 'Transação não encontrada.' });
-    } catch (erro) {
-        return res.status(500).json({ sucesso: false, erro: erro.message });
+        return res.status(404).json({ sucesso: false });
+    } catch (e) {
+        return res.status(500).json({ sucesso: false });
     }
 });
 
