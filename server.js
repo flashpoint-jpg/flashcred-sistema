@@ -36,6 +36,7 @@ app.post('/api/admin/login', (req, res) => {
     }
 });
 
+// Envio de nova proposta
 app.post('/api/propostas', upload.fields([
     { name: 'selfie', maxCount: 1 },
     { name: 'documento', maxCount: 1 },
@@ -61,6 +62,7 @@ app.post('/api/propostas', upload.fields([
             id: Date.now(),
             ...dados,
             status: 'EM_ANALISE',
+            pagamentoEntradaStatus: 'PENDENTE',
             arquivos: arquivos ? Object.keys(arquivos).reduce((acc, key) => {
                 acc[key] = arquivos[key][0].filename;
                 return acc;
@@ -75,10 +77,55 @@ app.post('/api/propostas', upload.fields([
     }
 });
 
-app.get('/api/propostas/:cpf', (req, res) => {
+// Webhook do Mercado Pago (Recebe confirmação automática de pagamento)
+app.post('/api/webhook/mercadopago', async (req, res) => {
+    try {
+        const body = req.body;
+        if (body.type === 'payment' || body.action === 'payment.created' || body.data) {
+            const paymentId = body.data?.id || body.id;
+            if (paymentId) {
+                const payment = new Payment(client);
+                const paymentInfo = await payment.get({ id: paymentId });
+                
+                if (paymentInfo && paymentInfo.status === 'approved') {
+                    // Encontrar proposta associada pelo valor ou descrição
+                    const descricao = paymentInfo.description || '';
+                    const valorPago = paymentInfo.transaction_amount;
+
+                    // Busca proposta pendente compatível
+                    const proposta = propostas.find(p => p.cobrancaPix && parseFloat(p.cobrancaPix.valorEntrada) === valorPago && p.pagamentoEntradaStatus !== 'PAGO');
+                    if (proposta) {
+                        proposta.pagamentoEntradaStatus = 'PAGO';
+                        console.log(`[AUTOMÁTICO] Pix da proposta ${proposta.id} (${proposta.nome}) confirmado com sucesso pelo Mercado Pago!`);
+                    }
+                }
+            }
+        }
+        res.sendStatus(200);
+    } catch (err) {
+        console.error('Erro no webhook:', err.message);
+        res.sendStatus(200); // Sempre retorna 200 para o MP não ficar re-enviando
+    }
+});
+
+// Endpoint para o cliente checar o status em tempo real (Polling automático)
+app.get('/api/propostas/:cpf', async (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
+    
     if (proposta) {
+        // Se houver cobrança Pix ativa, verifica o status real na API do Mercado Pago por segurança
+        if (proposta.cobrancaPix && proposta.cobrancaPix.paymentId && proposta.pagamentoEntradaStatus !== 'PAGO') {
+            try {
+                const payment = new Payment(client);
+                const paymentInfo = await payment.get({ id: proposta.cobrancaPix.paymentId });
+                if (paymentInfo && paymentInfo.status === 'approved') {
+                    proposta.pagamentoEntradaStatus = 'PAGO';
+                }
+            } catch (e) {
+                // Ignora erro de requisição pontual
+            }
+        }
         res.json({ sucesso: true, proposta });
     } else {
         res.json({ sucesso: false });
@@ -90,17 +137,19 @@ app.get('/api/admin/propostas', (req, res) => {
 });
 
 app.post('/api/admin/atualizar', async (req, res) => {
-    const { id, status, valorSolicitado, qtdParcelas, percentualEntrada, vencimentoEntrada } = req.body;
+    const { id, status, pagamentoEntradaStatus, valorSolicitado, qtdParcelas, percentualEntrada, vencimentoEntrada } = req.body;
     const proposta = propostas.find(p => p.id == id);
     
     if (proposta) {
         if (status) proposta.status = status;
+        if (pagamentoEntradaStatus) proposta.pagamentoEntradaStatus = pagamentoEntradaStatus;
         if (valorSolicitado) proposta.valorSolicitado = valorSolicitado;
         if (qtdParcelas) proposta.qtdParcelas = qtdParcelas;
         if (percentualEntrada) proposta.percentualEntrada = percentualEntrada;
         if (vencimentoEntrada) proposta.vencimentoEntrada = vencimentoEntrada;
 
-        if (proposta.status === 'APROVADO') {
+        // Se foi aprovado e ainda não tem Pix gerado, gera automaticamente
+        if (proposta.status === 'APROVADO' && !proposta.cobrancaPix) {
             const valorTotalMercadoria = parseFloat(proposta.valorSolicitado.toString().replace(',', '.'));
             const pEntrada = parseFloat(proposta.percentualEntrada || '20');
             const numParcelas = parseInt(proposta.qtdParcelas || '12');
@@ -112,6 +161,8 @@ app.post('/api/admin/atualizar', async (req, res) => {
             const valorParcelaMensal = ((valorFinanciado * taxaJuros * fator) / (fator - 1)).toFixed(2);
 
             let copiaEColaPix = `00020126580014br.gov.bcb.pix0136suporte@flashcredmoveis.com.br5204000053039865802BR5925FLASHCRED MOVEIS LTDA6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`;
+            let qrCodeBase64 = '';
+            let paymentId = null;
 
             try {
                 const payment = new Payment(client);
@@ -130,9 +181,11 @@ app.post('/api/admin/atualizar', async (req, res) => {
                 });
                 if (result && result.point_of_interaction && result.point_of_interaction.transaction_data) {
                     copiaEColaPix = result.point_of_interaction.transaction_data.qr_code;
+                    qrCodeBase64 = result.point_of_interaction.transaction_data.qr_code_base64;
+                    paymentId = result.id;
                 }
             } catch (mpErr) {
-                console.log('Usando Pix seguro alternativo:', mpErr.message);
+                console.log('Modo de contingência Pix ativado:', mpErr.message);
             }
 
             proposta.cobrancaPix = {
@@ -140,7 +193,9 @@ app.post('/api/admin/atualizar', async (req, res) => {
                 percentualEntrada: pEntrada,
                 valorParcelaMensal: valorParcelaMensal,
                 vencimento: proposta.vencimentoEntrada || 'Hoje (Liberação Imediata)',
-                copiaECola: copiaEColaPix
+                copiaECola: copiaEColaPix,
+                qrCodeBase64: qrCodeBase64,
+                paymentId: paymentId
             };
         }
 
