@@ -62,6 +62,7 @@ app.post('/api/propostas', upload.fields([
     }
 });
 
+// Rota de consulta do cliente atualizada com os detalhes do Pix e Parcelas com juros de 8%
 app.get('/api/propostas/:cpf', (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
@@ -76,24 +77,41 @@ app.get('/api/admin/propostas', (req, res) => {
     res.json(propostas);
 });
 
-// Atualizar status, valor, parcelas e gerar Pix/Simulação de Carnê
+// Rota de aprovação e cálculo com juros compostos de 8% ao mês e porcentagem de entrada
 app.post('/api/admin/atualizar', (req, res) => {
-    const { id, status, valorSolicitado, qtdParcelas } = req.body;
+    const { id, status, valorSolicitado, qtdParcelas, percentualEntrada, vencimentoEntrada } = req.body;
     const proposta = propostas.find(p => p.id == id);
+    
     if (proposta) {
         if (status) proposta.status = status;
         if (valorSolicitado) proposta.valorSolicitado = valorSolicitado;
         if (qtdParcelas) proposta.qtdParcelas = qtdParcelas;
+        if (percentualEntrada) proposta.percentualEntrada = percentualEntrada;
+        if (vencimentoEntrada) proposta.vencimentoEntrada = vencimentoEntrada;
 
-        // Se aprovado, gera os dados simulados do Pix copia e cola e QR Code de pagamento
+        // Se aprovado, calcula a entrada, aplica 8% de juros ao mês nas parcelas e gera o Pix
         if (proposta.status === 'APROVADO') {
-            const valorTotalNum = parseFloat(proposta.valorSolicitado.toString().replace(',', '.')) * 1.35; // Exemplo com juros
-            const valorParcelaCalc = (valorTotalNum / parseInt(proposta.qtdParcelas)).toFixed(2);
+            const valorTotalMercadoria = parseFloat(proposta.valorSolicitado.toString().replace(',', '.'));
+            const pEntrada = parseFloat(proposta.percentualEntrada || '20'); // Padrão 20% se não informado
+            const numParcelas = parseInt(proposta.qtdParcelas || '12');
+
+            // Valor da Entrada Obrigatória
+            const valorEntrada = (valorTotalMercadoria * (pEntrada / 100)).toFixed(2);
             
+            // Restante financiado com juros de 8% ao mês (Tabela Price / Juros Compostos)
+            const valorFinanciado = valorTotalMercadoria - valorEntrada;
+            const taxaJuros = 0.08;
+            
+            // Fórmula da prestação com juros compostos: PMT = PV * [ i * (1 + i)^n ] / [ (1 + i)^n - 1 ]
+            const fator = Math.pow(1 + taxaJuros, numParcelas);
+            const valorParcelaMensal = ((valorFinanciado * taxaJuros * fator) / (fator - 1)).toFixed(2);
+
             proposta.cobrancaPix = {
-                copiaECola: `00020126580014br.gov.bcb.pix0136suporte@flashcredmoveis.com.br5204000053039865802BR5925FLASHCRED MOVEIS LTDA6009SAO PAULO62070503***6304ABCD`,
-                valorParcela: valorParcelaCalc,
-                vencimento: '30 dias após liberação'
+                valorEntrada: valorEntrada,
+                percentualEntrada: pEntrada,
+                valorParcelaMensal: valorParcelaMensal,
+                vencimento: proposta.vencimentoEntrada || 'À vista para liberação',
+                copiaECola: `00020126580014br.gov.bcb.pix0136suporte@flashcredmoveis.com.br5204000053039865802BR5925FLASHCRED MOVEIS LTDA6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`
             };
         }
 
