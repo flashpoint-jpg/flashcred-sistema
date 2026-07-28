@@ -42,7 +42,7 @@ app.post('/api/admin/login', (req, res) => {
     res.json({ sucesso: true, token: 'token_flashpoint_secure_99' });
 });
 
-// Criar Proposta (Com suporte a WhatsApp)
+// Criar Proposta
 app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) => {
     try {
         const { nome, cpf, whatsapp, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
@@ -235,7 +235,7 @@ app.post('/api/parcelas/pagar', (req, res) => {
     }
 });
 
-// Webhook para notificações automáticas do Mercado Pago
+// Webhook para notificações automáticas do Mercado Pago (Atualiza status automaticamente)
 app.post('/api/webhook/mercadopago', (req, res) => {
     try {
         const evento = req.body;
