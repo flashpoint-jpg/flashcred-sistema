@@ -1,4 +1,55 @@
-// 🛠️ EDIÇÃO COMPLETA DA PROPOSTA (CORRIGIDA E OTIMIZADA)
+const express = require('express');
+const fs = require('fs');
+const app = express();
+
+app.use(express.json());
+
+const CAMINHO_BANCO = './banco.json'; // Ajuste o caminho se necessário
+
+// Funções Auxiliares de Validação
+function lerBanco() {
+    try {
+        if (!fs.existsSync(CAMINHO_BANCO)) return [];
+        const dados = fs.readFileSync(CAMINHO_BANCO, 'utf8');
+        return JSON.parse(dados);
+    } catch (e) {
+        return [];
+    }
+}
+
+function salvarBanco(dados) {
+    fs.writeFileSync(CAMINHO_BANCO, JSON.stringify(dados, null, 2));
+}
+
+function validarCPF(cpf) {
+    if (!cpf) return false;
+    const limpo = cpf.replace(/\D/g, '');
+    if (limpo.length !== 11 || /^(\d)\1{10}$/.test(limpo)) return false;
+    let soma = 0;
+    for (let i = 0; i < 9; i++) soma += parseInt(limpo.charAt(i)) * (10 - i);
+    let rev = 11 - (soma % 11);
+    if (rev === 10 || rev === 11) rev = 0;
+    if (rev !== parseInt(limpo.charAt(9))) return false;
+    soma = 0;
+    for (let i = 0; i < 10; i++) soma += parseInt(limpo.charAt(i)) * (11 - i);
+    rev = 11 - (soma % 11);
+    if (rev === 10 || rev === 11) rev = 0;
+    return rev === parseInt(limpo.charAt(10));
+}
+
+function validarIdade(nascimento) {
+    if (!nascimento) return true; // Se não informado, passa
+    const hoje = new Date();
+    const nasc = new Date(nascimento);
+    let idade = hoje.getFullYear() - nasc.getFullYear();
+    const m = hoje.getMonth() - nasc.getMonth();
+    if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) {
+        idade--;
+    }
+    return idade > 17;
+}
+
+// 🛠️ ROTA DE EDIÇÃO COMPLETA DA PROPOSTA
 app.post('/api/propostas/editar-tudo', (req, res) => {
     try {
         const { 
@@ -20,7 +71,6 @@ app.post('/api/propostas/editar-tudo', (req, res) => {
 
         const propostaAtual = propostas[index];
 
-        // Validações se alterar CPF ou data de nascimento
         if (cpf && !validarCPF(cpf)) {
             return res.status(400).json({ sucesso: false, mensagem: 'CPF inválido!' });
         }
@@ -28,13 +78,11 @@ app.post('/api/propostas/editar-tudo', (req, res) => {
             return res.status(400).json({ sucesso: false, mensagem: 'Cliente deve ter mais de 17 anos!' });
         }
 
-        // Tratamento correto para permitir valores iguais a 0 (zero)
         const novoValorTotal = valorTotal !== undefined ? parseFloat(valorTotal) : propostaAtual.valorTotal;
         const novaEntrada = valorEntrada !== undefined ? parseFloat(valorEntrada) : propostaAtual.valorEntrada;
         const novaQtd = qtdParcelas !== undefined ? parseInt(qtdParcelas) : propostaAtual.qtdParcelas;
         const novoJuros = juros !== undefined ? parseFloat(juros) : propostaAtual.juros;
 
-        // Recálculo financeiro
         const tx = novoJuros / 100;
         const restante = Math.max(0, novoValorTotal - novaEntrada);
         
@@ -50,7 +98,6 @@ app.post('/api/propostas/editar-tudo', (req, res) => {
             totalComJuros = parseFloat((novaEntrada + (valorParcela * novaQtd)).toFixed(2));
         }
 
-        // Atualiza TODOS os dados base
         propostas[index] = {
             ...propostaAtual,
             nome: nome !== undefined ? nome : propostaAtual.nome,
@@ -67,7 +114,6 @@ app.post('/api/propostas/editar-tudo', (req, res) => {
             status: status !== undefined ? status : propostaAtual.status,
         };
 
-        // Atualiza parcelas se houver saldo devedor e quantidade
         if (restante > 0 && novaQtd > 0) {
             const listaParcelas = [];
             const hoje = new Date();
@@ -75,7 +121,6 @@ app.post('/api/propostas/editar-tudo', (req, res) => {
                 let venc = new Date(hoje);
                 venc.setMonth(venc.getMonth() + i);
                 
-                // Mantém o status e data de pagamento da parcela antiga se ela já existir
                 const parcelaAntiga = propostaAtual.parcelas?.[i - 1];
                 
                 listaParcelas.push({
@@ -91,7 +136,6 @@ app.post('/api/propostas/editar-tudo', (req, res) => {
             propostas[index].parcelas = [];
         }
 
-        // Atualiza Pix da entrada (apenas se houver valor de entrada)
         if (novaEntrada > 0) {
             const pixCode = '00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15);
             propostas[index].cobrancaPix = {
@@ -110,3 +154,6 @@ app.post('/api/propostas/editar-tudo', (req, res) => {
         return res.status(500).json({ sucesso: false, mensagem: 'Erro: ' + e.message });
     }
 });
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
