@@ -26,7 +26,7 @@ const upload = multer({ storage });
 
 let propostas = [];
 
-// Rotas explícitas para evitar qualquer "Not Found"
+// Rotas explícitas para carregar as páginas sem erro 404
 app.get('/', (req, res) => {
     const indexPath = path.join(__dirname, 'index.html');
     if (fs.existsSync(indexPath)) res.sendFile(indexPath);
@@ -51,7 +51,7 @@ app.get('/admin.html', (req, res) => {
     else res.send('Arquivo admin.html não encontrado.');
 });
 
-// Login Admin
+// Login do Administrador
 app.post('/api/admin/login', (req, res) => {
     const { usuario, senha } = req.body;
     if (usuario === 'admin' && senha === 'flashcred2026') {
@@ -61,7 +61,7 @@ app.post('/api/admin/login', (req, res) => {
     }
 });
 
-// Envio de proposta do cliente
+// Envio de nova proposta pelo cliente
 app.post('/api/propostas', upload.fields([
     { name: 'selfie', maxCount: 1 },
     { name: 'documento', maxCount: 1 },
@@ -86,13 +86,14 @@ app.post('/api/propostas', upload.fields([
         };
 
         propostas.push(novaProposta);
+        console.log(`[NOVA PROPOSTA] Recebida de: ${novaProposta.nome} (CPF: ${novaProposta.cpf})`);
         res.json({ sucesso: true, mensagem: 'Proposta enviada com sucesso!' });
     } catch (err) {
         res.status(500).json({ sucesso: false, erro: err.message });
     }
 });
 
-// Webhook Mercado Pago
+// Webhook do Mercado Pago (Notificação automática de pagamentos)
 app.post('/api/webhook/mercadopago', async (req, res) => {
     try {
         const body = req.body;
@@ -105,15 +106,19 @@ app.post('/api/webhook/mercadopago', async (req, res) => {
                 const valorPago = paymentInfo.transaction_amount;
 
                 for (let p of propostas) {
+                    // Verifica se o pagamento corresponde à Entrada Pix
                     if (p.cobrancaPix && parseFloat(p.cobrancaPix.valorEntrada) === valorPago && p.pagamentoEntradaStatus !== 'PAGO') {
                         p.pagamentoEntradaStatus = 'PAGO';
+                        console.log(`[NOTIFICAÇÃO PIX] 💰 ENTRADA PAGA! Cliente: ${p.nome} | Valor: R$ ${valorPago}`);
                         break;
                     }
+                    // Verifica se o pagamento corresponde a alguma parcela do carnê
                     if (p.parcelas) {
                         for (let parc of p.parcelas) {
                             if (parseFloat(parc.valor) === valorPago && parc.status !== 'PAGO') {
                                 parc.status = 'PAGO';
                                 parc.dataPagamento = new Date().toLocaleDateString('pt-BR');
+                                console.log(`[NOTIFICAÇÃO PIX] 💰 PARCELA ${parc.numero} PAGA! Cliente: ${p.nome} | Valor: R$ ${valorPago}`);
                                 break;
                             }
                         }
@@ -127,7 +132,7 @@ app.post('/api/webhook/mercadopago', async (req, res) => {
     }
 });
 
-// Pagar parcela específica do carnê
+// Solicitar pagamento via Pix de uma parcela específica do carnê
 app.post('/api/parcelas/pagar', async (req, res) => {
     const { cpf, numeroParcela } = req.body;
     const cpfLimpo = cpf.replace(/\D/g, '');
@@ -166,18 +171,20 @@ app.post('/api/parcelas/pagar', async (req, res) => {
     res.json({ sucesso: true, parcela });
 });
 
-// Consulta cliente por CPF
+// Consulta cliente por CPF (página do cliente)
 app.get('/api/propostas/:cpf', async (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
     
     if (proposta) {
+        // Verifica automaticamente se a entrada foi paga no MP
         if (proposta.cobrancaPix && proposta.cobrancaPix.paymentId && proposta.pagamentoEntradaStatus !== 'PAGO') {
             try {
                 const payment = new Payment(client);
                 const paymentInfo = await payment.get({ id: proposta.cobrancaPix.paymentId });
                 if (paymentInfo && paymentInfo.status === 'approved') {
                     proposta.pagamentoEntradaStatus = 'PAGO';
+                    console.log(`[AUTO-CHECK] Entrada paga confirmada para: ${proposta.nome}`);
                 }
             } catch (e) {}
         }
@@ -187,8 +194,9 @@ app.get('/api/propostas/:cpf', async (req, res) => {
     }
 });
 
-// Listar propostas para o Admin
+// Listar propostas para o Painel Administrativo
 app.get('/api/admin/propostas', async (req, res) => {
+    // Varredura automática para atualizar status de pagamentos pendentes no painel
     for (let p of propostas) {
         if (p.cobrancaPix && p.cobrancaPix.paymentId && p.pagamentoEntradaStatus !== 'PAGO') {
             try {
@@ -196,6 +204,7 @@ app.get('/api/admin/propostas', async (req, res) => {
                 const paymentInfo = await payment.get({ id: p.cobrancaPix.paymentId });
                 if (paymentInfo && paymentInfo.status === 'approved') {
                     p.pagamentoEntradaStatus = 'PAGO';
+                    console.log(`[AUTO-CHECK ADMIN] Entrada paga confirmada para: ${p.nome}`);
                 }
             } catch (e) {}
         }
@@ -203,16 +212,12 @@ app.get('/api/admin/propostas', async (req, res) => {
     res.json(propostas);
 });
 
-// Atualizar e aprovar proposta
+// Atualizar e aprovar proposta / Recalcular Carnê no Admin
 app.post('/api/admin/atualizar', async (req, res) => {
-    const { id, nome, cpf, telefone, email, status, pagamentoEntradaStatus, valorSolicitado, qtdParcelas, percentualEntrada, taxaJuros } = req.body;
+    const { id, status, pagamentoEntradaStatus, valorSolicitado, qtdParcelas, percentualEntrada, taxaJuros } = req.body;
     const proposta = propostas.find(p => p.id == id);
     
     if (proposta) {
-        if (nome) proposta.nome = nome;
-        if (cpf) proposta.cpf = cpf;
-        if (telefone) proposta.telefone = telefone;
-        if (email) proposta.email = email;
         if (status) proposta.status = status;
         if (pagamentoEntradaStatus) proposta.pagamentoEntradaStatus = pagamentoEntradaStatus;
         if (valorSolicitado) proposta.valorSolicitado = valorSolicitado;
@@ -220,6 +225,7 @@ app.post('/api/admin/atualizar', async (req, res) => {
         if (percentualEntrada) proposta.percentualEntrada = percentualEntrada;
         if (taxaJuros) proposta.taxaJuros = taxaJuros;
 
+        // Se for aprovado, gera/recalcula a entrada e o carnê de parcelas
         if (proposta.status === 'APROVADO') {
             const valorTotalMercadoria = parseFloat(proposta.valorSolicitado.toString().replace(',', '.'));
             const pEntrada = parseFloat(proposta.percentualEntrada || '20');
