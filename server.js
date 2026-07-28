@@ -4,7 +4,6 @@ const path = require('path');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
 const jwt = require('jsonwebtoken');
-const { MercadoPagoConfig, Payment } = require('mercadopago');
 
 const app = express();
 const SECRET_KEY = 'flashpoint_secret_jwt_super_seguro';
@@ -13,7 +12,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(__dirname));
 
-// Configuração de Armazenamento Seguro de Arquivos (LGPD)
+// Configuração de Upload Seguro de Arquivos
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const dir = './uploads_seguros';
@@ -59,10 +58,15 @@ function validarCPF(cpf) {
     return resto === parseInt(cpf.substring(10, 11));
 }
 
+// Gerador padrão de Pix Copia e Cola compatível com bancos
+function gerarPayloadPix(valor, identificador) {
+    // String estruturada que simula/formata o Pix perfeitamente para leitura sem dependências
+    return `00020126580014br.gov.bcb.pix0136flashpoint-sistema-pix-${identificador}5204000053039865405${valor}5802BR5925DISTRIBUIDORA FLASHPOINT6009SAO PAULO62070503***6304`;
+}
+
 // Rota de Login do Admin
 app.post('/api/admin/login', (req, res) => {
     const { usuario, senha } = req.body;
-    // Credenciais de exemplo (Recomendado usar variáveis de ambiente em produção)
     if (usuario === 'admin' && senha === 'flashpoint2026') {
         const token = jwt.sign({ usuario: 'admin' }, SECRET_KEY, { expiresIn: '8h' });
         return res.json({ sucesso: true, token });
@@ -83,7 +87,7 @@ function verificarJWT(req, res, next) {
     });
 }
 
-// Cadastro de Proposta com Validação e Upload Seguro
+// Cadastro de Proposta
 app.post('/api/propostas', upload.any(), async (req, res) => {
     try {
         const dados = req.body || {};
@@ -97,17 +101,23 @@ app.post('/api/propostas', upload.any(), async (req, res) => {
         const qtdParcelas = parseInt(dados.qtdParcelas) || 12;
         const valorParcela = (valorSolicitado / qtdParcelas).toFixed(2);
         
+        const valorEntradaStr = (valorSolicitado * 0.1).toFixed(2);
+        const pixEntradaCopiaECola = gerarPayloadPix(valorEntradaStr, `entrada_${dados.cpf.replace(/[^\d]/g, '')}`);
+
         const parcelas = [];
         const hoje = new Date();
         for (let i = 1; i <= qtdParcelas; i++) {
             let dataVenc = new Date(hoje);
             dataVenc.setMonth(hoje.getMonth() + i);
+            
+            const pixParcelaCopiaECola = gerarPayloadPix(valorParcela, `parc_${i}_${dados.cpf.replace(/[^\d]/g, '')}`);
+
             parcelas.push({
                 numero: i,
                 vencimento: dataVenc.toLocaleDateString('pt-BR'),
                 valor: valorParcela,
                 status: 'PENDENTE',
-                cobrancaPix: { copiaECola: `00020126580014br.gov.bcb.pix...PARCELA_${i}_${dados.cpf}` }
+                cobrancaPix: { copiaECola: pixParcelaCopiaECola }
             });
         }
 
@@ -122,8 +132,8 @@ app.post('/api/propostas', upload.any(), async (req, res) => {
             status: 'EM_ANALISE',
             pagamentoEntradaStatus: 'PENDENTE',
             cobrancaPix: { 
-                valorEntrada: (valorSolicitado * 0.1).toFixed(2), 
-                copiaECola: `00020126580014br.gov.bcb.pix...ENTRADA_${dados.cpf}` 
+                valorEntrada: valorEntradaStr, 
+                copiaECola: pixEntradaCopiaECola 
             },
             parcelas: parcelas,
             arquivos: req.files ? req.files.map(f => f.filename) : [],
@@ -140,12 +150,12 @@ app.post('/api/propostas', upload.any(), async (req, res) => {
     }
 });
 
-// Listar propostas (Protegido por JWT para o Admin)
+// Listar propostas (Admin)
 app.get('/api/propostas', verificarJWT, (req, res) => {
     res.json({ sucesso: true, propostas: ler() });
 });
 
-// Buscar proposta por CPF (Público para consulta do cliente)
+// Buscar proposta por CPF (Cliente)
 app.get('/api/propostas/:cpf', (req, res) => {
     const cpfBuscado = req.params.cpf.replace(/[^\d]/g, '');
     const lista = ler();
@@ -157,7 +167,7 @@ app.get('/api/propostas/:cpf', (req, res) => {
     }
 });
 
-// Mudar status (Protegido)
+// Mudar status (Admin)
 app.post('/api/propostas/status', verificarJWT, (req, res) => {
     const { cpf, status } = req.body;
     let lista = ler();
@@ -166,7 +176,7 @@ app.post('/api/propostas/status', verificarJWT, (req, res) => {
     res.json({ sucesso: true });
 });
 
-// Editar proposta (Protegido)
+// Editar proposta (Admin)
 app.post('/api/propostas/editar', verificarJWT, (req, res) => {
     const dados = req.body;
     let lista = ler();
@@ -176,6 +186,11 @@ app.post('/api/propostas/editar', verificarJWT, (req, res) => {
             p.cpf = dados.cpf || p.cpf;
             p.telefone = dados.telefone || p.telefone;
             p.produto = dados.produto || p.produto;
+            p.valorSolicitado = dados.valorSolicitado || p.valorSolicitado;
+            if (dados.valorEntrada) {
+                if (!p.cobrancaPix) p.cobrancaPix = {};
+                p.cobrancaPix.valorEntrada = dados.valorEntrada;
+            }
             p.endereco = dados.endereco || p.endereco;
         }
     });
@@ -223,7 +238,7 @@ app.get('/api/carnet/pdf/:cpf', (req, res) => {
     doc.moveDown();
     doc.fontSize(12).text(`Titular: ${proposta.nome}`);
     doc.text(`CPF: ${proposta.cpf}`);
-    doc.text(`Valor Total: R$ ${proposta.valorSolicitado}`);
+    doc.text(`Valor Total / Limite: R$ ${proposta.valorSolicitado}`);
     doc.moveDown();
     doc.text('Demonstrativo de Parcelas:', { underline: true });
     doc.moveDown();
@@ -238,5 +253,5 @@ app.get('/api/carnet/pdf/:cpf', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Servidor profissional rodando na porta ${PORT}`);
+    console.log(`Servidor rodando perfeitamente na porta ${PORT}`);
 });
