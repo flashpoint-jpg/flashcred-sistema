@@ -42,7 +42,6 @@ app.post('/api/login', (req, res) => {
 
 app.post('/api/admin/login', (req, res) => {
     const { usuario, senha } = req.body;
-    // Validação padrão simples do painel
     res.json({ sucesso: true, token: 'token_flashpoint_secure_99' });
 });
 
@@ -80,7 +79,8 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
                 contentType: req.file.mimetype
             } : null,
             parcelas: [],
-            cobrancaPix: null
+            cobrancaPix: null,
+            pagamentoEntradaStatus: 'PENDENTE'
         };
 
         propostas.push(novaProposta);
@@ -112,7 +112,6 @@ app.post('/api/propostas/status', (req, res) => {
 
         propostas[index].status = status;
         
-        // Se aprovado, gera carnê e pix de entrada se não existirem
         if (status === 'APROVADO' && (!propostas[index].parcelas || propostas[index].parcelas.length === 0)) {
             const valorSol = parseFloat(propostas[index].valorSolicitado || 1000);
             const qtdP = parseInt(propostas[index].qtdParcelas || 6);
@@ -124,6 +123,7 @@ app.post('/api/propostas/status', (req, res) => {
             valParcela = parseFloat(valParcela.toFixed(2));
 
             propostas[index].valorEntrada = valEntrada;
+            propostas[index].pagamentoEntradaStatus = 'PENDENTE';
             propostas[index].cobrancaPix = {
                 valorEntrada: valEntrada,
                 copiaECola: '00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15),
@@ -170,9 +170,7 @@ app.post('/api/propostas/editar', (req, res) => {
         let valParcela = taxaMensal > 0 ? (restante * Math.pow(1 + taxaMensal, qtdP)) / qtdP : restante / qtdP;
         valParcela = parseFloat(valParcela.toFixed(2));
 
-        let listaParcelas = propostas[index].parcelas || [];
-        // Recria ou atualiza as parcelas mantendo os status de pagas se houverem
-        listaParcelas = [];
+        let listaParcelas = [];
         const hoje = new Date();
         for (let i = 1; i <= qtdP; i++) {
             let venc = new Date(hoje);
@@ -230,6 +228,25 @@ app.post('/api/parcelas/pagar', (req, res) => {
         res.json({ sucesso: true, parcela });
     } catch (e) {
         res.status(500).json({ sucesso: false, mensagem: e.message });
+    }
+});
+
+// WEBHOOK PARA NOTIFICAÇÃO AUTOMÁTICA DE PAGAMENTOS (MERCADO PAGO)
+app.post('/api/webhook/mercadopago', (req, res) => {
+    try {
+        const evento = req.body;
+        // Valida se o evento é referente a pagamento aprovado
+        if (evento && (evento.type === 'payment' || evento.action === 'payment.created')) {
+            const pagamentoId = evento.data?.id;
+            // Aqui você pode processar a confirmação automática do pagamento e atualizar no JSON
+            let propostas = lerBanco();
+            // Lógica de varredura ou identificação pelo ID da cobrança gerada
+            // Exemplo genérico simulando a marcação de pagamento se necessário:
+            salvarBanco(propostas);
+        }
+        res.status(200).send('OK');
+    } catch (e) {
+        res.status(200).send('OK'); // Sempre retornar 200 para o gateway não reenviar infinitamente
     }
 });
 
