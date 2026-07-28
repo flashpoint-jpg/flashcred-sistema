@@ -93,18 +93,22 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                         <div>
                             <label class="block text-gray-400 font-semibold mb-1">% Entrada</label>
                             <input type="number" step="0.1" id="editPorcentagemEntrada" placeholder="Ex: 10" oninput="calcularPorPorcentagem()" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1">Valor Entrada (R$)</label>
+                            <label class="block text-gray-400 font-semibold mb-1">Vlr. Entrada</label>
                             <input type="number" step="0.01" id="editValorEntrada" oninput="calcularPorValorEntrada()" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1">Qtd. Parcelas</label>
-                            <input type="number" id="editQtdParcelas" min="1" placeholder="Ex: 12" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                            <label class="block text-gray-400 font-semibold mb-1">Qtd. Parc.</label>
+                            <input type="number" id="editQtdParcelas" min="1" placeholder="Ex: 12" oninput="atualizarResumoModal()" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-gray-400 font-semibold mb-1">Juros (%)</label>
+                            <input type="number" step="0.1" id="editJuros" placeholder="Ex: 2.5" oninput="atualizarResumoModal()" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
                         </div>
                     </div>
 
@@ -115,7 +119,11 @@
                             <span id="resumoRestante" class="text-white font-bold">R$ 0,00</span>
                         </div>
                         <div class="flex justify-between text-gray-400">
-                            <span>Previsão Total (Entrada + Parcelas):</span>
+                            <span>Valor Estimado da Parcela:</span>
+                            <span id="resumoValorParcela" class="text-emerald-400 font-bold">R$ 0,00</span>
+                        </div>
+                        <div class="flex justify-between text-gray-400 border-t border-gray-800 pt-1">
+                            <span>Previsão Total a Pagar:</span>
                             <span id="resumoTotalGeral" class="text-amber-400 font-bold">R$ 0,00</span>
                         </div>
                     </div>
@@ -221,22 +229,37 @@
                         pixPago = true;
                     }
 
-                    let valorEntradaExibicao = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? `R$ ${p.cobrancaPix.valorEntrada}` : (p.valorEntrada ? `R$ ${p.valorEntrada}` : '0.00');
+                    let valorEntradaExibicao = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? p.cobrancaPix.valorEntrada : (p.valorEntrada || '0.00');
 
                     let statusEntradaBadge = pixPago 
                         ? `<span class="text-green-400 font-bold bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">✅ PAGO (R$ ${valorEntradaExibicao})</span>` 
                         : `<span class="text-amber-400 font-bold">R$ ${valorEntradaExibicao} <span class="text-[10px] text-gray-400 font-normal">(Pendente)</span></span>`;
 
-                    let qtdParcelasExibicao = p.qtdParcelas || (p.parcelas ? p.parcelas.length : 'Não definido');
+                    let qtdParcelasExibicao = p.qtdParcelas || (p.parcelas ? p.parcelas.length : 0);
+                    let jurosExibicao = p.juros || 0;
+                    
+                    let valorParcelaExibicao = '0.00';
+                    if (p.parcelas && p.parcelas.length > 0) {
+                        valorParcelaExibicao = p.parcelas[0].valor || '0.00';
+                    } else if (qtdParcelasExibicao > 0) {
+                        let restante = parseFloat(p.valorSolicitado || 0) - parseFloat(valorEntradaExibicao || 0);
+                        let taxa = parseFloat(jurosExibicao) / 100;
+                        if (taxa > 0) {
+                            let montante = restante * Math.pow(1 + taxa, qtdParcelasExibicao);
+                            valorParcelaExibicao = (montante / qtdParcelasExibicao).toFixed(2);
+                        } else {
+                            valorParcelaExibicao = (restante / qtdParcelasExibicao).toFixed(2);
+                        }
+                    }
 
-                    // Calcula o valor total geral (Entrada + Soma das parcelas ou Estimativa)
                     let totalGeral = 0;
                     let valEntradaNum = parseFloat(valorEntradaExibicao) || 0;
                     if (p.parcelas && p.parcelas.length > 0) {
                         let somaParcelas = p.parcelas.reduce((acc, parc) => acc + (parseFloat(parc.valor) || 0), 0);
                         totalGeral = valEntradaNum + somaParcelas;
-                    } else if (p.valorSolicitado) {
-                        totalGeral = parseFloat(p.valorSolicitado);
+                    } else {
+                        let valParcelaNum = parseFloat(valorParcelaExibicao) || 0;
+                        totalGeral = valEntradaNum + (valParcelaNum * qtdParcelasExibicao);
                     }
 
                     let statusBadge = p.status === 'APROVADO' 
@@ -260,8 +283,9 @@
                                 <div><span class="text-gray-500 font-semibold">Produto:</span> <span class="text-gray-200 font-semibold">${p.produto || 'Não especificado'}</span></div>
                                 <div><span class="text-gray-500 font-semibold">Limite / Valor:</span> <span class="text-emerald-400 font-bold">R$ ${p.valorSolicitado || '0.00'}</span></div>
                                 <div><span class="text-gray-500 font-semibold">Valor da Entrada:</span> ${statusEntradaBadge}</div>
-                                <div><span class="text-gray-500 font-semibold">Qtd. de Parcelas:</span> <span class="text-blue-400 font-bold">${qtdParcelasExibicao}x</span></div>
-                                <div><span class="text-gray-500 font-semibold">Valor Total Geral:</span> <span class="text-amber-400 font-bold">R$ ${totalGeral.toFixed(2)}</span></div>
+                                <div><span class="text-gray-500 font-semibold">Parcelamento:</span> <span class="text-blue-400 font-bold">${qtdParcelasExibicao}x de R$ ${valorParcelaExibicao}</span></div>
+                                <div><span class="text-gray-500 font-semibold">Taxa de Juros:</span> <span class="text-amber-400 font-bold">${jurosExibicao}% ao mês</span></div>
+                                <div class="sm:col-span-2"><span class="text-gray-500 font-semibold">Valor Total a Pagar:</span> <span class="text-amber-400 font-bold text-sm">R$ ${totalGeral.toFixed(2)}</span></div>
                                 <div class="sm:col-span-2"><span class="text-gray-500 font-semibold">Endereço:</span> <span class="text-gray-200">${p.endereco || 'Endereço não cadastrado'}</span></div>
                             </div>
 
@@ -299,15 +323,31 @@
             }
         }
 
-        // Funções de Cálculo Automático e Resumo
         function atualizarResumoModal() {
             const valorSolicitado = parseFloat(document.getElementById('editValorSolicitado').value) || 0;
             const valorEntrada = parseFloat(document.getElementById('editValorEntrada').value) || 0;
             const qtdParcelas = parseInt(document.getElementById('editQtdParcelas').value) || 1;
+            const juros = parseFloat(document.getElementById('editJuros').value) || 0;
 
             const restante = Math.max(0, valorSolicitado - valorEntrada);
             document.getElementById('resumoRestante').innerText = `R$ ${restante.toFixed(2)}`;
-            document.getElementById('resumoTotalGeral').innerText = `R$ ${valorSolicitado.toFixed(2)}`;
+
+            let valParcela = 0;
+            let totalGeral = 0;
+
+            if (qtdParcelas > 0) {
+                let taxa = juros / 100;
+                if (taxa > 0) {
+                    let montante = restante * Math.pow(1 + taxa, qtdParcelas);
+                    valParcela = montante / qtdParcelas;
+                } else {
+                    valParcela = restante / qtdParcelas;
+                }
+                totalGeral = valorEntrada + (valParcela * qtdParcelas);
+            }
+
+            document.getElementById('resumoValorParcela').innerText = `R$ ${valParcela.toFixed(2)}`;
+            document.getElementById('resumoTotalGeral').innerText = `R$ ${totalGeral.toFixed(2)}`;
         }
 
         function calcularPorPorcentagem() {
@@ -356,6 +396,7 @@
             document.getElementById('editValorEntrada').value = valorEntrada;
 
             document.getElementById('editQtdParcelas').value = p.qtdParcelas || (p.parcelas ? p.parcelas.length : '');
+            document.getElementById('editJuros').value = p.juros || '';
 
             if (valorSolicitado && valorEntrada) {
                 const perc = (parseFloat(valorEntrada) / parseFloat(valorSolicitado)) * 100;
@@ -388,6 +429,7 @@
                 porcentagemEntrada: document.getElementById('editPorcentagemEntrada').value,
                 valorEntrada: document.getElementById('editValorEntrada').value,
                 qtdParcelas: document.getElementById('editQtdParcelas').value,
+                juros: document.getElementById('editJuros').value,
                 endereco: document.getElementById('editEndereco').value
             };
 
@@ -401,7 +443,7 @@
                 if (data.sucesso) {
                     fecharModalEditar();
                     carregarPropostas();
-                    alert('Proposta, parcelas e valores atualizados com sucesso!');
+                    alert('Proposta, juros, parcelas e valores atualizados com sucesso!');
                 } else {
                     alert('Erro ao salvar alterações no servidor.');
                 }
