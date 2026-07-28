@@ -42,10 +42,10 @@ app.post('/api/admin/login', (req, res) => {
     res.json({ sucesso: true, token: 'token_flashpoint_secure_99' });
 });
 
-// Criar Proposta
+// Criar Proposta (Corrigido para capturar telefone/whatsapp)
 app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) => {
     try {
-        const { nome, cpf, whatsapp, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
+        const { nome, cpf, telefone, whatsapp, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
         
         if (!nome || !cpf || !valorSolicitado) {
             return res.status(400).json({ sucesso: false, mensagem: 'Preencha os campos obrigatórios.' });
@@ -59,11 +59,14 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
             return res.status(400).json({ sucesso: false, mensagem: 'Já existe uma proposta para este CPF.' });
         }
 
+        // Padroniza e salva o telefone corretamente para o painel admin
+        const telefoneFinal = telefone ? telefone.trim() : (whatsapp ? whatsapp.trim() : '');
+
         const novaProposta = {
             id: Date.now().toString(),
             nome: nome.trim(),
             cpf: cpf.trim(),
-            whatsapp: whatsapp ? whatsapp.trim() : '',
+            telefone: telefoneFinal,
             nascimento,
             endereco,
             numero,
@@ -155,7 +158,7 @@ app.post('/api/propostas/status', (req, res) => {
 // Editar Proposta Completa (Admin)
 app.post('/api/propostas/editar', (req, res) => {
     try {
-        const { cpfOriginal, nome, cpf, whatsapp, produto, valorSolicitado, valorEntrada, qtdParcelas, juros, endereco } = req.body;
+        const { cpfOriginal, nome, cpf, telefone, produto, valorSolicitado, valorEntrada, qtdParcelas, juros, endereco } = req.body;
         let propostas = lerBanco();
         const cpfOrigLimpo = cpfOriginal ? cpfOriginal.replace(/\D/g, '') : '';
         const index = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfOrigLimpo);
@@ -190,7 +193,7 @@ app.post('/api/propostas/editar', (req, res) => {
             ...propostas[index],
             nome: nome || propostas[index].nome,
             cpf: cpf || propostas[index].cpf,
-            whatsapp: whatsapp || propostas[index].whatsapp,
+            telefone: telefone || propostas[index].telefone,
             produto: produto || propostas[index].produto,
             valorSolicitado: valSol,
             valorEntrada: valEnt,
@@ -238,7 +241,7 @@ app.post('/api/parcelas/pagar', (req, res) => {
     }
 });
 
-// Webhook para notificações automáticas do Mercado Pago
+// Webhook para notificações automáticas
 app.post('/api/webhook/mercadopago', (req, res) => {
     try {
         const evento = req.body;
