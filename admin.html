@@ -52,20 +52,18 @@
             </div>
 
             <div id="loading" class="text-center py-20 text-gray-400 text-xs">Carregando propostas...</div>
-            
-            <!-- Lista Completa de Propostas com Ações -->
             <div id="listaPropostas" class="space-y-4"></div>
         </main>
 
-        <!-- Modal de Edição Completa -->
+        <!-- Modal de Edição Completo (Com Limite, Porcentagem e Entrada) -->
         <div id="modalEditar" class="hidden fixed inset-0 z-50 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div class="max-w-lg w-full bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
                 <div class="flex justify-between items-center border-b border-gray-800 pb-3">
-                    <h3 class="font-bold text-white text-sm uppercase tracking-wide">Controle Total: Editar Proposta</h3>
+                    <h3 class="font-bold text-white text-sm uppercase tracking-wide">Gestão e Crédito: Editar Proposta</h3>
                     <button onclick="fecharModalEditar()" class="text-gray-400 hover:text-white font-bold text-base p-1">✕</button>
                 </div>
                 
-                <form id="formEdicao" onsubmit="salvarEdicao(event)" class="space-y-4 text-xs">
+                <form id="formEdicao" onsubmit="salvarEdicao(event)" class="space-y-3 text-xs">
                     <input type="hidden" id="editCpfOriginal">
                     
                     <div>
@@ -90,8 +88,19 @@
                             <input type="text" id="editProduto" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
                         </div>
                         <div>
-                            <label class="block text-gray-400 font-semibold mb-1">Valor da Entrada (Sinal)</label>
-                            <input type="text" id="editValorEntrada" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                            <label class="block text-gray-400 font-semibold mb-1">Limite / Valor Solicitado (R$)</label>
+                            <input type="number" step="0.01" id="editValorSolicitado" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-gray-400 font-semibold mb-1">Porcentagem de Entrada (%)</label>
+                            <input type="number" step="0.1" id="editPorcentagemEntrada" placeholder="Ex: 10" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-gray-400 font-semibold mb-1">Valor da Entrada (Sinal R$)</label>
+                            <input type="number" step="0.01" id="editValorEntrada" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
                         </div>
                     </div>
 
@@ -122,7 +131,6 @@
                 document.getElementById('loginModal').classList.add('hidden');
                 document.getElementById('painelConteudo').classList.remove('hidden');
                 carregarPropostas();
-                setInterval(carregarPropostas, 15000);
             }
         });
 
@@ -162,7 +170,6 @@
             const loading = document.getElementById('loading');
             
             let propostas = [];
-
             try {
                 const res = await fetch('/api/propostas', {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -172,7 +179,7 @@
                     propostas = data.propostas;
                 }
             } catch (err) {
-                console.warn('Erro ao carregar propostas do servidor.');
+                console.warn('Erro ao carregar propostas.');
             }
 
             propostasGlobais = propostas;
@@ -181,24 +188,21 @@
             if (propostas.length > 0) {
                 container.innerHTML = propostas.map(p => {
                     let telefoneLimpo = (p.telefone || '').replace(/\D/g, '');
-                    if (!telefoneLimpo.startsWith('55')) {
-                        telefoneLimpo = '55' + telefoneLimpo;
-                    }
+                    if (!telefoneLimpo.startsWith('55')) telefoneLimpo = '55' + telefoneLimpo;
 
                     const linkCarne = `https://flashcred-sistema.onrender.com/parcelas.html?cpf=${p.cpf}`;
-                    const textoMsg = `Olá ${p.nome}! *Parabéns, sua proposta foi aprovada!* Acesse o link para visualizar seu carnê, conferir as parcelas e efetuar o pagamento da entrada: ${linkCarne}`;
+                    const textoMsg = `Olá ${p.nome}! *Sua proposta foi atualizada/analisada!* Acesse o link para visualizar seu carnê e verificar os valores de entrada: ${linkCarne}`;
                     const whatsappUrl = `https://api.whatsapp.com/send?phone=${telefoneLimpo}&text=${encodeURIComponent(textoMsg)}`;
 
                     let parcelas = p.parcelas || [];
-                    let totalParcelas = parcelas.length || 0;
                     let pagas = parcelas.filter(parc => parc.status === 'PAGO').length;
-                    let pendentes = totalParcelas - pagas;
+                    let pendentes = parcelas.length - pagas;
 
                     let statusBadge = p.status === 'APROVADO' 
-                        ? '<span class="px-3 py-1 bg-green-500/10 text-green-400 text-xs font-bold rounded-xl border border-green-500/20">Aprovado / Pago</span>'
+                        ? '<span class="px-3 py-1 bg-green-500/10 text-green-400 text-xs font-bold rounded-xl border border-green-500/20">Aprovado</span>'
                         : (p.status === 'RECUSADO' 
                             ? '<span class="px-3 py-1 bg-red-500/10 text-red-400 text-xs font-bold rounded-xl border border-red-500/20">Recusado</span>'
-                            : '<span class="px-3 py-1 bg-amber-500/10 text-amber-400 text-xs font-bold rounded-xl border border-amber-500/20">Em Análise / Aguardando Pix</span>');
+                            : '<span class="px-3 py-1 bg-amber-500/10 text-amber-400 text-xs font-bold rounded-xl border border-amber-500/20">Em Análise</span>');
 
                     let valorEntradaExibicao = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? `R$ ${p.cobrancaPix.valorEntrada}` : (p.valorEntrada ? `R$ ${p.valorEntrada}` : 'Não definido');
 
@@ -214,9 +218,9 @@
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-gray-950/80 p-4 rounded-2xl border border-gray-800">
                                 <div><span class="text-gray-500 font-semibold">Telefone:</span> <span class="text-gray-200 font-mono">${p.telefone || 'Não informado'}</span></div>
-                                <div><span class="text-gray-500 font-semibold">Produto / Modelo:</span> <span class="text-gray-200 font-semibold">${p.produto || p.modelo || 'Não especificado'}</span></div>
+                                <div><span class="text-gray-500 font-semibold">Produto:</span> <span class="text-gray-200 font-semibold">${p.produto || 'Não especificado'}</span></div>
+                                <div><span class="text-gray-500 font-semibold">Limite / Valor:</span> <span class="text-emerald-400 font-bold">R$ ${p.valorSolicitado || '0.00'}</span></div>
                                 <div><span class="text-gray-500 font-semibold">Valor da Entrada:</span> <span class="text-amber-400 font-bold">${valorEntradaExibicao}</span></div>
-                                <div><span class="text-gray-500 font-semibold">Carnê:</span> <span class="text-emerald-400 font-semibold">${pagas} pagas</span> / <span class="text-amber-400 font-semibold">${pendentes} abertas</span> (Total: ${totalParcelas}x)</div>
                                 <div class="sm:col-span-2"><span class="text-gray-500 font-semibold">Endereço:</span> <span class="text-gray-200">${p.endereco || 'Endereço não cadastrado'}</span></div>
                             </div>
 
@@ -224,7 +228,7 @@
                                 <div class="flex flex-wrap gap-2">
                                     <button onclick="mudarStatus('${p.cpf}', 'APROVADO')" class="bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-500/30 text-xs font-bold px-3 py-2 rounded-xl transition">Aprovar</button>
                                     <button onclick="mudarStatus('${p.cpf}', 'RECUSADO')" class="bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 text-xs font-bold px-3 py-2 rounded-xl transition">Recusar</button>
-                                    <button onclick="abrirModalEditar('${p.cpf}')" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 text-xs font-bold px-3 py-2 rounded-xl transition">✏️ Editar</button>
+                                    <button onclick="abrirModalEditar('${p.cpf}')" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 text-xs font-bold px-3 py-2 rounded-xl transition">✏️ Editar Tudo</button>
                                 </div>
                                 <a href="${whatsappUrl}" target="_blank" class="bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-2 rounded-xl transition text-xs flex items-center gap-2 shadow-lg shadow-green-600/20">
                                     <span>💬</span> Enviar WhatsApp
@@ -243,18 +247,12 @@
             try {
                 const res = await fetch('/api/propostas/status', {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ cpf: cpfCliente, status: novoStatus })
                 });
                 const data = await res.json();
-                if (data.sucesso) {
-                    carregarPropostas();
-                } else {
-                    alert('Erro ao atualizar status.');
-                }
+                if (data.sucesso) carregarPropostas();
+                else alert('Erro ao atualizar status.');
             } catch (e) {
                 alert('Erro de conexão com o servidor.');
             }
@@ -268,7 +266,8 @@
             document.getElementById('editNome').value = p.nome || '';
             document.getElementById('editCpf').value = p.cpf || '';
             document.getElementById('editTelefone').value = p.telefone || '';
-            document.getElementById('editProduto').value = p.produto || p.modelo || '';
+            document.getElementById('editProduto').value = p.produto || '';
+            document.getElementById('editValorSolicitado').value = p.valorSolicitado || '';
             document.getElementById('editValorEntrada').value = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? p.cobrancaPix.valorEntrada : (p.valorEntrada || '');
             document.getElementById('editEndereco').value = p.endereco || '';
 
@@ -290,6 +289,7 @@
                 cpf: document.getElementById('editCpf').value,
                 telefone: document.getElementById('editTelefone').value,
                 produto: document.getElementById('editProduto').value,
+                valorSolicitado: document.getElementById('editValorSolicitado').value,
                 valorEntrada: document.getElementById('editValorEntrada').value,
                 endereco: document.getElementById('editEndereco').value
             };
@@ -297,17 +297,14 @@
             try {
                 const res = await fetch('/api/propostas/editar', {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify(dadosAtualizados)
                 });
                 const data = await res.json();
                 if (data.sucesso) {
                     fecharModalEditar();
                     carregarPropostas();
-                    alert('Proposta atualizada com sucesso!');
+                    alert('Proposta e limite atualizados com sucesso!');
                 } else {
                     alert('Erro ao salvar alterações no servidor.');
                 }
