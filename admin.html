@@ -55,7 +55,7 @@
             <div id="listaPropostas" class="space-y-4"></div>
         </main>
 
-        <!-- Modal de Edição Completo (Com Limite, Porcentagem e Entrada) -->
+        <!-- Modal de Edição Completo -->
         <div id="modalEditar" class="hidden fixed inset-0 z-50 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div class="max-w-lg w-full bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
                 <div class="flex justify-between items-center border-b border-gray-800 pb-3">
@@ -89,18 +89,18 @@
                         </div>
                         <div>
                             <label class="block text-gray-400 font-semibold mb-1">Limite / Valor Solicitado (R$)</label>
-                            <input type="number" step="0.01" id="editValorSolicitado" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                            <input type="number" step="0.01" id="editValorSolicitado" oninput="calcularPorEntrada()" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
                         </div>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                             <label class="block text-gray-400 font-semibold mb-1">Porcentagem de Entrada (%)</label>
-                            <input type="number" step="0.1" id="editPorcentagemEntrada" placeholder="Ex: 10" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                            <input type="number" step="0.1" id="editPorcentagemEntrada" placeholder="Ex: 10" oninput="calcularPorPorcentagem()" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
                         </div>
                         <div>
                             <label class="block text-gray-400 font-semibold mb-1">Valor da Entrada (Sinal R$)</label>
-                            <input type="number" step="0.01" id="editValorEntrada" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                            <input type="number" step="0.01" id="editValorEntrada" oninput="calcularPorValorEntrada()" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
                         </div>
                     </div>
 
@@ -194,17 +194,29 @@
                     const textoMsg = `Olá ${p.nome}! *Sua proposta foi atualizada/analisada!* Acesse o link para visualizar seu carnê e verificar os valores de entrada: ${linkCarne}`;
                     const whatsappUrl = `https://api.whatsapp.com/send?phone=${telefoneLimpo}&text=${encodeURIComponent(textoMsg)}`;
 
-                    let parcelas = p.parcelas || [];
-                    let pagas = parcelas.filter(parc => parc.status === 'PAGO').length;
-                    let pendentes = parcelas.length - pagas;
+                    // Identifica se a entrada/Pix foi paga checando múltiplos padrões comuns de status de pagamento
+                    let pixPago = false;
+                    if (p.cobrancaPix) {
+                        const statusPix = (p.cobrancaPix.status || '').toUpperCase();
+                        if (['PAGO', 'APROVADO', 'CONFIRMADO', 'PAID', 'CONCLUIDO'].includes(statusPix) || p.cobrancaPix.pago === true) {
+                            pixPago = true;
+                        }
+                    }
+                    if (!pixPago && (p.statusPix === 'PAGO' || p.statusPix === 'APROVADO' || p.statusPix === 'CONFIRMADO')) {
+                        pixPago = true;
+                    }
+
+                    let valorEntradaExibicao = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? `R$ ${p.cobrancaPix.valorEntrada}` : (p.valorEntrada ? `R$ ${p.valorEntrada}` : 'Não definido');
+
+                    let statusEntradaBadge = pixPago 
+                        ? `<span class="text-green-400 font-bold bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20">✅ PAGO (R$ ${p.cobrancaPix?.valorEntrada || p.valorEntrada || '0.00'})</span>` 
+                        : `<span class="text-amber-400 font-bold">${valorEntradaExibicao} <span class="text-[10px] text-gray-400 font-normal">(Pendente)</span></span>`;
 
                     let statusBadge = p.status === 'APROVADO' 
                         ? '<span class="px-3 py-1 bg-green-500/10 text-green-400 text-xs font-bold rounded-xl border border-green-500/20">Aprovado</span>'
                         : (p.status === 'RECUSADO' 
                             ? '<span class="px-3 py-1 bg-red-500/10 text-red-400 text-xs font-bold rounded-xl border border-red-500/20">Recusado</span>'
                             : '<span class="px-3 py-1 bg-amber-500/10 text-amber-400 text-xs font-bold rounded-xl border border-amber-500/20">Em Análise</span>');
-
-                    let valorEntradaExibicao = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? `R$ ${p.cobrancaPix.valorEntrada}` : (p.valorEntrada ? `R$ ${p.valorEntrada}` : 'Não definido');
 
                     return `
                         <div class="bg-gradient-to-b from-gray-900 to-[#121824] border border-gray-800/80 p-6 rounded-3xl space-y-4 shadow-xl">
@@ -220,7 +232,7 @@
                                 <div><span class="text-gray-500 font-semibold">Telefone:</span> <span class="text-gray-200 font-mono">${p.telefone || 'Não informado'}</span></div>
                                 <div><span class="text-gray-500 font-semibold">Produto:</span> <span class="text-gray-200 font-semibold">${p.produto || 'Não especificado'}</span></div>
                                 <div><span class="text-gray-500 font-semibold">Limite / Valor:</span> <span class="text-emerald-400 font-bold">R$ ${p.valorSolicitado || '0.00'}</span></div>
-                                <div><span class="text-gray-500 font-semibold">Valor da Entrada:</span> <span class="text-amber-400 font-bold">${valorEntradaExibicao}</span></div>
+                                <div><span class="text-gray-500 font-semibold">Valor da Entrada:</span> ${statusEntradaBadge}</div>
                                 <div class="sm:col-span-2"><span class="text-gray-500 font-semibold">Endereço:</span> <span class="text-gray-200">${p.endereco || 'Endereço não cadastrado'}</span></div>
                             </div>
 
@@ -258,6 +270,32 @@
             }
         }
 
+        // Funções de Cálculo Automático de Porcentagem / Valor de Entrada
+        function calcularPorPorcentagem() {
+            const valorSolicitado = parseFloat(document.getElementById('editValorSolicitado').value) || 0;
+            const porcentagem = parseFloat(document.getElementById('editPorcentagemEntrada').value) || 0;
+            if (valorSolicitado > 0 && porcentagem >= 0) {
+                const valorEntrada = (valorSolicitado * porcentagem) / 100;
+                document.getElementById('editValorEntrada').value = valorEntrada.toFixed(2);
+            }
+        }
+
+        function calcularPorValorEntrada() {
+            const valorSolicitado = parseFloat(document.getElementById('editValorSolicitado').value) || 0;
+            const valorEntrada = parseFloat(document.getElementById('editValorEntrada').value) || 0;
+            if (valorSolicitado > 0 && valorEntrada >= 0) {
+                const porcentagem = (valorEntrada / valorSolicitado) * 100;
+                document.getElementById('editPorcentagemEntrada').value = porcentagem.toFixed(1);
+            }
+        }
+
+        function calcularPorEntrada() {
+            const porcentagem = parseFloat(document.getElementById('editPorcentagemEntrada').value) || 0;
+            if (porcentagem > 0) {
+                calcularPorPorcentagem();
+            }
+        }
+
         function abrirModalEditar(cpf) {
             const p = propostasGlobais.find(item => item.cpf === cpf);
             if (!p) return;
@@ -267,10 +305,21 @@
             document.getElementById('editCpf').value = p.cpf || '';
             document.getElementById('editTelefone').value = p.telefone || '';
             document.getElementById('editProduto').value = p.produto || '';
-            document.getElementById('editValorSolicitado').value = p.valorSolicitado || '';
-            document.getElementById('editValorEntrada').value = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? p.cobrancaPix.valorEntrada : (p.valorEntrada || '');
-            document.getElementById('editEndereco').value = p.endereco || '';
+            
+            const valorSolicitado = p.valorSolicitado || '';
+            document.getElementById('editValorSolicitado').value = valorSolicitado;
 
+            const valorEntrada = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? p.cobrancaPix.valorEntrada : (p.valorEntrada || '');
+            document.getElementById('editValorEntrada').value = valorEntrada;
+
+            if (valorSolicitado && valorEntrada) {
+                const perc = (parseFloat(valorEntrada) / parseFloat(valorSolicitado)) * 100;
+                document.getElementById('editPorcentagemEntrada').value = perc.toFixed(1);
+            } else {
+                document.getElementById('editPorcentagemEntrada').value = '';
+            }
+
+            document.getElementById('editEndereco').value = p.endereco || '';
             document.getElementById('modalEditar').classList.remove('hidden');
         }
 
@@ -290,6 +339,7 @@
                 telefone: document.getElementById('editTelefone').value,
                 produto: document.getElementById('editProduto').value,
                 valorSolicitado: document.getElementById('editValorSolicitado').value,
+                porcentagemEntrada: document.getElementById('editPorcentagemEntrada').value,
                 valorEntrada: document.getElementById('editValorEntrada').value,
                 endereco: document.getElementById('editEndereco').value
             };
@@ -304,7 +354,7 @@
                 if (data.sucesso) {
                     fecharModalEditar();
                     carregarPropostas();
-                    alert('Proposta e limite atualizados com sucesso!');
+                    alert('Proposta, limite e entrada atualizados com sucesso!');
                 } else {
                     alert('Erro ao salvar alterações no servidor.');
                 }
