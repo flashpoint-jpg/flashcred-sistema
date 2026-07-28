@@ -3,42 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlashCred Móveis - Painel Admin</title>
+    <title>FlashCred - Painel Administrativo Seguro</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-4 flex flex-col justify-between">
+<body class="bg-gray-950 text-gray-100 min-h-screen p-4 flex flex-col justify-between">
 
-    <div class="max-w-7xl mx-auto w-full bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700 my-6">
-        <div class="flex justify-between items-center mb-6">
+    <!-- TELA DE LOGIN DO ADMIN -->
+    <div id="loginModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
+        <div class="bg-gray-900 border border-gray-800 p-8 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
+            <h2 class="text-xl font-bold text-amber-400 text-center">🔐 Área Restrita Admin</h2>
+            <p class="text-xs text-gray-400 text-center">Digite suas credenciais para gerenciar o sistema</p>
             <div>
-                <h1 class="text-2xl font-bold text-amber-400">Painel de Controle de Crédito</h1>
-                <p class="text-sm text-gray-400">Aprovação com Entrada Obrigatória e Juros de 8% a.m.</p>
+                <label class="text-xs text-gray-300">Usuário</label>
+                <input type="text" id="userAdmin" value="admin" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white text-sm outline-none mt-1">
             </div>
-            <a href="index.html" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm transition">Nova Solicitação</a>
+            <div>
+                <label class="text-xs text-gray-300">Senha</label>
+                <input type="password" id="passAdmin" placeholder="Digite a senha" class="w-full p-3 bg-gray-800 border border-gray-700 rounded-xl text-white text-sm outline-none mt-1">
+            </div>
+            <button onclick="fazerLogin()" class="w-full bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold p-3 rounded-xl transition">Entrar no Painel</button>
+        </div>
+    </div>
+
+    <!-- PAINEL PRINCIPAL -->
+    <div id="painelContent" class="max-w-7xl mx-auto w-full bg-gray-900 p-6 rounded-2xl shadow-2xl border border-gray-800 my-6 hidden">
+        <div class="flex justify-between items-center mb-6 border-b border-gray-800 pb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-amber-400">FlashCred Admin - Checkout & Crédito</h1>
+                <p class="text-sm text-gray-400">Gerenciamento de Entradas, Juros de 8% a.m. e Pix Automático</p>
+            </div>
+            <div class="space-x-2">
+                <a href="index.html" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-xl text-sm transition">Nova Solicitação</a>
+                <button onclick="localStorage.removeItem('authAdmin'); location.reload();" class="bg-red-600/80 hover:bg-red-600 px-4 py-2 rounded-xl text-sm transition">Sair</button>
+            </div>
         </div>
 
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>
-                    <tr class="border-b border-gray-700 text-xs text-gray-400 uppercase">
+                    <tr class="border-b border-gray-800 text-xs text-gray-400 uppercase tracking-wider">
                         <th class="p-3">Cliente / CPF</th>
                         <th class="p-3">Valor / Parcelas</th>
-                        <th class="p-3">Regras de Entrada (Adm)</th>
+                        <th class="p-3">Regras de Entrada</th>
                         <th class="p-3">Documentos</th>
                         <th class="p-3">Status / Pix Gerado</th>
                         <th class="p-3 text-center">Ações</th>
                     </tr>
                 </thead>
-                <tbody id="listaPropostas" class="divide-y divide-gray-700 text-sm">
-                    <tr>
-                        <td colspan="6" class="p-4 text-center text-gray-400">Carregando propostas...</td>
-                    </tr>
+                <tbody id="listaPropostas" class="divide-y divide-gray-800 text-sm">
+                    <tr><td colspan="6" class="p-4 text-center text-gray-400">Carregando propostas...</td></tr>
                 </tbody>
             </table>
         </div>
     </div>
 
     <script>
+        function fazerLogin() {
+            const usuario = document.getElementById('userAdmin').value;
+            const senha = document.getElementById('passAdmin').value;
+
+            fetch('/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ usuario, senha })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.sucesso) {
+                    localStorage.setItem('authAdmin', 'true');
+                    document.getElementById('loginModal').style.display = 'none';
+                    document.getElementById('painelContent').classList.remove('hidden');
+                    carregarPropostas();
+                } else {
+                    alert('Senha incorreta!');
+                }
+            });
+        }
+
+        if (localStorage.getItem('authAdmin') === 'true') {
+            document.getElementById('loginModal').style.display = 'none';
+            document.getElementById('painelContent').classList.remove('hidden');
+            carregarPropostas();
+        }
+
         async function carregarPropostas() {
             try {
                 const res = await fetch('/api/admin/propostas');
@@ -51,18 +98,19 @@
                 }
 
                 tbody.innerHTML = propostas.map(p => `
-                    <tr class="hover:bg-gray-750">
+                    <tr class="hover:bg-gray-800/40 transition">
                         <td class="p-3">
                             <div class="font-bold text-white">${p.nome}</div>
                             <div class="text-xs text-gray-400">CPF: ${p.cpf}</div>
+                            <div class="text-xs text-gray-400">Tel: ${p.telefone || '-'}</div>
                         </td>
                         <td class="p-3 space-y-1">
-                            <div><span class="text-xs text-gray-400">Valor (R$):</span><br><input type="text" id="valor_${p.id}" value="${p.valorSolicitado}" class="w-24 p-1 bg-gray-900 border border-gray-700 rounded text-amber-400 text-xs font-bold"></div>
-                            <div><span class="text-xs text-gray-400">Parcelas:</span><br><input type="number" id="parc_${p.id}" value="${p.qtdParcelas}" class="w-16 p-1 bg-gray-900 border border-gray-700 rounded text-white text-xs"></div>
+                            <div><span class="text-[10px] text-gray-400">Valor (R$):</span><br><input type="text" id="valor_${p.id}" value="${p.valorSolicitado}" class="w-24 p-1 bg-gray-950 border border-gray-800 rounded text-amber-400 text-xs font-bold"></div>
+                            <div><span class="text-[10px] text-gray-400">Parcelas:</span><br><input type="number" id="parc_${p.id}" value="${p.qtdParcelas}" class="w-16 p-1 bg-gray-950 border border-gray-800 rounded text-white text-xs"></div>
                         </td>
                         <td class="p-3 space-y-1">
-                            <div><span class="text-xs text-gray-400">% Entrada:</span><br><input type="number" id="entrada_%${p.id}" value="${p.percentualEntrada || '20'}" class="w-16 p-1 bg-gray-900 border border-gray-700 rounded text-amber-400 text-xs font-bold"></div>
-                            <div><span class="text-xs text-gray-400">Venc. Entrada:</span><br><input type="date" id="venc_${p.id}" value="${p.vencimentoEntrada || ''}" class="w-32 p-1 bg-gray-900 border border-gray-700 rounded text-white text-xs"></div>
+                            <div><span class="text-[10px] text-gray-400">% Entrada:</span><br><input type="number" id="entrada_%${p.id}" value="${p.percentualEntrada || '20'}" class="w-16 p-1 bg-gray-950 border border-gray-800 rounded text-amber-400 text-xs font-bold"></div>
+                            <div><span class="text-[10px] text-gray-400">Vencimento:</span><br><input type="text" id="venc_${p.id}" value="${p.vencimentoEntrada || 'Hoje'}" class="w-28 p-1 bg-gray-950 border border-gray-800 rounded text-white text-xs"></div>
                         </td>
                         <td class="p-3 text-xs space-y-1">
                             ${p.arquivos?.selfie ? `<a href="/uploads/${p.arquivos.selfie}" target="_blank" class="text-amber-400 hover:underline block">📸 Selfie</a>` : ''}
@@ -71,20 +119,19 @@
                             ${p.arquivos?.comprovanteRenda ? `<a href="/uploads/${p.arquivos.comprovanteRenda}" target="_blank" class="text-amber-400 hover:underline block">💵 Renda</a>` : ''}
                         </td>
                         <td class="p-3 space-y-2">
-                            <span class="px-2 py-1 rounded text-xs font-bold ${p.status === 'APROVADO' ? 'bg-green-600 text-white' : p.status === 'REPROVADO' ? 'bg-red-600 text-white' : 'bg-yellow-600 text-gray-950'}">${p.status}</span>
+                            <span class="px-2.5 py-1 rounded-lg text-xs font-bold ${p.status === 'APROVADO' ? 'bg-green-500/20 text-green-400 border border-green-500/30' : p.status === 'REPROVADO' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}">${p.status}</span>
                             ${p.cobrancaPix ? `
-                                <div class="bg-gray-900 p-2 rounded border border-amber-500/50 text-xs">
-                                    <p class="text-amber-400 font-bold">Pix Entrada (${p.cobrancaPix.percentualEntrada}%): R$ ${p.cobrancaPix.valorEntrada}</p>
-                                    <p class="text-gray-300">Venc: ${p.cobrancaPix.vencimento}</p>
-                                    <p class="text-gray-400">Parcelas (${p.qtdParcelas}x c/ 8% a.m.): R$ ${p.cobrancaPix.valorParcelaMensal}</p>
-                                    <input type="text" readonly value="${p.cobrancaPix.copiaECola}" class="w-full bg-gray-950 p-1 text-[10px] text-gray-300 border border-gray-700 rounded mt-1 select-all" onclick="this.select(); document.execCommand('copy'); alert('Pix Copia e Cola copiado!');">
+                                <div class="bg-gray-950 p-2.5 rounded-xl border border-amber-500/40 text-xs space-y-1">
+                                    <p class="text-amber-400 font-bold">Pix Entrada: R$ ${p.cobrancaPix.valorEntrada}</p>
+                                    <p class="text-gray-300">Parcelas: ${p.qtdParcelas}x R$ ${p.cobrancaPix.valorParcelaMensal}</p>
+                                    <input type="text" readonly value="${p.cobrancaPix.copiaECola}" class="w-full bg-black p-1.5 text-[10px] text-gray-300 border border-gray-800 rounded select-all" onclick="this.select(); document.execCommand('copy'); alert('Pix copiado!');">
                                 </div>
                             ` : ''}
                         </td>
-                        <td class="p-3 text-center space-y-1">
-                            <button onclick="processar(${p.id}, 'APROVADO')" class="w-full bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded text-xs font-bold transition">Aprovar & Gerar Pix</button>
-                            <button onclick="processar(${p.id}, 'REPROVADO')" class="w-full bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs font-bold transition">Reprovar</button>
-                            <button onclick="processar(${p.id}, null)" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-bold transition">Salvar</button>
+                        <td class="p-3 text-center space-y-1.5">
+                            <button onclick="processar(${p.id}, 'APROVADO')" class="w-full bg-green-600 hover:bg-green-700 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold transition shadow-lg">Aprovar & Gerar Pix</button>
+                            <button onclick="processar(${p.id}, 'REPROVADO')" class="w-full bg-red-600 hover:bg-red-700 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold transition">Reprovar</button>
+                            <button onclick="processar(${p.id}, null)" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded-xl text-xs font-bold transition">Salvar</button>
                         </td>
                     </tr>
                 `).join('');
@@ -107,15 +154,9 @@
                     body: JSON.stringify(dados)
                 });
                 const data = await res.json();
-                if (data.sucesso) {
-                    carregarPropostas();
-                    alert('Atualizado com sucesso!');
-                } else { alert('Erro ao atualizar.'); }
+                if (data.sucesso) { carregarPropostas(); alert('Proposta atualizada e Pix gerado com sucesso!'); }
             } catch (err) { alert('Erro de conexão.'); }
         }
-
-        carregarPropostas();
-        setInterval(carregarPropostas, 5000);
     </script>
 </body>
 </html>
