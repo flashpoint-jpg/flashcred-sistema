@@ -1,24 +1,103 @@
-<!-- Exemplo do trecho do card/tabela do cliente no admin.html -->
-<div class="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-4">
-    <div class="flex justify-between items-start">
-        <div>
-            <h3 class="font-bold text-white text-base" id="adminNome">Nome do Cliente</h3>
-            <p class="text-xs text-gray-400">CPF: <span id="adminCpf" class="font-mono">000.000.000-00</span></p>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Administrativo - Distribuidora Flashpoint</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style> body { font-family: 'Inter', sans-serif; } </style>
+</head>
+<body class="bg-[#0b0f17] text-gray-100 min-h-screen flex flex-col justify-between selection:bg-red-600 selection:text-white">
+
+    <!-- Header do Admin -->
+    <header class="border-b border-gray-800/80 bg-[#0b0f17]/80 backdrop-blur-md sticky top-0 z-40 px-6 py-4 flex justify-between items-center shadow-sm">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-gradient-to-tr from-red-600 to-amber-500 rounded-2xl flex items-center justify-center font-black text-white text-sm shadow-lg shadow-red-600/20">FP</div>
+            <div>
+                <h1 class="font-bold text-white text-sm tracking-wide">Painel Administrativo</h1>
+                <p class="text-[11px] text-red-500 font-semibold tracking-wider uppercase">Gestão de Propostas</p>
+            </div>
         </div>
-        <span id="adminStatus" class="px-3 py-1 bg-green-500/10 text-green-400 text-xs font-bold rounded-xl">Aprovado</span>
-    </div>
+        <a href="index.html" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 text-xs text-gray-300 px-4 py-2.5 rounded-xl transition font-semibold">Sair</a>
+    </header>
 
-    <!-- Informações Completas do Cliente -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-gray-950 p-4 rounded-2xl border border-gray-800">
-        <div><span class="text-gray-500 font-semibold">Telefone:</span> <span id="adminTelefone" class="text-gray-200 font-mono">-</span></div>
-        <div><span class="text-gray-500 font-semibold">Cor / Produto:</span> <span id="adminCor" class="text-gray-200">-</span></div>
-        <div class="sm:col-span-2"><span class="text-gray-500 font-semibold">Endereço:</span> <span id="adminEndereco" class="text-gray-200">-</span></div>
-    </div>
+    <!-- Conteúdo -->
+    <main class="max-w-4xl mx-auto w-full p-6 space-y-6 flex-1 my-4">
+        <div class="flex justify-between items-center">
+            <h2 class="text-lg font-extrabold text-white uppercase tracking-wider">Propostas Recebidas</h2>
+            <button onclick="carregarPropostas()" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 text-xs text-gray-300 px-4 py-2 rounded-xl transition font-semibold">🔄 Atualizar Lista</button>
+        </div>
 
-    <!-- Botão de Envio de WhatsApp com Mensagem de Parabéns -->
-    <div class="flex justify-end pt-2">
-        <a id="btnEnviarWhatsapp" href="#" target="_blank" class="bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-2.5 rounded-xl transition text-xs flex items-center gap-2 shadow-lg shadow-green-600/20">
-            <span>💬</span> Enviar WhatsApp (Aprovado)
-        </a>
-    </div>
-</div>
+        <div id="loading" class="text-center py-20 text-gray-400 text-xs">Carregando propostas...</div>
+        
+        <!-- Lista de Propostas -->
+        <div id="listaPropostas" class="space-y-4"></div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-6 text-center text-gray-600 text-[11px] border-t border-gray-900">
+        &copy; 2026 Distribuidora Flashpoint. Painel Restrito.
+    </footer>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", carregarPropostas);
+
+        async function carregarPropostas() {
+            try {
+                const res = await fetch('/api/propostas');
+                const data = await res.json();
+                const container = document.getElementById('listaPropostas');
+                document.getElementById('loading').style.display = 'none';
+
+                if (data.sucesso && data.propostas && data.propostas.length > 0) {
+                    container.innerHTML = data.propostas.map(p => {
+                        let telefoneLimpo = (p.telefone || '').replace(/\D/g, '');
+                        if (!telefoneLimpo.startsWith('55')) {
+                            telefoneLimpo = '55' + telefoneLimpo;
+                        }
+
+                        const linkCarne = `https://flashcred-sistema.onrender.com/parcelas.html?cpf=${p.cpf}`;
+                        const textoMsg = `Olá ${p.nome}! *Parabéns, você foi aprovado!* Sua proposta na Distribuidora Flashpoint foi processada. Acesse o link para visualizar seu carnê e efetuar o pagamento da entrada: ${linkCarne}`;
+                        const whatsappUrl = `https://api.whatsapp.com/send?phone=${telefoneLimpo}&text=${encodeURIComponent(textoMsg)}`;
+
+                        let statusBadge = p.status === 'APROVADO' 
+                            ? '<span class="px-3 py-1 bg-green-500/10 text-green-400 text-xs font-bold rounded-xl border border-green-500/20">Aprovado</span>'
+                            : (p.status === 'RECUSADO' 
+                                ? '<span class="px-3 py-1 bg-red-500/10 text-red-400 text-xs font-bold rounded-xl border border-red-500/20">Recusado</span>'
+                                : '<span class="px-3 py-1 bg-amber-500/10 text-amber-400 text-xs font-bold rounded-xl border border-amber-500/20">Em Análise</span>');
+
+                        return `
+                            <div class="bg-gradient-to-b from-gray-900 to-[#121824] border border-gray-800/80 p-6 rounded-3xl space-y-4 shadow-xl">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <h3 class="font-bold text-white text-base">${p.nome || 'Cliente'}</h3>
+                                        <p class="text-xs text-gray-400 mt-0.5">CPF: <span class="font-mono text-gray-200">${p.cpf}</span></p>
+                                    </div>
+                                    <div>${statusBadge}</div>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-gray-950/80 p-4 rounded-2xl border border-gray-800">
+                                    <div><span class="text-gray-500 font-semibold">Telefone:</span> <span class="text-gray-200 font-mono">${p.telefone || 'Não informado'}</span></div>
+                                    <div><span class="text-gray-500 font-semibold">Produto / Modelo:</span> <span class="text-gray-200 font-semibold">${p.produto || p.modelo || 'Não especificado'}</span></div>
+                                    <div class="sm:col-span-2"><span class="text-gray-500 font-semibold">Endereço:</span> <span class="text-gray-200">${p.endereco || 'Endereço não cadastrado'}</span></div>
+                                </div>
+
+                                <div class="flex justify-end pt-2">
+                                    <a href="${whatsappUrl}" target="_blank" class="bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-2.5 rounded-xl transition text-xs flex items-center gap-2 shadow-lg shadow-green-600/20">
+                                        <span>💬</span> Enviar WhatsApp (Aprovado)
+                                    </a>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    container.innerHTML = '<div class="text-center py-20 text-gray-500 text-xs">Nenhuma proposta cadastrada no sistema.</div>';
+                }
+            } catch (err) {
+                document.getElementById('loading').innerText = 'Erro ao carregar propostas do servidor.';
+            }
+        }
+    </script>
+</body>
+</html>
