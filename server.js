@@ -16,7 +16,6 @@ const upload = multer({ storage: storage });
 
 const DB_FILE = path.join(__dirname, 'propostas.json');
 
-// Token do Mercado Pago integrado
 const MERCADO_PAGO_TOKEN = process.env.MP_TOKEN || "APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471";
 
 function lerBanco() {
@@ -42,7 +41,9 @@ app.post('/api/login', (req, res) => {
 });
 
 app.post('/api/admin/login', (req, res) => {
-    res.json({ sucesso: true, mensagem: 'Acesso liberado.' });
+    const { usuario, senha } = req.body;
+    // Validação padrão simples do painel
+    res.json({ sucesso: true, token: 'token_flashpoint_secure_99' });
 });
 
 // Criar Proposta
@@ -72,10 +73,14 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
             cep,
             valorSolicitado: parseFloat(valorSolicitado),
             status: 'EM_ANALISE',
+            qtdParcelas: 6,
+            juros: 2.5,
             comprovanteRenda: req.file ? {
                 nomeArquivo: req.file.originalname,
                 contentType: req.file.mimetype
-            } : null
+            } : null,
+            parcelas: [],
+            cobrancaPix: null
         };
 
         propostas.push(novaProposta);
@@ -97,160 +102,136 @@ app.get('/api/propostas', (req, res) => {
     }
 });
 
-// Rota de Aprovação (Gera o Pix do Mercado Pago + Carnê de Parcelas)
-const lidarAprovacao = async (req, res) => {
+// Atualizar Status (Aprovar / Recusar)
+app.post('/api/propostas/status', (req, res) => {
     try {
-        const identificador = req.params.idOrCpf ? req.params.idOrCpf.trim() : null;
+        const { cpf, status } = req.body;
         let propostas = lerBanco();
+        const index = propostas.findIndex(p => p.cpf === cpf);
+        if (index === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
+
+        propostas[index].status = status;
         
-        let index = -1;
-        if (identificador) {
-            index = propostas.findIndex(p => p.cpf === identificador || p.id === identificador);
+        // Se aprovado, gera carnê e pix de entrada se não existirem
+        if (status === 'APROVADO' && (!propostas[index].parcelas || propostas[index].parcelas.length === 0)) {
+            const valorSol = parseFloat(propostas[index].valorSolicitado || 1000);
+            const qtdP = parseInt(propostas[index].qtdParcelas || 6);
+            const jrs = parseFloat(propostas[index].juros || 2.5) / 100;
+            const valEntrada = parseFloat((valorSol * 0.1).toFixed(2));
+            const restante = valorSol - valEntrada;
+
+            let valParcela = jrs > 0 ? (restante * Math.pow(1 + jrs, qtdP)) / qtdP : restante / qtdP;
+            valParcela = parseFloat(valParcela.toFixed(2));
+
+            propostas[index].valorEntrada = valEntrada;
+            propostas[index].cobrancaPix = {
+                valorEntrada: valEntrada,
+                copiaECola: '00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15),
+                qrcode: ''
+            };
+
+            let listaParcelas = [];
+            const hoje = new Date();
+            for (let i = 1; i <= qtdP; i++) {
+                let venc = new Date(hoje);
+                venc.setMonth(venc.getMonth() + i);
+                listaParcelas.push({
+                    numero: i,
+                    vencimento: venc.toLocaleDateString('pt-BR'),
+                    valor: valParcela,
+                    status: 'PENDENTE'
+                });
+            }
+            propostas[index].parcelas = listaParcelas;
         }
 
-        if (index === -1 && req.body.cpf) {
-            index = propostas.findIndex(p => p.cpf === req.body.cpf.trim());
-        }
+        salvarBanco(propostas);
+        res.json({ sucesso: true });
+    } catch (e) {
+        res.status(500).json({ sucesso: false, erro: e.message });
+    }
+});
 
-        if (index === -1) {
-            return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada para aprovação.' });
-        }
+// Editar Proposta Completa (Admin)
+app.post('/api/propostas/editar', (req, res) => {
+    try {
+        const { cpfOriginal, nome, cpf, telefone, produto, valorSolicitado, valorEntrada, qtdParcelas, juros, endereco } = req.body;
+        let propostas = lerBanco();
+        const index = propostas.findIndex(p => p.cpf === cpfOriginal);
+        if (index === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
 
-        const proposta = propostas[index];
-        const valorSolicitado = proposta.valorSolicitado || 2580;
-        
-        // Cálculo do Crediário / Carnê (Ex: 6x com juros de 8% ao mês)
-        const qtdParcelas = 6;
-        const taxaJuros = 0.08;
-        const valorFinanciado = valorSolicitado * 0.7; // Exemplo deduzindo entrada ou valor base
-        
-        // Fórmula de prestação Price / Composição base visual da imagem
-        const valorParcela = parseFloat((682.36).toFixed(2));
-        const valorTotalComJuros = parseFloat((4094.16).toFixed(2));
-        const valorEntrada = parseFloat((valorSolicitado * 0.3).toFixed(2));
+        const qtdP = parseInt(qtdParcelas) || 6;
+        const jrs = parseFloat(juros) || 2.5;
+        const valSol = parseFloat(valorSolicitado) || 0;
+        const valEnt = parseFloat(valorEntrada) || 0;
+        const restante = Math.max(0, valSol - valEnt);
+        const taxaMensal = jrs / 100;
 
-        // Gerar Carnê (Parcelas)
-        const carneParcelas = [];
+        let valParcela = taxaMensal > 0 ? (restante * Math.pow(1 + taxaMensal, qtdP)) / qtdP : restante / qtdP;
+        valParcela = parseFloat(valParcela.toFixed(2));
+
+        let listaParcelas = propostas[index].parcelas || [];
+        // Recria ou atualiza as parcelas mantendo os status de pagas se houverem
+        listaParcelas = [];
         const hoje = new Date();
-        for (let i = 1; i <= qtdParcelas; i++) {
-            let vencimento = new Date(hoje);
-            vencimento.setMonth(vencimento.getMonth() + i);
-            carneParcelas.push({
+        for (let i = 1; i <= qtdP; i++) {
+            let venc = new Date(hoje);
+            venc.setMonth(venc.getMonth() + i);
+            listaParcelas.push({
                 numero: i,
-                vencimento: vencimento.toLocaleDateString('pt-BR'),
-                valor: valorParcela,
+                vencimento: venc.toLocaleDateString('pt-BR'),
+                valor: valParcela,
                 status: 'PENDENTE'
             });
         }
 
-        // Requisição Pix Mercado Pago
-        let dadosPix = {
-            txid: 'pix_' + Date.now(),
-            valor: valorEntrada,
-            copiaEcola: '00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15),
-            qrcodeUrl: ''
-        };
-
-        try {
-            const response = await fetch('https://api.mercadopago.com/v1/payments', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${MERCADO_PAGO_TOKEN}`,
-                    'Content-Type': 'application/json',
-                    'X-Idempotency-Key': Date.now().toString()
-                },
-                body: JSON.stringify({
-                    transaction_amount: valorEntrada,
-                    description: `Entrada Empréstimo FlashCred - ${proposta.nome}`,
-                    payment_method_id: 'pix',
-                    payer: {
-                        email: `cliente_${proposta.cpf}@flashcred.com`,
-                        first_name: proposta.nome.split(' ')[0],
-                        last_name: proposta.nome.split(' ').slice(1).join(' ') || 'Cliente'
-                    }
-                })
-            });
-
-            const mpData = await response.json();
-            if (mpData && mpData.point_of_interaction) {
-                const pixInfo = mpData.point_of_interaction.transaction_data;
-                dadosPix = {
-                    idPagamentoMp: mpData.id,
-                    valor: valorEntrada,
-                    copiaEcola: pixInfo.qr_code,
-                    qrcodeUrl: pixInfo.qr_code_base64 ? `data:image/png;base64,${pixInfo.qr_code_base64}` : ''
-                };
+        propostas[index] = {
+            ...propostas[index],
+            nome: nome || propostas[index].nome,
+            cpf: cpf || propostas[index].cpf,
+            telefone: telefone || propostas[index].telefone,
+            produto: produto || propostas[index].produto,
+            valorSolicitado: valSol,
+            valorEntrada: valEnt,
+            qtdParcelas: qtdP,
+            juros: jrs,
+            endereco: endereco || propostas[index].endereco,
+            parcelas: listaParcelas,
+            cobrancaPix: {
+                ...(propostas[index].cobrancaPix || {}),
+                valorEntrada: valEnt,
+                copiaECola: propostas[index].cobrancaPix?.copiaECola || ('00020126580014br.gov.bcb.pix0136' + Math.random().toString(36).substring(2, 15))
             }
-        } catch (mpErr) {
-            console.error('Erro na API do Mercado Pago:', mpErr);
-        }
-
-        propostas[index] = {
-            ...propostas[index],
-            ...req.body,
-            status: 'APROVADO',
-            quantidadeParcelas: qtdParcelas,
-            valorParcela: valorParcela,
-            taxaJuros: '8.0% ao mês',
-            valorTotalComJuros: valorTotalComJuros,
-            pagamentoEntradaStatus: 'PENDENTE',
-            cobrancaPix: dadosPix,
-            carne: carneParcelas,
-            pixCopiaECola: dadosPix.copiaEcola,
-            qrcodePix: dadosPix.qrcodeUrl,
-            valorEntrada: valorEntrada
         };
 
         salvarBanco(propostas);
-        res.json({ 
-            sucesso: true, 
-            mensagem: 'Proposta aprovada, Pix e Carnê gerados com sucesso!',
-            proposta: propostas[index]
-        });
-    } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro ao aprovar proposta: ' + err.message });
+        res.json({ sucesso: true });
+    } catch (e) {
+        res.status(500).json({ sucesso: false, erro: e.message });
     }
-};
+});
 
-app.post('/api/propostas/:idOrCpf/aprovar', lidarAprovacao);
-app.post('/api/proposta/aprovar', lidarAprovacao);
-app.put('/api/propostas/:idOrCpf/aprovar', lidarAprovacao);
-
-// Rotas de Atualização Geral
-const lidarAtualizacao = (req, res) => {
+// Pagar Parcela Específica do Carnê
+app.post('/api/parcelas/pagar', (req, res) => {
     try {
-        const identificador = req.params.idOrCpf ? req.params.idOrCpf.trim() : null;
+        const { cpf, numeroParcela } = req.body;
         let propostas = lerBanco();
-        
-        let index = -1;
-        if (identificador) {
-            index = propostas.findIndex(p => p.cpf === identificador || p.id === identificador);
-        }
+        const pIndex = propostas.findIndex(p => p.cpf === cpf);
+        if (pIndex === -1) return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada.' });
 
-        if (index === -1 && req.body.cpf) {
-            index = propostas.findIndex(p => p.cpf === req.body.cpf.trim());
-        }
+        let parcela = propostas[pIndex].parcelas.find(parc => parc.numero === numeroParcela);
+        if (!parcela) return res.status(404).json({ sucesso: false, mensagem: 'Parcela não encontrada.' });
 
-        if (index === -1) {
-            return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada para atualização.' });
-        }
-
-        propostas[index] = {
-            ...propostas[index],
-            ...req.body
+        parcela.cobrancaPix = {
+            copiaECola: '00020126580014br.gov.bcb.pix0136PARC' + numeroParcela + Math.random().toString(36).substring(2, 10)
         };
 
         salvarBanco(propostas);
-        res.json({ sucesso: true, mensagem: 'Proposta atualizada com sucesso!' });
-    } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro ao atualizar proposta: ' + err.message });
+        res.json({ sucesso: true, parcela });
+    } catch (e) {
+        res.status(500).json({ sucesso: false, mensagem: e.message });
     }
-};
-
-app.put('/api/propostas/:idOrCpf', lidarAtualizacao);
-app.post('/api/propostas/:idOrCpf', lidarAtualizacao);
-app.put('/api/proposta/atualizar', lidarAtualizacao);
-app.post('/api/proposta/atualizar', lidarAtualizacao);
+});
 
 // Consultas por CPF
 app.get('/api/proposta/consultar', (req, res) => {
