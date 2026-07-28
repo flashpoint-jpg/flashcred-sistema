@@ -3,70 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlashCred Móveis - Consultar Proposta</title>
+    <title>FlashCred - Consulta e Pagamento</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 min-h-screen p-4 flex flex-col justify-between">
+<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col justify-between p-4">
 
-    <div class="max-w-xl mx-auto w-full bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700 my-6">
+    <div class="max-w-md mx-auto w-full bg-gray-900 p-6 rounded-2xl shadow-2xl border border-gray-800 my-auto">
         <div class="text-center mb-6">
-            <h1 class="text-2xl font-bold text-amber-400">Consultar Proposta</h1>
-            <p class="text-sm text-gray-400">Digite seu CPF para ver o status da sua solicitação</p>
+            <h1 class="text-2xl font-bold text-amber-400">FlashCred Checkout</h1>
+            <p class="text-xs text-gray-400 mt-1">Consulte sua aprovação e pague a entrada via Pix instantâneo</p>
         </div>
 
-        <div class="flex gap-2 mb-6">
-            <input type="text" id="buscaCpf" placeholder="Digite seu CPF" class="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:border-amber-400 focus:outline-none">
-            <button onclick="consultar()" class="bg-amber-500 hover:bg-amber-600 text-gray-950 font-bold px-6 rounded-lg transition">Buscar</button>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-medium text-gray-300 mb-1">Informe seu CPF</label>
+                <input type="text" id="cpfConsulta" placeholder="000.000.000-00" class="w-full p-3.5 bg-gray-950 border border-gray-800 rounded-xl text-white focus:ring-2 focus:ring-amber-400 outline-none text-sm">
+            </div>
+            <button onclick="consultar()" class="w-full bg-amber-500 hover:bg-amber-600 text-gray-950 font-extrabold p-3.5 rounded-xl transition shadow-lg text-sm">Consultar Crédito</button>
         </div>
 
-        <div id="resultado" class="space-y-4"></div>
-
-        <div class="mt-6 text-center">
-            <a href="index.html" class="text-sm text-amber-400 hover:underline">Voltar para Nova Solicitação</a>
-        </div>
+        <div id="resultado" class="mt-6 hidden"></div>
     </div>
 
     <script>
         async function consultar() {
-            const cpf = document.getElementById('buscaCpf').value.replace(/\D/g, '');
-            const div = document.getElementById('resultado');
-            if (!cpf) {
-                alert('Digite um CPF válido.');
-                return;
-            }
+            const cpf = document.getElementById('cpfConsulta').value;
+            const resDiv = document.getElementById('resultado');
 
-            div.innerHTML = '<p class="text-center text-gray-400">Buscando proposta...</p>';
+            if (!cpf) { alert('Digite o CPF'); return; }
 
             try {
-                const res = await fetch(`/api/propostas/${cpf}`);
-                const data = await res.json();
+                const response = await fetch(`/api/propostas/${cpf}`);
+                const data = await response.json();
+                resDiv.classList.remove('hidden');
 
                 if (data.sucesso) {
                     const p = data.proposta;
-                    div.innerHTML = `
-                        <div class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-2">
-                            <p><strong>Nome:</strong> ${p.nome}</p>
-                            <p><strong>Valor Solicitado:</strong> R$ ${p.valorSolicitado}</p>
-                            <p><strong>Parcelas:</strong> ${p.qtdParcelas}x</p>
-                            <p><strong>Status:</strong> <span class="px-2 py-1 rounded text-xs font-bold ${p.status === 'APROVADO' ? 'bg-green-600 text-white' : p.status === 'REPROVADO' ? 'bg-red-600 text-white' : 'bg-yellow-600 text-gray-950'}">${p.status}</span></p>
-                            ${p.status === 'APROVADO' ? '<div class="mt-4 p-3 bg-amber-500/10 border border-amber-500 rounded text-amber-300 text-sm">Parabéns! Sua proposta foi aprovada. Entraremos em contato em breve.</div>' : ''}
+                    let badgeClass = 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+                    if (p.status === 'APROVADO') badgeClass = 'bg-green-500/20 text-green-400 border-green-500/30';
+                    if (p.status === 'REPROVADO') badgeClass = 'bg-red-500/20 text-red-400 border-red-500/30';
+
+                    let checkoutHtml = '';
+                    if (p.status === 'APROVADO' && p.cobrancaPix) {
+                        checkoutHtml = `
+                            <div class="mt-4 p-4 bg-gray-950 rounded-xl border border-green-500/40 space-y-3">
+                                <div class="flex justify-between items-center border-b border-gray-800 pb-2">
+                                    <span class="text-xs text-gray-400">Entrada Obrigatória (${p.cobrancaPix.percentualEntrada}%):</span>
+                                    <span class="text-base font-bold text-green-400">R$ ${p.cobrancaPix.valorEntrada}</span>
+                                </div>
+                                <div class="flex justify-between items-center text-xs text-gray-300">
+                                    <span>Vencimento Pix:</span>
+                                    <strong class="text-white">${p.cobrancaPix.vencimento}</strong>
+                                </div>
+                                <div class="flex justify-between items-center text-xs text-gray-300">
+                                    <span>Restante Parcelado:</span>
+                                    <strong class="text-white">${p.qtdParcelas}x de R$ ${p.cobrancaPix.valorParcelaMensal} (8% a.m.)</strong>
+                                </div>
+
+                                <div class="pt-2">
+                                    <label class="block text-[11px] font-bold text-amber-400 mb-1">Pix Copia e Cola (Pagamento Instantâneo):</label>
+                                    <div class="flex gap-2">
+                                        <input type="text" readonly value="${p.cobrancaPix.copiaECola}" id="inputPix" class="w-full bg-black p-2.5 text-xs text-amber-300 border border-gray-800 rounded-lg select-all">
+                                    </div>
+                                    <button onclick="copiarPix()" class="w-full mt-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-lg text-xs transition shadow">
+                                        📋 Copiar Código Pix para Pagar
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    resDiv.innerHTML = `
+                        <div class="p-4 bg-gray-950/80 rounded-xl border border-gray-800 space-y-3 text-sm">
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold text-white">${p.nome}</span>
+                                <span class="px-2.5 py-1 rounded-lg text-xs font-bold border ${badgeClass}">${p.status}</span>
+                            </div>
+                            <div class="text-xs text-gray-400 space-y-1">
+                                <p>Solicitado: <strong class="text-white">R$ ${p.valorSolicitado}</strong></p>
+                            </div>
+                            ${checkoutHtml}
                         </div>
                     `;
                 } else {
-                    div.innerHTML = '<p class="text-center text-red-400">Nenhuma proposta encontrada para este CPF.</p>';
+                    resDiv.innerHTML = `<div class="p-4 bg-red-950/40 border border-red-800/60 rounded-xl text-center text-red-400 text-xs">Nenhuma proposta encontrada para este CPF.</div>`;
                 }
-            } catch (err) {
-                div.innerHTML = '<p class="text-center text-red-400">Erro ao buscar dados.</p>';
-            }
+            } catch (err) { alert('Erro ao consultar.'); }
         }
 
-        window.onload = function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const cpfParam = urlParams.get('cpf');
-            if (cpfParam) {
-                document.getElementById('buscaCpf').value = cpfParam;
-                consultar();
-            }
+        function copiarPix() {
+            const input = document.getElementById('inputPix');
+            input.select();
+            input.setSelectionRange(0, 99999);
+            navigator.clipboard.writeText(input.value);
+            alert('Código Pix copiado! Cole no aplicativo do seu banco para pagar.');
         }
     </script>
 </body>
