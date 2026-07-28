@@ -1,0 +1,290 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Administrativo - Flashcred</title>
+    <style>
+        :root {
+            --primary: #0047AB;
+            --secondary: #002B66;
+            --accent: #FFD700;
+            --success: #28a745;
+            --danger: #dc3545;
+            --bg: #F4F6F9;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        h1, h2 {
+            color: var(--primary);
+            margin-top: 0;
+        }
+
+        .login-box, .dashboard {
+            display: none;
+        }
+
+        .login-box.active, .dashboard.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--secondary);
+        }
+
+        .btn-success { background-color: var(--success); }
+        .btn-danger { background-color: var(--danger); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: var(--primary);
+            color: white;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: bold;
+            color: white;
+        }
+
+        .EM_ANALISE { background-color: #ffc107; color: black; }
+        .APROVADO { background-color: #17a2b8; }
+        .ENTRADA_PAGA { background-color: var(--success); }
+        .REJEITADO { background-color: var(--danger); }
+
+        .img-assinatura {
+            max-width: 150px;
+            max-height: 60px;
+            border: 1px dashed #ccc;
+            background: #fff;
+        }
+
+        .header-dash {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--bg);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- TELA DE LOGIN -->
+    <div id="loginSection" class="login-box active">
+        <h2>Acesso Restrito - Flashcred Admin</h2>
+        <div class="form-group">
+            <label for="senhaAdmin">Senha de Administrador:</label>
+            <input type="password" id="senhaAdmin" placeholder="Digite sua senha...">
+        </div>
+        <button onclick="fazerLogin()">Entrar no Painel</button>
+    </div>
+
+    <!-- PAINEL PRINCIPAL -->
+    <div id="dashSection" class="dashboard">
+        <div class="header-dash">
+            <h1>Gestão de Propostas Crediário</h1>
+            <button onclick="carregarPropostas()">🔄 Atualizar Lista</button>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Cliente / CPF</th>
+                    <th>Produto / Valor</th>
+                    <th>Entrada (39%)</th>
+                    <th>Saldo</th>
+                    <th>Assinatura</th>
+                    <th>Status</th>
+                    <th>Ação</th>
+                </tr>
+            </thead>
+            <tbody id="tabelaPropostas">
+                <tr>
+                    <td colspan="8" style="text-align: center;">Carregando propostas...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    let tokenAdmin = localStorage.getItem('tokenAdmin') || '';
+
+    if (tokenAdmin) {
+        mostrarDashboard();
+    }
+
+    async function fazerLogin() {
+        const senha = document.getElementById('senhaAdmin').value;
+        if (!senha) return alert('Digite a senha!');
+
+        try {
+            const res = await fetch('/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ senha })
+            });
+
+            const data = await res.json();
+            if (data.sucesso) {
+                tokenAdmin = data.token;
+                localStorage.setItem('tokenAdmin', tokenAdmin);
+                mostrarDashboard();
+            } else {
+                alert(data.erro || 'Senha incorreta!');
+            }
+        } catch (e) {
+            alert('Erro ao conectar ao servidor.');
+        }
+    }
+
+    function mostrarDashboard() {
+        document.getElementById('loginSection').classList.remove('active');
+        document.getElementById('dashSection').classList.add('active');
+        carregarPropostas();
+    }
+
+    async function carregarPropostas() {
+        try {
+            const res = await fetch('/api/admin/propostas', {
+                headers: { 'Authorization': `Bearer ${tokenAdmin}` }
+            });
+
+            if (res.status === 401 || res.status === 403) {
+                alert('Sessão expirada. Faça login novamente.');
+                localStorage.removeItem('tokenAdmin');
+                location.reload();
+                return;
+            }
+
+            const propostas = await res.json();
+            const tbody = document.getElementById('tabelaPropostas');
+            tbody.innerHTML = '';
+
+            if (propostas.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Nenhuma proposta cadastrada ainda.</td></tr>';
+                return;
+            }
+
+            propostas.forEach(p => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><small>${p.criadoEm}</small></td>
+                    <td><b>${p.cliente.nome}</b><br><small>CPF: ${p.cliente.cpf}</small></td>
+                    <td>${p.produto || 'Não informado'}<br><b>R$ ${parseFloat(p.valorTotal).toFixed(2)}</b></td>
+                    <td>R$ ${p.valorEntrada.toFixed(2)}</td>
+                    <td>${p.parcelasSaldo}x de R$ ${p.valorParcela.toFixed(2)}</td>
+                    <td><img src="${p.assinaturaBase64}" class="img-assinatura" alt="Assinatura"></td>
+                    <td><span class="status-badge ${p.status}">${p.status}</span></td>
+                    <td>
+                        ${p.status === 'EM_ANALISE' ? `
+                            <button class="btn-success" onclick="decidirProposta('${p.id}', 'APROVAR')">Aprovar</button>
+                            <button class="btn-danger" style="margin-top: 5px;" onclick="decidirProposta('${p.id}', 'REJEITAR')">Rejeitar</button>
+                        ` : '-'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async function decidirProposta(idProposta, decisao) {
+        if (!confirm(`Tem certeza que deseja ${decisao.toLowerCase()} a proposta ${idProposta}?`)) return;
+
+        try {
+            const res = await fetch('/api/admin/decisao', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${tokenAdmin}`
+                },
+                body: JSON.stringify({
+                    idProposta,
+                    decisao,
+                    urlWebhookBase: window.location.origin
+                })
+            });
+
+            const data = await res.json();
+            if (data.sucesso) {
+                alert(`Proposta ${decisao.toLowerCase()} com sucesso!`);
+                carregarPropostas();
+            } else {
+                alert('Erro: ' + data.erro);
+            }
+        } catch (e) {
+            alert('Erro ao processar decisão.');
+        }
+    }
+</script>
+
+</body>
+</html>
