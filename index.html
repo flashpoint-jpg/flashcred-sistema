@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlashCred - Consulta e Empréstimo</title>
+    <title>FlashCred - Solicitação e Consulta</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -18,7 +18,7 @@
         }
         .container {
             width: 100%;
-            max-width: 450px;
+            max-width: 480px;
             background: #1e293b;
             padding: 20px;
             border-radius: 12px;
@@ -26,7 +26,31 @@
         }
         h2 { text-align: center; color: #ffa500; margin-bottom: 5px; }
         p.sub { text-align: center; font-size: 13px; color: #94a3b8; margin-bottom: 20px; }
-        input, button {
+        
+        /* Abas de navegação */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            background: #334155;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .tab-btn.active {
+            background: #ffa500;
+            color: #000;
+        }
+        .secao { display: none; }
+        .secao.ativa { display: block; }
+
+        input, button, select {
             width: 100%;
             padding: 12px;
             margin-top: 10px;
@@ -35,11 +59,12 @@
             box-sizing: border-box;
             font-size: 14px;
         }
-        input { background: #0f172a; color: #fff; }
-        button { background: #ffa500; color: #000; font-weight: bold; cursor: pointer; border: none; }
-        button:hover { background: #e69500; }
+        input, select { background: #0f172a; color: #fff; }
+        .btn-acao { background: #ffa500; color: #000; font-weight: bold; cursor: pointer; border: none; }
+        .btn-acao:hover { background: #e69500; }
+        
         .resultado-box {
-            margin-top: 20px;
+            margin-top: 15px;
             background: rgba(255,255,255,0.03);
             padding: 15px;
             border-radius: 8px;
@@ -56,18 +81,52 @@
     <h2>FlashCred</h2>
     <p class="sub">Solicite seu crédito ou acompanhe sua proposta</p>
 
-    <!-- Seção de Consulta -->
-    <div style="margin-bottom: 20px;">
-        <label style="font-size: 13px; color: #cbd5e1;">Digite seu CPF para consultar:</label>
-        <input type="text" id="cpfConsulta" placeholder="000.000.000-00">
-        <button onclick="consultarProposta()">CONSULTAR</button>
+    <!-- Abas de Navegação (Para não sumir nada) -->
+    <div class="tabs">
+        <button class="tab-btn active" onclick="mudarAba('consulta', this)">Consultar Status</button>
+        <button class="tab-btn" onclick="mudarAba('cadastro', this)">Pedir Empréstimo</button>
     </div>
 
-    <!-- Container onde aparece o resultado completo -->
-    <div id="resultadoConsulta" class="resultado-box" style="display: none;"></div>
+    <!-- SEÇÃO 1: CONSULTAR STATUS -->
+    <div id="secao-consulta" class="secao ativa">
+        <label style="font-size: 13px; color: #cbd5e1;">Digite seu CPF:</label>
+        <input type="text" id="cpfConsulta" placeholder="000.000.000-00">
+        <button class="btn-acao" onclick="consultarProposta()">CONSULTAR</button>
+        
+        <div id="resultadoConsulta" class="resultado-box" style="display: none;"></div>
+    </div>
+
+    <!-- SEÇÃO 2: PEDIR EMPRÉSTIMO (CADASTRO) -->
+    <div id="secao-cadastro" class="secao">
+        <form id="formProposta">
+            <input type="text" id="nome" placeholder="Nome Completo" required>
+            <input type="text" id="cpf" placeholder="CPF" required>
+            <input type="text" id="whatsapp" placeholder="WhatsApp / Telefone" required>
+            <input type="date" id="nascimento" required>
+            <input type="text" id="endereco" placeholder="Endereço" required>
+            <input type="text" id="numero" placeholder="Número" required>
+            <input type="text" id="cep" placeholder="CEP" required>
+            <input type="number" id="valorSolicitado" placeholder="Valor Desejado (R$)" required>
+            
+            <label style="font-size: 12px; color: #94a3b8; display: block; margin-top: 10px;">Comprovante de Renda:</label>
+            <input type="file" id="comprovante">
+            
+            <button type="submit" class="btn-acao" style="margin-top: 15px;">Enviar Proposta</button>
+        </form>
+    </div>
 </div>
 
 <script>
+    // Função para alternar entre as abas sem perder nada
+    function mudarAba(nomeSecao, elemento) {
+        document.querySelectorAll('.secao').forEach(s => s.classList.remove('ativa'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        
+        document.getElementById('secao-' + nomeSecao).classList.add('ativa');
+        elemento.classList.add('active');
+    }
+
+    // Consulta de Proposta com Pix e Parcelas Completas
     async function consultarProposta() {
         const cpfInput = document.getElementById('cpfConsulta').value;
         const cpfLimpo = cpfInput.replace(/\D/g, '');
@@ -86,19 +145,17 @@
                 const proposta = resultado.proposta;
                 container.style.display = 'block';
                 
-                // Monta o Bloco do Pix Copia e Cola (se houver)
                 let htmlPix = '';
                 if (proposta.cobrancaPix && proposta.cobrancaPix.copiaECola) {
                     htmlPix = `
                         <div style="margin-top: 15px; text-align: center;">
                             <p style="font-size: 12px; color: #ffa500; margin-bottom: 5px; font-weight: bold;">Pix Copia e Cola da Entrada:</p>
                             <input type="text" id="inputCopiaCola" value="${proposta.cobrancaPix.copiaECola}" readonly style="font-size: 11px; text-align: center;" />
-                            <button onclick="copiarPix()" style="margin-top: 5px; padding: 8px; font-size: 12px;">Copiar Código Pix</button>
+                            <button onclick="copiarPix()" class="btn-acao" style="margin-top: 5px; padding: 8px; font-size: 12px;">Copiar Código Pix</button>
                         </div>
                     `;
                 }
 
-                // Monta o Bloco de Detalhes de Parcelamento e Juros
                 let htmlParcelas = '';
                 if (proposta.parcelas && proposta.parcelas.length > 0) {
                     htmlParcelas = `
@@ -122,7 +179,7 @@
                                             <td>R$ ${p.valor.toFixed(2)}</td>
                                             <td style="color: ${p.status === 'PAGO' ? '#4CAF50' : '#FFC107'}">${p.status}</td>
                                             <td>
-                                                ${p.status !== 'PAGO' ? `<button onclick="pagarParcela('${proposta.cpf}', ${p.numero})" style="padding: 4px 6px; font-size: 11px; margin: 0; background: #ffa500;">Pagar</button>` : 'Pago'}
+                                                ${p.status !== 'PAGO' ? `<button onclick="pagarParcela('${proposta.cpf}', ${p.numero})" style="padding: 4px 6px; font-size: 11px; margin: 0; background: #ffa500; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Pagar</button>` : 'Pago'}
                                             </td>
                                         </tr>
                                     `).join('')}
@@ -132,7 +189,6 @@
                     `;
                 }
 
-                // Injeta todas as informações detalhadas no container
                 container.innerHTML = `
                     <p style="margin: 6px 0;"><strong>Nome:</strong> ${proposta.nome}</p>
                     <p style="margin: 6px 0;"><strong>Status:</strong> <span style="color: #4CAF50; font-weight: bold;">${proposta.status}</span></p>
@@ -183,6 +239,43 @@
             alert('Erro de conexão ao tentar pagar a parcela.');
         }
     }
+
+    // Envio do Formulário de Cadastro (Pedir Empréstimo)
+    document.getElementById('formProposta').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData();
+        formData.append('nome', document.getElementById('nome').value);
+        formData.append('cpf', document.getElementById('cpf').value);
+        formData.append('telefone', document.getElementById('whatsapp').value); // Corrigido para salvar no painel
+        formData.append('nascimento', document.getElementById('nascimento').value);
+        formData.append('endereco', document.getElementById('endereco').value);
+        formData.append('numero', document.getElementById('numero').value);
+        formData.append('cep', document.getElementById('cep').value);
+        formData.append('valorSolicitado', document.getElementById('valorSolicitado').value);
+        
+        const fileInput = document.getElementById('comprovante');
+        if (fileInput.files[0]) {
+            formData.append('comprovante', fileInput.files[0]);
+        }
+
+        try {
+            const response = await fetch('/api/proposta/criar', {
+                method: 'POST',
+                body: formData
+            });
+            const resultado = await response.json();
+            if (resultado.sucesso) {
+                alert('Proposta enviada com sucesso!');
+                document.getElementById('formProposta').reset();
+                mudarAba('consulta', document.querySelector('.tab-btn'));
+            } else {
+                alert('Erro: ' + resultado.mensagem);
+            }
+        } catch (err) {
+            alert('Erro ao enviar proposta.');
+        }
+    });
 </script>
 
 </body>
