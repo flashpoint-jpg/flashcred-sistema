@@ -21,46 +21,21 @@ function ler() {
 app.post('/api/propostas', (req, res) => {
     try {
         const dados = req.body || {};
-        console.log("Dados recebidos do site:", dados); // Ajuda a registrar no console do Render
-        
         let lista = ler();
         
-        // Pega qualquer chave que contenha nome ou cpf para nunca vir vazio
-        let nomeFinal = 'Cliente';
-        let cpfFinal = '';
-        let telefoneFinal = '';
-        let produtoFinal = 'Não especificado';
-
-        for (let chave in dados) {
-            let valor = dados[chave];
-            if (!valor) continue;
-            let chaveLower = chave.toLowerCase();
-            
-            if (chaveLower.includes('nome') || chaveLower.includes('client')) nomeFinal = valor;
-            if (chaveLower.includes('cpf') || chaveLower.includes('doc') || chaveLower.includes('rg')) cpfFinal = valor;
-            if (chaveLower.includes('tel') || chaveLower.includes('cel') || chaveLower.includes('whats') || chaveLower.includes('fone')) telefoneFinal = valor;
-            if (chaveLower.includes('prod') || chaveLower.includes('model') || chaveLower.includes('aparelh')) produtoFinal = valor;
-        }
-
-        // Se ainda assim não achar, tenta campos diretos
-        nomeFinal = dados.nome || dados.name || nomeFinal;
-        cpfFinal = dados.cpf || dados.CPF || dados.documento || cpfFinal || '000.000.000-00';
-        telefoneFinal = dados.telefone || dados.celular || dados.phone || telefoneFinal;
-        produtoFinal = dados.produto || dados.modelo || produtoFinal;
-
         const nova = {
-            nome: nomeFinal,
-            cpf: cpfFinal,
-            telefone: telefoneFinal,
-            produto: produtoFinal,
-            endereco: dados.endereco || '',
+            nome: dados.nome || dados.name || dados.cliente || 'Cliente Cadastrado',
+            cpf: dados.cpf || dados.CPF || dados.documento || '000.000.000-00',
+            telefone: dados.telefone || dados.celular || dados.phone || 'Não informado',
+            produto: dados.produto || dados.modelo || 'Não especificado',
+            endereco: dados.endereco || 'Endereço não cadastrado',
             status: 'EM_ANALISE',
-            parcelas: dados.parcelas || [],
+            parcelas: [],
             cobrancaPix: { valorEntrada: dados.valorEntrada || dados.entrada || '0,00' },
             dataCriacao: new Date().toISOString()
         };
 
-        lista = lista.filter(p => p.cpf !== cpfFinal);
+        lista = lista.filter(p => p.cpf !== nova.cpf);
         lista.unshift(nova);
         
         fs.writeFileSync(ARQUIVO, JSON.stringify(lista, null, 2));
