@@ -32,12 +32,10 @@ function salvarPropostas(propostas) {
     }
 }
 
-// 1. Rota para receber o formulário do site e salvar os dados reais
+// Rota para salvar a proposta do site
 app.post('/api/propostas', (req, res) => {
     try {
         const dados = req.body;
-        
-        // Captura o CPF de qualquer formato que o formulário envie
         const cpfRecebido = dados.cpf || dados.CPF || dados.documento;
 
         if (!cpfRecebido) {
@@ -60,7 +58,6 @@ app.post('/api/propostas', (req, res) => {
             dataCriacao: new Date().toISOString()
         };
 
-        // Remove duplicadas do mesmo CPF e insere a nova no topo
         propostas = propostas.filter(p => p.cpf !== cpfRecebido);
         propostas.unshift(novaProposta);
         
@@ -75,13 +72,13 @@ app.post('/api/propostas', (req, res) => {
     }
 });
 
-// 2. Rota para listar propostas no Painel Admin
+// Rota para listar propostas no painel
 app.get('/api/propostas', (req, res) => {
     const propostas = lerPropostas();
     res.json({ sucesso: true, propostas: propostas });
 });
 
-// 3. Rota para alterar status (Aprovar / Recusar)
+// Rota para alterar status
 app.post('/api/propostas/status', (req, res) => {
     const { cpf, status } = req.body;
     let propostas = lerPropostas();
@@ -101,7 +98,7 @@ app.post('/api/propostas/status', (req, res) => {
     return res.status(404).json({ sucesso: false, mensagem: 'Não encontrada' });
 });
 
-// 4. Rota para editar dados pelo painel
+// Rota para editar dados
 app.post('/api/propostas/editar', (req, res) => {
     const dados = req.body;
     let propostas = lerPropostas();
@@ -125,32 +122,6 @@ app.post('/api/propostas/editar', (req, res) => {
         return res.json({ sucesso: true });
     }
     return res.status(404).json({ sucesso: false, mensagem: 'Não encontrada' });
-});
-
-// 5. Webhook Pix automático
-app.post('/api/webhook/pix', (req, res) => {
-    try {
-        const notificacao = req.body;
-        const idTransacao = notificacao?.data?.id || notificacao?.id;
-        let propostas = lerPropostas();
-        let encontrada = false;
-
-        propostas.forEach(p => {
-            if (p.cobrancaPix && (p.cobrancaPix.idTransacao === idTransacao || p.cobrancaPix.id === idTransacao)) {
-                p.status = 'APROVADO';
-                p.cobrancaPix.status = 'PAGO';
-                encontrada = true;
-            }
-        });
-
-        if (encontrada) {
-            salvarPropostas(propostas);
-            return res.status(200).json({ sucesso: true });
-        }
-        return res.status(404).json({ sucesso: false });
-    } catch (e) {
-        return res.status(500).json({ sucesso: false });
-    }
 });
 
 const PORT = process.env.PORT || 3000;
