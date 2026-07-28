@@ -1,57 +1,37 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 const cors = require('cors');
+const fs = require('fs');
 
 const app = express();
 
-// Configurações gerais
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Servir arquivos estáticos (HTMLs na raiz do projeto)
 app.use(express.static(path.join(__dirname)));
 
-// Configuração do Multer para upload de arquivos em memória
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// Conexão com o MongoDB (Substitua pela sua URI ou variável de ambiente se houver)
-const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/flashcred";
-mongoose.connect(MONGO_URI)
-    .then(() => console.log('Conectado ao MongoDB com sucesso!'))
-    .catch(err => console.error('Erro ao conectar ao MongoDB:', err));
+// Arquivo local para simular o banco de dados sem erros
+const DB_FILE = path.join(__dirname, 'propostas.json');
 
-// Schema do Banco de Dados para Propostas
-const propostaSchema = new mongoose.Schema({
-    nome: String,
-    cpf: { type: String, unique: true },
-    nascimento: String,
-    endereco: String,
-    numero: String,
-    cep: String,
-    valorSolicitado: Number,
-    status: { type: String, default: 'EM_ANALISE' },
-    produto: String,
-    telefone: String,
-    qtdParcelas: Number,
-    juros: Number,
-    valorEntrada: String,
-    cobrancaPix: Object,
-    pagamentoEntradaStatus: String,
-    parcelas: Array,
-    comprovanteRenda: {
-        nomeArquivo: String,
-        dados: Buffer,
-        contentType: String
+function lerBanco() {
+    if (!fs.existsSync(DB_FILE)) {
+        fs.writeFileSync(DB_FILE, JSON.stringify([]));
     }
-});
+    const data = fs.readFileSync(DB_FILE);
+    try {
+        return JSON.parse(data);
+    } catch (e) {
+        return [];
+    }
+}
 
-const Proposta = mongoose.model('Proposta', propostaSchema);
-
-// --- ROTAS DA API ---
+function salvarBanco(dados) {
+    fs.writeFileSync(DB_FILE, JSON.stringify(dados, null, 2));
+}
 
 // Rota de criação de proposta
 app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) => {
@@ -62,45 +42,47 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
             return res.status(400).json({ sucesso: false, mensagem: 'Preencha os campos obrigatórios.' });
         }
 
-        const propostaExistente = await Proposta.findOne({ cpf: cpf.trim() });
+        const propostas = lerBanco();
+        const cpfLimpo = cpf.trim();
+
+        const propostaExistente = propostas.find(p => p.cpf === cpfLimpo);
         if (propostaExistente) {
             return res.status(400).json({ sucesso: false, mensagem: 'Já existe uma proposta para este CPF.' });
         }
 
-        const novaPropostaData = {
+        const novaProposta = {
+            id: Date.now().toString(),
             nome: nome.trim(),
-            cpf: cpf.trim(),
+            cpf: cpfLimpo,
             nascimento,
             endereco,
             numero,
             cep,
             valorSolicitado: parseFloat(valorSolicitado),
-            status: 'EM_ANALISE'
+            status: 'EM_ANALISE',
+            comprovanteRenda: req.file ? {
+                nomeArquivo: req.file.originalname,
+                contentType: req.file.mimetype
+            } : null
         };
 
-        if (req.file) {
-            novaPropostaData.comprovanteRenda = {
-                nomeArquivo: req.file.originalname,
-                dados: req.file.buffer,
-                contentType: req.file.mimetype
-            };
-        }
-
-        const novaProposta = new Proposta(novaPropostaData);
-        await novaProposta.save();
+        propostas.push(novaProposta);
+        salvarBanco(propostas);
         
         res.json({ sucesso: true, mensagem: 'Proposta enviada com sucesso!' });
     } catch (err) {
-        console.error('Erro ao criar proposta:', err);
-        res.status(500).json({ sucesso: false, mensagem: 'Erro interno no servidor.' });
+        console.error('ERRO AO CRIAR PROPOSTA:', err);
+        res.status(500).json({ sucesso: false, mensagem: 'Erro interno: ' + err.message });
     }
 });
 
-// Rota de consulta de proposta por CPF (Query ou Parâmetro)
-app.get('/api/proposta/consultar', async (req, res) => {
+// Rota de consulta de proposta por CPF
+app.get('/api/proposta/consultar', (req, res) => {
     try {
         const cpf = req.query.cpf;
-        const proposta = await Proposta.findOne({ cpf: cpf ? cpf.trim() : '' });
+        const propostas = lerBanco();
+        const proposta = propostas.find(p => p.cpf === (cpf ? cpf.trim() : ''));
+        
         if (proposta) {
             res.json({ sucesso: true, proposta });
         } else {
@@ -111,9 +93,11 @@ app.get('/api/proposta/consultar', async (req, res) => {
     }
 });
 
-app.get('/api/propostas/:cpf', async (req, res) => {
+app.get('/api/propostas/:cpf', (req, res) => {
     try {
-        const proposta = await Proposta.findOne({ cpf: req.params.cpf.trim() });
+        const propostas = lerBanco();
+        const proposta = propostas.find(p => p.cpf === req.params.cpf.trim());
+        
         if (proposta) {
             res.json({ sucesso: true, proposta });
         } else {
@@ -124,7 +108,6 @@ app.get('/api/propostas/:cpf', async (req, res) => {
     }
 });
 
-// Porta obrigatória para o Render funcionar corretamente
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
