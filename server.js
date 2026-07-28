@@ -3,6 +3,10 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { MercadoPagoConfig, Payment } = require('mercadopago');
+
+// Configuração do Mercado Pago (Insira seu Token aqui ou use process.env.MP_ACCESS_TOKEN)
+const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || 'APP_USR-seu-token-aqui' });
 
 const app = express();
 app.use(cors());
@@ -62,7 +66,7 @@ app.post('/api/propostas', upload.fields([
     }
 });
 
-// Rota de consulta do cliente atualizada com os detalhes do Pix e Parcelas com juros de 8%
+// Consulta do cliente pelo CPF
 app.get('/api/propostas/:cpf', (req, res) => {
     const cpfLimpo = req.params.cpf.replace(/\D/g, '');
     const proposta = propostas.find(p => p.cpf && p.cpf.replace(/\D/g, '') === cpfLimpo);
@@ -77,8 +81,8 @@ app.get('/api/admin/propostas', (req, res) => {
     res.json(propostas);
 });
 
-// Rota de aprovação e cálculo com juros compostos de 8% ao mês e porcentagem de entrada
-app.post('/api/admin/atualizar', (req, res) => {
+// Rota de administração, cálculo e integração com Pix do Mercado Pago
+app.post('/api/admin/atualizar', async (req, res) => {
     const { id, status, valorSolicitado, qtdParcelas, percentualEntrada, vencimentoEntrada } = req.body;
     const proposta = propostas.find(p => p.id == id);
     
@@ -89,29 +93,56 @@ app.post('/api/admin/atualizar', (req, res) => {
         if (percentualEntrada) proposta.percentualEntrada = percentualEntrada;
         if (vencimentoEntrada) proposta.vencimentoEntrada = vencimentoEntrada;
 
-        // Se aprovado, calcula a entrada, aplica 8% de juros ao mês nas parcelas e gera o Pix
         if (proposta.status === 'APROVADO') {
             const valorTotalMercadoria = parseFloat(proposta.valorSolicitado.toString().replace(',', '.'));
-            const pEntrada = parseFloat(proposta.percentualEntrada || '20'); // Padrão 20% se não informado
+            const pEntrada = parseFloat(proposta.percentualEntrada || '20');
             const numParcelas = parseInt(proposta.qtdParcelas || '12');
 
-            // Valor da Entrada Obrigatória
+            // Cálculo da Entrada Obrigatória
             const valorEntrada = (valorTotalMercadoria * (pEntrada / 100)).toFixed(2);
             
-            // Restante financiado com juros de 8% ao mês (Tabela Price / Juros Compostos)
+            // Financiamento restante com juros compostos de 8% ao mês
             const valorFinanciado = valorTotalMercadoria - valorEntrada;
             const taxaJuros = 0.08;
-            
-            // Fórmula da prestação com juros compostos: PMT = PV * [ i * (1 + i)^n ] / [ (1 + i)^n - 1 ]
             const fator = Math.pow(1 + taxaJuros, numParcelas);
             const valorParcelaMensal = ((valorFinanciado * taxaJuros * fator) / (fator - 1)).toFixed(2);
+
+            let copiaEColaPix = `00020126580014br.gov.bcb.pix0136suporte@flashcredmoveis.com.br5204000053039865802BR5925FLASHCRED MOVEIS LTDA6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`;
+
+            // Tenta criar o Pix real via Mercado Pago se o Token estiver configurado
+            try {
+                if (process.env.MP_ACCESS_TOKEN || client.accessToken !== 'APP_USR-seu-token-aqui') {
+                    const payment = new Payment(client);
+                    const result = await payment.create({
+                        body: {
+                            transaction_amount: parseFloat(valorEntrada),
+                            description: `Entrada Obrigatória - FlashCred Móveis (Cliente: ${proposta.nome})`,
+                            payment_method_id: 'pix',
+                            payer: {
+                                email: proposta.email || 'cliente@flashcred.com',
+                                first_name: proposta.nome.split(' ')[0],
+                                last_name: proposta.nome.split(' ').slice(1).join(' ') || 'Cliente',
+                                identification: {
+                                    type: 'CPF',
+                                    number: proposta.cpf.replace(/\D/g, '')
+                                }
+                            }
+                        }
+                    });
+                    if (result && result.point_of_interaction && result.point_of_interaction.transaction_data) {
+                        copiaEColaPix = result.point_of_interaction.transaction_data.qr_code;
+                    }
+                }
+            } catch (mpErr) {
+                console.log('Aviso: Usando Pix simulado/padrão devido ao token do Mercado Pago não configurado:', mpErr.message);
+            }
 
             proposta.cobrancaPix = {
                 valorEntrada: valorEntrada,
                 percentualEntrada: pEntrada,
                 valorParcelaMensal: valorParcelaMensal,
-                vencimento: proposta.vencimentoEntrada || 'À vista para liberação',
-                copiaECola: `00020126580014br.gov.bcb.pix0136suporte@flashcredmoveis.com.br5204000053039865802BR5925FLASHCRED MOVEIS LTDA6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`
+                vencimento: proposta.vencimentoEntrada || 'Imediato para liberação',
+                copiaECola: copiaEColaPix
             };
         }
 
