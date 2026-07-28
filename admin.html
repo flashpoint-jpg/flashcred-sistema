@@ -50,9 +50,63 @@
                 <h2 class="text-lg font-extrabold text-white uppercase tracking-wider">Propostas e Pagamentos</h2>
                 <button onclick="carregarPropostas()" class="bg-gray-900 hover:bg-gray-800 border border-gray-800 text-xs text-gray-300 px-4 py-2 rounded-xl transition font-semibold">🔄 Atualizar Lista</button>
             </div>
+
             <div id="loading" class="text-center py-20 text-gray-400 text-xs">Carregando propostas...</div>
+            
+            <!-- Lista Completa de Propostas com Ações -->
             <div id="listaPropostas" class="space-y-4"></div>
         </main>
+
+        <!-- Modal de Edição Completa -->
+        <div id="modalEditar" class="hidden fixed inset-0 z-50 bg-gray-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div class="max-w-lg w-full bg-gray-900 border border-gray-800 p-6 sm:p-8 rounded-3xl shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                <div class="flex justify-between items-center border-b border-gray-800 pb-3">
+                    <h3 class="font-bold text-white text-sm uppercase tracking-wide">Controle Total: Editar Proposta</h3>
+                    <button onclick="fecharModalEditar()" class="text-gray-400 hover:text-white font-bold text-base p-1">✕</button>
+                </div>
+                
+                <form id="formEdicao" onsubmit="salvarEdicao(event)" class="space-y-4 text-xs">
+                    <input type="hidden" id="editCpfOriginal">
+                    
+                    <div>
+                        <label class="block text-gray-400 font-semibold mb-1">Nome Completo</label>
+                        <input type="text" id="editNome" required class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-gray-400 font-semibold mb-1">CPF</label>
+                            <input type="text" id="editCpf" required class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-gray-400 font-semibold mb-1">Telefone / WhatsApp</label>
+                            <input type="text" id="editTelefone" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-gray-400 font-semibold mb-1">Produto / Modelo</label>
+                            <input type="text" id="editProduto" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-gray-400 font-semibold mb-1">Valor da Entrada (Sinal)</label>
+                            <input type="text" id="editValorEntrada" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-gray-400 font-semibold mb-1">Endereço Completo</label>
+                        <input type="text" id="editEndereco" class="w-full p-3 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 outline-none">
+                    </div>
+
+                    <div class="pt-2 flex gap-3">
+                        <button type="submit" class="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition uppercase tracking-wide">Salvar Alterações</button>
+                        <button type="button" onclick="fecharModalEditar()" class="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 font-bold py-3 rounded-xl transition uppercase tracking-wide">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
         <footer class="py-6 text-center text-gray-600 text-[11px] border-t border-gray-900">
             &copy; 2026 Distribuidora Flashpoint. Painel Restrito.
@@ -60,12 +114,15 @@
     </div>
 
     <script>
+        let propostasGlobais = [];
+
         document.addEventListener("DOMContentLoaded", () => {
             const token = localStorage.getItem('token_flashpoint');
             if (token) {
                 document.getElementById('loginModal').classList.add('hidden');
                 document.getElementById('painelConteudo').classList.remove('hidden');
                 carregarPropostas();
+                setInterval(carregarPropostas, 15000);
             }
         });
 
@@ -103,30 +160,159 @@
             const token = localStorage.getItem('token_flashpoint');
             const container = document.getElementById('listaPropostas');
             const loading = document.getElementById('loading');
+            
+            let propostas = [];
 
             try {
                 const res = await fetch('/api/propostas', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
-                loading.style.display = 'none';
-
-                if (data.sucesso && data.propostas.length > 0) {
-                    container.innerHTML = data.propostas.map(p => `
-                        <div class="bg-gray-900 border border-gray-800 p-6 rounded-3xl space-y-3">
-                            <div class="flex justify-between">
-                                <h3 class="font-bold text-white text-base">${p.nome}</h3>
-                                <span class="text-xs font-bold text-amber-400">${p.status}</span>
-                            </div>
-                            <p class="text-xs text-gray-400">CPF: ${p.cpf} | Tel: ${p.telefone} | Produto: ${p.produto}</p>
-                            <p class="text-xs text-amber-300 font-semibold">Valor Solicitado: R$ ${p.valorSolicitado}</p>
-                        </div>
-                    `).join('');
-                } else {
-                    container.innerHTML = '<div class="text-center py-20 text-gray-500 text-xs">Nenhuma proposta cadastrada.</div>';
+                if (data.sucesso && data.propostas) {
+                    propostas = data.propostas;
                 }
             } catch (err) {
-                loading.innerText = 'Erro ao carregar propostas autorizadas.';
+                console.warn('Erro ao carregar propostas do servidor.');
+            }
+
+            propostasGlobais = propostas;
+            loading.style.display = 'none';
+
+            if (propostas.length > 0) {
+                container.innerHTML = propostas.map(p => {
+                    let telefoneLimpo = (p.telefone || '').replace(/\D/g, '');
+                    if (!telefoneLimpo.startsWith('55')) {
+                        telefoneLimpo = '55' + telefoneLimpo;
+                    }
+
+                    const linkCarne = `https://flashcred-sistema.onrender.com/parcelas.html?cpf=${p.cpf}`;
+                    const textoMsg = `Olá ${p.nome}! *Parabéns, sua proposta foi aprovada!* Acesse o link para visualizar seu carnê, conferir as parcelas e efetuar o pagamento da entrada: ${linkCarne}`;
+                    const whatsappUrl = `https://api.whatsapp.com/send?phone=${telefoneLimpo}&text=${encodeURIComponent(textoMsg)}`;
+
+                    let parcelas = p.parcelas || [];
+                    let totalParcelas = parcelas.length || 0;
+                    let pagas = parcelas.filter(parc => parc.status === 'PAGO').length;
+                    let pendentes = totalParcelas - pagas;
+
+                    let statusBadge = p.status === 'APROVADO' 
+                        ? '<span class="px-3 py-1 bg-green-500/10 text-green-400 text-xs font-bold rounded-xl border border-green-500/20">Aprovado / Pago</span>'
+                        : (p.status === 'RECUSADO' 
+                            ? '<span class="px-3 py-1 bg-red-500/10 text-red-400 text-xs font-bold rounded-xl border border-red-500/20">Recusado</span>'
+                            : '<span class="px-3 py-1 bg-amber-500/10 text-amber-400 text-xs font-bold rounded-xl border border-amber-500/20">Em Análise / Aguardando Pix</span>');
+
+                    let valorEntradaExibicao = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? `R$ ${p.cobrancaPix.valorEntrada}` : (p.valorEntrada ? `R$ ${p.valorEntrada}` : 'Não definido');
+
+                    return `
+                        <div class="bg-gradient-to-b from-gray-900 to-[#121824] border border-gray-800/80 p-6 rounded-3xl space-y-4 shadow-xl">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <h3 class="font-bold text-white text-base">${p.nome || 'Cliente'}</h3>
+                                    <p class="text-xs text-gray-400 mt-0.5">CPF: <span class="font-mono text-gray-200">${p.cpf}</span></p>
+                                </div>
+                                <div>${statusBadge}</div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-gray-950/80 p-4 rounded-2xl border border-gray-800">
+                                <div><span class="text-gray-500 font-semibold">Telefone:</span> <span class="text-gray-200 font-mono">${p.telefone || 'Não informado'}</span></div>
+                                <div><span class="text-gray-500 font-semibold">Produto / Modelo:</span> <span class="text-gray-200 font-semibold">${p.produto || p.modelo || 'Não especificado'}</span></div>
+                                <div><span class="text-gray-500 font-semibold">Valor da Entrada:</span> <span class="text-amber-400 font-bold">${valorEntradaExibicao}</span></div>
+                                <div><span class="text-gray-500 font-semibold">Carnê:</span> <span class="text-emerald-400 font-semibold">${pagas} pagas</span> / <span class="text-amber-400 font-semibold">${pendentes} abertas</span> (Total: ${totalParcelas}x)</div>
+                                <div class="sm:col-span-2"><span class="text-gray-500 font-semibold">Endereço:</span> <span class="text-gray-200">${p.endereco || 'Endereço não cadastrado'}</span></div>
+                            </div>
+
+                            <div class="flex flex-wrap justify-between items-center gap-3 pt-2 border-t border-gray-800/80">
+                                <div class="flex flex-wrap gap-2">
+                                    <button onclick="mudarStatus('${p.cpf}', 'APROVADO')" class="bg-green-600/20 hover:bg-green-600/30 text-green-400 border border-green-500/30 text-xs font-bold px-3 py-2 rounded-xl transition">Aprovar</button>
+                                    <button onclick="mudarStatus('${p.cpf}', 'RECUSADO')" class="bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 text-xs font-bold px-3 py-2 rounded-xl transition">Recusar</button>
+                                    <button onclick="abrirModalEditar('${p.cpf}')" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 text-xs font-bold px-3 py-2 rounded-xl transition">✏️ Editar</button>
+                                </div>
+                                <a href="${whatsappUrl}" target="_blank" class="bg-green-600 hover:bg-green-500 text-white font-bold px-4 py-2 rounded-xl transition text-xs flex items-center gap-2 shadow-lg shadow-green-600/20">
+                                    <span>💬</span> Enviar WhatsApp
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                container.innerHTML = '<div class="text-center py-20 text-gray-500 text-xs">Nenhuma proposta cadastrada no sistema.</div>';
+            }
+        }
+
+        async function mudarStatus(cpfCliente, novoStatus) {
+            const token = localStorage.getItem('token_flashpoint');
+            try {
+                const res = await fetch('/api/propostas/status', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ cpf: cpfCliente, status: novoStatus })
+                });
+                const data = await res.json();
+                if (data.sucesso) {
+                    carregarPropostas();
+                } else {
+                    alert('Erro ao atualizar status.');
+                }
+            } catch (e) {
+                alert('Erro de conexão com o servidor.');
+            }
+        }
+
+        function abrirModalEditar(cpf) {
+            const p = propostasGlobais.find(item => item.cpf === cpf);
+            if (!p) return;
+
+            document.getElementById('editCpfOriginal').value = p.cpf;
+            document.getElementById('editNome').value = p.nome || '';
+            document.getElementById('editCpf').value = p.cpf || '';
+            document.getElementById('editTelefone').value = p.telefone || '';
+            document.getElementById('editProduto').value = p.produto || p.modelo || '';
+            document.getElementById('editValorEntrada').value = (p.cobrancaPix && p.cobrancaPix.valorEntrada) ? p.cobrancaPix.valorEntrada : (p.valorEntrada || '');
+            document.getElementById('editEndereco').value = p.endereco || '';
+
+            document.getElementById('modalEditar').classList.remove('hidden');
+        }
+
+        function fecharModalEditar() {
+            document.getElementById('modalEditar').classList.add('hidden');
+        }
+
+        async function salvarEdicao(event) {
+            event.preventDefault();
+            const token = localStorage.getItem('token_flashpoint');
+            const cpfOriginal = document.getElementById('editCpfOriginal').value;
+            
+            const dadosAtualizados = {
+                cpfOriginal: cpfOriginal,
+                nome: document.getElementById('editNome').value,
+                cpf: document.getElementById('editCpf').value,
+                telefone: document.getElementById('editTelefone').value,
+                produto: document.getElementById('editProduto').value,
+                valorEntrada: document.getElementById('editValorEntrada').value,
+                endereco: document.getElementById('editEndereco').value
+            };
+
+            try {
+                const res = await fetch('/api/propostas/editar', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(dadosAtualizados)
+                });
+                const data = await res.json();
+                if (data.sucesso) {
+                    fecharModalEditar();
+                    carregarPropostas();
+                    alert('Proposta atualizada com sucesso!');
+                } else {
+                    alert('Erro ao salvar alterações no servidor.');
+                }
+            } catch (e) {
+                alert('Erro de conexão com o servidor.');
             }
         }
     </script>
