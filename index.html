@@ -1,37 +1,189 @@
-document.getElementById('formProposta').addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const formData = new FormData();
-    formData.append('nome', document.getElementById('nome').value);
-    formData.append('cpf', document.getElementById('cpf').value);
-    
-    // Altere de 'whatsapp' para 'telefone' para bater com o painel admin
-    formData.append('telefone', document.getElementById('whatsapp').value); 
-    
-    formData.append('nascimento', document.getElementById('nascimento').value);
-    formData.append('endereco', document.getElementById('endereco').value);
-    formData.append('numero', document.getElementById('numero').value);
-    formData.append('cep', document.getElementById('cep').value);
-    formData.append('valorSolicitado', document.getElementById('valorSolicitado').value);
-    
-    const fileInput = document.getElementById('comprovante');
-    if (fileInput.files[0]) {
-        formData.append('comprovante', fileInput.files[0]);
-    }
-
-    try {
-        const response = await fetch('/api/proposta/criar', {
-            method: 'POST',
-            body: formData
-        });
-        const resultado = await response.json();
-        if (resultado.sucesso) {
-            alert('Proposta enviada com sucesso!');
-            document.getElementById('formProposta').reset();
-        } else {
-            alert('Erro: ' + resultado.mensagem);
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlashCred - Consulta e Empréstimo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #0f172a;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
         }
-    } catch (err) {
-        alert('Erro ao enviar proposta.');
+        .container {
+            width: 100%;
+            max-width: 450px;
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        h2 { text-align: center; color: #ffa500; margin-bottom: 5px; }
+        p.sub { text-align: center; font-size: 13px; color: #94a3b8; margin-bottom: 20px; }
+        input, button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 10px;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        input { background: #0f172a; color: #fff; }
+        button { background: #ffa500; color: #000; font-weight: bold; cursor: pointer; border: none; }
+        button:hover { background: #e69500; }
+        .resultado-box {
+            margin-top: 20px;
+            background: rgba(255,255,255,0.03);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #334155;
+        }
+        table { width: 100%; font-size: 12px; text-align: left; color: #fff; border-collapse: collapse; margin-top: 8px; }
+        th, td { padding: 6px; border-bottom: 1px solid #334155; }
+        th { color: #ffa500; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>FlashCred</h2>
+    <p class="sub">Solicite seu crédito ou acompanhe sua proposta</p>
+
+    <!-- Seção de Consulta -->
+    <div style="margin-bottom: 20px;">
+        <label style="font-size: 13px; color: #cbd5e1;">Digite seu CPF para consultar:</label>
+        <input type="text" id="cpfConsulta" placeholder="000.000.000-00">
+        <button onclick="consultarProposta()">CONSULTAR</button>
+    </div>
+
+    <!-- Container onde aparece o resultado completo -->
+    <div id="resultadoConsulta" class="resultado-box" style="display: none;"></div>
+</div>
+
+<script>
+    async function consultarProposta() {
+        const cpfInput = document.getElementById('cpfConsulta').value;
+        const cpfLimpo = cpfInput.replace(/\D/g, '');
+        const container = document.getElementById('resultadoConsulta');
+
+        if (!cpfLimpo) {
+            alert('Digite um CPF válido.');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/proposta/consultar?cpf=${cpfLimpo}`);
+            const resultado = await response.json();
+
+            if (resultado.sucesso) {
+                const proposta = resultado.proposta;
+                container.style.display = 'block';
+                
+                // Monta o Bloco do Pix Copia e Cola (se houver)
+                let htmlPix = '';
+                if (proposta.cobrancaPix && proposta.cobrancaPix.copiaECola) {
+                    htmlPix = `
+                        <div style="margin-top: 15px; text-align: center;">
+                            <p style="font-size: 12px; color: #ffa500; margin-bottom: 5px; font-weight: bold;">Pix Copia e Cola da Entrada:</p>
+                            <input type="text" id="inputCopiaCola" value="${proposta.cobrancaPix.copiaECola}" readonly style="font-size: 11px; text-align: center;" />
+                            <button onclick="copiarPix()" style="margin-top: 5px; padding: 8px; font-size: 12px;">Copiar Código Pix</button>
+                        </div>
+                    `;
+                }
+
+                // Monta o Bloco de Detalhes de Parcelamento e Juros
+                let htmlParcelas = '';
+                if (proposta.parcelas && proposta.parcelas.length > 0) {
+                    htmlParcelas = `
+                        <div style="margin-top: 15px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px;">
+                            <h4 style="color: #ffa500; margin: 0 0 8px 0; font-size: 14px;">Detalhes do Parcelamento</h4>
+                            <p style="margin: 4px 0; font-size: 13px;"><strong>Qtd. Parcelas:</strong> ${proposta.qtdParcelas || 6}x</p>
+                            <p style="margin: 4px 0; font-size: 13px;"><strong>Taxa de Juros:</strong> ${proposta.juros || 2.5}% ao mês</p>
+                            <div style="max-height: 160px; overflow-y: auto; margin-top: 8px;">
+                                <table>
+                                    <tr>
+                                        <th>Nº</th>
+                                        <th>Vencimento</th>
+                                        <th>Valor</th>
+                                        <th>Status</th>
+                                        <th>Ação</th>
+                                    </tr>
+                                    ${proposta.parcelas.map(p => `
+                                        <tr>
+                                            <td>${p.numero}º</td>
+                                            <td>${p.vencimento}</td>
+                                            <td>R$ ${p.valor.toFixed(2)}</td>
+                                            <td style="color: ${p.status === 'PAGO' ? '#4CAF50' : '#FFC107'}">${p.status}</td>
+                                            <td>
+                                                ${p.status !== 'PAGO' ? `<button onclick="pagarParcela('${proposta.cpf}', ${p.numero})" style="padding: 4px 6px; font-size: 11px; margin: 0; background: #ffa500;">Pagar</button>` : 'Pago'}
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Injeta todas as informações detalhadas no container
+                container.innerHTML = `
+                    <p style="margin: 6px 0;"><strong>Nome:</strong> ${proposta.nome}</p>
+                    <p style="margin: 6px 0;"><strong>Status:</strong> <span style="color: #4CAF50; font-weight: bold;">${proposta.status}</span></p>
+                    <p style="margin: 6px 0;"><strong>Valor Solicitado:</strong> R$ ${proposta.valorSolicitado}</p>
+                    
+                    ${proposta.cobrancaPix?.qrcode ? `
+                        <div style="text-align: center; margin-top: 15px;">
+                            <p style="font-size: 13px; color: #ffa500; margin-bottom: 5px;">QR Code da Entrada</p>
+                            <img src="${proposta.cobrancaPix.qrcode}" style="width: 140px; height: 140px; background: #fff; padding: 5px; border-radius: 4px;"/>
+                        </div>
+                    ` : ''}
+                    
+                    ${htmlPix}
+                    ${htmlParcelas}
+                `;
+            } else {
+                container.style.display = 'block';
+                container.innerHTML = `<p style="color: #f87171; text-align: center;">${resultado.mensagem}</p>`;
+            }
+        } catch (err) {
+            alert('Erro de conexão ao consultar proposta.');
+        }
     }
-});
+
+    function copiarPix() {
+        const input = document.getElementById('inputCopiaCola');
+        input.select();
+        input.setSelectionRange(0, 99999);
+        navigator.clipboard.writeText(input.value);
+        alert('Código Pix copiado com sucesso!');
+    }
+
+    async function pagarParcela(cpf, numeroParcela) {
+        try {
+            const response = await fetch('/api/parcelas/pagar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cpf, numeroParcela })
+            });
+            const resultado = await response.json();
+            
+            if (resultado.sucesso) {
+                alert(`Pix gerado para a parcela ${numeroParcela}!\n\nCopia e Cola:\n` + resultado.parcela.cobrancaPix.copiaECola);
+            } else {
+                alert('Erro ao gerar pagamento da parcela: ' + resultado.mensagem);
+            }
+        } catch (err) {
+            alert('Erro de conexão ao tentar pagar a parcela.');
+        }
+    }
+</script>
+
+</body>
+</html>
