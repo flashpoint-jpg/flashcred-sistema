@@ -14,7 +14,7 @@ app.use(express.static(path.join(__dirname)));
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// Arquivo local para simular o banco de dados sem erros
+// Arquivo local para simular o banco de dados
 const DB_FILE = path.join(__dirname, 'propostas.json');
 
 function lerBanco() {
@@ -33,7 +33,9 @@ function salvarBanco(dados) {
     fs.writeFileSync(DB_FILE, JSON.stringify(dados, null, 2));
 }
 
-// Rota de criação de proposta
+// --- ROTAS DA API ---
+
+// 1. Criar Proposta
 app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) => {
     try {
         const { nome, cpf, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
@@ -76,7 +78,17 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
     }
 });
 
-// Rota de consulta de proposta por CPF
+// 2. Listar todas as propostas (Para o Painel Administrativo)
+app.get('/api/propostas', (req, res) => {
+    try {
+        const propostas = lerBanco();
+        res.json({ sucesso: true, propostas });
+    } catch (err) {
+        res.status(500).json({ sucesso: false, mensagem: 'Erro ao buscar propostas.' });
+    }
+});
+
+// 3. Consultar proposta por CPF (Query)
 app.get('/api/proposta/consultar', (req, res) => {
     try {
         const cpf = req.query.cpf;
@@ -93,6 +105,7 @@ app.get('/api/proposta/consultar', (req, res) => {
     }
 });
 
+// 4. Consultar proposta por CPF (Parâmetro)
 app.get('/api/propostas/:cpf', (req, res) => {
     try {
         const propostas = lerBanco();
