@@ -34,19 +34,9 @@ function salvarBanco(dados) {
 
 // --- ROTAS DA API ---
 
-// 1. Rota de Login (Resolve o erro de conexão na tela de acesso)
+// 1. Rota de Login
 app.post('/api/login', (req, res) => {
-    try {
-        const { usuario, senha } = req.body;
-        // Validação padrão simples ou adaptada ao seu painel
-        if (usuario === 'admin' && senha === 'admin') {
-            return res.json({ sucesso: true, mensagem: 'Login realizado com sucesso!' });
-        }
-        // Caso o painel use apenas validação genérica de sucesso
-        res.json({ sucesso: true, mensagem: 'Acesso liberado.' });
-    } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro no servidor.' });
-    }
+    res.json({ sucesso: true, mensagem: 'Acesso liberado.' });
 });
 
 app.post('/api/admin/login', (req, res) => {
@@ -95,7 +85,7 @@ app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) =
     }
 });
 
-// 3. Listar todas as propostas (Painel Administrativo)
+// 3. Listar todas as propostas
 app.get('/api/propostas', (req, res) => {
     try {
         const propostas = lerBanco();
@@ -105,7 +95,32 @@ app.get('/api/propostas', (req, res) => {
     }
 });
 
-// 4. Consultar por CPF (Query)
+// 4. Atualizar Proposta (Resolve o erro ao clicar em Salvar Alterações)
+app.put('/api/propostas/:cpf', (req, res) => {
+    try {
+        const cpfAlvo = req.params.cpf.trim();
+        let propostas = lerBanco();
+        const index = propostas.findIndex(p => p.cpf === cpfAlvo);
+
+        if (index === -1) {
+            return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada para atualização.' });
+        }
+
+        // Atualiza os dados enviados pelo painel mantendo o ID e CPF
+        propostas[index] = {
+            ...propostas[index],
+            ...req.body,
+            cpf: cpfAlvo
+        };
+
+        salvarBanco(propostas);
+        res.json({ sucesso: true, mensagem: 'Proposta atualizada com sucesso!' });
+    } catch (err) {
+        res.status(500).json({ sucesso: false, mensagem: 'Erro ao atualizar proposta.' });
+    }
+});
+
+// 5. Consultar por CPF (Query)
 app.get('/api/proposta/consultar', (req, res) => {
     try {
         const cpf = req.query.cpf;
@@ -122,7 +137,7 @@ app.get('/api/proposta/consultar', (req, res) => {
     }
 });
 
-// 5. Consultar por CPF (Parâmetro)
+// 6. Consultar por CPF (Parâmetro)
 app.get('/api/propostas/:cpf', (req, res) => {
     try {
         const propostas = lerBanco();
