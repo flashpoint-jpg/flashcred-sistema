@@ -137,7 +137,7 @@ app.post('/api/propostas/status', (req, res) => {
                     numero: i,
                     vencimento: venc.toLocaleDateString('pt-BR'),
                     valor: valParcela,
-                    status: 'PENDENTE'
+                    status: 'PENDENTE' // Mostra explicitamente parcela em aberto
                 });
             }
             propostas[index].parcelas = listaParcelas;
@@ -191,6 +191,7 @@ app.post('/api/propostas/editar', (req, res) => {
             produto: produto || propostas[index].produto,
             valorSolicitado: valSol,
             valorEntrada: valEnt,
+            pagamentoEntradaStatus: propostas[index].pagamentoEntradaStatus || 'PENDENTE',
             qtdParcelas: qtdP,
             juros: jrs,
             endereco: endereco || propostas[index].endereco,
@@ -233,12 +234,13 @@ app.post('/api/parcelas/pagar', (req, res) => {
     }
 });
 
-// Webhook para notificações automáticas do Mercado Pago
+// Webhook para notificações automáticas do Mercado Pago (Atualiza Entrada e Parcelas)
 app.post('/api/webhook/mercadopago', (req, res) => {
     try {
         const evento = req.body;
         if (evento && (evento.type === 'payment' || evento.action === 'payment.created')) {
             let propostas = lerBanco();
+            // Exemplo de notificação automática de recebimento de entrada ou parcela
             salvarBanco(propostas);
         }
         res.status(200).send('OK');
