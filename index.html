@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlashCred - Sistema Completo</title>
+    <title>FlashCred - Sistema Completo com Mercado Pago</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; }
         .btn-primary { background: #f59e0b; transition: all 0.2s; }
@@ -30,8 +29,11 @@
 <script>
 const CONFIG = {
     SENHA_ADMIN: 'flash2026',
-    MERCADO_PAGO_TOKEN: 'COLOQUE_SEU_TOKEN_AQUI',
-    CHAVE_PIX: '3552949852',
+    // ----------------------------------------------------
+    // APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471PAGO BEM AQUI EMBAIXO:
+    // ----------------------------------------------------
+    MERCADO_PAGO_TOKEN: 'COLE_SEU_ACCESS_TOKEN_AQUI',
+    
     IDADE_MINIMA: 17,
     ENTRADA_PADRAO: 39,
     JUROS_PADRAO: 6,
@@ -67,12 +69,12 @@ const CONFIG = {
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Renda Mensal</label>
-                    <input type="text" id="renda" required placeholder="R$ 0,00" class="w-full p-3 bg-gray-900 border border-gray-700 rounded-xl">
+                    <input type="text" id="renda" required placeholder="Ex: 3000" class="w-full p-3 bg-gray-900 border border-gray-700 rounded-xl">
                 </div>
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Valor Desejado</label>
-                <input type="text" id="valor" required placeholder="R$ 0,00" class="w-full p-3 bg-gray-900 border border-gray-700 rounded-xl">
+                <input type="text" id="valor" required placeholder="Ex: 5000" class="w-full p-3 bg-gray-900 border border-gray-700 rounded-xl">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">WhatsApp</label>
@@ -116,7 +118,7 @@ const CONFIG = {
         <div class="flex flex-wrap justify-between items-center gap-3">
             <div>
                 <h1 class="text-2xl font-bold text-amber-400">📊 Painel de Controle Total</h1>
-                <p class="text-sm text-gray-400">Edite tudo: valores, entrada, juros, parcelas e status</p>
+                <p class="text-sm text-gray-400">Edite valores, juros, parcelas e gere cobranças integradas</p>
             </div>
             <div class="flex gap-2">
                 <button onclick="carregarLista()" class="btn-info px-4 py-2 rounded-lg text-sm font-medium">🔄 Atualizar</button>
@@ -208,10 +210,6 @@ function formatarMoeda(valor) {
     return Number(valor).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-function gerarPix(valor) {
-    return `00020126580014BR.GOV.BCB.PIX0136${CONFIG.CHAVE_PIX}0214Pagamento+Entrada5204000053039865802BR5925FlashPoint+Moveis6009Santo+Andre62070503***6304${Math.random().toString(36).substring(2,10).toUpperCase()}`;
-}
-
 document.getElementById('formSolicitacao').addEventListener('submit', e => {
     e.preventDefault();
     const cpfLimpo = document.getElementById('cpf').value.replace(/\D/g,'');
@@ -222,12 +220,15 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
     const idade = new Date().getFullYear() - nascimento.getFullYear();
     if (idade < CONFIG.IDADE_MINIMA) return alert(`É preciso ter pelo menos ${CONFIG.IDADE_MINIMA} anos!`);
 
+    const rendaStr = document.getElementById('renda').value.replace(/\D/g,'');
+    const valorStr = document.getElementById('valor').value.replace(/\D/g,'');
+
     const dados = {
         cpf: cpfLimpo,
         nome: document.getElementById('nome').value,
         nascimento: document.getElementById('nascimento').value,
-        renda: parseFloat(document.getElementById('renda').value.replace(/\D/g,''))/100,
-        valorSolicitado: parseFloat(document.getElementById('valor').value.replace(/\D/g,''))/100,
+        renda: rendaStr ? parseFloat(rendaStr) / 100 : 0,
+        valorSolicitado: valorStr ? parseFloat(valorStr) / 100 : 0,
         whatsapp: document.getElementById('whatsapp').value,
         status: 'em_analise',
         data: new Date().toLocaleDateString('pt-BR'),
@@ -394,7 +395,7 @@ function abrirEditar(cpf) {
                 <p>Valor da Parcela: <strong>R$ ${formatarMoeda(parcela)}</strong></p>
             </div>
             <button onclick="salvarEdicao('${cpf}')" class="btn-primary w-full py-2 rounded-lg font-medium text-gray-900">💾 Salvar Todas as Alterações</button>
-            <button onclick="gerarPagamento('${cpf}')" class="btn-success w-full py-2 rounded-lg font-medium mt-2">💳 Gerar PIX para Entrada</button>
+            <button onclick="gerarPagamentoMercadoPago('${cpf}')" class="btn-success w-full py-2 rounded-lg font-medium mt-2">💳 Gerar Link e Pix (Mercado Pago)</button>
             <div id="areaPixModal" class="mt-3 hidden text-center bg-gray-900 p-3 rounded-lg"></div>
         </div>
     `;
@@ -414,22 +415,61 @@ function salvarEdicao(cpf) {
     carregarLista();
 }
 
-function gerarPagamento(cpf) {
-    const dados = JSON.parse(localStorage.getItem(`flashcred_${cpf}`));
-    const valorEntrada = dados.valorSolicitado * dados.percEntrada / 100;
-    const copiaECola = gerarPix(valorEntrada);
+async function gerarPagamentoMercadoPago(cpf) {
+    const chave = `flashcred_${cpf}`;
+    const dados = JSON.parse(localStorage.getItem(chave));
+    const valorEntrada = Number((dados.valorSolicitado * dados.percEntrada / 100).toFixed(2));
     
-    dados.cobrancaPix = { copiaECola, valor: valorEntrada };
-    localStorage.setItem(`flashcred_${cpf}`, JSON.stringify(dados));
-
     const areaPix = document.getElementById('areaPixModal');
     areaPix.classList.remove('hidden');
-    areaPix.innerHTML = `
-        <p class="text-xs text-green-400 font-bold mb-2">✅ Pix de Entrada Gerado com Sucesso!</p>
-        <p class="text-xs text-gray-300 mb-2">Chave Pix Copia e Cola:</p>
-        <textarea readonly class="w-full p-2 bg-gray-800 text-xs text-amber-300 rounded border border-gray-700 h-16 mb-2 select-all">${copiaECola}</textarea>
-        <button onclick="navigator.clipboard.writeText('${copiaECola}'); alert('Código Pix copiado!');" class="btn-info w-full py-1.5 rounded text-xs font-bold">📋 Copiar Código Pix</button>
-    `;
+    areaPix.innerHTML = `<p class="text-xs text-amber-400 animate-pulse">Conectando ao Mercado Pago e gerando link/Pix...</p>`;
+
+    try {
+        const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${CONFIG.MERCADO_PAGO_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                transaction_amount: valorEntrada,
+                description: `Entrada FlashCred - CPF: ${dados.cpf}`,
+                payment_method_id: 'pix',
+                payer: {
+                    email: 'cliente@flashcred.com',
+                    first_name: dados.nome.split(' ')[0],
+                    last_name: dados.nome.split(' ').slice(1).join(' ') || 'Cliente',
+                    identification: {
+                        type: 'CPF',
+                        number: dados.cpf
+                    }
+                }
+            })
+        });
+
+        const resultado = await resposta.json();
+        
+        if (resultado.point_of_interaction) {
+            const qrCode = resultado.point_of_interaction.transaction_data.qr_code;
+            const linkPagamento = resultado.point_of_interaction.transaction_data.ticket_url;
+
+            dados.cobrancaPix = { copiaECola: qrCode, link: linkPagamento, valor: valorEntrada };
+            localStorage.setItem(chave, JSON.stringify(dados));
+
+            areaPix.innerHTML = `
+                <p class="text-xs text-green-400 font-bold mb-2">✅ Cobrança Gerada no Mercado Pago!</p>
+                <a href="${linkPagamento}" target="_blank" class="btn-info block w-full py-2 rounded text-xs font-bold mb-2 text-center">🔗 Abrir Link de Pagamento</a>
+                <p class="text-xs text-gray-300 mb-1">Pix Copia e Cola:</p>
+                <textarea readonly class="w-full p-2 bg-gray-800 text-xs text-amber-300 rounded border border-gray-700 h-14 mb-2 select-all">${qrCode}</textarea>
+                <button onclick="navigator.clipboard.writeText('${qrCode}'); alert('Pix copiado!');" class="btn-primary w-full py-1.5 rounded text-xs font-bold text-gray-900">📋 Copiar Pix</button>
+            `;
+        } else {
+            throw new Error(resultado.message || 'Erro ao gerar Pix no Mercado Pago');
+        }
+    } catch (erro) {
+        console.error(erro);
+        areaPix.innerHTML = `<p class="text-xs text-red-400">Erro: Verifique se o Access Token do Mercado Pago foi colado corretamente nas configurações do código.</p>`;
+    }
 }
 
 function fecharModal() {
@@ -472,9 +512,10 @@ function consultarProposta() {
             <p><strong>Entrada (${p.percEntrada}%):</strong> R$ ${formatarMoeda(entrada)}</p>
             <p><strong>Condições:</strong> ${p.qtdParcelas}x de R$ ${formatarMoeda(parcela)}</p>
             ${p.status === 'aprovado' && p.cobrancaPix ? `
-                <div class="mt-3 p-3 bg-gray-800 rounded-lg border border-amber-500/30">
-                    <p class="text-xs text-amber-400 font-bold mb-1">💳 Pagamento da Entrada:</p>
-                    <textarea readonly class="w-full p-2 bg-gray-900 text-xs text-gray-300 rounded h-14 select-all mb-2">${p.cobrancaPix.copiaECola}</textarea>
+                <div class="mt-3 p-3 bg-gray-800 rounded-lg border border-amber-500/30 space-y-2">
+                    <p class="text-xs text-amber-400 font-bold">💳 Pagamento da Entrada:</p>
+                    <a href="${p.cobrancaPix.link}" target="_blank" class="btn-info block w-full py-2 rounded text-xs font-bold text-center">🔗 Abrir Link de Pagamento do Mercado Pago</a>
+                    <textarea readonly class="w-full p-2 bg-gray-900 text-xs text-gray-300 rounded h-14 select-all">${p.cobrancaPix.copiaECola}</textarea>
                     <button onclick="navigator.clipboard.writeText('${p.cobrancaPix.copiaECola}'); alert('Código Pix copiado!');" class="btn-primary w-full py-2 rounded text-xs font-bold text-gray-900">📋 Copiar Pix Copia e Cola</button>
                 </div>
             ` : ''}
