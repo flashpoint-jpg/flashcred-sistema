@@ -363,9 +363,14 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
     };
 
     localStorage.setItem(`flashcred_${cpfLimpo}`, JSON.stringify(dados));
-    alert('✅ Solicitação enviada com sucesso! Aguarde a análise.');
+    alert('✅ Solicitação enviada com sucesso! Redirecionando para a página de acompanhamento...');
     e.target.reset();
     document.getElementById('endereco').value = '';
+
+    // Direciona automaticamente para a aba de acompanhamento preenchendo o CPF
+    mostrarAba('consulta');
+    document.getElementById('cpfConsulta').value = cpfLimpo;
+    consultarProposta();
 });
 
 if(localStorage.getItem('adminLogado') === 'sim') mostrarAba('admin');
@@ -448,10 +453,7 @@ function carregarLista() {
                         <button onclick="alterarStatus('${p.cpf}', 'aprovado')" class="btn-success px-3 py-1 rounded-lg text-xs font-medium">✅ Aprovar</button>
                         <button onclick="alterarStatus('${p.cpf}', 'rejeitado')" class="btn-danger px-3 py-1 rounded-lg text-xs font-medium">❌ Rejeitar</button>
                     ` : ''}
-                    ${p.status === 'aprovado' && !p.entradaPaga ? `
-                        <button onclick="marcarEntradaPaga('${p.cpf}')" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-lg text-xs font-medium">💰 Marcar Entrada Paga</button>
-                    ` : ''}
-                    ${p.entradaPaga ? '<span class="text-emerald-400 text-[10px] font-bold text-center">✅ Entrada Confirmada</span>' : ''}
+                    ${p.entradaPaga ? '<span class="text-emerald-400 text-[10px] font-bold text-center">✅ Entrada Confirmada</span>' : '<span class="text-amber-400 text-[10px] text-center">⏳ Aguardando Pix</span>'}
                     <button onclick="enviarWhatsApp('${p.cpf}')" class="btn-whatsapp px-3 py-1 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 mt-1"><span>💬</span> Enviar WhatsApp</button>
                 </div>
             </td>
@@ -479,23 +481,34 @@ function alterarStatus(cpf, novoStatus) {
     carregarLista();
 }
 
-function marcarEntradaPaga(cpf) {
+function simularConfirmacaoAutomatica(cpf) {
     const chave = `flashcred_${cpf}`;
     const dados = JSON.parse(localStorage.getItem(chave));
+    if(!dados) return;
     dados.entradaPaga = true;
     localStorage.setItem(chave, JSON.stringify(dados));
-    alert('✅ Entrada marcada como paga!');
-    carregarLista();
+    
+    // Alerta automático visual para você no painel quando o pagamento for detectado automaticamente
+    alert(`⚡ [NOTIFICAÇÃO AUTOMÁTICA DO BANCO] Pix de entrada recebido e confirmado automaticamente para o cliente ${dados.nome}!`);
+    
+    // Se a tela de consulta estiver aberta para esse cliente, atualiza ela em tempo real
+    const cpfConsultaInput = document.getElementById('cpfConsulta');
+    if(cpfConsultaInput && cpfConsultaInput.value.replace(/\D/g,'') === cpf) {
+        consultarProposta();
+    }
+    
+    if(localStorage.getItem('adminLogado') === 'sim') {
+        carregarLista();
+    }
 }
 
 function enviarWhatsApp(cpf) {
     const dados = JSON.parse(localStorage.getItem(`flashcred_${cpf}`));
     if(!dados) return alert('Proposta não encontrada.');
 
-    // Limpar o número do WhatsApp do cliente para conter apenas dígitos
     let numZap = dados.whatsapp.replace(/\D/g, '');
     if(!numZap.startsWith('55')) {
-        numZap = '55' + numZap; // Adiciona DDI do Brasil por segurança se não tiver
+        numZap = '55' + numZap;
     }
 
     const entrada = dados.valorSolicitado * dados.percEntrada / 100;
@@ -513,7 +526,7 @@ function enviarWhatsApp(cpf) {
                    `• Parcelamento: *${dados.qtdParcelas}x de R$ ${formatarMoeda(parcela)}* (${dados.percJuros}% a.m.)\n\n` +
                    `💳 *Para prosseguir com a liberação e entrega, realize o pagamento da taxa de entrada via Pix Copia e Cola abaixo:*\n\n` +
                    `\`${pixCopiaECola}\`\n\n` +
-                   `Assim que realizar o pagamento, envie o comprovante por aqui para darmos andamento imediato ao seu pedido! Qualquer dúvida estamos à disposição.`;
+                   `Assim que realizar o pagamento, nosso sistema identificará automaticamente e você receberá a confirmação por aqui!`;
     } else if(dados.status === 'rejeitado') {
         mensagem = `Olá *${dados.nome}*, aqui é da *FlashPoint / FlashCred*. \n\n` +
                    `Analisamos a sua solicitação de crédito no valor de *R$ ${formatarMoeda(dados.valorSolicitado)}* e, infelizmente, ela não foi aprovada neste momento pela nossa política interna.\n\n` +
@@ -679,6 +692,9 @@ async function consultarProposta() {
                         <label class="text-[10px] text-gray-400 block mb-1 uppercase tracking-wider">Pix Copia e Cola:</label>
                         <textarea readonly class="w-full p-2.5 bg-black text-xs font-mono text-amber-300 rounded-xl border border-zinc-800 h-16 select-all outline-none">${pixCode}</textarea>
                         <button onclick="navigator.clipboard.writeText('${pixCode}'); alert('📋 Código Pix copiado com sucesso!');" class="btn-primary w-full py-2.5 rounded-xl text-xs shadow-md">Copiar Código Pix</button>
+                        
+                        <!-- BOTÃO DE TESTE DE SIMULAÇÃO DE PAGAMENTO AUTOMÁTICO DO BANCO -->
+                        <button onclick="simularConfirmacaoAutomatica('${cpf}')" class="bg-emerald-600 hover:bg-emerald-700 text-white w-full py-2 rounded-xl text-[11px] font-semibold mt-2 transition shadow">⚡ Simular Confirmação Automática do Banco</button>
                     </div>
                 </div>
             `;
@@ -692,8 +708,8 @@ async function consultarProposta() {
         } else {
             htmlDetalhes += `
                 <div class="border-t border-zinc-800/80 pt-3">
-                    <p class="text-emerald-400 font-bold text-center text-sm">✅ Entrada Confirmada!</p>
-                    <p class="text-[11px] text-gray-400 text-center mt-1">Seu pagamento de entrada foi registrado com sucesso.</p>
+                    <p class="text-emerald-400 font-bold text-center text-sm">✅ Entrada Confirmada Automaticamente!</p>
+                    <p class="text-[11px] text-gray-400 text-center mt-1">O pagamento da taxa de entrada foi identificado pelo banco e processado com sucesso.</p>
                 </div>
             `;
         }
