@@ -117,8 +117,8 @@
 
     <!-- SEÇÃO 1: CONSULTAR STATUS -->
     <div id="secao-consulta" class="secao ativa">
-        <label style="font-size: 13px; color: #cbd5e1;">Digite seu CPF:</label>
-        <input type="text" id="cpfConsulta" placeholder="000.000.000-00">
+        <label style="font-size: 13px; color: #cbd5e1;" for="cpfConsulta">Digite seu CPF:</label>
+        <input type="text" id="cpfConsulta" placeholder="000.000.000-00" maxlength="14">
         <button class="btn-acao" onclick="consultarProposta()">CONSULTAR</button>
         
         <div id="resultadoConsulta" class="resultado-box" style="display: none;"></div>
@@ -128,16 +128,16 @@
     <div id="secao-cadastro" class="secao">
         <form id="formProposta">
             <input type="text" id="nome" placeholder="Nome Completo" required>
-            <input type="text" id="cpf" placeholder="CPF" required>
+            <input type="text" id="cpf" placeholder="CPF" required maxlength="14">
             <input type="text" id="whatsapp" placeholder="WhatsApp / Telefone" required>
             <input type="date" id="nascimento" required>
             <input type="text" id="endereco" placeholder="Endereço" required>
             <input type="text" id="numero" placeholder="Número" required>
-            <input type="text" id="cep" placeholder="CEP" required>
-            <input type="number" id="valorSolicitado" placeholder="Valor Desejado (R$)" required>
+            <input type="text" id="cep" placeholder="CEP" required maxlength="9">
+            <input type="number" id="valorSolicitado" placeholder="Valor Desejado (R$)" min="1" step="0.01" required>
             
-            <label style="font-size: 12px; color: #94a3b8; display: block; margin-top: 10px;">Comprovante de Renda:</label>
-            <input type="file" id="comprovante">
+            <label style="font-size: 12px; color: #94a3b8; display: block; margin-top: 10px;" for="comprovante">Comprovante de Renda:</label>
+            <input type="file" id="comprovante" accept=".jpg, .jpeg, .png, .pdf">
             
             <button type="submit" class="btn-acao" style="margin-top: 15px;">Enviar Proposta</button>
         </form>
@@ -153,86 +153,168 @@
         elemento.classList.add('active');
     }
 
+    function validarCPF(cpf) {
+        const limpo = cpf.replace(/\D/g, '');
+        return limpo.length === 11;
+    }
+
     async function consultarProposta() {
         const cpfInput = document.getElementById('cpfConsulta').value;
         const cpfLimpo = cpfInput.replace(/\D/g, '');
         const container = document.getElementById('resultadoConsulta');
 
-        if (!cpfLimpo) {
-            alert('Digite um CPF válido.');
+        if (!validarCPF(cpfLimpo)) {
+            alert('Digite um CPF válido com 11 dígitos.');
             return;
         }
 
         try {
-            const response = await fetch(`/api/proposta/consultar?cpf=${cpfLimpo}`);
+            const response = await fetch(`/api/proposta/consultar?cpf=${encodeURIComponent(cpfLimpo)}`);
             const resultado = await response.json();
+
+            container.style.display = 'block';
+            container.innerHTML = '';
 
             if (resultado.sucesso) {
                 const proposta = resultado.proposta;
-                container.style.display = 'block';
                 
-                let htmlPix = '';
+                const pNome = document.createElement('p');
+                pNome.style.margin = '6px 0';
+                pNome.innerHTML = `<strong>Nome:</strong> `;
+                const spanNome = document.createElement('span');
+                spanNome.textContent = proposta.nome;
+                pNome.appendChild(spanNome);
+                container.appendChild(pNome);
+
+                const pStatus = document.createElement('p');
+                pStatus.style.margin = '6px 0';
+                pStatus.innerHTML = `<strong>Status:</strong> `;
+                const spanStatus = document.createElement('span');
+                spanStatus.style.color = '#4CAF50';
+                spanStatus.style.fontWeight = 'bold';
+                spanStatus.textContent = proposta.status;
+                pStatus.appendChild(spanStatus);
+                container.appendChild(pStatus);
+
+                const pValor = document.createElement('p');
+                pValor.style.margin = '6px 0';
+                pValor.innerHTML = `<strong>Valor Solicitado:</strong> R$ `;
+                const spanValor = document.createElement('span');
+                spanValor.textContent = proposta.valorSolicitado;
+                pValor.appendChild(spanValor);
+                container.appendChild(pValor);
+                
+                if (proposta.cobrancaPix?.qrcode) {
+                    const divQr = document.createElement('div');
+                    divQr.style.cssText = 'text-align: center; margin-top: 15px;';
+                    divQr.innerHTML = `<p style="font-size: 13px; color: #ffa500; margin-bottom: 5px;">QR Code da Entrada</p>`;
+                    const img = document.createElement('img');
+                    img.src = proposta.cobrancaPix.qrcode;
+                    img.style.cssText = 'width: 140px; height: 140px; background: #fff; padding: 5px; border-radius: 4px;';
+                    divQr.appendChild(img);
+                    container.appendChild(divQr);
+                }
+                
                 if (proposta.cobrancaPix && proposta.cobrancaPix.copiaECola) {
-                    htmlPix = `
-                        <div style="margin-top: 15px; text-align: center;">
-                            <p style="font-size: 12px; color: #ffa500; margin-bottom: 5px; font-weight: bold;">Pix Copia e Cola da Entrada:</p>
-                            <input type="text" id="inputCopiaCola" value="${proposta.cobrancaPix.copiaECola}" readonly style="font-size: 11px; text-align: center;" />
-                            <button onclick="copiarPix()" class="btn-acao" style="margin-top: 5px; padding: 8px; font-size: 12px;">Copiar Código Pix</button>
-                        </div>
-                    `;
+                    const divPix = document.createElement('div');
+                    divPix.style.cssText = 'margin-top: 15px; text-align: center;';
+                    divPix.innerHTML = `<p style="font-size: 12px; color: #ffa500; margin-bottom: 5px; font-weight: bold;">Pix Copia e Cola da Entrada:</p>`;
+                    
+                    const inputCopia = document.createElement('input');
+                    inputCopia.type = 'text';
+                    inputCopia.id = 'inputCopiaCola';
+                    inputCopia.value = proposta.cobrancaPix.copiaECola;
+                    inputCopia.readOnly = true;
+                    inputCopia.style.cssText = 'font-size: 11px; text-align: center;';
+                    
+                    const btnCopiar = document.createElement('button');
+                    btnCopiar.className = 'btn-acao';
+                    btnCopiar.textContent = 'Copiar Código Pix';
+                    btnCopiar.style.cssText = 'margin-top: 5px; padding: 8px; font-size: 12px;';
+                    btnCopiar.onclick = copiarPix;
+
+                    divPix.appendChild(inputCopia);
+                    divPix.appendChild(btnCopiar);
+                    container.appendChild(divPix);
                 }
 
-                let htmlParcelas = '';
                 if (proposta.parcelas && proposta.parcelas.length > 0) {
-                    htmlParcelas = `
-                        <div style="margin-top: 15px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px;">
-                            <h4 style="color: #ffa500; margin: 0 0 8px 0; font-size: 14px;">Detalhes do Parcelamento</h4>
-                            <p style="margin: 4px 0; font-size: 13px;"><strong>Qtd. Parcelas:</strong> ${proposta.qtdParcelas || 6}x</p>
-                            <p style="margin: 4px 0; font-size: 13px;"><strong>Taxa de Juros:</strong> ${proposta.juros || 2.5}% ao mês</p>
-                            <div style="max-height: 160px; overflow-y: auto; margin-top: 8px;">
-                                <table>
-                                    <tr>
-                                        <th>Nº</th>
-                                        <th>Vencimento</th>
-                                        <th>Valor</th>
-                                        <th>Status</th>
-                                        <th>Ação</th>
-                                    </tr>
-                                    ${proposta.parcelas.map(p => `
-                                        <tr>
-                                            <td>${p.numero}º</td>
-                                            <td>${p.vencimento}</td>
-                                            <td>R$ ${p.valor.toFixed(2)}</td>
-                                            <td style="color: ${p.status === 'PAGO' ? '#4CAF50' : '#FFC107'}">${p.status}</td>
-                                            <td>
-                                                ${p.status !== 'PAGO' ? `<button onclick="pagarParcela('${proposta.cpf}', ${p.numero})" style="padding: 4px 6px; font-size: 11px; margin: 0; background: #ffa500; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Pagar</button>` : 'Pago'}
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                                </table>
-                            </div>
-                        </div>
-                    `;
-                }
+                    const divParcelas = document.createElement('div');
+                    divParcelas.style.cssText = 'margin-top: 15px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px;';
+                    
+                    const h4 = document.createElement('h4');
+                    h4.style.cssText = 'color: #ffa500; margin: 0 0 8px 0; font-size: 14px;';
+                    h4.textContent = 'Detalhes do Parcelamento';
+                    divParcelas.appendChild(h4);
 
-                container.innerHTML = `
-                    <p style="margin: 6px 0;"><strong>Nome:</strong> ${proposta.nome}</p>
-                    <p style="margin: 6px 0;"><strong>Status:</strong> <span style="color: #4CAF50; font-weight: bold;">${proposta.status}</span></p>
-                    <p style="margin: 6px 0;"><strong>Valor Solicitado:</strong> R$ ${proposta.valorSolicitado}</p>
+                    const pQtd = document.createElement('p');
+                    pQtd.style.cssText = 'margin: 4px 0; font-size: 13px;';
+                    pQtd.innerHTML = `<strong>Qtd. Parcelas:</strong> ${proposta.qtdParcelas || 6}x`;
+                    divParcelas.appendChild(pQtd);
+
+                    const pJuros = document.createElement('p');
+                    pJuros.style.cssText = 'margin: 4px 0; font-size: 13px;';
+                    pJuros.innerHTML = `<strong>Taxa de Juros:</strong> ${proposta.juros || 2.5}% ao mês`;
+                    divParcelas.appendChild(pJuros);
+
+                    const tableWrapper = document.createElement('div');
+                    tableWrapper.style.cssText = 'max-height: 160px; overflow-y: auto; margin-top: 8px;';
                     
-                    ${proposta.cobrancaPix?.qrcode ? `
-                        <div style="text-align: center; margin-top: 15px;">
-                            <p style="font-size: 13px; color: #ffa500; margin-bottom: 5px;">QR Code da Entrada</p>
-                            <img src="${proposta.cobrancaPix.qrcode}" style="width: 140px; height: 140px; background: #fff; padding: 5px; border-radius: 4px;"/>
-                        </div>
-                    ` : ''}
-                    
-                    ${htmlPix}
-                    ${htmlParcelas}
-                `;
+                    const table = document.createElement('table');
+                    table.innerHTML = `
+                        <tr>
+                            <th>Nº</th>
+                            <th>Vencimento</th>
+                            <th>Valor</th>
+                            <th>Status</th>
+                            <th>Ação</th>
+                        </tr>
+                    `;
+
+                    proposta.parcelas.forEach(p => {
+                        const tr = document.createElement('tr');
+                        
+                        const tdNum = document.createElement('td');
+                        tdNum.textContent = `${p.numero}º`;
+                        tr.appendChild(tdNum);
+
+                        const tdVenc = document.createElement('td');
+                        tdVenc.textContent = p.vencimento;
+                        tr.appendChild(tdVenc);
+
+                        const tdVal = document.createElement('td');
+                        tdVal.textContent = `R$ ${p.valor.toFixed(2)}`;
+                        tr.appendChild(tdVal);
+
+                        const tdStat = document.createElement('td');
+                        tdStat.style.color = p.status === 'PAGO' ? '#4CAF50' : '#FFC107';
+                        tdStat.textContent = p.status;
+                        tr.appendChild(tdStat);
+
+                        const tdAcao = document.createElement('td');
+                        if (p.status !== 'PAGO') {
+                            const btnPagar = document.createElement('button');
+                            btnPagar.textContent = 'Pagar';
+                            btnPagar.style.cssText = 'padding: 4px 6px; font-size: 11px; margin: 0; background: #ffa500; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;';
+                            btnPagar.onclick = () => pagarParcela(proposta.cpf, p.numero);
+                            tdAcao.appendChild(btnPagar);
+                        } else {
+                            tdAcao.textContent = 'Pago';
+                        }
+                        tr.appendChild(tdAcao);
+
+                        table.appendChild(tr);
+                    });
+
+                    tableWrapper.appendChild(table);
+                    divParcelas.appendChild(tableWrapper);
+                    container.appendChild(divParcelas);
+                }
             } else {
-                container.style.display = 'block';
-                container.innerHTML = `<p style="color: #f87171; text-align: center;">${resultado.mensagem}</p>`;
+                const pErro = document.createElement('p');
+                pErro.style.cssText = 'color: #f87171; text-align: center;';
+                pErro.textContent = resultado.mensagem || 'Proposta não encontrada.';
+                container.appendChild(pErro);
             }
         } catch (err) {
             alert('Erro de conexão ao consultar proposta.');
@@ -241,6 +323,7 @@
 
     function copiarPix() {
         const input = document.getElementById('inputCopiaCola');
+        if (!input) return;
         input.select();
         input.setSelectionRange(0, 99999);
         navigator.clipboard.writeText(input.value);
@@ -269,9 +352,15 @@
     document.getElementById('formProposta').addEventListener('submit', async (e) => {
         e.preventDefault();
 
+        const cpfVal = document.getElementById('cpf').value;
+        if (!validarCPF(cpfVal)) {
+            alert('Por favor, informe um CPF válido no cadastro.');
+            return;
+        }
+
         const formData = new FormData();
         formData.append('nome', document.getElementById('nome').value);
-        formData.append('cpf', document.getElementById('cpf').value);
+        formData.append('cpf', cpfVal.replace(/\D/g, ''));
         formData.append('telefone', document.getElementById('whatsapp').value);
         formData.append('nascimento', document.getElementById('nascimento').value);
         formData.append('endereco', document.getElementById('endereco').value);
@@ -281,7 +370,12 @@
         
         const fileInput = document.getElementById('comprovante');
         if (fileInput.files[0]) {
-            formData.append('comprovante', fileInput.files[0]);
+            const arquivo = fileInput.files[0];
+            if (arquivo.size > 5 * 1024 * 1024) {
+                alert('O arquivo de comprovante deve ter no máximo 5MB.');
+                return;
+            }
+            formData.append('comprovante', arquivo);
         }
 
         try {
