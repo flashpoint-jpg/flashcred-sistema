@@ -1,21 +1,29 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const { MercadoPagoConfig, Payment } = require('mercadopago');
 
 const app = express();
 app.use(express.json());
 app.use(cors());
-app.use(express.static('public')); // Caso seus arquivos fiquem numa pasta public, ou ajuste conforme sua estrutura
+
+// Permite servir arquivos estáticos (como o index.html) da mesma pasta
+app.use(express.static(__dirname));
 
 // Configurações do Supabase
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'SUA_SUPABASE_SERVICE_ROLE_KEY';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Configuração do Mercado Pago (Com aspas corrigidas no token)
+// Configuração do Mercado Pago com o seu Token de Acesso
 const mpClient = new MercadoPagoConfig({ 
     accessToken: process.env.MP_ACCESS_TOKEN || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471'
+});
+
+// Rota principal para carregar o seu site (index.html) corretamente
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // 1. Rota para gerar o Pix via API do Mercado Pago
@@ -66,17 +74,13 @@ app.post('/api/webhook', async (req, res) => {
                 const payment = new Payment(mpClient);
                 const paymentInfo = await payment.get({ id: paymentId });
 
-                // Se o pagamento foi aprovado pelo cliente no banco
                 if (paymentInfo.status === 'approved') {
                     const descricao = paymentInfo.description || '';
-                    
-                    // Extrai o CPF de dentro da descrição gerada no Pix ("CPF: 00000000000")
                     const matchCpf = descricao.match(/CPF:\s*([0-9.-]+)/);
                     
                     if (matchCpf && matchCpf[1]) {
                         const cpfLimpo = matchCpf[1].replace(/\D/g, '');
                         
-                        // Atualiza no Supabase automaticamente
                         const { error } = await supabase
                             .from('propostas')
                             .update({ entrada_paga: true })
@@ -103,3 +107,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
+                    
