@@ -1,365 +1,247 @@
-const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const cors = require('cors');
-const fs = require('fs');
-const { MercadoPagoConfig, Payment } = require('mercadopago');
-
-// Seu Token real do Mercado Pago integrado
-const MERCADO_PAGO_ACCESS_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
-
-const client = new MercadoPagoConfig({ accessToken: MERCADO_PAGO_ACCESS_TOKEN });
-const payment = new Payment(client);
-
-const app = express();
-
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname)));
-
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
-
-const DB_FILE = path.join(__dirname, 'propostas.json');
-
-function lerBanco() {
-    if (!fs.existsSync(DB_FILE)) {
-        fs.writeFileSync(DB_FILE, JSON.stringify([]));
-    }
-    const data = fs.readFileSync(DB_FILE);
-    try {
-        return JSON.parse(data);
-    } catch (e) {
-        return [];
-    }
-}
-
-function salvarBanco(dados) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(dados, null, 2));
-}
-
-// --- ROTAS DA API ---
-
-app.post('/api/login', (req, res) => {
-    res.json({ sucesso: true, mensagem: 'Acesso liberado.' });
-});
-
-app.post('/api/admin/login', (req, res) => {
-    res.json({ sucesso: true, token: 'token_flashpoint_secure_99' });
-});
-
-// Criar Proposta
-app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) => {
-    try {
-        const { nome, cpf, telefone, whatsapp, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
-        
-        if (!nome || !cpf || !valorSolicitado) {
-            return res.status(400).json({ sucesso: false, mensagem: 'Preencha os campos obrigatórios.' });
-        }
-
-        const propostas = lerBanco();
-        const cpfLimpo = cpf.replace(/\D/g, '');
-
-        const propostaExistente = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
-        if (propostaExistente) {
-            return res.status(400).json({ sucesso: false, mensagem: 'Já existe uma proposta para este CPF.' });
-        }
-
-        const telefoneFinal = telefone ? telefone.trim() : (whatsapp ? whatsapp.trim() : '');
-
-        const novaProposta = {
-            id: Date.now().toString(),
-            nome: nome.trim(),
-            cpf: cpf.trim(),
-            telefone: telefoneFinal,
-            nascimento,
-            endereco,
-            numero,
-            cep,
-            valorSolicitado: parseFloat(valorSolicitado),
-            status: 'EM_ANALISE',
-            qtdParcelas: 6,
-            juros: 2.5,
-            comprovanteRenda: req.file ? {
-                nomeArquivo: req.file.originalname,
-                contentType: req.file.mimetype
-            } : null,
-            parcelas: [],
-            cobrancaPix: null,
-            pagamentoEntradaStatus: 'PENDENTE'
-        };
-
-        propostas.push(novaProposta);
-        salvarBanco(propostas);
-        
-        res.json({ sucesso: true, mensagem: 'Proposta enviada com sucesso!' });
-    } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro interno: ' + err.message });
-    }
-});
-
-// Listar todas as propostas
-app.get('/api/propostas', (req, res) => {
-    try {
-        const propostas = lerBanco();
-        res.json({ sucesso: true, propostas });
-    } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro ao buscar propostas.' });
-    }
-});
-
-// Atualizar Status (Aprovar / Recusar) com Criação de Pix Real no Mercado Pago
-app.post('/api/propostas/status', async (req, res) => {
-    try {
-        const { cpf, status } = req.body;
-        let propostas = lerBanco();
-        const cpfLimpo = cpf ? cpf.replace(/\D/g, '') : '';
-        const index = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
-        if (index === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
-
-        propostas[index].status = status;
-        
-        if (status === 'APROVADO' && (!propostas[index].parcelas || propostas[index].parcelas.length === 0)) {
-            const valorSol = parseFloat(propostas[index].valorSolicitado || 1000);
-            const qtdP = parseInt(propostas[index].qtdParcelas || 6);
-            const jrs = parseFloat(propostas[index].juros || 2.5) / 100;
-            const valEntrada = parseFloat((valorSol * 0.1).toFixed(2));
-            const restante = valorSol - valEntrada;
-
-            let valParcela = jrs > 0 ? (restante * Math.pow(1 + jrs, qtdP)) / qtdP : restante / qtdP;
-            valParcela = parseFloat(valParcela.toFixed(2));
-
-            propostas[index].valorEntrada = valEntrada;
-            propostas[index].pagamentoEntradaStatus = 'PENDENTE';
-
-            // Criação do Pix Real na API do Mercado Pago para a Entrada
-            try {
-                const bodyMP = {
-                    transaction_amount: valEntrada,
-                    description: `Entrada Empréstimo - ${propostas[index].nome}`,
-                    payment_method_id: 'pix',
-                    payer: {
-                        email: 'cliente@flashcred.com',
-                        first_name: propostas[index].nome.split(' ')[0],
-                        last_name: propostas[index].nome.split(' ').slice(1).join(' ') || 'Cliente',
-                        identification: {
-                            type: 'CPF',
-                            number: cpfLimpo
-                        }
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlashCred ERP v2.0 - Painel de Controle</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#d40000',
+                        secondary: '#1e293b',
+                        sucesso: '#10b981',
+                        alerta: '#f59e0b',
+                        perigo: '#ef4444',
+                        neutro: '#64748b'
+                    },
+                    fontFamily: {
+                        sans: ['Arial', 'sans-serif']
                     }
-                };
-
-                const responseMP = await payment.create({ body: bodyMP });
-                const pixData = responseMP.point_of_interaction.transaction_data;
-
-                propostas[index].cobrancaPix = {
-                    valorEntrada: valEntrada,
-                    copiaECola: pixData.qr_code,
-                    qrcode: pixData.qr_code_base64 ? `data:image/png;base64,${pixData.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixData.qr_code)}`
-                };
-            } catch (errMp) {
-                console.error('Erro ao gerar Pix no MP:', errMp.message);
-                const fallbackPix = '00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-4266141740005204000053039865405' + valEntrada.toFixed(2) + '5802BR5913FlashCred6009SaoPaulo62070503***63041D3D';
-                propostas[index].cobrancaPix = {
-                    valorEntrada: valEntrada,
-                    copiaECola: fallbackPix,
-                    qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fallbackPix)}`
-                };
-            }
-
-            let listaParcelas = [];
-            const hoje = new Date();
-            for (let i = 1; i <= qtdP; i++) {
-                let venc = new Date(hoje);
-                venc.setMonth(venc.getMonth() + i);
-                listaParcelas.push({
-                    numero: i,
-                    vencimento: venc.toLocaleDateString('pt-BR'),
-                    valor: valParcela,
-                    status: 'PENDENTE'
-                });
-            }
-            propostas[index].parcelas = listaParcelas;
-        }
-
-        salvarBanco(propostas);
-        res.json({ sucesso: true });
-    } catch (e) {
-        res.status(500).json({ sucesso: false, erro: e.message });
-    }
-});
-
-// Editar Proposta Completa (Admin)
-app.post('/api/propostas/editar', async (req, res) => {
-    try {
-        const { cpfOriginal, nome, cpf, telefone, produto, valorSolicitado, valorEntrada, qtdParcelas, juros, endereco } = req.body;
-        let propostas = lerBanco();
-        const cpfOrigLimpo = cpfOriginal ? cpfOriginal.replace(/\D/g, '') : '';
-        const index = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfOrigLimpo);
-        if (index === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
-
-        const qtdP = parseInt(qtdParcelas) || 6;
-        const jrs = parseFloat(juros) || 2.5;
-        const valSol = parseFloat(valorSolicitado) || 0;
-        const valEnt = parseFloat(valorEntrada) || 0;
-        const restante = Math.max(0, valSol - valEnt);
-        const taxaMensal = jrs / 100;
-
-        let valParcela = taxaMensal > 0 ? (restante * Math.pow(1 + taxaMensal, qtdP)) / qtdP : restante / qtdP;
-        valParcela = parseFloat(valParcela.toFixed(2));
-
-        let listaParcelas = [];
-        const hoje = new Date();
-        for (let i = 1; i <= qtdP; i++) {
-            let venc = new Date(hoje);
-            venc.setMonth(venc.getMonth() + i);
-            listaParcelas.push({
-                numero: i,
-                vencimento: venc.toLocaleDateString('pt-BR'),
-                valor: valParcela,
-                status: 'PENDENTE'
-            });
-        }
-
-        let cobrancaPixAtual = propostas[index].cobrancaPix;
-        try {
-            const bodyMP = {
-                transaction_amount: valEnt,
-                description: `Entrada Empréstimo - ${nome || propostas[index].nome}`,
-                payment_method_id: 'pix',
-                payer: { email: 'cliente@flashcred.com', first_name: 'Cliente' }
-            };
-            const responseMP = await payment.create({ body: bodyMP });
-            const pixData = responseMP.point_of_interaction.transaction_data;
-            cobrancaPixAtual = {
-                valorEntrada: valEnt,
-                copiaECola: pixData.qr_code,
-                qrcode: pixData.qr_code_base64 ? `data:image/png;base64,${pixData.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixData.qr_code)}`
-            };
-        } catch (e) {
-            // Mantém o anterior em caso de falha temporária
-        }
-
-        propostas[index] = {
-            ...propostas[index],
-            nome: nome || propostas[index].nome,
-            cpf: cpf || propostas[index].cpf,
-            telefone: telefone || propostas[index].telefone,
-            produto: produto || propostas[index].produto,
-            valorSolicitado: valSol,
-            valorEntrada: valEnt,
-            pagamentoEntradaStatus: propostas[index].pagamentoEntradaStatus || 'PENDENTE',
-            qtdParcelas: qtdP,
-            juros: jrs,
-            endereco: endereco || propostas[index].endereco,
-            parcelas: listaParcelas,
-            cobrancaPix: cobrancaPixAtual
-        };
-
-        salvarBanco(propostas);
-        res.json({ sucesso: true });
-    } catch (e) {
-        res.status(500).json({ sucesso: false, erro: e.message });
-    }
-});
-
-// Pagar Parcela Específica do Carnê via Mercado Pago Real
-app.post('/api/parcelas/pagar', async (req, res) => {
-    try {
-        const { cpf, numeroParcela } = req.body;
-        let propostas = lerBanco();
-        const cpfLimpo = cpf ? cpf.replace(/\D/g, '') : '';
-        const pIndex = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
-        if (pIndex === -1) return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada.' });
-
-        let parcela = propostas[pIndex].parcelas.find(parc => parc.numero === numeroParcela);
-        if (!parcela) return res.status(404).json({ sucesso: false, mensagem: 'Parcela não encontrada.' });
-
-        try {
-            const bodyMP = {
-                transaction_amount: parcela.valor,
-                description: `Parcela ${numeroParcela} - ${propostas[pIndex].nome}`,
-                payment_method_id: 'pix',
-                payer: { email: 'cliente@flashcred.com', first_name: propostas[pIndex].nome.split(' ')[0] }
-            };
-
-            const responseMP = await payment.create({ body: bodyMP });
-            const pixData = responseMP.point_of_interaction.transaction_data;
-
-            parcela.cobrancaPix = {
-                copiaECola: pixData.qr_code,
-                qrcode: pixData.qr_code_base64 ? `data:image/png;base64,${pixData.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixData.qr_code)}`
-            };
-        } catch (errMp) {
-            const fallbackPix = '00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-4266141740005204000053039865405' + parcela.valor.toFixed(2) + '5802BR5913FlashCred6009SaoPaulo62070503***63041D3D';
-            parcela.cobrancaPix = {
-                copiaECola: fallbackPix,
-                qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fallbackPix)}`
-            };
-        }
-
-        salvarBanco(propostas);
-        res.json({ sucesso: true, parcela });
-    } catch (e) {
-        res.status(500).json({ sucesso: false, mensagem: e.message });
-    }
-});
-
-// Webhook oficial do Mercado Pago
-app.post('/api/webhook/mercadopago', async (req, res) => {
-    try {
-        const evento = req.body;
-        if (evento && evento.type === 'payment') {
-            const paymentId = evento.data?.id;
-            if (paymentId) {
-                const paymentInfo = await payment.get({ id: paymentId });
-                if (paymentInfo && paymentInfo.status === 'approved') {
-                    let propostas = lerBanco();
-                    salvarBanco(propostas);
                 }
             }
         }
-        res.status(200).send('OK');
-    } catch (e) {
-        res.status(200).send('OK');
-    }
-});
+    </script>
 
-// Consultas por CPF
-app.get('/api/proposta/consultar', (req, res) => {
-    try {
-        const cpfParam = req.query.cpf ? req.query.cpf.replace(/\D/g, '') : '';
-        const propostas = lerBanco();
-        const proposta = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfParam);
-        
-        if (proposta) {
-            res.json({ sucesso: true, proposta });
-        } else {
-            res.json({ sucesso: false, mensagem: 'Proposta não encontrada.' });
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .sidebar-link {
+                @apply flex items-center gap-3 p-3 rounded-lg text-gray-300 hover:bg-primary/10 hover:text-white transition-all;
+            }
+            .sidebar-link.ativo {
+                @apply bg-primary text-white font-medium;
+            }
+            .card {
+                @apply bg-white rounded-xl shadow-sm p-5 border border-gray-100;
+            }
+            .card-indicador {
+                @apply rounded-xl p-5 text-white;
+            }
         }
-    } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro no servidor.' });
-    }
-});
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen">
+    <div class="flex flex-col md:flex-row">
+        <!-- MENU LATERAL -->
+        <aside id="sidebar" class="w-full md:w-64 bg-secondary min-h-screen p-4 transition-all">
+            <div class="mb-8 text-center">
+                <h1 class="text-xl font-bold text-white">🛋️ FLASHCRED ERP</h1>
+                <p class="text-xs text-gray-400">Flashpoint Distribuidora</p>
+                <p class="text-[10px] text-gray-500">CNPJ: 35.560.220/0001-54</p>
+            </div>
 
-app.get('/api/propostas/:cpf', (req, res) => {
-    try {
-        const cpfParam = req.params.cpf ? req.params.cpf.replace(/\D/g, '') : '';
-        const propostas = lerBanco();
-        const proposta = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfParam);
-        
-        if (proposta) {
-            res.json({ sucesso: true, proposta });
-        } else {
-            res.json({ sucesso: false, mensagem: 'Proposta não encontrada.' });
+            <nav class="space-y-1">
+                <a href="#" class="sidebar-link ativo">
+                    <i class="fa fa-home w-5"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="clientes.html" class="sidebar-link">
+                    <i class="fa fa-users w-5"></i>
+                    <span>Clientes</span>
+                </a>
+                <a href="propostas.html" class="sidebar-link">
+                    <i class="fa fa-file-text w-5"></i>
+                    <span>Propostas</span>
+                </a>
+                <a href="financeiro.html" class="sidebar-link">
+                    <i class="fa fa-money w-5"></i>
+                    <span>Financeiro</span>
+                </a>
+                <a href="relatorios.html" class="sidebar-link">
+                    <i class="fa fa-bar-chart w-5"></i>
+                    <span>Relatórios</span>
+                </a>
+                <hr class="border-gray-700 my-4">
+                <a href="#" class="sidebar-link text-perigo hover:bg-perigo/10 hover:text-perigo">
+                    <i class="fa fa-sign-out w-5"></i>
+                    <span>Sair</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- CONTEÚDO PRINCIPAL -->
+        <main class="flex-1 p-4 md:p-6">
+            <header class="mb-6 flex justify-between items-center">
+                <div>
+                    <h2 class="text-2xl font-bold">Visão Geral</h2>
+                    <p class="text-sm text-gray-500">Resumo do seu crediário</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-sm hidden md:block">Olá, Felipe</span>
+                    <div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white font-bold">F</div>
+                </div>
+            </header>
+
+            <!-- CARDS DE INDICADORES -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div class="card-indicador bg-primary">
+                    <h3 class="text-sm opacity-90">Total Propostas</h3>
+                    <p class="text-2xl font-bold" id="qtdPropostas">0</p>
+                </div>
+                <div class="card-indicador bg-sucesso">
+                    <h3 class="text-sm opacity-90">Aprovadas</h3>
+                    <p class="text-2xl font-bold" id="qtdAprovadas">0</p>
+                </div>
+                <div class="card-indicador bg-alerta">
+                    <h3 class="text-sm opacity-90">A Receber</h3>
+                    <p class="text-2xl font-bold" id="valorReceber">R$ 0,00</p>
+                </div>
+                <div class="card-indicador bg-perigo">
+                    <h3 class="text-sm opacity-90">Inadimplência</h3>
+                    <p class="text-2xl font-bold" id="valorAtraso">R$ 0,00</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- GRÁFICO -->
+                <div class="lg:col-span-2 card">
+                    <h3 class="font-semibold mb-4">Vendas e Pagamentos</h3>
+                    <canvas height="250" id="grafico"></canvas>
+                </div>
+
+                <!-- NOTIFICAÇÕES -->
+                <div class="card">
+                    <h3 class="font-semibold mb-4 flex items-center gap-2">
+                        <i class="fa fa-bell text-primary"></i>
+                        Avisos Recentes
+                    </h3>
+                    <div id="listaAvisos" class="space-y-3 text-sm">
+                        <p class="text-gray-500">Carregando...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ÚLTIMAS PROPOSTAS -->
+            <div class="card mt-6">
+                <h3 class="font-semibold mb-4">Últimas Propostas</h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-50 text-left">
+                            <tr>
+                                <th class="p-3">Cliente</th>
+                                <th class="p-3">CPF</th>
+                                <th class="p-3">Valor</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabelaPropostas">
+                            <tr>
+                                <td colspan="5" class="p-4 text-center text-gray-500">Carregando dados...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let grafico;
+
+        // CARREGAR DADOS DO SISTEMA
+        async function carregarDados() {
+            try {
+                const res = await fetch('/api/propostas');
+                const dados = await res.json();
+                const propostas = dados.propostas || [];
+
+                // ATUALIZAR INDICADORES
+                document.getElementById('qtdPropostas').innerText = propostas.length;
+                const aprovadas = propostas.filter(p => p.status === 'APROVADO');
+                document.getElementById('qtdAprovadas').innerText = aprovadas.length;
+
+                let totalReceber = 0, totalAtraso = 0;
+                aprovadas.forEach(p => {
+                    p.parcelas?.forEach(parc => {
+                        if(parc.status === 'PENDENTE') totalReceber += parc.valor;
+                    });
+                });
+                document.getElementById('valorReceber').innerText = `R$ ${totalReceber.toFixed(2).replace('.', ',')}`;
+                document.getElementById('valorAtraso').innerText = `R$ ${totalAtraso.toFixed(2).replace('.', ',')}`;
+
+                // TABELA DE ÚLTIMAS PROPOSTAS
+                const tabela = document.getElementById('tabelaPropostas');
+                tabela.innerHTML = '';
+                propostas.slice(-5).reverse().forEach(p => {
+                    const statusCor = {
+                        'EM_ANALISE': 'text-alerta bg-alerta/10',
+                        'APROVADO': 'text-sucesso bg-sucesso/10',
+                        'REPROVADO': 'text-perigo bg-perigo/10'
+                    };
+                    const statusTexto = {
+                        'EM_ANALISE': 'Em Análise',
+                        'APROVADO': 'Aprovado',
+                        'REPROVADO': 'Reprovado'
+                    };
+
+                    tabela.innerHTML += `
+                    <tr class="border-t border-gray-100">
+                        <td class="p-3">${p.nome}</td>
+                        <td class="p-3">${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</td>
+                        <td class="p-3">R$ ${p.valorTotal?.toFixed(2).replace('.', ',') || '0,00'}</td>
+                        <td class="p-3"><span class="px-2 py-1 rounded text-xs font-medium ${statusCor[p.status]}">${statusTexto[p.status]}</span></td>
+                        <td class="p-3"><button class="text-primary hover:underline">Ver</button></td>
+                    </tr>
+                    `;
+                });
+
+                // GRÁFICO SIMPLES
+                if(grafico) grafico.destroy();
+                const ctx = document.getElementById('grafico').getContext('2d');
+                grafico = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Propostas', 'Aprovadas', 'Pendentes'],
+                        datasets: [{
+                            label: 'Quantidade',
+                            data: [propostas.length, aprovadas.length, propostas.length - aprovadas.length],
+                            backgroundColor: ['#d40000', '#10b981', '#f59e0b']
+                        }]
+                    },
+                    options: { responsive: true, plugins: { legend: { display: false } } }
+                });
+
+                // AVISOS
+                const avisos = document.getElementById('listaAvisos');
+                avisos.innerHTML = `
+                    <div class="p-2 bg-gray-50 rounded">✅ Sistema atualizado</div>
+                    <div class="p-2 bg-gray-50 rounded">📋 ${aprovadas.length} propostas aprovadas</div>
+                `;
+
+            } catch (erro) {
+                document.getElementById('listaAvisos').innerHTML = `<p class="text-perigo">Erro ao carregar dados: ${erro.message}</p>`;
+            }
         }
-    } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro no servidor.' });
-    }
-});
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-});
+        // INICIAR
+        carregarDados();
+        setInterval(carregarDados, 30000); // Atualiza a cada 30 segundos
+    </script>
+</body>
+</html>
