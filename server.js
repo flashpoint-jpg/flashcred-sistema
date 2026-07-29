@@ -8,14 +8,14 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static('public')); // Caso seus arquivos fiquem numa pasta public, ou ajuste conforme sua estrutura
 
-// Configurações do Supabase (utilizando suas chaves)
+// Configurações do Supabase
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'SUA_SUPABASE_SERVICE_ROLE_KEY';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Configuração do Mercado Pago com o seu Token de Acesso
+// Configuração do Mercado Pago (Com aspas corrigidas no token)
 const mpClient = new MercadoPagoConfig({ 
-    accessToken: process.env.MP_ACCESS_TOKEN ||  APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471
+    accessToken: process.env.MP_ACCESS_TOKEN || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471'
 });
 
 // 1. Rota para gerar o Pix via API do Mercado Pago
@@ -25,7 +25,6 @@ app.post('/api/gerar-pix', async (req, res) => {
 
         const payment = new Payment(mpClient);
         
-        // Dados do pagamento Pix para o Mercado Pago
         const body = {
             transaction_amount: parseFloat(valor),
             description: `Entrada Empréstimo - FlashCred (CPF: ${cpf})`,
@@ -42,7 +41,6 @@ app.post('/api/gerar-pix', async (req, res) => {
 
         const response = await payment.create({ body });
 
-        // Retorna o QR Code e o código Pix Copia e Cola para o frontend
         res.json({
             success: true,
             payment_id: response.id,
@@ -56,12 +54,11 @@ app.post('/api/gerar-pix', async (req, res) => {
     }
 });
 
-// 2. Rota de Webhook: O Mercado Pago chama esta rota automaticamente quando o cliente paga
+// 2. Rota de Webhook: Atualiza automaticamente o Supabase quando o cliente paga
 app.post('/api/webhook', async (req, res) => {
     try {
         const evento = req.body;
 
-        // Verifica se é uma notificação de pagamento
         if (evento.type === 'payment' || evento.action === 'payment.created' || evento.data) {
             const paymentId = evento.data?.id || evento.id;
             
@@ -69,15 +66,28 @@ app.post('/api/webhook', async (req, res) => {
                 const payment = new Payment(mpClient);
                 const paymentInfo = await payment.get({ id: paymentId });
 
-                // Se o pagamento foi aprovado ("approved")
+                // Se o pagamento foi aprovado pelo cliente no banco
                 if (paymentInfo.status === 'approved') {
-                    // Extrai o CPF da descrição ou busca a proposta pendente
-                    // Aqui você também pode salvar o ID do pagamento se desejar
-                    console.log(`Pagamento aprovado para o ID: ${paymentId}`);
+                    const descricao = paymentInfo.description || '';
                     
-                    // Exemplo: Atualizar no Supabase pelo status do pagamento/descrição
-                    // Como a descrição contém o CPF, podemos buscar ou atualizar diretamente
-                    // (Recomendamos salvar o preference_id/payment_id na tabela para rastreio exato)
+                    // Extrai o CPF de dentro da descrição gerada no Pix ("CPF: 00000000000")
+                    const matchCpf = descricao.match(/CPF:\s*([0-9.-]+)/);
+                    
+                    if (matchCpf && matchCpf[1]) {
+                        const cpfLimpo = matchCpf[1].replace(/\D/g, '');
+                        
+                        // Atualiza no Supabase automaticamente
+                        const { error } = await supabase
+                            .from('propostas')
+                            .update({ entrada_paga: true })
+                            .eq('cpf', cpfLimpo);
+
+                        if (error) {
+                            console.error('Erro ao atualizar Supabase via webhook:', error);
+                        } else {
+                            console.log(`✅ Sucesso! Entrada marcada como paga para o CPF: ${cpfLimpo}`);
+                        }
+                    }
                 }
             }
         }
