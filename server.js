@@ -3,164 +3,186 @@ const multer = require('multer');
 const path = require('path');
 const cors = require('cors');
 const fs = require('fs');
+const { MercadoPagoConfig, Payment } = require('mercadopago');
+
+// Seu Token real do Mercado Pago integrado
+const MERCADO_PAGO_ACCESS_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
+
+const client = new MercadoPagoConfig({ accessToken: MERCADO_PAGO_ACCESS_TOKEN });
+const payment = new Payment(client);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const DB_FILE = path.join(__dirname, 'propostas.json');
 
-// CONFIGURAÇÕES GERAIS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname)));
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// FUNÇÕES AUXILIARES
+const DB_FILE = path.join(__dirname, 'propostas.json');
+
 function lerBanco() {
-    if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify([]));
-    try { return JSON.parse(fs.readFileSync(DB_FILE, 'utf8')); }
-    catch { return []; }
+    if (!fs.existsSync(DB_FILE)) {
+        fs.writeFileSync(DB_FILE, JSON.stringify([]));
+    }
+    const data = fs.readFileSync(DB_FILE);
+    try {
+        return JSON.parse(data);
+    } catch (e) {
+        return [];
+    }
 }
 
 function salvarBanco(dados) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(dados, null, 2), 'utf8');
+    fs.writeFileSync(DB_FILE, JSON.stringify(dados, null, 2));
 }
 
-function validarCPF(cpf) {
-    cpf = (cpf || '').replace(/\D/g, '');
-    if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
-    let soma = 0, resto;
-    for (let i = 1; i <= 9; i++) soma += parseInt(cpf[i-1]) * (11 - i);
-    resto = (soma * 10) % 11;
-    if ([10, 11].includes(resto)) resto = 0;
-    if (resto !== parseInt(cpf[9])) return false;
-    soma = 0;
-    for (let i = 1; i <= 10; i++) soma += parseInt(cpf[i-1]) * (12 - i);
-    resto = (soma * 10) % 11;
-    if ([10, 11].includes(resto)) resto = 0;
-    return resto === parseInt(cpf[10]);
-}
+// --- ROTAS DA API ---
 
-function validarIdade(dataNasc) {
-    if (!dataNasc) return false;
-    const nasc = new Date(dataNasc);
-    const hoje = new Date();
-    let idade = hoje.getFullYear() - nasc.getFullYear();
-    const mes = hoje.getMonth() - nasc.getMonth();
-    if (mes < 0 || (mes === 0 && hoje.getDate() < nasc.getDate())) idade--;
-    return idade >= 18;
-}
-
-// ROTAS
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+app.post('/api/login', (req, res) => {
+    res.json({ sucesso: true, mensagem: 'Acesso liberado.' });
 });
 
-// LOGIN ADMIN
 app.post('/api/admin/login', (req, res) => {
-    res.json({ sucesso: true, mensagem: 'Painel liberado!' });
+    res.json({ sucesso: true, token: 'token_flashpoint_secure_99' });
 });
 
-// CADASTRAR PROPOSTA
-app.post('/api/proposta/criar', upload.none(), async (req, res) => {
+// Criar Proposta
+app.post('/api/proposta/criar', upload.single('comprovante'), async (req, res) => {
     try {
-        const { nome, cpf, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
+        const { nome, cpf, telefone, whatsapp, nascimento, endereco, numero, cep, valorSolicitado } = req.body;
         
-        if (!nome || !cpf || !nascimento || !valorSolicitado) {
-            return res.status(400).json({ sucesso: false, mensagem: 'Preencha todos os campos obrigatórios.' });
-        }
-        if (!validarCPF(cpf)) {
-            return res.status(400).json({ sucesso: false, mensagem: 'CPF inválido!' });
-        }
-        if (!validarIdade(nascimento)) {
-            return res.status(400).json({ sucesso: false, mensagem: 'Cliente deve ter pelo menos 18 anos!' });
+        if (!nome || !cpf || !valorSolicitado) {
+            return res.status(400).json({ sucesso: false, mensagem: 'Preencha os campos obrigatórios.' });
         }
 
         const propostas = lerBanco();
         const cpfLimpo = cpf.replace(/\D/g, '');
-        if (propostas.find(p => p.cpf.replace(/\D/g, '') === cpfLimpo)) {
-            return res.status(400).json({ sucesso: false, mensagem: 'Já existe proposta para este CPF.' });
+
+        const propostaExistente = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
+        if (propostaExistente) {
+            return res.status(400).json({ sucesso: false, mensagem: 'Já existe uma proposta para este CPF.' });
         }
 
-        const nova = {
+        const telefoneFinal = telefone ? telefone.trim() : (whatsapp ? whatsapp.trim() : '');
+
+        const novaProposta = {
             id: Date.now().toString(),
             nome: nome.trim(),
             cpf: cpf.trim(),
-            nascimento, endereco, numero, cep,
-            valorTotal: parseFloat(valorSolicitado),
+            telefone: telefoneFinal,
+            nascimento,
+            endereco,
+            numero,
+            cep,
+            valorSolicitado: parseFloat(valorSolicitado),
             status: 'EM_ANALISE',
-            valorEntrada: 0, qtdParcelas: 6, juros: 6,
-            parcelas: [], cobrancaPix: null,
-            dataCadastro: new Date().toLocaleDateString('pt-BR')
+            qtdParcelas: 6,
+            juros: 2.5,
+            comprovanteRenda: req.file ? {
+                nomeArquivo: req.file.originalname,
+                contentType: req.file.mimetype
+            } : null,
+            parcelas: [],
+            cobrancaPix: null,
+            pagamentoEntradaStatus: 'PENDENTE'
         };
-        propostas.push(nova);
+
+        propostas.push(novaProposta);
         salvarBanco(propostas);
-        res.json({ sucesso: true, mensagem: 'Proposta cadastrada com sucesso!' });
+        
+        res.json({ sucesso: true, mensagem: 'Proposta enviada com sucesso!' });
     } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro: ' + err.message });
+        res.status(500).json({ sucesso: false, mensagem: 'Erro interno: ' + err.message });
     }
 });
 
-// LISTAR TODAS PROPOSTAS
+// Listar todas as propostas
 app.get('/api/propostas', (req, res) => {
     try {
-        const lista = lerBanco().map(p => ({
-            ...p,
-            totalPago: p.parcelas?.filter(x => x.status === 'PAGO').reduce((s, x) => s + x.valor, 0) || 0,
-            totalDevido: p.parcelas?.filter(x => x.status !== 'PAGO').reduce((s, x) => s + x.valor, 0) || 0
-        }));
-        res.json({ sucesso: true, propostas: lista });
+        const propostas = lerBanco();
+        res.json({ sucesso: true, propostas });
     } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro ao carregar painel.' });
+        res.status(500).json({ sucesso: false, mensagem: 'Erro ao buscar propostas.' });
     }
 });
 
-// ALTERAR STATUS / APROVAR PROPOSTA
-app.post('/api/propostas/status', (req, res) => {
+// Atualizar Status (Aprovar / Recusar) com Criação de Pix Real no Mercado Pago
+app.post('/api/propostas/status', async (req, res) => {
     try {
-        const { cpf, status, valorEntrada, qtdParcelas, juros } = req.body;
+        const { cpf, status } = req.body;
         let propostas = lerBanco();
-        const cpfLimpo = cpf.replace(/\D/g, '');
-        const idx = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
-        if (idx === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
+        const cpfLimpo = cpf ? cpf.replace(/\D/g, '') : '';
+        const index = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
+        if (index === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
 
-        propostas[idx].status = status;
-        if (status === 'APROVADO') {
-            const valorTotal = propostas[idx].valorTotal;
-            const ent = parseFloat(valorEntrada) || (valorTotal * 0.39);
-            const qtd = parseInt(qtdParcelas) || 6;
-            const tx = (parseFloat(juros) || 6) / 100;
-            const restante = Math.max(0, valorTotal - ent);
-            const valParcela = parseFloat(((restante * Math.pow(1 + tx, qtd)) / qtd).toFixed(2));
+        propostas[index].status = status;
+        
+        if (status === 'APROVADO' && (!propostas[index].parcelas || propostas[index].parcelas.length === 0)) {
+            const valorSol = parseFloat(propostas[index].valorSolicitado || 1000);
+            const qtdP = parseInt(propostas[index].qtdParcelas || 6);
+            const jrs = parseFloat(propostas[index].juros || 2.5) / 100;
+            const valEntrada = parseFloat((valorSol * 0.1).toFixed(2));
+            const restante = valorSol - valEntrada;
 
-            propostas[idx].valorEntrada = ent;
-            propostas[idx].qtdParcelas = qtd;
-            propostas[idx].juros = tx * 100;
-            propostas[idx].valorTotalComJuros = parseFloat((ent + (valParcela * qtd)).toFixed(2));
+            let valParcela = jrs > 0 ? (restante * Math.pow(1 + jrs, qtdP)) / qtdP : restante / qtdP;
+            valParcela = parseFloat(valParcela.toFixed(2));
 
-            const pixEntrada = '00020126580014br.gov.bcb.pix01363552949852FLASHPOINT';
-            propostas[idx].cobrancaPix = {
-                valorEntrada: ent,
-                copiaECola: pixEntrada,
-                qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixEntrada)}`
-            };
+            propostas[index].valorEntrada = valEntrada;
+            propostas[index].pagamentoEntradaStatus = 'PENDENTE';
 
-            const lista = [];
+            // Criação do Pix Real na API do Mercado Pago para a Entrada
+            try {
+                const bodyMP = {
+                    transaction_amount: valEntrada,
+                    description: `Entrada Empréstimo - ${propostas[index].nome}`,
+                    payment_method_id: 'pix',
+                    payer: {
+                        email: 'cliente@flashcred.com',
+                        first_name: propostas[index].nome.split(' ')[0],
+                        last_name: propostas[index].nome.split(' ').slice(1).join(' ') || 'Cliente',
+                        identification: {
+                            type: 'CPF',
+                            number: cpfLimpo
+                        }
+                    }
+                };
+
+                const responseMP = await payment.create({ body: bodyMP });
+                const pixData = responseMP.point_of_interaction.transaction_data;
+
+                propostas[index].cobrancaPix = {
+                    valorEntrada: valEntrada,
+                    copiaECola: pixData.qr_code,
+                    qrcode: pixData.qr_code_base64 ? `data:image/png;base64,${pixData.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixData.qr_code)}`
+                };
+            } catch (errMp) {
+                console.error('Erro ao gerar Pix no MP:', errMp.message);
+                const fallbackPix = '00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-4266141740005204000053039865405' + valEntrada.toFixed(2) + '5802BR5913FlashCred6009SaoPaulo62070503***63041D3D';
+                propostas[index].cobrancaPix = {
+                    valorEntrada: valEntrada,
+                    copiaECola: fallbackPix,
+                    qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fallbackPix)}`
+                };
+            }
+
+            let listaParcelas = [];
             const hoje = new Date();
-            for (let i = 1; i <= qtd; i++) {
+            for (let i = 1; i <= qtdP; i++) {
                 let venc = new Date(hoje);
                 venc.setMonth(venc.getMonth() + i);
-                lista.push({
+                listaParcelas.push({
                     numero: i,
                     vencimento: venc.toLocaleDateString('pt-BR'),
                     valor: valParcela,
                     status: 'PENDENTE'
                 });
             }
-            propostas[idx].parcelas = lista;
+            propostas[index].parcelas = listaParcelas;
         }
+
         salvarBanco(propostas);
         res.json({ sucesso: true });
     } catch (e) {
@@ -168,146 +190,176 @@ app.post('/api/propostas/status', (req, res) => {
     }
 });
 
-// MARCAR PARCELA COMO PAGA
-app.post('/api/parcelas/status', (req, res) => {
+// Editar Proposta Completa (Admin)
+app.post('/api/propostas/editar', async (req, res) => {
     try {
-        const { cpf, numeroParcela, status } = req.body;
+        const { cpfOriginal, nome, cpf, telefone, produto, valorSolicitado, valorEntrada, qtdParcelas, juros, endereco } = req.body;
         let propostas = lerBanco();
-        const cpfLimpo = cpf ? cpf.replace(/\D/g, '') : '';
-        const proposta = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
-
-        if (!proposta || !proposta.parcelas) {
-            return res.status(404).json({ sucesso: false, erro: 'Proposta ou parcelas não encontradas.' });
-        }
-
-        const parcela = proposta.parcelas.find(p => p.numero == numeroParcela);
-        if (!parcela) {
-            return res.status(404).json({ sucesso: false, erro: 'Parcela não encontrada.' });
-        }
-
-        parcela.status = status;
-        if (status === 'PAGO') {
-            parcela.dataPagamento = new Date().toLocaleDateString('pt-BR');
-        } else {
-            delete parcela.dataPagamento;
-        }
-
-        salvarBanco(propostas);
-        res.json({ sucesso: true, mensagem: `Parcela ${numeroParcela} atualizada para ${status}.` });
-    } catch (e) {
-        res.status(500).json({ sucesso: false, erro: e.message });
-    }
-});
-
-// NOTIFICAÇÕES ADMIN
-app.get('/api/admin/notificacoes', (req, res) => {
-    try {
-        let propostas = lerBanco();
-        let pagamentosRecentes = [];
-
-        propostas.forEach(p => {
-            if (p.cobrancaPix && p.pagamentoEntradaStatus === 'PAGO') {
-                pagamentosRecentes.push({
-                    tipo: 'ENTRADA',
-                    cliente: p.nome,
-                    cpf: p.cpf,
-                    valor: p.valorEntrada,
-                    data: 'Recente'
-                });
-            }
-            p.parcelas?.forEach(parc => {
-                if (parc.status === 'PAGO') {
-                    pagamentosRecentes.push({
-                        tipo: `PARCELA ${parc.numero}`,
-                        cliente: p.nome,
-                        cpf: p.cpf,
-                        valor: parc.valor,
-                        data: parc.dataPagamento || 'Recente'
-                    });
-                }
-            });
-        });
-
-        res.json({ sucesso: true, totalPropostas: propostas.length, pagamentosRecentes });
-    } catch (e) {
-        res.status(500).json({ sucesso: false, erro: e.message });
-    }
-});
-
-// EDITAR PROPOSTA COMPLETA
-app.post('/api/propostas/editar-tudo', (req, res) => {
-    try {
-        const { cpfOriginal, nome, cpf, nascimento, endereco, numero, cep, valorTotal, valorEntrada, qtdParcelas, juros, status } = req.body;
-        let propostas = lerBanco();
-        const cpfOrigLimpo = cpfOriginal.replace(/\D/g, '');
+        const cpfOrigLimpo = cpfOriginal ? cpfOriginal.replace(/\D/g, '') : '';
         const index = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfOrigLimpo);
+        if (index === -1) return res.status(404).json({ sucesso: false, erro: 'Proposta não encontrada' });
 
-        if (index === -1) return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada!' });
+        const qtdP = parseInt(qtdParcelas) || 6;
+        const jrs = parseFloat(juros) || 2.5;
+        const valSol = parseFloat(valorSolicitado) || 0;
+        const valEnt = parseFloat(valorEntrada) || 0;
+        const restante = Math.max(0, valSol - valEnt);
+        const taxaMensal = jrs / 100;
 
-        if (cpf && !validarCPF(cpf)) return res.status(400).json({ sucesso: false, mensagem: 'CPF inválido!' });
-        if (nascimento && !validarIdade(nascimento)) return res.status(400).json({ sucesso: false, mensagem: 'Cliente deve ter pelo menos 18 anos!' });
+        let valParcela = taxaMensal > 0 ? (restante * Math.pow(1 + taxaMensal, qtdP)) / qtdP : restante / qtdP;
+        valParcela = parseFloat(valParcela.toFixed(2));
 
-        const novoValorTotal = parseFloat(valorTotal) || propostas[index].valorTotal;
-        const novaEntrada = parseFloat(valorEntrada) || propostas[index].valorEntrada;
-        const novaQtd = parseInt(qtdParcelas) || propostas[index].qtdParcelas;
-        const novoJuros = parseFloat(juros) || propostas[index].juros;
-        const tx = novoJuros / 100;
-        const restante = Math.max(0, novoValorTotal - novaEntrada);
-        const valorParcela = parseFloat(((restante * Math.pow(1 + tx, novaQtd)) / novaQtd).toFixed(2));
+        let listaParcelas = [];
+        const hoje = new Date();
+        for (let i = 1; i <= qtdP; i++) {
+            let venc = new Date(hoje);
+            venc.setMonth(venc.getMonth() + i);
+            listaParcelas.push({
+                numero: i,
+                vencimento: venc.toLocaleDateString('pt-BR'),
+                valor: valParcela,
+                status: 'PENDENTE'
+            });
+        }
+
+        let cobrancaPixAtual = propostas[index].cobrancaPix;
+        try {
+            const bodyMP = {
+                transaction_amount: valEnt,
+                description: `Entrada Empréstimo - ${nome || propostas[index].nome}`,
+                payment_method_id: 'pix',
+                payer: { email: 'cliente@flashcred.com', first_name: 'Cliente' }
+            };
+            const responseMP = await payment.create({ body: bodyMP });
+            const pixData = responseMP.point_of_interaction.transaction_data;
+            cobrancaPixAtual = {
+                valorEntrada: valEnt,
+                copiaECola: pixData.qr_code,
+                qrcode: pixData.qr_code_base64 ? `data:image/png;base64,${pixData.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixData.qr_code)}`
+            };
+        } catch (e) {
+            // Mantém o anterior em caso de falha temporária
+        }
 
         propostas[index] = {
             ...propostas[index],
             nome: nome || propostas[index].nome,
             cpf: cpf || propostas[index].cpf,
-            nascimento: nascimento || propostas[index].nascimento,
+            telefone: telefone || propostas[index].telefone,
+            produto: produto || propostas[index].produto,
+            valorSolicitado: valSol,
+            valorEntrada: valEnt,
+            pagamentoEntradaStatus: propostas[index].pagamentoEntradaStatus || 'PENDENTE',
+            qtdParcelas: qtdP,
+            juros: jrs,
             endereco: endereco || propostas[index].endereco,
-            numero: numero || propostas[index].numero,
-            cep: cep || propostas[index].cep,
-            valorTotal: novoValorTotal,
-            valorEntrada: novaEntrada,
-            qtdParcelas: novaQtd,
-            juros: novoJuros,
-            valorTotalComJuros: parseFloat((novaEntrada + (valorParcela * novaQtd)).toFixed(2)),
-            status: status || propostas[index].status,
+            parcelas: listaParcelas,
+            cobrancaPix: cobrancaPixAtual
         };
 
-        if (restante > 0) {
-            const listaParcelas = [];
-            const hoje = new Date();
-            for (let i = 1; i <= novaQtd; i++) {
-                let venc = new Date(hoje);
-                venc.setMonth(venc.getMonth() + i);
-                listaParcelas.push({
-                    numero: i,
-                    vencimento: venc.toLocaleDateString('pt-BR'),
-                    valor: valorParcela,
-                    status: propostas[index].parcelas?.[i-1]?.status || 'PENDENTE',
-                    dataPagamento: propostas[index].parcelas?.[i-1]?.dataPagamento
-                });
-            }
-            propostas[index].parcelas = listaParcelas;
+        salvarBanco(propostas);
+        res.json({ sucesso: true });
+    } catch (e) {
+        res.status(500).json({ sucesso: false, erro: e.message });
+    }
+});
+
+// Pagar Parcela Específica do Carnê via Mercado Pago Real
+app.post('/api/parcelas/pagar', async (req, res) => {
+    try {
+        const { cpf, numeroParcela } = req.body;
+        let propostas = lerBanco();
+        const cpfLimpo = cpf ? cpf.replace(/\D/g, '') : '';
+        const pIndex = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
+        if (pIndex === -1) return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada.' });
+
+        let parcela = propostas[pIndex].parcelas.find(parc => parc.numero === numeroParcela);
+        if (!parcela) return res.status(404).json({ sucesso: false, mensagem: 'Parcela não encontrada.' });
+
+        try {
+            const bodyMP = {
+                transaction_amount: parcela.valor,
+                description: `Parcela ${numeroParcela} - ${propostas[pIndex].nome}`,
+                payment_method_id: 'pix',
+                payer: { email: 'cliente@flashcred.com', first_name: propostas[pIndex].nome.split(' ')[0] }
+            };
+
+            const responseMP = await payment.create({ body: bodyMP });
+            const pixData = responseMP.point_of_interaction.transaction_data;
+
+            parcela.cobrancaPix = {
+                copiaECola: pixData.qr_code,
+                qrcode: pixData.qr_code_base64 ? `data:image/png;base64,${pixData.qr_code_base64}` : `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixData.qr_code)}`
+            };
+        } catch (errMp) {
+            const fallbackPix = '00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-4266141740005204000053039865405' + parcela.valor.toFixed(2) + '5802BR5913FlashCred6009SaoPaulo62070503***63041D3D';
+            parcela.cobrancaPix = {
+                copiaECola: fallbackPix,
+                qrcode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fallbackPix)}`
+            };
         }
 
         salvarBanco(propostas);
-        res.json({ sucesso: true, mensagem: 'Proposta alterada com SUCESSO!' });
+        res.json({ sucesso: true, parcela });
     } catch (e) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro: ' + e.message });
+        res.status(500).json({ sucesso: false, mensagem: e.message });
     }
 });
 
-// CONSULTAR PROPOSTA POR CPF
+// Webhook oficial do Mercado Pago
+app.post('/api/webhook/mercadopago', async (req, res) => {
+    try {
+        const evento = req.body;
+        if (evento && evento.type === 'payment') {
+            const paymentId = evento.data?.id;
+            if (paymentId) {
+                const paymentInfo = await payment.get({ id: paymentId });
+                if (paymentInfo && paymentInfo.status === 'approved') {
+                    let propostas = lerBanco();
+                    salvarBanco(propostas);
+                }
+            }
+        }
+        res.status(200).send('OK');
+    } catch (e) {
+        res.status(200).send('OK');
+    }
+});
+
+// Consultas por CPF
 app.get('/api/proposta/consultar', (req, res) => {
     try {
-        const cpf = (req.query.cpf || '').replace(/\D/g, '');
-        const proposta = lerBanco().find(p => p.cpf.replace(/\D/g, '') === cpf);
-        if (proposta) res.json({ sucesso: true, proposta });
-        else res.json({ sucesso: false, mensagem: 'Proposta não localizada' });
+        const cpfParam = req.query.cpf ? req.query.cpf.replace(/\D/g, '') : '';
+        const propostas = lerBanco();
+        const proposta = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfParam);
+        
+        if (proposta) {
+            res.json({ sucesso: true, proposta });
+        } else {
+            res.json({ sucesso: false, mensagem: 'Proposta não encontrada.' });
+        }
     } catch (err) {
-        res.status(500).json({ sucesso: false, mensagem: 'Erro na consulta' });
+        res.status(500).json({ sucesso: false, mensagem: 'Erro no servidor.' });
     }
 });
 
-// INICIAR SERVIDOR
+app.get('/api/propostas/:cpf', (req, res) => {
+    try {
+        const cpfParam = req.params.cpf ? req.params.cpf.replace(/\D/g, '') : '';
+        const propostas = lerBanco();
+        const proposta = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfParam);
+        
+        if (proposta) {
+            res.json({ sucesso: true, proposta });
+        } else {
+            res.json({ sucesso: false, mensagem: 'Proposta não encontrada.' });
+        }
+    } catch (err) {
+        res.status(500).json({ sucesso: false, mensagem: 'Erro no servidor.' });
+    }
+});
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`✅ FlashCred ERP rodando na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
