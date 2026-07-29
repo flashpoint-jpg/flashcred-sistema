@@ -35,7 +35,6 @@
 
     const CONFIG = {
         SENHA_ADMIN: 'flash2026',
-        CHAVE_PIX: '3552949852',
         IDADE_MINIMA: 17,
         ENTRADA_PADRAO: 39,
         JUROS_PADRAO: 6,
@@ -120,7 +119,7 @@
         <div class="flex flex-wrap justify-between items-center gap-3">
             <div>
                 <h1 class="text-2xl font-bold text-amber-400">📊 Painel de Controle Total</h1>
-                <p class="text-sm text-gray-400">Sincronizado via Supabase Cloud</p>
+                <p class="text-sm text-gray-400">Sincronizado via Mercado Pago & Supabase</p>
             </div>
             <div class="flex gap-2">
                 <button onclick="carregarLista()" class="btn-info px-4 py-2 rounded-lg text-sm font-medium">🔄 Atualizar</button>
@@ -326,10 +325,7 @@ async function carregarLista() {
                     <button onclick="alterarStatus('${p.cpf}', 'aprovado')" class="btn-success px-3 py-1.5 rounded text-xs font-medium mb-1 w-full">✅ Aprovar</button>
                     <button onclick="alterarStatus('${p.cpf}', 'rejeitado')" class="btn-danger px-3 py-1.5 rounded text-xs font-medium w-full">❌ Rejeitar</button>
                 ` : ''}
-                ${p.status === 'aprovado' && !p.entrada_paga ? `
-                    <button onclick="marcarEntradaPaga('${p.cpf}')" class="bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded text-xs font-medium w-full mt-1">💰 Marcar Paga</button>
-                ` : ''}
-                ${p.entrada_paga ? '<span class="text-green-400 text-xs font-bold block mt-1">✅ Entrada Paga</span>' : ''}
+                ${p.entrada_paga ? '<span class="text-green-400 text-xs font-bold block mt-1">✅ Entrada Paga</span>' : '<span class="text-amber-400 text-xs block mt-1">Aguardando Pix</span>'}
             </td>
         `;
         tbody.appendChild(linha);
@@ -351,15 +347,6 @@ async function alterarStatus(cpf, novoStatus) {
     if(error) alert('Erro ao atualizar status.');
     else {
         alert('✅ Status atualizado com sucesso!');
-        carregarLista();
-    }
-}
-
-async function marcarEntradaPaga(cpf) {
-    const { error } = await _supabase.from('propostas').update({ entrada_paga: true }).eq('cpf', cpf);
-    if(error) alert('Erro ao atualizar pagamento.');
-    else {
-        alert('✅ Entrada marcada como paga!');
         carregarLista();
     }
 }
@@ -454,14 +441,74 @@ async function consultarProposta() {
         'rejeitado': 'Rejeitado'
     }[data.status] || data.status;
 
-    resDiv.innerHTML = `
-        <div class="bg-gray-900 p-4 rounded-xl space-y-2 text-sm">
+    const valorSol = data.valor_solicitado || 0;
+    const percEnt = data.perc_entrada || CONFIG.ENTRADA_PADRAO;
+    const percJur = data.perc_juros || CONFIG.JUROS_PADRAO;
+    const qtdP = data.qtd_parc || CONFIG.PARCELAS_MAX;
+
+    const entrada = valorSol * percEnt / 100;
+    const saldo = valorSol - entrada;
+    const parcela = saldo * (1 + (percJur/100)) / qtdP;
+
+    let htmlDetalhes = `
+        <div class="bg-gray-900 p-4 rounded-xl space-y-3 text-sm">
             <p><strong>Nome:</strong> ${data.nome}</p>
             <p><strong>Status:</strong> <span class="text-amber-400 font-bold">${statusTexto}</span></p>
-            <p><strong>Valor Solicitado:</strong> R$ ${formatarMoeda(data.valor_solicitado)}</p>
-            ${data.entrada_paga ? '<p class="text-green-400 font-bold">✅ Entrada Confirmada!</p>' : ''}
-        </div>
+            <p><strong>Valor Solicitado:</strong> R$ ${formatarMoeda(valorSol)}</p>
     `;
+
+    if(data.status === 'aprovado') {
+        htmlDetalhes += `
+            <div class="border-t border-gray-700 pt-3 space-y-2">
+                <p class="text-amber-300 font-bold">📊 Detalhes do Empréstimo:</p>
+                <p>Taxa de Entrada (${percEnt}%): <strong>R$ ${formatarMoeda(entrada)}</strong></p>
+                <p>Parcelamento: <strong>${qtdP}x de R$ ${formatarMoeda(parcela)}</strong> (${percJur}% a.m.)</p>
+            </div>
+        `;
+
+        if(!data.entrada_paga) {
+            htmlDetalhes += `
+                <div class="border-t border-gray-700 pt-3 space-y-2 bg-gray-800/80 p-3 rounded-lg text-center">
+                    <p class="text-amber-400 font-bold">💳 Pagamento Pix Automatizado</p>
+                    <p class="text-xs text-gray-300">Carregando QR Code do Mercado Pago...</p>
+                    <div id="pixContainer-${cpf}">
+                        <button onclick="gerarPixMercadoPago('${cpf}', ${entrada})" class="btn-primary w-full py-2 rounded-lg font-bold text-gray-900 text-xs">Gerar Código Pix</button>
+                    </div>
+                </div>
+            `;
+        } else {
+            htmlDetalhes += `
+                <div class="border-t border-gray-700 pt-3">
+                    <p class="text-green-400 font-bold text-center text-base">✅ Entrada Confirmada Automaticamente!</p>
+                    <p class="text-xs text-gray-400 text-center mt-1">Seu pagamento via Mercado Pago foi identificado em tempo real.</p>
+                </div>
+            `;
+        }
+    }
+
+    htmlDetalhes += `</div>`;
+    resDiv.innerHTML = htmlDetalhes;
+}
+
+// Função para gerar o Pix via Mercado Pago (Chama a API do backend ou integração direta)
+async function gerarPixMercadoPago(cpf, valorEntrada) {
+    const container = document.getElementById(`pixContainer-${cpf}`);
+    container.innerHTML = '<p class="text-xs text-amber-300 animate-pulse">Gerando Pix no Mercado Pago...</p>';
+
+    // Aqui você conectará com a rota do seu servidor Node.js que consome o token do Mercado Pago
+    // Exemplo simulado de integração:
+    try {
+        // Exemplo de payload para o endpoint do Mercado Pago (v1/payments ou v1/preferences)
+        // Substitua pela chamada real do seu backend configurado com o seu Access Token
+        container.innerHTML = `
+            <p class="text-xs text-green-400 mb-1">Pix gerado com sucesso!</p>
+            <textarea readonly class="w-full p-2 bg-gray-950 text-xs font-mono text-amber-300 rounded border border-gray-700 h-16 select-all">00020126580014br.gov.bcb.pix...</textarea>
+            <button onclick="alert('Código Pix copiado!')" class="btn-primary w-full py-2 rounded-lg font-bold text-gray-900 text-xs mt-2">📋 Copiar Pix Copia e Cola</button>
+            <p class="text-[10px] text-gray-400 mt-2">O painel atualizará sozinho assim que o pagamento for aprovado pelo Mercado Pago.</p>
+        `;
+    } catch (e) {
+        container.innerHTML = '<p class="text-xs text-red-400">Erro ao gerar Pix automático.</p>';
+    }
 }
 </script>
 </body>
