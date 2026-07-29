@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>FlashCred - Gestão Completa de Parcelas</title>
+    <title>FlashCred - Sistema Integrado Completo</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -47,6 +47,14 @@
         ::-webkit-scrollbar-track { background: #050505; }
         ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+        
+        .img-assinatura {
+            max-width: 120px;
+            max-height: 50px;
+            border: 1px dashed rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.5);
+            border-radius: 6px;
+        }
     </style>
 </head>
 <body class="flex flex-col min-h-screen selection:bg-amber-500 selection:text-black">
@@ -55,10 +63,8 @@
 const CONFIG = {
     SENHA_ADMIN: 'flash2026',
     CHAVE_PIX: '3552949852',
-    IDADE_MINIMA: 17,
     ENTRADA_PADRAO: 39,
     JUROS_PADRAO: 6,
-    PARCELAS_MIN: 3,
     PARCELAS_MAX: 12
 };
 </script>
@@ -71,7 +77,7 @@ const CONFIG = {
     </div>
 </header>
 
-<main class="flex-1 max-w-4xl w-full mx-auto px-4 relative z-10">
+<main class="flex-1 max-w-5xl w-full mx-auto px-4 relative z-10">
 
     <!-- ABA 1: FORMULÁRIO CLIENTE -->
     <div id="aba-cliente" class="aba aba-cliente max-w-lg mx-auto ativa">
@@ -153,15 +159,15 @@ const CONFIG = {
         </div>
     </div>
 
-    <!-- ABA 3: PAINEL ADMIN COM SENHA -->
+    <!-- ABA 3: PAINEL ADMIN INTEGRADO -->
     <div id="aba-admin" class="aba aba-admin w-full">
         <div class="glass-panel p-5 sm:p-6 rounded-3xl shadow-2xl mb-6 flex flex-wrap justify-between items-center gap-3">
             <div>
-                <h1 class="text-2xl font-bold text-amber-400">📊 Painel Administrativo</h1>
-                <p class="text-sm text-gray-400">Controle completo de propostas e parcelas</p>
+                <h1 class="text-2xl font-bold text-amber-400">📊 Gestão de Propostas e Crediário</h1>
+                <p class="text-sm text-gray-400">Painel Administrativo Integrado</p>
             </div>
             <div class="flex gap-2">
-                <button onclick="carregarLista()" class="btn-info px-4 py-2.5 rounded-xl text-xs font-medium">🔄 Atualizar</button>
+                <button onclick="carregarLista()" class="btn-info px-4 py-2.5 rounded-xl text-xs font-medium">🔄 Atualizar Lista</button>
                 <button onclick="sairLogin()" class="bg-zinc-800 hover:bg-zinc-700 text-gray-200 px-4 py-2.5 rounded-xl text-xs font-medium transition">Sair / Bloquear</button>
             </div>
         </div>
@@ -186,23 +192,23 @@ const CONFIG = {
         </div>
 
         <div class="glass-panel p-5 rounded-3xl shadow-2xl w-full">
-            <h2 class="text-xl font-semibold mb-4 text-amber-300">📋 Propostas Registradas</h2>
+            <h2 class="text-xl font-semibold mb-4 text-amber-300">📋 Lista Geral de Propostas</h2>
             <div class="overflow-x-auto w-full">
                 <table class="w-full text-left text-xs sm:text-sm whitespace-nowrap">
                     <thead class="bg-black/60 text-gray-300">
                         <tr>
                             <th class="p-3 rounded-l-xl">Data</th>
                             <th class="p-3">Cliente / CPF / Zap</th>
-                            <th class="p-3">Endereço</th>
-                            <th class="p-3">Valor</th>
-                            <th class="p-3">Entrada</th>
+                            <th class="p-3">Endereço / Valor</th>
+                            <th class="p-3">Entrada (39%)</th>
                             <th class="p-3">Parcelas</th>
+                            <th class="p-3">Assinatura</th>
                             <th class="p-3">Status</th>
                             <th class="p-3 rounded-r-xl">Ações</th>
                         </tr>
                     </thead>
                     <tbody id="listaPropostas" class="divide-y divide-zinc-900/60">
-                        <tr><td colspan="8" class="p-4 text-center text-gray-400">Carregando...</td></tr>
+                        <tr><td colspan="8" class="p-4 text-center text-gray-400">Carregando propostas...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -230,7 +236,7 @@ const CONFIG = {
 </nav>
 
 <footer class="w-full text-center py-6 px-4 text-[11px] text-gray-500 relative z-10 border-t border-zinc-900 mt-auto">
-    <p>⚡ Sistema Flash Point</p>
+    <p>⚡ Sistema Flash Point • Integrado</p>
 </footer>
 
 <!-- MODAL DE EDIÇÃO COMPLETA -->
@@ -315,6 +321,7 @@ function tentarAbrirPainelAdmin() {
     if(senha === null) return;
     if(senha.trim() === CONFIG.SENHA_ADMIN) {
         localStorage.setItem('adminLogado', 'sim');
+        localStorage.setItem('tokenAdmin', 'token_ativo_flash2026');
         mostrarAlerta("Acesso autorizado!");
         mostrarAba('admin');
     } else {
@@ -324,13 +331,18 @@ function tentarAbrirPainelAdmin() {
 
 function sairLogin() {
     localStorage.removeItem('adminLogado');
+    localStorage.removeItem('tokenAdmin');
     mostrarAba('cliente');
     mostrarAlerta("Painel bloqueado.", "info");
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    if(localStorage.getItem('adminLogado') === 'sim') mostrarAba('admin');
-    else mostrarAba('cliente');
+    if(localStorage.getItem('adminLogado') === 'sim' || localStorage.getItem('tokenAdmin')) {
+        localStorage.setItem('adminLogado', 'sim');
+        if(window.location.hash === '#admin') mostrarAba('admin');
+    } else {
+        mostrarAba('cliente');
+    }
 });
 
 function formatarMoeda(v) {
@@ -367,12 +379,14 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
         renda: parseFloat(document.getElementById('renda').value.replace(/\D/g,''))/100,
         valorSolicitado: valorSol,
         whatsapp: document.getElementById('whatsapp').value,
-        status: 'em_analise',
+        status: 'EM_ANALISE',
         data: new Date().toLocaleDateString('pt-BR'),
+        criadoEm: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}),
         entradaPaga: false,
         percEntrada: CONFIG.ENTRADA_PADRAO,
         percJuros: CONFIG.JUROS_PADRAO,
         qtdParcelas: CONFIG.PARCELAS_MAX,
+        assinaturaBase64: '',
         parcelas
     };
 
@@ -401,7 +415,7 @@ function carregarLista() {
     let t=0, a=0, ap=0, r=0;
 
     if(propostas.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-gray-400">Nenhuma proposta.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="p-4 text-center text-gray-400">Nenhuma proposta cadastrada ainda.</td></tr>';
         document.getElementById('resumoTotal').textContent = 0;
         document.getElementById('resumoAnalise').textContent = 0;
         document.getElementById('resumoAprovado').textContent = 0;
@@ -412,30 +426,33 @@ function carregarLista() {
     tbody.innerHTML = '';
     propostas.forEach(p => {
         t++;
-        if(p.status === 'em_analise') a++;
-        else if(p.status === 'aprovado') ap++;
+        if(p.status === 'EM_ANALISE' || p.status === 'em_analise') a++;
+        else if(p.status === 'APROVADO' || p.status === 'aprovado') ap++;
         else r++;
 
-        const entrada = p.valorSolicitado * p.percEntrada / 100;
-        const statusCor = { 'em_analise': 'text-amber-400 bg-amber-500/10', 'aprovado': 'text-emerald-400 bg-emerald-500/10', 'rejeitado': 'text-rose-400 bg-rose-500/10' }[p.status];
+        const entrada = p.valorSolicitado * (p.percEntrada || CONFIG.ENTRADA_PADRAO) / 100;
+        const statusClass = p.status.toUpperCase();
+        const statusCor = statusClass === 'APROVADO' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : (statusClass === 'REJEITADO' ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' : 'bg-amber-500/15 text-amber-400 border border-amber-500/30');
 
         const tr = document.createElement('tr');
         tr.className = 'hover:bg-zinc-900/40 transition';
         tr.innerHTML = `
-            <td class="p-3">${p.data}</td>
-            <td class="p-3"><strong>${p.nome}</strong><br><small class="text-gray-500">${p.cpf} | ${p.whatsapp}</small></td>
-            <td class="p-3 text-gray-300 max-w-xs truncate">${p.enderecoCompleto || 'CEP: ' + p.cep}, Nº ${p.numeroResidencia}</td>
-            <td class="p-3">R$ ${formatarMoeda(p.valorSolicitado)}</td>
-            <td class="p-3">${p.percEntrada}%<br><span class="text-amber-400">R$ ${formatarMoeda(entrada)}</span></td>
-            <td class="p-3 text-blue-400 font-semibold">${p.qtdParcelas}x</td>
-            <td class="p-3"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${statusCor}">${p.status.toUpperCase()}</span></td>
+            <td class="p-3"><small class="text-gray-400">${p.criadoEm || p.data}</small></td>
+            <td class="p-3"><strong>${p.nome}</strong><br><small class="text-gray-500">CPF: ${p.cpf} | ${p.whatsapp}</small></td>
+            <td class="p-3 text-gray-300">R$ ${formatarMoeda(p.valorSolicitado)}<br><small class="text-gray-500 truncate max-w-[150px] inline-block">${p.enderecoCompleto || 'CEP: ' + p.cep}</small></td>
+            <td class="p-3">${p.percEntrada || CONFIG.ENTRADA_PADRAO}%<br><span class="text-amber-400">R$ ${formatarMoeda(entrada)}</span></td>
+            <td class="p-3 text-blue-400 font-semibold">${p.qtdParcelas || CONFIG.PARCELAS_MAX}x</td>
             <td class="p-3">
-                <div class="flex flex-col gap-1 min-w-[130px]">
+                ${p.assinaturaBase64 ? `<img src="${p.assinaturaBase64}" class="img-assinatura" alt="Assinatura">` : '<span class="text-zinc-600 text-xs">Sem assinatura</span>'}
+            </td>
+            <td class="p-3"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${statusCor}">${statusClass}</span></td>
+            <td class="p-3">
+                <div class="flex flex-col gap-1.5 min-w-[130px]">
                     <button onclick="abrirGerenciarParcelas('${p.cpf}')" class="btn-success px-3 py-1 rounded text-xs font-semibold">📅 Parcelas</button>
                     <button onclick="abrirEditar('${p.cpf}')" class="btn-info px-3 py-1 rounded text-xs">✏️ Editar</button>
-                    ${p.status === 'em_analise' ? `
-                        <button onclick="alterarStatus('${p.cpf}', 'aprovado')" class="btn-success px-3 py-1 rounded text-xs">✅ Aprovar</button>
-                        <button onclick="alterarStatus('${p.cpf}', 'rejeitado')" class="btn-danger px-3 py-1 rounded text-xs">❌ Rejeitar</button>
+                    ${statusClass === 'EM_ANALISE' ? `
+                        <button onclick="alterarStatus('${p.cpf}', 'APROVADO')" class="btn-success px-3 py-1 rounded text-xs">✅ Aprovar</button>
+                        <button onclick="alterarStatus('${p.cpf}', 'REJEITADO')" class="btn-danger px-3 py-1 rounded text-xs">❌ Rejeitar</button>
                     ` : ''}
                     <button onclick="enviarWhatsApp('${p.cpf}')" class="btn-whatsapp px-3 py-1 rounded text-xs font-semibold mt-1">💬 WhatsApp</button>
                 </div>
@@ -482,7 +499,7 @@ function abrirGerenciarParcelas(cpf) {
             `;
         });
     } else {
-        html += `<p class="text-gray-400 text-center py-4">Nenhuma parcela gerada ainda. (Aprove a proposta para gerar).</p>`;
+        html += `<p class="text-gray-400 text-center py-4">Nenhuma parcela gerada ainda.</p>`;
     }
     html += `</div>`;
     conteudo.innerHTML = html;
@@ -520,12 +537,12 @@ function alterarStatus(cpf, status) {
     let d = JSON.parse(localStorage.getItem(k));
     d.status = status;
     
-    if(status === 'aprovado' && (!d.parcelas || d.parcelas.length === 0)) {
-        const saldo = d.valorSolicitado - (d.valorSolicitado * d.percEntrada / 100);
-        const valP = saldo * (1 + (d.percJuros/100)) / d.qtdParcelas;
+    if(status === 'APROVADO' && (!d.parcelas || d.parcelas.length === 0)) {
+        const saldo = d.valorSolicitado - (d.valorSolicitado * (d.percEntrada || CONFIG.ENTRADA_PADRAO) / 100);
+        const valP = saldo * (1 + ((d.percJuros || CONFIG.JUROS_PADRAO)/100)) / (d.qtdParcelas || CONFIG.PARCELAS_MAX);
         d.parcelas = [];
         let hoje = new Date();
-        for(let i=1; i<=d.qtdParcelas; i++) {
+        for(let i=1; i<=(d.qtdParcelas || CONFIG.PARCELAS_MAX); i++) {
             let vencimento = new Date(hoje.getFullYear(), hoje.getMonth() + i, hoje.getDate()).toISOString().split('T')[0];
             d.parcelas.push({ numero: i, valor: valP, vencimento: vencimento, paga: false, dataPagamento: null });
         }
@@ -565,16 +582,16 @@ function abrirEditar(cpf) {
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-xs uppercase mb-1 text-gray-300">Entrada (%)</label>
-                    <input type="number" id="edt_entrada" value="${d.percEntrada}" class="w-full p-3 bg-black/60 border border-zinc-800 rounded-xl text-white outline-none">
+                    <input type="number" id="edt_entrada" value="${d.percEntrada || CONFIG.ENTRADA_PADRAO}" class="w-full p-3 bg-black/60 border border-zinc-800 rounded-xl text-white outline-none">
                 </div>
                 <div>
                     <label class="block text-xs uppercase mb-1 text-gray-300">Juros (%)</label>
-                    <input type="number" step="0.1" id="edt_juros" value="${d.percJuros}" class="w-full p-3 bg-black/60 border border-zinc-800 rounded-xl text-white outline-none">
+                    <input type="number" step="0.1" id="edt_juros" value="${d.percJuros || CONFIG.JUROS_PADRAO}" class="w-full p-3 bg-black/60 border border-zinc-800 rounded-xl text-white outline-none">
                 </div>
             </div>
             <div>
                 <label class="block text-xs uppercase mb-1 text-gray-300">Parcelas</label>
-                <input type="number" id="edt_parcelas" value="${d.qtdParcelas}" class="w-full p-3 bg-black/60 border border-zinc-800 rounded-xl text-white outline-none">
+                <input type="number" id="edt_parcelas" value="${d.qtdParcelas || CONFIG.PARCELAS_MAX}" class="w-full p-3 bg-black/60 border border-zinc-800 rounded-xl text-white outline-none">
             </div>
             <button onclick="salvarEdicao('${cpf}')" class="btn-primary w-full py-3.5 rounded-xl text-sm shadow-md mt-2">💾 Salvar Alterações</button>
         </div>
@@ -620,9 +637,9 @@ function enviarWhatsApp(cpf) {
     if(!d) return;
     let num = d.whatsapp.replace(/\D/g,'');
     if(!num.startsWith('55')) num = '55' + num;
-    const entrada = d.valorSolicitado * d.percEntrada / 100;
+    const entrada = d.valorSolicitado * (d.percEntrada || CONFIG.ENTRADA_PADRAO) / 100;
     const pix = gerarPix(entrada);
-    let msg = `Olá *${d.nome}*! Sua proposta na *FlashPoint* de R$ ${formatarMoeda(d.valorSolicitado)} foi *${d.status.toUpperCase()}*. Entrada (${d.percEntrada}%): R$ ${formatarMoeda(entrada)}. Pix: ${pix}`;
+    let msg = `Olá *${d.nome}*! Sua proposta na *FlashPoint* de R$ ${formatarMoeda(d.valorSolicitado)} foi *${d.status.toUpperCase()}*. Entrada: R$ ${formatarMoeda(entrada)}. Pix: ${pix}`;
     window.open(`https://api.whatsapp.com/send?phone=${num}&text=${encodeURIComponent(msg)}`, '_blank');
 }
 
@@ -634,7 +651,7 @@ function consultarProposta() {
     const d = JSON.parse(localStorage.getItem(`flashcred_${cpf}`));
     if(!d) return res.innerHTML = '<p class="text-rose-400 text-center text-sm">Não encontrado.</p>';
 
-    const entrada = d.valorSolicitado * d.percEntrada / 100;
+    const entrada = d.valorSolicitado * (d.percEntrada || CONFIG.ENTRADA_PADRAO) / 100;
     const pix = gerarPix(entrada);
     
     let htmlParcelasCliente = '';
@@ -651,7 +668,7 @@ function consultarProposta() {
             <p><strong>Nome:</strong> ${d.nome}</p>
             <p><strong>Status:</strong> <span class="text-amber-400 font-bold">${d.status.toUpperCase()}</span></p>
             <p><strong>Valor:</strong> R$ ${formatarMoeda(d.valorSolicitado)}</p>
-            ${d.status === 'aprovado' && !d.entradaPaga ? `
+            ${(d.status === 'APROVADO' || d.status === 'aprovado') && !d.entradaPaga ? `
                 <div class="pt-3 border-t border-zinc-800 text-center">
                     <p class="text-amber-400 font-bold text-xs mb-2">Pague a Entrada via Pix</p>
                     <textarea readonly class="w-full p-2 bg-black text-xs font-mono text-amber-300 rounded-xl border border-zinc-800 h-16">${pix}</textarea>
