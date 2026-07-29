@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>FlashCred - Sistema Completo</title>
+    <title>FlashCred - Sistema Completo em Tempo Real</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Substituído o qrcodejs por uma API confiável de QR Code para evitar falhas de renderização em branco -->
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -179,8 +178,8 @@ const CONFIG = {
     <div id="aba-admin" class="aba aba-admin w-full">
         <div class="glass-panel p-5 sm:p-6 rounded-3xl shadow-2xl mb-6 flex flex-wrap justify-between items-center gap-3">
             <div>
-                <h1 class="text-2xl font-bold text-amber-400">📊 Painel de Controle Total</h1>
-                <p class="text-sm text-gray-400">Acompanhe entradas, controle parcelas mensais e receba avisos automáticos</p>
+                <h1 class="text-2xl font-bold text-amber-400">📊 Painel de Controle Total (Tempo Real)</h1>
+                <p class="text-sm text-gray-400">Sincronização instantânea ativada via BroadcastChannel</p>
             </div>
             <div class="flex gap-2">
                 <button onclick="carregarLista()" class="btn-info px-4 py-2.5 rounded-xl text-xs font-medium">🔄 Atualizar</button>
@@ -266,6 +265,44 @@ const CONFIG = {
 </div>
 
 <script>
+// Canal de comunicação em tempo real entre abas e painéis abertos no navegador
+const flashCredChannel = new BroadcastChannel('flashcred_realtime_sync');
+
+flashCredChannel.onmessage = (event) => {
+    // Sincronização instantânea na tela do admin se aberta
+    if(localStorage.getItem('adminLogado') === 'sim') {
+        carregarLista();
+    }
+    // Sincronização instantânea na tela de consulta do cliente se o CPF corresponder
+    const cpfConsultaInput = document.getElementById('cpfConsulta');
+    if(cpfConsultaInput && cpfConsultaInput.value.replace(/\D/g,'') === event.data.cpf) {
+        consultarProposta();
+    }
+};
+
+function dispararAtualizacaoTempoReal(cpfModificado) {
+    flashCredChannel.postMessage({ cpf: cpfModificado, timestamp: Date.now() });
+    if(localStorage.getItem('adminLogado') === 'sim') {
+        carregarLista();
+    }
+    const cpfConsultaInput = document.getElementById('cpfConsulta');
+    if(cpfConsultaInput && cpfConsultaInput.value.replace(/\D/g,'') === cpfModificado) {
+        consultarProposta();
+    }
+}
+
+// Sincronização nativa de eventos storage do navegador
+window.addEventListener('storage', (e) => {
+    if(e.key && e.key.startsWith('flashcred_')) {
+        if(localStorage.getItem('adminLogado') === 'sim') carregarLista();
+        const cpfConsultaInput = document.getElementById('cpfConsulta');
+        if(cpfConsultaInput) {
+            const cpfDigitado = cpfConsultaInput.value.replace(/\D/g,'');
+            if(e.key === `flashcred_${cpfDigitado}`) consultarProposta();
+        }
+    }
+});
+
 async function consultarCEP(cep) {
     const cepLimpo = cep.replace(/\D/g, '');
     if (cepLimpo.length !== 8) return;
@@ -353,7 +390,6 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
     const saldo = valorSol - entrada;
     const valorParcelaIndividual = saldo * (1 + (percJuros/100)) / qtdParcelas;
 
-    // Criar array estruturado de parcelas automáticas
     const parcelasArray = [];
     for(let i=1; i<=qtdParcelas; i++) {
         parcelasArray.push({
@@ -384,6 +420,8 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
     };
 
     localStorage.setItem(`flashcred_${cpfLimpo}`, JSON.stringify(dados));
+    dispararAtualizacaoTempoReal(cpfLimpo);
+
     alert('✅ Solicitação enviada com sucesso! Redirecionando para a página de acompanhamento...');
     e.target.reset();
     document.getElementById('endereco').value = '';
@@ -453,7 +491,6 @@ function carregarLista() {
             'rejeitado': 'Rejeitado'
         }[p.status];
 
-        // Resumo de parcelas pagas no painel admin
         let parcelasPagasCount = 0;
         if(p.parcelas && Array.isArray(p.parcelas)) {
             parcelasPagasCount = p.parcelas.filter(parc => parc.paga).length;
@@ -505,11 +542,14 @@ function alterarStatus(cpf, novoStatus) {
     const dados = JSON.parse(localStorage.getItem(chave));
     dados.status = novoStatus;
     localStorage.setItem(chave, JSON.stringify(dados));
-    alert(`✅ Proposta ${novoStatus === 'aprovado' ? 'aprovada' : 'rejeitada'} com sucesso!`);
+    
+    // Atualização em tempo real imediata para o cliente
+    dispararAtualizacaoTempoReal(cpf);
+
+    alert(`✅ Proposta ${novoStatus === 'aprovado' ? 'aprovada' : 'rejeitada'} com sucesso! O painel do cliente foi atualizado instantaneamente.`);
     carregarLista();
 }
 
-// FUNÇÃO DE NOTIFICAÇÃO NO PAINEL E WEBHOOK AUTOMÁTICO DO BANCO
 function registrarPagamentoEntrada(cpf) {
     const chave = `flashcred_${cpf}`;
     const dados = JSON.parse(localStorage.getItem(chave));
@@ -517,16 +557,8 @@ function registrarPagamentoEntrada(cpf) {
     dados.entradaPaga = true;
     localStorage.setItem(chave, JSON.stringify(dados));
     
-    // Notificação automática no painel / navegador
-    alert(`⚡ [AVISO AUTOMÁTICO DO BANCO] Entrada confirmada para o cliente ${dados.nome}!`);
-    
-    const cpfConsultaInput = document.getElementById('cpfConsulta');
-    if(cpfConsultaInput && cpfConsultaInput.value.replace(/\D/g,'') === cpf) {
-        consultarProposta();
-    }
-    if(localStorage.getItem('adminLogado') === 'sim') {
-        carregarLista();
-    }
+    dispararAtualizacaoTempoReal(cpf);
+    alert(`⚡ [AVISO AUTOMÁTICO DO BANCO] Entrada confirmada e sincronizada instantaneamente para o cliente ${dados.nome}!`);
 }
 
 function registrarPagamentoParcela(cpf, numParcela) {
@@ -540,15 +572,8 @@ function registrarPagamentoParcela(cpf, numParcela) {
         parcelaObj.dataPagamento = new Date().toLocaleDateString('pt-BR');
         localStorage.setItem(chave, JSON.stringify(dados));
 
-        alert(`⚡ [AVISO AUTOMÁTICO DO BANCO] Parcela ${numParcela} de R$ ${formatarMoeda(parcelaObj.valor)} paga pelo cliente ${dados.nome}!`);
-
-        const cpfConsultaInput = document.getElementById('cpfConsulta');
-        if(cpfConsultaInput && cpfConsultaInput.value.replace(/\D/g,'') === cpf) {
-            consultarProposta();
-        }
-        if(localStorage.getItem('adminLogado') === 'sim') {
-            carregarLista();
-        }
+        dispararAtualizacaoTempoReal(cpf);
+        alert(`⚡ [AVISO AUTOMÁTICO DO BANCO] Parcela ${numParcela} de R$ ${formatarMoeda(parcelaObj.valor)} paga e atualizada instantaneamente no painel!`);
     }
 }
 
@@ -658,7 +683,6 @@ function salvarEdicao(cpf) {
     const novaQtdParcelas = parseInt(document.getElementById('edt_parcelas').value);
     dados.qtdParcelas = novaQtdParcelas;
 
-    // Recria ou ajusta o array de parcelas preservando as pagas se possível
     const entrada = dados.valorSolicitado * dados.percEntrada / 100;
     const saldo = dados.valorSolicitado - entrada;
     const novoValorParcela = saldo * (1 + (dados.percJuros/100)) / novaQtdParcelas;
@@ -676,7 +700,9 @@ function salvarEdicao(cpf) {
     dados.parcelas = novasParcelas;
 
     localStorage.setItem(chave, JSON.stringify(dados));
-    alert('✅ Alterações salvas com sucesso!');
+    dispararAtualizacaoTempoReal(cpf);
+
+    alert('✅ Alterações salvas e sincronizadas instantaneamente!');
     fecharModal();
     carregarLista();
 }
@@ -722,10 +748,8 @@ async function consultarProposta() {
     `;
 
     if(data.status === 'aprovado') {
-        // Se a entrada NÃO foi paga, mostra o Pix da Entrada
         if(!data.entradaPaga) {
             const pixCode = gerarPix(entrada);
-            // URL de API pública e estável para gerar QR Code nítido sem falhar em branco
             const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pixCode)}`;
 
             htmlDetalhes += `
@@ -742,7 +766,6 @@ async function consultarProposta() {
                 </div>
             `;
         } else {
-            // Se a entrada JÁ foi paga, mostra a lista completa de parcelas para o cliente acompanhar e pagar
             htmlDetalhes += `
                 <div class="border-t border-zinc-800/80 pt-3 space-y-3">
                     <p class="text-emerald-400 font-bold text-center text-xs">✅ Taxa de Entrada Confirmada!</p>
