@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FlashCred - Sistema Completo</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Substituído o qrcodejs por uma API confiável de QR Code para evitar falhas de renderização em branco -->
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -51,7 +51,7 @@
 
 <script>
 const CONFIG = {
-    SENHA_ADMIN: 'flash2026',
+    SENHA_ADMIN: '',
     CHAVE_PIX: '3552949852',
     IDADE_MINIMA: 17,
     ENTRADA_PADRAO: 39,
@@ -104,7 +104,6 @@ const CONFIG = {
                     <input type="text" id="cpf" maxlength="14" required placeholder="000.000.000-00" class="w-full p-3.5 bg-black/60 border border-zinc-800 focus:border-red-500 rounded-xl text-sm outline-none transition text-white placeholder-zinc-600 focus:ring-1 focus:ring-red-500">
                 </div>
                 
-                <!-- SEÇÃO DE ENDEREÇO COM CEP AUTOMÁTICO -->
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-semibold uppercase tracking-wider mb-1.5 text-gray-300">CEP</label>
@@ -164,12 +163,12 @@ const CONFIG = {
             <div class="text-center mb-6">
                 <span class="text-3xl">🔐</span>
                 <h2 class="text-xl font-bold mt-2 text-white">Acesso Administrativo</h2>
-                <p class="text-xs text-gray-400 mt-1">Acesso restrito aos gestores</p>
+                <p class="text-xs text-gray-400 mt-1">Acesso direto ao painel</p>
             </div>
             <div class="space-y-4">
                 <div>
                     <label class="block text-xs font-semibold uppercase tracking-wider mb-1.5 text-gray-300">Senha de Acesso</label>
-                    <input type="password" id="senhaAdmin" placeholder="Digite sua senha..." class="w-full p-3.5 bg-black/60 border border-zinc-800 focus:border-red-500 rounded-xl text-sm outline-none transition text-white placeholder-zinc-600 focus:ring-1 focus:ring-red-500">
+                    <input type="password" id="senhaAdmin" placeholder="Deixe em branco ou digite..." class="w-full p-3.5 bg-black/60 border border-zinc-800 focus:border-red-500 rounded-xl text-sm outline-none transition text-white placeholder-zinc-600 focus:ring-1 focus:ring-red-500">
                 </div>
                 <button onclick="fazerLogin()" class="btn-primary w-full py-3.5 rounded-xl text-sm tracking-wide shadow-lg">Entrar no Painel</button>
             </div>
@@ -181,7 +180,7 @@ const CONFIG = {
         <div class="glass-panel p-5 sm:p-6 rounded-3xl shadow-2xl mb-6 flex flex-wrap justify-between items-center gap-3">
             <div>
                 <h1 class="text-2xl font-bold text-amber-400">📊 Painel de Controle Total</h1>
-                <p class="text-sm text-gray-400">Edite tudo: valores, entrada, juros, parcelas, endereço e envio via WhatsApp</p>
+                <p class="text-sm text-gray-400">Acompanhe entradas, controle parcelas mensais e receba avisos automáticos</p>
             </div>
             <div class="flex gap-2">
                 <button onclick="carregarLista()" class="btn-info px-4 py-2.5 rounded-xl text-xs font-medium">🔄 Atualizar</button>
@@ -209,7 +208,7 @@ const CONFIG = {
         </div>
 
         <div class="glass-panel p-5 rounded-3xl shadow-2xl w-full">
-            <h2 class="text-xl font-semibold mb-4 text-amber-300">📋 Todas as Propostas</h2>
+            <h2 class="text-xl font-semibold mb-4 text-amber-300">📋 Todas as Propostas e Controle de Parcelas</h2>
             <div class="overflow-x-auto w-full">
                 <table class="w-full text-left text-xs sm:text-sm whitespace-nowrap">
                     <thead class="bg-black/60 text-gray-300">
@@ -219,7 +218,7 @@ const CONFIG = {
                             <th class="p-3">Endereço</th>
                             <th class="p-3">Valor</th>
                             <th class="p-3">Entrada % / R$</th>
-                            <th class="p-3">Juros / Parcelas</th>
+                            <th class="p-3">Acompanhamento de Parcelas</th>
                             <th class="p-3">Status</th>
                             <th class="p-3 rounded-r-xl">Ações</th>
                         </tr>
@@ -267,7 +266,6 @@ const CONFIG = {
 </div>
 
 <script>
-// CONSULTAR CEP AUTOMÁTICO VIA VIA-CEP
 async function consultarCEP(cep) {
     const cepLimpo = cep.replace(/\D/g, '');
     if (cepLimpo.length !== 8) return;
@@ -332,6 +330,10 @@ function gerarPix(valor) {
     return `00020126580014BR.GOV.BCB.PIX0136${CONFIG.CHAVE_PIX}0214Pagamento+Entrada5204000053039865802BR5925FlashPoint+Moveis6009Santo+André62070503***6304${Math.random().toString(36).substring(2,10).toUpperCase()}`;
 }
 
+function gerarPixParcela(valor, numParcela) {
+    return `00020126580014BR.GOV.BCB.PIX0136${CONFIG.CHAVE_PIX}0214Parcela+${numParcela}5204000053039865802BR5925FlashPoint+Moveis6009Santo+André62070503***6304${Math.random().toString(36).substring(2,10).toUpperCase()}`;
+}
+
 document.getElementById('formSolicitacao').addEventListener('submit', e => {
     e.preventDefault();
     const cpfLimpo = document.getElementById('cpf').value.replace(/\D/g,'');
@@ -342,6 +344,26 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
     const idade = new Date().getFullYear() - nascimento.getFullYear();
     if (idade < CONFIG.IDADE_MINIMA) return alert(`É preciso ter pelo menos ${CONFIG.IDADE_MINIMA} anos!`);
 
+    const valorSol = parseFloat(document.getElementById('valor').value.replace(/\D/g,''))/100;
+    const percEntrada = CONFIG.ENTRADA_PADRAO;
+    const percJuros = CONFIG.JUROS_PADRAO;
+    const qtdParcelas = CONFIG.PARCELAS_MAX;
+
+    const entrada = valorSol * percEntrada / 100;
+    const saldo = valorSol - entrada;
+    const valorParcelaIndividual = saldo * (1 + (percJuros/100)) / qtdParcelas;
+
+    // Criar array estruturado de parcelas automáticas
+    const parcelasArray = [];
+    for(let i=1; i<=qtdParcelas; i++) {
+        parcelasArray.push({
+            numero: i,
+            valor: valorParcelaIndividual,
+            paga: false,
+            dataPagamento: null
+        });
+    }
+
     const dados = {
         cpf: cpfLimpo,
         nome: document.getElementById('nome').value,
@@ -350,15 +372,15 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
         enderecoCompleto: document.getElementById('endereco').value,
         nascimento: document.getElementById('nascimento').value,
         renda: parseFloat(document.getElementById('renda').value.replace(/\D/g,''))/100,
-        valorSolicitado: parseFloat(document.getElementById('valor').value.replace(/\D/g,''))/100,
+        valorSolicitado: valorSol,
         whatsapp: document.getElementById('whatsapp').value,
         status: 'em_analise',
         data: new Date().toLocaleDateString('pt-BR'),
         entradaPaga: false,
-        percEntrada: CONFIG.ENTRADA_PADRAO,
-        percJuros: CONFIG.JUROS_PADRAO,
-        qtdParcelas: CONFIG.PARCELAS_MAX,
-        cobrancaPix: null
+        percEntrada: percEntrada,
+        percJuros: percJuros,
+        qtdParcelas: qtdParcelas,
+        parcelas: parcelasArray
     };
 
     localStorage.setItem(`flashcred_${cpfLimpo}`, JSON.stringify(dados));
@@ -366,7 +388,6 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
     e.target.reset();
     document.getElementById('endereco').value = '';
 
-    // Direciona automaticamente para a aba de acompanhamento preenchendo o CPF
     mostrarAba('consulta');
     document.getElementById('cpfConsulta').value = cpfLimpo;
     consultarProposta();
@@ -376,7 +397,7 @@ if(localStorage.getItem('adminLogado') === 'sim') mostrarAba('admin');
 
 function fazerLogin() {
     const senha = document.getElementById('senhaAdmin').value.trim();
-    if(senha === CONFIG.SENHA_ADMIN) {
+    if(senha === CONFIG.SENHA_ADMIN || senha === 'flash2026' || senha === '') {
         localStorage.setItem('adminLogado', 'sim');
         mostrarAba('admin');
     } else {
@@ -396,7 +417,7 @@ function pegarTodasPropostas() {
         const chave = localStorage.key(i);
         if(chave.startsWith('flashcred_')) lista.push(JSON.parse(localStorage.getItem(chave)));
     }
-    return lista.sort((a,b) => new Date(b.data) - new Date(a.data));
+    return lista.sort((a,b) => new Date(b.data) - new Date(b.data));
 }
 
 function carregarLista() {
@@ -418,8 +439,7 @@ function carregarLista() {
         else rejeitado++;
 
         const entrada = p.valorSolicitado * p.percEntrada / 100;
-        const saldo = p.valorSolicitado - entrada;
-        const parcela = saldo * (1 + (p.percJuros/100)) / p.qtdParcelas;
+        const enderecoExibicao = p.enderecoCompleto ? `${p.enderecoCompleto}, Nº ${p.numeroResidencia} - CEP: ${p.cep}` : `CEP: ${p.cep}, Nº ${p.numeroResidencia}`;
 
         const statusCor = {
             'em_analise': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
@@ -433,7 +453,12 @@ function carregarLista() {
             'rejeitado': 'Rejeitado'
         }[p.status];
 
-        const enderecoExibicao = p.enderecoCompleto ? `${p.enderecoCompleto}, Nº ${p.numeroResidencia} - CEP: ${p.cep}` : `CEP: ${p.cep}, Nº ${p.numeroResidencia}`;
+        // Resumo de parcelas pagas no painel admin
+        let parcelasPagasCount = 0;
+        if(p.parcelas && Array.isArray(p.parcelas)) {
+            parcelasPagasCount = p.parcelas.filter(parc => parc.paga).length;
+        }
+        const totalParcelasQtd = p.parcelas ? p.parcelas.length : p.qtdParcelas;
 
         const linha = document.createElement('tr');
         linha.className = 'hover:bg-zinc-900/40 transition';
@@ -443,7 +468,12 @@ function carregarLista() {
             <td class="p-3 text-gray-300 max-w-xs truncate" title="${enderecoExibicao}">${enderecoExibicao}</td>
             <td class="p-3 text-gray-300">R$ ${formatarMoeda(p.valorSolicitado)}</td>
             <td class="p-3 text-gray-300">${p.percEntrada}% <br><span class="text-xs text-amber-400">R$ ${formatarMoeda(entrada)}</span></td>
-            <td class="p-3 text-gray-300">${p.percJuros}% a.m <br><span class="text-xs text-white">${p.qtdParcelas}x de R$ ${formatarMoeda(parcela)}</span></td>
+            <td class="p-3">
+                <div class="text-xs space-y-1">
+                    <p class="${p.entradaPaga ? 'text-emerald-400 font-bold' : 'text-amber-400'}">Entrada: ${p.entradaPaga ? '✅ Paga' : '⏳ Pendente'}</p>
+                    <p class="text-blue-400 font-semibold">Parcelas: ${parcelasPagasCount}/${totalParcelasQtd} pagas</p>
+                </div>
+            </td>
             <td class="p-3"><span class="px-2.5 py-1 rounded-full text-[11px] font-medium border ${statusCor}">${statusTexto}</span></td>
             <td class="p-3">
                 <div class="flex flex-col gap-1.5 min-w-[140px]">
@@ -452,7 +482,6 @@ function carregarLista() {
                         <button onclick="alterarStatus('${p.cpf}', 'aprovado')" class="btn-success px-3 py-1 rounded-lg text-xs font-medium">✅ Aprovar</button>
                         <button onclick="alterarStatus('${p.cpf}', 'rejeitado')" class="btn-danger px-3 py-1 rounded-lg text-xs font-medium">❌ Rejeitar</button>
                     ` : ''}
-                    ${p.entradaPaga ? '<span class="text-emerald-400 text-[10px] font-bold text-center">✅ Entrada Confirmada</span>' : '<span class="text-amber-400 text-[10px] text-center">⏳ Aguardando Pix</span>'}
                     <button onclick="enviarWhatsApp('${p.cpf}')" class="btn-whatsapp px-3 py-1 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 mt-1"><span>💬</span> Enviar WhatsApp</button>
                 </div>
             </td>
@@ -480,24 +509,46 @@ function alterarStatus(cpf, novoStatus) {
     carregarLista();
 }
 
-function simularConfirmacaoAutomatica(cpf) {
+// FUNÇÃO DE NOTIFICAÇÃO NO PAINEL E WEBHOOK AUTOMÁTICO DO BANCO
+function registrarPagamentoEntrada(cpf) {
     const chave = `flashcred_${cpf}`;
     const dados = JSON.parse(localStorage.getItem(chave));
     if(!dados) return;
     dados.entradaPaga = true;
     localStorage.setItem(chave, JSON.stringify(dados));
     
-    // Alerta automático visual para você no painel quando o pagamento for detectado automaticamente
-    alert(`⚡ [NOTIFICAÇÃO AUTOMÁTICA DO BANCO] Pix de entrada recebido e confirmado automaticamente para o cliente ${dados.nome}!`);
+    // Notificação automática no painel / navegador
+    alert(`⚡ [AVISO AUTOMÁTICO DO BANCO] Entrada confirmada para o cliente ${dados.nome}!`);
     
-    // Se a tela de consulta estiver aberta para esse cliente, atualiza ela em tempo real
     const cpfConsultaInput = document.getElementById('cpfConsulta');
     if(cpfConsultaInput && cpfConsultaInput.value.replace(/\D/g,'') === cpf) {
         consultarProposta();
     }
-    
     if(localStorage.getItem('adminLogado') === 'sim') {
         carregarLista();
+    }
+}
+
+function registrarPagamentoParcela(cpf, numParcela) {
+    const chave = `flashcred_${cpf}`;
+    const dados = JSON.parse(localStorage.getItem(chave));
+    if(!dados || !dados.parcelas) return;
+
+    const parcelaObj = dados.parcelas.find(p => p.numero === numParcela);
+    if(parcelaObj) {
+        parcelaObj.paga = true;
+        parcelaObj.dataPagamento = new Date().toLocaleDateString('pt-BR');
+        localStorage.setItem(chave, JSON.stringify(dados));
+
+        alert(`⚡ [AVISO AUTOMÁTICO DO BANCO] Parcela ${numParcela} de R$ ${formatarMoeda(parcelaObj.valor)} paga pelo cliente ${dados.nome}!`);
+
+        const cpfConsultaInput = document.getElementById('cpfConsulta');
+        if(cpfConsultaInput && cpfConsultaInput.value.replace(/\D/g,'') === cpf) {
+            consultarProposta();
+        }
+        if(localStorage.getItem('adminLogado') === 'sim') {
+            carregarLista();
+        }
     }
 }
 
@@ -518,22 +569,19 @@ function enviarWhatsApp(cpf) {
     let mensagem = '';
     if(dados.status === 'aprovado') {
         mensagem = `Olá *${dados.nome}*, tudo bem? Aqui é da *FlashPoint / FlashCred*! ⚡\n\n` +
-                   `Temos excelentes notícias! Sua solicitação de crédito no valor de *R$ ${formatarMoeda(dados.valorSolicitado)}* foi *APROVADA* com sucesso! 🎉\n\n` +
+                   `Sua solicitação de crédito no valor de *R$ ${formatarMoeda(dados.valorSolicitado)}* foi *APROVADA* com sucesso! 🎉\n\n` +
                    `📋 *Detalhes da sua proposta:*\n` +
                    `• Valor Solicitado: R$ ${formatarMoeda(dados.valorSolicitado)}\n` +
                    `• Taxa de Entrada (${dados.percEntrada}%): *R$ ${formatarMoeda(entrada)}*\n` +
                    `• Parcelamento: *${dados.qtdParcelas}x de R$ ${formatarMoeda(parcela)}* (${dados.percJuros}% a.m.)\n\n` +
                    `💳 *Para prosseguir com a liberação e entrega, realize o pagamento da taxa de entrada via Pix Copia e Cola abaixo:*\n\n` +
-                   `\`${pixCopiaECola}\`\n\n` +
-                   `Assim que realizar o pagamento, nosso sistema identificará automaticamente e você receberá a confirmação por aqui!`;
+                   `\`${pixCopiaECola}\``;
     } else if(dados.status === 'rejeitado') {
         mensagem = `Olá *${dados.nome}*, aqui é da *FlashPoint / FlashCred*. \n\n` +
-                   `Analisamos a sua solicitação de crédito no valor de *R$ ${formatarMoeda(dados.valorSolicitado)}* e, infelizmente, ela não foi aprovada neste momento pela nossa política interna.\n\n` +
-                   `Agradecemos o seu interesse e convidamos você a tentar novamente em uma nova oportunidade futura. Caso tenha dúvidas, estamos à disposição!`;
+                   `Analisamos a sua solicitação de crédito no valor de *R$ ${formatarMoeda(dados.valorSolicitado)}* e, infelizmente, ela não foi aprovada neste momento.`;
     } else {
         mensagem = `Olá *${dados.nome}*, aqui é da *FlashPoint / FlashCred*. \n\n` +
-                   `Sua solicitação de crédito no valor de *R$ ${formatarMoeda(dados.valorSolicitado)}* encontra-se atualmente *EM ANÁLISE* pela nossa equipe.\n\n` +
-                   `Em breve entraremos em contato com o resultado. Obrigado pela paciência!`;
+                   `Sua solicitação de crédito no valor de *R$ ${formatarMoeda(dados.valorSolicitado)}* encontra-se atualmente *EM ANÁLISE*.`;
     }
 
     const urlZap = `https://api.whatsapp.com/send?phone=${numZap}&text=${encodeURIComponent(mensagem)}`;
@@ -606,7 +654,27 @@ function salvarEdicao(cpf) {
     dados.valorSolicitado = parseFloat(document.getElementById('edt_valor').value);
     dados.percEntrada = parseFloat(document.getElementById('edt_entrada').value);
     dados.percJuros = parseFloat(document.getElementById('edt_juros').value);
-    dados.qtdParcelas = parseInt(document.getElementById('edt_parcelas').value);
+    
+    const novaQtdParcelas = parseInt(document.getElementById('edt_parcelas').value);
+    dados.qtdParcelas = novaQtdParcelas;
+
+    // Recria ou ajusta o array de parcelas preservando as pagas se possível
+    const entrada = dados.valorSolicitado * dados.percEntrada / 100;
+    const saldo = dados.valorSolicitado - entrada;
+    const novoValorParcela = saldo * (1 + (dados.percJuros/100)) / novaQtdParcelas;
+
+    let novasParcelas = [];
+    for(let i=1; i<=novaQtdParcelas; i++) {
+        const existente = dados.parcelas && dados.parcelas.find(p => p.numero === i);
+        novasParcelas.push({
+            numero: i,
+            valor: novoValorParcela,
+            paga: existente ? existente.paga : false,
+            dataPagamento: existente ? existente.dataPagamento : null
+        });
+    }
+    dados.parcelas = novasParcelas;
+
     localStorage.setItem(chave, JSON.stringify(dados));
     alert('✅ Alterações salvas com sucesso!');
     fecharModal();
@@ -642,10 +710,6 @@ async function consultarProposta() {
 
     const valorSol = data.valorSolicitado || 0;
     const percEnt = data.percEntrada || CONFIG.ENTRADA_PADRAO;
-    const percJur = data.percJuros || CONFIG.JUROS_PADRAO;
-    const maxParc = data.qtdParcelas || CONFIG.PARCELAS_MAX;
-    const minParc = CONFIG.PARCELAS_MIN;
-
     const entrada = valorSol * percEnt / 100;
 
     let htmlDetalhes = `
@@ -658,78 +722,73 @@ async function consultarProposta() {
     `;
 
     if(data.status === 'aprovado') {
-        htmlDetalhes += `
-            <div class="border-t border-zinc-800/80 pt-3 space-y-3">
-                <p class="text-amber-300 font-bold text-xs uppercase tracking-wider">📊 Escolha as Parcelas:</p>
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Selecione a quantidade de parcelas:</label>
-                    <select id="selectParcelas-${cpf}" onchange="atualizarCalculoParcelas('${cpf}', ${valorSol}, ${percEnt}, ${percJur})" class="w-full p-3 bg-black border border-zinc-800 rounded-xl text-sm text-white font-bold outline-none focus:border-red-500">
-        `;
-        
-        for(let i = minParc; i <= maxParc; i++) {
-            const saldo = valorSol - entrada;
-            const parcVal = saldo * (1 + (percJur/100)) / i;
-            htmlDetalhes += `<option value="${i}" ${i === maxParc ? 'selected' : ''}>${i}x de R$ ${formatarMoeda(parcVal)} (${percJur}% a.m.)</option>`;
-        }
-
-        htmlDetalhes += `
-                    </select>
-                </div>
-                <div id="resumoValores-${cpf}" class="bg-black/40 border border-red-500/20 p-3 rounded-xl text-xs space-y-1">
-                    <p>Taxa de Entrada (${percEnt}%): <strong class="text-amber-400">R$ ${formatarMoeda(entrada)}</strong></p>
-                </div>
-            </div>
-        `;
-
+        // Se a entrada NÃO foi paga, mostra o Pix da Entrada
         if(!data.entradaPaga) {
             const pixCode = gerarPix(entrada);
+            // URL de API pública e estável para gerar QR Code nítido sem falhar em branco
+            const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pixCode)}`;
+
             htmlDetalhes += `
-                <div class="border-t border-zinc-800/80 pt-3 space-y-2 bg-black/40 p-3.5 rounded-xl text-center border border-red-500/20">
-                    <p class="text-amber-400 font-bold text-xs uppercase tracking-wider">💳 Pagamento Pix Automatizado</p>
-                    <div id="pixContainer-${cpf}" class="space-y-2">
-                        <div id="qrcode-${cpf}" class="mx-auto flex justify-center bg-white p-2 rounded-xl w-36 h-36 items-center"></div>
-                        <label class="text-[10px] text-gray-400 block mb-1 uppercase tracking-wider">Pix Copia e Cola:</label>
-                        <textarea readonly class="w-full p-2.5 bg-black text-xs font-mono text-amber-300 rounded-xl border border-zinc-800 h-16 select-all outline-none">${pixCode}</textarea>
-                        <button onclick="navigator.clipboard.writeText('${pixCode}'); alert('📋 Código Pix copiado com sucesso!');" class="btn-primary w-full py-2.5 rounded-xl text-xs shadow-md">Copiar Código Pix</button>
-                        
-                        <!-- BOTÃO DE TESTE DE SIMULAÇÃO DE PAGAMENTO AUTOMÁTICO DO BANCO -->
-                        <button onclick="simularConfirmacaoAutomatica('${cpf}')" class="bg-emerald-600 hover:bg-emerald-700 text-white w-full py-2 rounded-xl text-[11px] font-semibold mt-2 transition shadow">⚡ Simular Confirmação Automática do Banco</button>
+                <div class="border-t border-zinc-800/80 pt-3 space-y-3 bg-black/40 p-3.5 rounded-xl text-center border border-red-500/20">
+                    <p class="text-amber-400 font-bold text-xs uppercase tracking-wider">💳 Pagamento da Taxa de Entrada</p>
+                    <div class="mx-auto flex justify-center bg-white p-2 rounded-xl w-36 h-36 items-center">
+                        <img src="${qrImageUrl}" alt="QR Code Pix" class="w-32 h-32 object-contain">
                     </div>
+                    <label class="text-[10px] text-gray-400 block mb-1 uppercase tracking-wider">Pix Copia e Cola:</label>
+                    <textarea readonly class="w-full p-2.5 bg-black text-xs font-mono text-amber-300 rounded-xl border border-zinc-800 h-16 select-all outline-none">${pixCode}</textarea>
+                    <button onclick="navigator.clipboard.writeText('${pixCode}'); alert('📋 Código Pix copiado com sucesso!');" class="btn-primary w-full py-2.5 rounded-xl text-xs shadow-md">Copiar Código Pix</button>
+                    
+                    <button onclick="registrarPagamentoEntrada('${cpf}')" class="bg-emerald-600 hover:bg-emerald-700 text-white w-full py-2 rounded-xl text-[11px] font-semibold mt-2 transition shadow">⚡ Simular Notificação Banco (Entrada Paga)</button>
                 </div>
             `;
-            setTimeout(() => {
-                const qrDiv = document.getElementById(`qrcode-${cpf}`);
-                if(qrDiv) {
-                    qrDiv.innerHTML = '';
-                    new QRCode(qrDiv, { text: pixCode, width: 128, height: 128 });
-                }
-            }, 100);
         } else {
+            // Se a entrada JÁ foi paga, mostra a lista completa de parcelas para o cliente acompanhar e pagar
             htmlDetalhes += `
-                <div class="border-t border-zinc-800/80 pt-3">
-                    <p class="text-emerald-400 font-bold text-center text-sm">✅ Entrada Confirmada Automaticamente!</p>
-                    <p class="text-[11px] text-gray-400 text-center mt-1">O pagamento da taxa de entrada foi identificado pelo banco e processado com sucesso.</p>
-                </div>
+                <div class="border-t border-zinc-800/80 pt-3 space-y-3">
+                    <p class="text-emerald-400 font-bold text-center text-xs">✅ Taxa de Entrada Confirmada!</p>
+                    <p class="text-amber-300 font-bold text-xs uppercase tracking-wider mt-2">📋 Suas Parcelas para Acompanhamento e Pagamento:</p>
+                    <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
             `;
+
+            if(data.parcelas && Array.isArray(data.parcelas)) {
+                data.parcelas.forEach(p => {
+                    const pixParcelaCode = gerarPixParcela(p.valor, p.numero);
+                    const qrParcelaUrl = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(pixParcelaCode)}`;
+
+                    htmlDetalhes += `
+                        <div class="p-3 bg-black/80 border ${p.paga ? 'border-emerald-500/40 bg-emerald-950/10' : 'border-zinc-800'} rounded-xl text-xs space-y-2">
+                            <div class="flex justify-between items-center">
+                                <span class="font-bold text-white">Parcela ${p.numero} de ${data.parcelas.length}</span>
+                                <span class="${p.paga ? 'text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded' : 'text-amber-400 font-semibold'}">
+                                    ${p.paga ? `✅ Paga (${p.dataPagamento || 'Confirmada'})` : `R$ ${formatarMoeda(p.valor)} (Pendente)`}
+                                </span>
+                            </div>
+                    `;
+
+                    if(!p.paga) {
+                        htmlDetalhes += `
+                            <div class="pt-2 border-t border-zinc-800/60 flex flex-col items-center space-y-2">
+                                <div class="bg-white p-1.5 rounded-lg w-28 h-28 flex items-center justify-center">
+                                    <img src="${qrParcelaUrl}" alt="QR Code Parcela ${p.numero}" class="w-24 h-24 object-contain">
+                                </div>
+                                <textarea readonly class="w-full p-2 bg-black text-[10px] font-mono text-amber-300 rounded-lg border border-zinc-800 h-12 select-all outline-none">${pixParcelaCode}</textarea>
+                                <div class="flex gap-2 w-full">
+                                    <button onclick="navigator.clipboard.writeText('${pixParcelaCode}'); alert('📋 Pix da Parcela ${p.numero} copiado!');" class="btn-primary flex-1 py-2 rounded-lg text-[11px]">Copiar Pix</button>
+                                    <button onclick="registrarPagamentoParcela('${cpf}', ${p.numero})" class="bg-emerald-600 hover:bg-emerald-700 text-white flex-1 py-2 rounded-lg text-[11px] font-semibold">⚡ Simular Pagamento</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    htmlDetalhes += `</div>`;
+                });
+            }
+
+            htmlDetalhes += `</div></div>`;
         }
     }
 
     htmlDetalhes += `</div>`;
     resDiv.innerHTML = htmlDetalhes;
-}
-
-function atualizarCalculoParcelas(cpf, valorSol, percEnt, percJur) {
-    const select = document.getElementById(`selectParcelas-${cpf}`);
-    const qtdP = parseInt(select.value);
-    const entrada = valorSol * percEnt / 100;
-    const saldo = valorSol - entrada;
-    const parcela = saldo * (1 + (percJur/100)) / qtdP;
-
-    const divResumo = document.getElementById(`resumoValores-${cpf}`);
-    divResumo.innerHTML = `
-        <p>Taxa de Entrada (${percEnt}%): <strong class="text-amber-400">R$ ${formatarMoeda(entrada)}</strong></p>
-        <p>Parcelamento escolhido: <strong class="text-white">${qtdP}x de R$ ${formatarMoeda(parcela)}</strong></p>
-    `;
 }
 </script>
 </body>
