@@ -1,247 +1,129 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlashCred ERP v2.0 - Painel de Controle</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#d40000',
-                        secondary: '#1e293b',
-                        sucesso: '#10b981',
-                        alerta: '#f59e0b',
-                        perigo: '#ef4444',
-                        neutro: '#64748b'
-                    },
-                    fontFamily: {
-                        sans: ['Arial', 'sans-serif']
-                    }
-                }
-            }
+// Servir as páginas do ERP
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Rota para marcar parcela como paga/pendente
+app.post('/api/parcelas/status', (req, res) => {
+    try {
+        const { cpf, numeroParcela, status } = req.body;
+        let propostas = lerBanco();
+        const cpfLimpo = cpf ? cpf.replace(/\D/g, '') : '';
+        const proposta = propostas.find(p => p.cpf.replace(/\D/g, '') === cpfLimpo);
+
+        if (!proposta || !proposta.parcelas) {
+            return res.status(404).json({ sucesso: false, erro: 'Proposta ou parcelas não encontradas.' });
         }
-    </script>
 
-    <style type="text/tailwindcss">
-        @layer utilities {
-            .sidebar-link {
-                @apply flex items-center gap-3 p-3 rounded-lg text-gray-300 hover:bg-primary/10 hover:text-white transition-all;
-            }
-            .sidebar-link.ativo {
-                @apply bg-primary text-white font-medium;
-            }
-            .card {
-                @apply bg-white rounded-xl shadow-sm p-5 border border-gray-100;
-            }
-            .card-indicador {
-                @apply rounded-xl p-5 text-white;
-            }
+        const parcela = proposta.parcelas.find(p => p.numero == numeroParcela);
+        if (!parcela) {
+            return res.status(404).json({ sucesso: false, erro: 'Parcela não encontrada.' });
         }
-    </style>
-</head>
-<body class="bg-gray-50 text-gray-800 min-h-screen">
-    <div class="flex flex-col md:flex-row">
-        <!-- MENU LATERAL -->
-        <aside id="sidebar" class="w-full md:w-64 bg-secondary min-h-screen p-4 transition-all">
-            <div class="mb-8 text-center">
-                <h1 class="text-xl font-bold text-white">🛋️ FLASHCRED ERP</h1>
-                <p class="text-xs text-gray-400">Flashpoint Distribuidora</p>
-                <p class="text-[10px] text-gray-500">CNPJ: 35.560.220/0001-54</p>
-            </div>
 
-            <nav class="space-y-1">
-                <a href="#" class="sidebar-link ativo">
-                    <i class="fa fa-home w-5"></i>
-                    <span>Dashboard</span>
-                </a>
-                <a href="clientes.html" class="sidebar-link">
-                    <i class="fa fa-users w-5"></i>
-                    <span>Clientes</span>
-                </a>
-                <a href="propostas.html" class="sidebar-link">
-                    <i class="fa fa-file-text w-5"></i>
-                    <span>Propostas</span>
-                </a>
-                <a href="financeiro.html" class="sidebar-link">
-                    <i class="fa fa-money w-5"></i>
-                    <span>Financeiro</span>
-                </a>
-                <a href="relatorios.html" class="sidebar-link">
-                    <i class="fa fa-bar-chart w-5"></i>
-                    <span>Relatórios</span>
-                </a>
-                <hr class="border-gray-700 my-4">
-                <a href="#" class="sidebar-link text-perigo hover:bg-perigo/10 hover:text-perigo">
-                    <i class="fa fa-sign-out w-5"></i>
-                    <span>Sair</span>
-                </a>
-            </nav>
-        </aside>
+        parcela.status = status;
+        if (status === 'PAGO') {
+            parcela.dataPagamento = new Date().toLocaleDateString('pt-BR');
+        } else {
+            delete parcela.dataPagamento;
+        }
 
-        <!-- CONTEÚDO PRINCIPAL -->
-        <main class="flex-1 p-4 md:p-6">
-            <header class="mb-6 flex justify-between items-center">
-                <div>
-                    <h2 class="text-2xl font-bold">Visão Geral</h2>
-                    <p class="text-sm text-gray-500">Resumo do seu crediário</p>
-                </div>
-                <div class="flex items-center gap-3">
-                    <span class="text-sm hidden md:block">Olá, Felipe</span>
-                    <div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white font-bold">F</div>
-                </div>
-            </header>
+        salvarBanco(propostas);
+        res.json({ sucesso: true, mensagem: `Parcela ${numeroParcela} atualizada para ${status}.` });
+    } catch (e) {
+        res.status(500).json({ sucesso: false, erro: e.message });
+    }
+});
 
-            <!-- CARDS DE INDICADORES -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div class="card-indicador bg-primary">
-                    <h3 class="text-sm opacity-90">Total Propostas</h3>
-                    <p class="text-2xl font-bold" id="qtdPropostas">0</p>
-                </div>
-                <div class="card-indicador bg-sucesso">
-                    <h3 class="text-sm opacity-90">Aprovadas</h3>
-                    <p class="text-2xl font-bold" id="qtdAprovadas">0</p>
-                </div>
-                <div class="card-indicador bg-alerta">
-                    <h3 class="text-sm opacity-90">A Receber</h3>
-                    <p class="text-2xl font-bold" id="valorReceber">R$ 0,00</p>
-                </div>
-                <div class="card-indicador bg-perigo">
-                    <h3 class="text-sm opacity-90">Inadimplência</h3>
-                    <p class="text-2xl font-bold" id="valorAtraso">R$ 0,00</p>
-                </div>
-            </div>
+// Rota de notificações
+app.get('/api/admin/notificacoes', (req, res) => {
+    try {
+        let propostas = lerBanco();
+        let pagamentosRecentes = [];
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- GRÁFICO -->
-                <div class="lg:col-span-2 card">
-                    <h3 class="font-semibold mb-4">Vendas e Pagamentos</h3>
-                    <canvas height="250" id="grafico"></canvas>
-                </div>
-
-                <!-- NOTIFICAÇÕES -->
-                <div class="card">
-                    <h3 class="font-semibold mb-4 flex items-center gap-2">
-                        <i class="fa fa-bell text-primary"></i>
-                        Avisos Recentes
-                    </h3>
-                    <div id="listaAvisos" class="space-y-3 text-sm">
-                        <p class="text-gray-500">Carregando...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ÚLTIMAS PROPOSTAS -->
-            <div class="card mt-6">
-                <h3 class="font-semibold mb-4">Últimas Propostas</h3>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead class="bg-gray-50 text-left">
-                            <tr>
-                                <th class="p-3">Cliente</th>
-                                <th class="p-3">CPF</th>
-                                <th class="p-3">Valor</th>
-                                <th class="p-3">Status</th>
-                                <th class="p-3">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabelaPropostas">
-                            <tr>
-                                <td colspan="5" class="p-4 text-center text-gray-500">Carregando dados...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </main>
-    </div>
-
-    <script>
-        let grafico;
-
-        // CARREGAR DADOS DO SISTEMA
-        async function carregarDados() {
-            try {
-                const res = await fetch('/api/propostas');
-                const dados = await res.json();
-                const propostas = dados.propostas || [];
-
-                // ATUALIZAR INDICADORES
-                document.getElementById('qtdPropostas').innerText = propostas.length;
-                const aprovadas = propostas.filter(p => p.status === 'APROVADO');
-                document.getElementById('qtdAprovadas').innerText = aprovadas.length;
-
-                let totalReceber = 0, totalAtraso = 0;
-                aprovadas.forEach(p => {
-                    p.parcelas?.forEach(parc => {
-                        if(parc.status === 'PENDENTE') totalReceber += parc.valor;
+        propostas.forEach(p => {
+            if (p.cobrancaPix && p.pagamentoEntradaStatus === 'PAGO') {
+                pagamentosRecentes.push({
+                    tipo: 'ENTRADA',
+                    cliente: p.nome,
+                    cpf: p.cpf,
+                    valor: p.valorEntrada,
+                    data: 'Recente'
+                });
+            }
+            p.parcelas?.forEach(parc => {
+                if (parc.status === 'PAGO') {
+                    pagamentosRecentes.push({
+                        tipo: `PARCELA ${parc.numero}`,
+                        cliente: p.nome,
+                        cpf: p.cpf,
+                        valor: parc.valor,
+                        data: parc.dataPagamento || 'Recente'
                     });
+                }
+            });
+        });
+
+        res.json({ sucesso: true, totalPropostas: propostas.length, pagamentosRecentes });
+    } catch (e) {
+        res.status(500).json({ sucesso: false, erro: e.message });
+    }
+});
+
+// Rota para editar tudo
+app.post('/api/propostas/editar-tudo', (req, res) => {
+    try {
+        const { cpfOriginal, nome, cpf, nascimento, endereco, numero, cep, valorTotal, valorEntrada, qtdParcelas, juros, status } = req.body;
+        let propostas = lerBanco();
+        const cpfOrigLimpo = cpfOriginal.replace(/\D/g, '');
+        const index = propostas.findIndex(p => p.cpf.replace(/\D/g, '') === cpfOrigLimpo);
+
+        if (index === -1) return res.status(404).json({ sucesso: false, mensagem: 'Proposta não encontrada!' });
+
+        if (cpf && !validarCPF(cpf)) return res.status(400).json({ sucesso: false, mensagem: 'CPF inválido!' });
+        if (nascimento && !validarIdade(nascimento)) return res.status(400).json({ sucesso: false, mensagem: 'Cliente deve ter pelo menos 18 anos!' });
+
+        const novoValorTotal = parseFloat(valorTotal) || propostas[index].valorTotal;
+        const novaEntrada = parseFloat(valorEntrada) || propostas[index].valorEntrada;
+        const novaQtd = parseInt(qtdParcelas) || propostas[index].qtdParcelas;
+        const novoJuros = parseFloat(juros) || propostas[index].juros;
+        const tx = novoJuros / 100;
+        const restante = Math.max(0, novoValorTotal - novaEntrada);
+        const valorParcela = parseFloat(((restante * Math.pow(1 + tx, novaQtd)) / novaQtd).toFixed(2));
+
+        propostas[index] = {
+            ...propostas[index],
+            nome: nome || propostas[index].nome,
+            cpf: cpf || propostas[index].cpf,
+            nascimento: nascimento || propostas[index].nascimento,
+            endereco: endereco || propostas[index].endereco,
+            numero: numero || propostas[index].numero,
+            cep: cep || propostas[index].cep,
+            valorTotal: novoValorTotal,
+            valorEntrada: novaEntrada,
+            qtdParcelas: novaQtd,
+            juros: novoJuros,
+            valorTotalComJuros: parseFloat((novaEntrada + (valorParcela * novaQtd)).toFixed(2)),
+            status: status || propostas[index].status,
+        };
+
+        if (restante > 0) {
+            const listaParcelas = [];
+            const hoje = new Date();
+            for (let i = 1; i <= novaQtd; i++) {
+                let venc = new Date(hoje);
+                venc.setMonth(venc.getMonth() + i);
+                listaParcelas.push({
+                    numero: i,
+                    vencimento: venc.toLocaleDateString('pt-BR'),
+                    valor: valorParcela,
+                    status: propostas[index].parcelas?.[i-1]?.status || 'PENDENTE',
+                    dataPagamento: propostas[index].parcelas?.[i-1]?.dataPagamento
                 });
-                document.getElementById('valorReceber').innerText = `R$ ${totalReceber.toFixed(2).replace('.', ',')}`;
-                document.getElementById('valorAtraso').innerText = `R$ ${totalAtraso.toFixed(2).replace('.', ',')}`;
-
-                // TABELA DE ÚLTIMAS PROPOSTAS
-                const tabela = document.getElementById('tabelaPropostas');
-                tabela.innerHTML = '';
-                propostas.slice(-5).reverse().forEach(p => {
-                    const statusCor = {
-                        'EM_ANALISE': 'text-alerta bg-alerta/10',
-                        'APROVADO': 'text-sucesso bg-sucesso/10',
-                        'REPROVADO': 'text-perigo bg-perigo/10'
-                    };
-                    const statusTexto = {
-                        'EM_ANALISE': 'Em Análise',
-                        'APROVADO': 'Aprovado',
-                        'REPROVADO': 'Reprovado'
-                    };
-
-                    tabela.innerHTML += `
-                    <tr class="border-t border-gray-100">
-                        <td class="p-3">${p.nome}</td>
-                        <td class="p-3">${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</td>
-                        <td class="p-3">R$ ${p.valorTotal?.toFixed(2).replace('.', ',') || '0,00'}</td>
-                        <td class="p-3"><span class="px-2 py-1 rounded text-xs font-medium ${statusCor[p.status]}">${statusTexto[p.status]}</span></td>
-                        <td class="p-3"><button class="text-primary hover:underline">Ver</button></td>
-                    </tr>
-                    `;
-                });
-
-                // GRÁFICO SIMPLES
-                if(grafico) grafico.destroy();
-                const ctx = document.getElementById('grafico').getContext('2d');
-                grafico = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Propostas', 'Aprovadas', 'Pendentes'],
-                        datasets: [{
-                            label: 'Quantidade',
-                            data: [propostas.length, aprovadas.length, propostas.length - aprovadas.length],
-                            backgroundColor: ['#d40000', '#10b981', '#f59e0b']
-                        }]
-                    },
-                    options: { responsive: true, plugins: { legend: { display: false } } }
-                });
-
-                // AVISOS
-                const avisos = document.getElementById('listaAvisos');
-                avisos.innerHTML = `
-                    <div class="p-2 bg-gray-50 rounded">✅ Sistema atualizado</div>
-                    <div class="p-2 bg-gray-50 rounded">📋 ${aprovadas.length} propostas aprovadas</div>
-                `;
-
-            } catch (erro) {
-                document.getElementById('listaAvisos').innerHTML = `<p class="text-perigo">Erro ao carregar dados: ${erro.message}</p>`;
             }
+            propostas[index].parcelas = listaParcelas;
         }
 
-        // INICIAR
-        carregarDados();
-        setInterval(carregarDados, 30000); // Atualiza a cada 30 segundos
-    </script>
-</body>
-</html>
+        salvarBanco(propostas);
+        res.json({ sucesso: true, mensagem: 'Proposta alterada com SUCESSO!' });
+    } catch (e) {
+        res.status(500).json({ sucesso: false, mensagem: 'Erro: ' + e.message });
+    }
+});
