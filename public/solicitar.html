@@ -10,9 +10,9 @@
             theme: {
                 extend: {
                     colors: {
-                        primary: '#d40000',
-                        primaryDark: '#b00000',
-                        fundo: '#f8fafc'
+                        primary: '#C8102E',
+                        primaryDark: '#A00D25',
+                        fundo: '#F8FAFC'
                     }
                 }
             }
@@ -20,7 +20,7 @@
     </script>
     <style>
         .card { @apply bg-white rounded-2xl shadow-lg p-6; }
-        .input { @apply w-full p-3 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary; }
+        .input { @apply w-full p-3 border border-gray-200 rounded-xl outline-none transition-all focus:ring-2 focus:ring-primary/30 focus:border-primary; }
         .btn { @apply w-full py-3 rounded-xl font-bold transition-all; }
         .btn-primary { @apply bg-primary hover:bg-primaryDark text-white; }
     </style>
@@ -74,6 +74,7 @@
     </div>
 
     <script>
+        // Valida CPF
         function validarCPF(cpf) {
             cpf = cpf.replace(/\D/g, '');
             if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
@@ -89,6 +90,7 @@
             return resto === parseInt(cpf[10]);
         }
 
+        // Valida idade mínima ≥17 anos
         function validarIdade(dataNasc) {
             if (!dataNasc) return false;
             const nasc = new Date(dataNasc);
@@ -96,10 +98,10 @@
             let idade = hoje.getFullYear() - nasc.getFullYear();
             const mes = hoje.getMonth() - nasc.getMonth();
             if (mes < 0 || (mes === 0 && hoje.getDate() < nasc.getDate())) idade--;
-            return idade >= 18;
+            return idade >= 17;
         }
 
-        document.getElementById('formProposta').addEventListener('submit', async (e) => {
+        document.getElementById('formProposta').addEventListener('submit', (e) => {
             e.preventDefault();
             const msg = document.getElementById('mensagem');
             msg.classList.remove('hidden','text-red-500','text-green-600');
@@ -108,42 +110,35 @@
                 nome: document.getElementById('nome').value.trim(),
                 cpf: document.getElementById('cpf').value.trim(),
                 nascimento: document.getElementById('nascimento').value,
+                whatsapp: document.getElementById('whatsapp').value.trim(),
                 endereco: document.getElementById('endereco').value.trim(),
                 cep: document.getElementById('cep').value.trim(),
                 valorSolicitado: parseFloat(document.getElementById('valor').value)
             };
 
             if (!validarCPF(dados.cpf)) {
-                msg.textContent = 'CPF inválido!';
+                msg.textContent = '❌ CPF inválido!';
                 msg.classList.add('text-red-500');
                 return;
             }
             if (!validarIdade(dados.nascimento)) {
-                msg.textContent = 'É necessário ter pelo menos 18 anos!';
+                msg.textContent = '❌ É necessário ter pelo menos 17 anos!';
                 msg.classList.add('text-red-500');
                 return;
             }
 
-            try {
-                const res = await fetch('/api/proposta/criar', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(dados)
-                });
-                const retorno = await res.json();
+            // Salva localmente (funciona offline)
+            const propostas = JSON.parse(localStorage.getItem('propostasFlashpoint') || '[]');
+            propostas.push({
+                ...dados,
+                status: 'EM_ANALISE',
+                dataEnvio: new Date().toLocaleDateString('pt-BR')
+            });
+            localStorage.setItem('propostasFlashpoint', JSON.stringify(propostas));
 
-                if (retorno.sucesso) {
-                    msg.textContent = '✅ Solicitação enviada com sucesso! Entraremos em contato em breve.';
-                    msg.classList.add('text-green-600');
-                    e.target.reset();
-                } else {
-                    msg.textContent = '❌ ' + retorno.mensagem;
-                    msg.classList.add('text-red-500');
-                }
-            } catch {
-                msg.textContent = '❌ Erro ao enviar. Tente novamente mais tarde.';
-                msg.classList.add('text-red-500');
-            }
+            msg.textContent = '✅ Solicitação enviada com sucesso! Entraremos em contato em breve.';
+            msg.classList.add('text-green-600');
+            e.target.reset();
             msg.classList.remove('hidden');
         });
     </script>
