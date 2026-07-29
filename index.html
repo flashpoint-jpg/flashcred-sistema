@@ -109,7 +109,6 @@
                 <input type="password" id="senhaAdmin" placeholder="Digite sua senha..." class="w-full p-3 bg-gray-900 border border-gray-700 rounded-xl">
             </div>
             <button onclick="fazerLogin()" class="btn-primary w-full py-3 rounded-xl font-bold text-gray-900">Entrar no Painel</button>
-            <p class="text-center text-xs text-gray-400">Senha padrão: <strong>flash2026</strong></p>
         </div>
     </div>
 </div>
@@ -470,7 +469,6 @@ async function consultarProposta() {
             htmlDetalhes += `
                 <div class="border-t border-gray-700 pt-3 space-y-2 bg-gray-800/80 p-3 rounded-lg text-center">
                     <p class="text-amber-400 font-bold">💳 Pagamento Pix Automatizado</p>
-                    <p class="text-xs text-gray-300">Carregando QR Code do Mercado Pago...</p>
                     <div id="pixContainer-${cpf}">
                         <button onclick="gerarPixMercadoPago('${cpf}', ${entrada})" class="btn-primary w-full py-2 rounded-lg font-bold text-gray-900 text-xs">Gerar Código Pix</button>
                     </div>
@@ -490,24 +488,30 @@ async function consultarProposta() {
     resDiv.innerHTML = htmlDetalhes;
 }
 
-// Função para gerar o Pix via Mercado Pago (Chama a API do backend ou integração direta)
 async function gerarPixMercadoPago(cpf, valorEntrada) {
     const container = document.getElementById(`pixContainer-${cpf}`);
-    container.innerHTML = '<p class="text-xs text-amber-300 animate-pulse">Gerando Pix no Mercado Pago...</p>';
+    container.innerHTML = '<p class="text-xs text-amber-300 animate-pulse py-2">Gerando Pix no Mercado Pago...</p>';
 
-    // Aqui você conectará com a rota do seu servidor Node.js que consome o token do Mercado Pago
-    // Exemplo simulado de integração:
     try {
-        // Exemplo de payload para o endpoint do Mercado Pago (v1/payments ou v1/preferences)
-        // Substitua pela chamada real do seu backend configurado com o seu Access Token
-        container.innerHTML = `
-            <p class="text-xs text-green-400 mb-1">Pix gerado com sucesso!</p>
-            <textarea readonly class="w-full p-2 bg-gray-950 text-xs font-mono text-amber-300 rounded border border-gray-700 h-16 select-all">00020126580014br.gov.bcb.pix...</textarea>
-            <button onclick="alert('Código Pix copiado!')" class="btn-primary w-full py-2 rounded-lg font-bold text-gray-900 text-xs mt-2">📋 Copiar Pix Copia e Cola</button>
-            <p class="text-[10px] text-gray-400 mt-2">O painel atualizará sozinho assim que o pagamento for aprovado pelo Mercado Pago.</p>
-        `;
+        const response = await fetch('/api/gerar-pix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cpf: cpf, valor: valorEntrada })
+        });
+        const resultado = await response.json();
+
+        if(resultado.success) {
+            container.innerHTML = `
+                <p class="text-xs text-green-400 mb-1">Pix gerado com sucesso!</p>
+                <textarea readonly class="w-full p-2 bg-gray-950 text-xs font-mono text-amber-300 rounded border border-gray-700 h-16 select-all">${resultado.qr_code}</textarea>
+                <button onclick="navigator.clipboard.writeText('${resultado.qr_code}'); alert('📋 Código Pix copiado com sucesso!');" class="btn-primary w-full py-2 rounded-lg font-bold text-gray-900 text-xs mt-2">📋 Copiar Pix Copia e Cola</button>
+                <p class="text-[10px] text-gray-400 mt-2">O painel atualizará sozinho assim que o pagamento for aprovado pelo Mercado Pago.</p>
+            `;
+        } else {
+            container.innerHTML = '<p class="text-xs text-red-400">Erro ao gerar Pix no servidor.</p>';
+        }
     } catch (e) {
-        container.innerHTML = '<p class="text-xs text-red-400">Erro ao gerar Pix automático.</p>';
+        container.innerHTML = '<p class="text-xs text-red-400">Erro de conexão ao gerar Pix.</p>';
     }
 }
 </script>
