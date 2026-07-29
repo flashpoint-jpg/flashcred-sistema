@@ -28,7 +28,6 @@
 <body class="p-4 text-gray-100">
 
 <script>
-    // Configurações do Supabase Integrado
     const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
     const { createClient } = supabase;
@@ -72,12 +71,12 @@
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Renda Mensal</label>
-                    <input type="text" id="renda" required placeholder="R$ 0,00" class="w-full p-3 bg-gray-900 border border-gray-700 rounded-xl">
+                    <input type="text" id="renda" required placeholder="0,00" class="w-full p-3 bg-gray-900 border border-gray-700 rounded-xl">
                 </div>
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">Valor Desejado</label>
-                <input type="text" id="valor" required placeholder="R$ 0,00" class="w-full p-3 bg-gray-900 border border-gray-700 rounded-xl">
+                <input type="text" id="valor" required placeholder="0,00" class="w-full p-3 bg-gray-900 border border-gray-700 rounded-xl">
             </div>
             <div>
                 <label class="block text-sm font-medium mb-1">WhatsApp</label>
@@ -183,8 +182,6 @@
 </div>
 
 <script>
-let dadosEmEdicao = null;
-
 function mostrarAba(nomeAba) {
     document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('ativo'));
@@ -217,16 +214,20 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
     
     if (!validarCPF(cpfLimpo)) return alert('CPF inválido!');
     
-    const nascimento = new Date(document.getElementById('nascimento').value);
+    const nascimentoVal = document.getElementById('nascimento').value;
+    const nascimento = new Date(nascimentoVal);
     const idade = new Date().getFullYear() - nascimento.getFullYear();
     if (idade < CONFIG.IDADE_MINIMA) return alert(`É preciso ter pelo menos ${CONFIG.IDADE_MINIMA} anos!`);
+
+    const rendaLimpa = parseFloat(document.getElementById('renda').value.replace(/\./g,'').replace(',','.')) || 0;
+    const valorLimpo = parseFloat(document.getElementById('valor').value.replace(/\./g,'').replace(',','.')) || 0;
 
     const novaProposta = {
         cpf: cpfLimpo,
         nome: document.getElementById('nome').value,
-        nascimento: document.getElementById('nascimento').value,
-        renda: parseFloat(document.getElementById('renda').value.replace(/\D/g,''))/100 || 0,
-        valor_solicitado: parseFloat(document.getElementById('valor').value.replace(/\D/g,''))/100 || 0,
+        nascimento: nascimentoVal,
+        renda: rendaLimpa,
+        valor_solicitado: valorLimpo,
         whatsapp: document.getElementById('whatsapp').value,
         status: 'em_analise',
         data: new Date().toLocaleDateString('pt-BR'),
@@ -239,8 +240,8 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
     const { error } = await _supabase.from('propostas').upsert([novaProposta], { onConflict: 'cpf' });
 
     if(error) {
-        console.error(error);
-        alert('Erro ao enviar solicitação para o banco de dados.');
+        console.error('Erro Supabase:', error);
+        alert('Erro ao enviar: ' + error.message);
     } else {
         alert('✅ Solicitação enviada com sucesso! Aguarde a análise.');
         e.target.reset();
@@ -367,7 +368,6 @@ async function abrirEditar(cpf) {
     const { data, error } = await _supabase.from('propostas').select('*').eq('cpf', cpf).single();
     if(error || !data) return alert('Erro ao buscar dados da proposta.');
     
-    dadosEmEdicao = data;
     const valorSol = data.valor_solicitado || 0;
     const percEnt = data.perc_entrada || CONFIG.ENTRADA_PADRAO;
     const percJur = data.perc_juros || CONFIG.JUROS_PADRAO;
