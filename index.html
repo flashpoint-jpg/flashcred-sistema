@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlashCred - Sistema Completo com Mercado Pago</title>
+    <title>FlashCred - Sistema Completo</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; }
@@ -101,7 +101,7 @@
         <div class="flex flex-wrap justify-between items-center gap-3">
             <div>
                 <h1 class="text-2xl font-bold text-amber-400">📊 Painel de Controle Total</h1>
-                <p class="text-sm text-gray-400">Edite valores, juros, parcelas e gere cobranças integradas</p>
+                <p class="text-sm text-gray-400">Gerencie propostas recebidas de clientes de qualquer lugar</p>
             </div>
             <div class="flex gap-2">
                 <button onclick="carregarLista()" class="btn-info px-4 py-2 rounded-lg text-sm font-medium">🔄 Atualizar</button>
@@ -172,7 +172,6 @@ const CONFIG = {
     PARCELAS_MAX: 12
 };
 
-// Funções de Máscaras Automáticas
 function mascaraCPF(input) {
     let v = input.value.replace(/\D/g, '');
     if (v.length > 11) v = v.slice(0, 11);
@@ -201,7 +200,7 @@ function limparMoeda(valorStr) {
     return parseFloat(valorStr.replace(/[^\d]/g, '')) / 100;
 }
 
-let dadosAtuais = null;
+let dadosAtuaisGlobais = [];
 
 function mostrarAba(nomeAba, event) {
     document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
@@ -231,7 +230,7 @@ function formatarMoeda(valor) {
     return Number(valor).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-document.getElementById('formSolicitacao').addEventListener('submit', e => {
+document.getElementById('formSolicitacao').addEventListener('submit', async e => {
     e.preventDefault();
     const cpfLimpo = document.getElementById('cpf').value.replace(/\D/g,'');
     
@@ -260,9 +259,22 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
         cobrancaPix: null
     };
 
-    localStorage.setItem(`flashcred_${cpfLimpo}`, JSON.stringify(dados));
-    alert('✅ Solicitação enviada com sucesso! Aguarde a análise.');
-    e.target.reset();
+    try {
+        const resposta = await fetch('mercadopago.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ acao: 'salvar_proposta', proposta: dados })
+        });
+        const res = await resposta.json();
+        if(res.sucesso) {
+            alert('✅ Solicitação enviada com sucesso! Aguarde a análise.');
+            e.target.reset();
+        } else {
+            alert('Erro ao salvar proposta.');
+        }
+    } catch(err) {
+        alert('Erro de conexão ao enviar proposta.');
+    }
 });
 
 if(localStorage.getItem('adminLogado') === 'sim') mostrarAba('admin');
@@ -283,78 +295,72 @@ function sairLogin() {
     document.getElementById('senhaAdmin').value = '';
 }
 
-function pegarTodasPropostas() {
-    const lista = [];
-    for(let i=0; i<localStorage.length; i++) {
-        const chave = localStorage.key(i);
-        if(chave && chave.startsWith('flashcred_')) {
-            try {
-                lista.push(JSON.parse(localStorage.getItem(chave)));
-            } catch(e) {}
+async function carregarLista() {
+    try {
+        const resposta = await fetch('mercadopago.php?acao=listar');
+        const propostas = await resposta.json();
+        dadosAtuaisGlobais = propostas;
+        
+        const tbody = document.getElementById('listaPropostas');
+        let total=0, analise=0, aprovado=0, rejeitado=0;
+
+        if(!propostas || propostas.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-gray-400">Nenhuma proposta recebida ainda.</td></tr>';
+            atualizarResumo(0,0,0,0);
+            return;
         }
+
+        tbody.innerHTML = '';
+        propostas.forEach(p => {
+            total++;
+            if(p.status === 'em_analise') analise++;
+            else if(p.status === 'aprovado') aprovado++;
+            else rejeitado++;
+
+            const entrada = p.valorSolicitado * p.percEntrada / 100;
+            const saldo = p.valorSolicitado - entrada;
+            const parcela = saldo * (1 + (p.percJuros/100)) / p.qtdParcelas;
+
+            const statusCor = {
+                'em_analise': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+                'aprovado': 'bg-green-500/20 text-green-400 border-green-500/30',
+                'rejeitado': 'bg-red-500/20 text-red-400 border-red-500/30'
+            }[p.status];
+
+            const statusTexto = {
+                'em_analise': 'Em Análise',
+                'aprovado': 'Aprovado',
+                'rejeitado': 'Rejeitado'
+            }[p.status];
+
+            const linha = document.createElement('tr');
+            linha.className = 'hover:bg-gray-700/30';
+            linha.innerHTML = `
+                <td class="p-3"><small>${p.data}</small></td>
+                <td class="p-3"><strong>${p.nome}</strong><br><small class="text-gray-400">${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</small></td>
+                <td class="p-3">R$ ${formatarMoeda(p.valorSolicitado)}</td>
+                <td class="p-3">${p.percEntrada}% <br>R$ ${formatarMoeda(entrada)}</td>
+                <td class="p-3">${p.percJuros}% a.m <br>${p.qtdParcelas}x de R$ ${formatarMoeda(parcela)}</td>
+                <td class="p-3"><span class="px-2 py-1 rounded-full text-xs font-medium border ${statusCor}">${statusTexto}</span></td>
+                <td class="p-3">
+                    <button onclick="abrirEditar('${p.cpf}')" class="btn-info px-3 py-1.5 rounded text-xs font-medium mb-1 w-full">✏️ Editar Tudo</button>
+                    ${p.status === 'em_analise' ? `
+                        <button onclick="alterarStatus('${p.cpf}', 'aprovado')" class="btn-success px-3 py-1.5 rounded text-xs font-medium mb-1 w-full">✅ Aprovar</button>
+                        <button onclick="alterarStatus('${p.cpf}', 'rejeitado')" class="btn-danger px-3 py-1.5 rounded text-xs font-medium w-full">❌ Rejeitar</button>
+                    ` : ''}
+                    ${p.status === 'aprovado' && !p.entradaPaga ? `
+                        <button onclick="marcarEntradaPaga('${p.cpf}')" class="bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded text-xs font-medium w-full mt-1">💰 Marcar Entrada Paga</button>
+                    ` : ''}
+                    ${p.entradaPaga ? '<span class="text-green-400 text-xs font-bold block mt-1">✅ Entrada Confirmada</span>' : ''}
+                </td>
+            `;
+            tbody.appendChild(linha);
+        });
+
+        atualizarResumo(total, analise, aprovado, rejeitado);
+    } catch(err) {
+        console.error(err);
     }
-    return lista.sort((a,b) => new Date(b.data) - new Date(a.data));
-}
-
-function carregarLista() {
-    const propostas = pegarTodasPropostas();
-    const tbody = document.getElementById('listaPropostas');
-    let total=0, analise=0, aprovado=0, rejeitado=0;
-
-    if(propostas.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-gray-400">Nenhuma proposta recebida ainda.</td></tr>';
-        atualizarResumo(0,0,0,0);
-        return;
-    }
-
-    tbody.innerHTML = '';
-    propostas.forEach(p => {
-        total++;
-        if(p.status === 'em_analise') analise++;
-        else if(p.status === 'aprovado') aprovado++;
-        else rejeitado++;
-
-        const entrada = p.valorSolicitado * p.percEntrada / 100;
-        const saldo = p.valorSolicitado - entrada;
-        const parcela = saldo * (1 + (p.percJuros/100)) / p.qtdParcelas;
-
-        const statusCor = {
-            'em_analise': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-            'aprovado': 'bg-green-500/20 text-green-400 border-green-500/30',
-            'rejeitado': 'bg-red-500/20 text-red-400 border-red-500/30'
-        }[p.status];
-
-        const statusTexto = {
-            'em_analise': 'Em Análise',
-            'aprovado': 'Aprovado',
-            'rejeitado': 'Rejeitado'
-        }[p.status];
-
-        const linha = document.createElement('tr');
-        linha.className = 'hover:bg-gray-700/30';
-        linha.innerHTML = `
-            <td class="p-3"><small>${p.data}</small></td>
-            <td class="p-3"><strong>${p.nome}</strong><br><small class="text-gray-400">${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</small></td>
-            <td class="p-3">R$ ${formatarMoeda(p.valorSolicitado)}</td>
-            <td class="p-3">${p.percEntrada}% <br>R$ ${formatarMoeda(entrada)}</td>
-            <td class="p-3">${p.percJuros}% a.m <br>${p.qtdParcelas}x de R$ ${formatarMoeda(parcela)}</td>
-            <td class="p-3"><span class="px-2 py-1 rounded-full text-xs font-medium border ${statusCor}">${statusTexto}</span></td>
-            <td class="p-3">
-                <button onclick="abrirEditar('${p.cpf}')" class="btn-info px-3 py-1.5 rounded text-xs font-medium mb-1 w-full">✏️ Editar Tudo</button>
-                ${p.status === 'em_analise' ? `
-                    <button onclick="alterarStatus('${p.cpf}', 'aprovado')" class="btn-success px-3 py-1.5 rounded text-xs font-medium mb-1 w-full">✅ Aprovar</button>
-                    <button onclick="alterarStatus('${p.cpf}', 'rejeitado')" class="btn-danger px-3 py-1.5 rounded text-xs font-medium w-full">❌ Rejeitar</button>
-                ` : ''}
-                ${p.status === 'aprovado' && !p.entradaPaga ? `
-                    <button onclick="marcarEntradaPaga('${p.cpf}')" class="bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded text-xs font-medium w-full mt-1">💰 Marcar Entrada Paga</button>
-                ` : ''}
-                ${p.entradaPaga ? '<span class="text-green-400 text-xs font-bold block mt-1">✅ Entrada Confirmada</span>' : ''}
-            </td>
-        `;
-        tbody.appendChild(linha);
-    });
-
-    atualizarResumo(total, analise, aprovado, rejeitado);
 }
 
 function atualizarResumo(total, analise, aprovado, rejeitado) {
@@ -364,51 +370,56 @@ function atualizarResumo(total, analise, aprovado, rejeitado) {
     document.getElementById('resumoRejeitado').textContent = rejeitado;
 }
 
-function alterarStatus(cpf, novoStatus) {
+async function alterarStatus(cpf, novoStatus) {
     if(!confirm(`Deseja realmente ${novoStatus === 'aprovado' ? 'APROVAR' : 'REJEITAR'} esta proposta?`)) return;
-    const chave = `flashcred_${cpf}`;
-    const dados = JSON.parse(localStorage.getItem(chave));
-    dados.status = novoStatus;
-    localStorage.setItem(chave, JSON.stringify(dados));
-    alert(`✅ Proposta ${novoStatus === 'aprovado' ? 'aprovada' : 'rejeitada'} com sucesso!`);
+    await fetch('mercadopago.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'atualizar_status', cpf: cpf, status: novoStatus })
+    });
+    alert('✅ Status alterado com sucesso!');
     carregarLista();
 }
 
-function marcarEntradaPaga(cpf) {
-    const chave = `flashcred_${cpf}`;
-    const dados = JSON.parse(localStorage.getItem(chave));
-    dados.entradaPaga = true;
-    localStorage.setItem(chave, JSON.stringify(dados));
+async function marcarEntradaPaga(cpf) {
+    await fetch('mercadopago.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'marcar_pago', cpf: cpf })
+    });
     alert('✅ Entrada marcada como paga!');
     carregarLista();
 }
 
 function abrirEditar(cpf) {
-    dadosAtuais = JSON.parse(localStorage.getItem(`flashcred_${cpf}`));
-    const entrada = dadosAtuais.valorSolicitado * dadosAtuais.percEntrada / 100;
-    const saldo = dadosAtuais.valorSolicitado - entrada;
-    const parcela = saldo * (1 + (dadosAtuais.percJuros/100)) / dadosAtuais.qtdParcelas;
+    const p = dadosAtuaisGlobais.find(x => x.cpf === cpf);
+    if(!p) return;
+    dadosAtuais = p;
+    
+    const entrada = p.valorSolicitado * p.percEntrada / 100;
+    const saldo = p.valorSolicitado - entrada;
+    const parcela = saldo * (1 + (p.percJuros/100)) / p.qtdParcelas;
 
     const conteudo = document.getElementById('conteudoModal');
     conteudo.innerHTML = `
         <div class="space-y-3">
             <div>
                 <label class="text-gray-400">Valor Total Solicitado (R$)</label>
-                <input type="number" step="0.01" id="edt_valor" value="${dadosAtuais.valorSolicitado}" class="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg">
+                <input type="number" step="0.01" id="edt_valor" value="${p.valorSolicitado}" class="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg">
             </div>
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="text-gray-400">Entrada (%)</label>
-                    <input type="number" id="edt_entrada" min="10" max="90" value="${dadosAtuais.percEntrada}" class="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg">
+                    <input type="number" id="edt_entrada" min="10" max="90" value="${p.percEntrada}" class="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg">
                 </div>
                 <div>
                     <label class="text-gray-400">Juros ao Mês (%)</label>
-                    <input type="number" step="0.1" id="edt_juros" min="0" max="20" value="${dadosAtuais.percJuros}" class="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg">
+                    <input type="number" step="0.1" id="edt_juros" min="0" max="20" value="${p.percJuros}" class="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg">
                 </div>
             </div>
             <div>
                 <label class="text-gray-400">Quantidade de Parcelas (${CONFIG.PARCELAS_MIN} a ${CONFIG.PARCELAS_MAX})</label>
-                <input type="number" id="edt_parcelas" min="${CONFIG.PARCELAS_MIN}" max="${CONFIG.PARCELAS_MAX}" value="${dadosAtuais.qtdParcelas}" class="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg">
+                <input type="number" id="edt_parcelas" min="${CONFIG.PARCELAS_MIN}" max="${CONFIG.PARCELAS_MAX}" value="${p.qtdParcelas}" class="w-full p-2 bg-gray-900 border border-gray-700 rounded-lg">
             </div>
             <div class="bg-gray-900 p-3 rounded-lg">
                 <p class="text-xs text-gray-400 mb-1">📊 Cálculo Atual:</p>
@@ -423,23 +434,27 @@ function abrirEditar(cpf) {
     document.getElementById('modalEditar').classList.add('active');
 }
 
-function salvarEdicao(cpf) {
-    const chave = `flashcred_${cpf}`;
-    const dados = JSON.parse(localStorage.getItem(chave));
-    dados.valorSolicitado = parseFloat(document.getElementById('edt_valor').value);
-    dados.percEntrada = parseFloat(document.getElementById('edt_entrada').value);
-    dados.percJuros = parseFloat(document.getElementById('edt_juros').value);
-    dados.qtdParcelas = parseInt(document.getElementById('edt_parcelas').value);
-    localStorage.setItem(chave, JSON.stringify(dados));
-    alert('✅ Todas as alterações salvas com sucesso!');
+async function salvarEdicao(cpf) {
+    const dadosEditados = {
+        valorSolicitado: parseFloat(document.getElementById('edt_valor').value),
+        percEntrada: parseFloat(document.getElementById('edt_entrada').value),
+        percJuros: parseFloat(document.getElementById('edt_juros').value),
+        qtdParcelas: parseInt(document.getElementById('edt_parcelas').value)
+    };
+
+    await fetch('mercadopago.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'editar_proposta', cpf: cpf, novosDados: dadosEditados })
+    });
+    alert('✅ Alterações salvas com sucesso!');
     fecharModal();
     carregarLista();
 }
 
 async function gerarPagamentoMercadoPago(cpf) {
-    const chave = `flashcred_${cpf}`;
-    const dados = JSON.parse(localStorage.getItem(chave));
-    const valorEntrada = Number((dados.valorSolicitado * dados.percEntrada / 100).toFixed(2));
+    const p = dadosAtuaisGlobais.find(x => x.cpf === cpf);
+    const valorEntrada = Number((p.valorSolicitado * p.percEntrada / 100).toFixed(2));
     
     const areaPix = document.getElementById('areaPixModal');
     areaPix.classList.remove('hidden');
@@ -450,13 +465,15 @@ async function gerarPagamentoMercadoPago(cpf) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                acao: 'gerar_pix',
+                cpf: cpf,
                 transaction_amount: valorEntrada,
-                description: `Entrada FlashCred - CPF: ${dados.cpf}`,
+                description: `Entrada FlashCred - CPF: ${p.cpf}`,
                 payer: {
                     email: 'cliente@flashcred.com',
-                    first_name: dados.nome.split(' ')[0],
-                    last_name: dados.nome.split(' ').slice(1).join(' ') || 'Cliente',
-                    identification: { type: 'CPF', number: dados.cpf }
+                    first_name: p.nome.split(' ')[0],
+                    last_name: p.nome.split(' ').slice(1).join(' ') || 'Cliente',
+                    identification: { type: 'CPF', number: p.cpf }
                 }
             })
         });
@@ -467,9 +484,6 @@ async function gerarPagamentoMercadoPago(cpf) {
             const qrCode = resultado.point_of_interaction.transaction_data.qr_code;
             const linkPagamento = resultado.point_of_interaction.transaction_data.ticket_url;
 
-            dados.cobrancaPix = { copiaECola: qrCode, link: linkPagamento, valor: valorEntrada };
-            localStorage.setItem(chave, JSON.stringify(dados));
-
             areaPix.innerHTML = `
                 <p class="text-xs text-green-400 font-bold mb-2">✅ Cobrança Gerada com Sucesso!</p>
                 <a href="${linkPagamento}" target="_blank" class="btn-info block w-full py-2 rounded text-xs font-bold mb-2 text-center">🔗 Abrir Link de Pagamento</a>
@@ -477,6 +491,7 @@ async function gerarPagamentoMercadoPago(cpf) {
                 <textarea readonly class="w-full p-2 bg-gray-800 text-xs text-amber-300 rounded border border-gray-700 h-14 mb-2 select-all">${qrCode}</textarea>
                 <button onclick="navigator.clipboard.writeText('${qrCode}'); alert('Pix copiado!');" class="btn-primary w-full py-1.5 rounded text-xs font-bold text-gray-900">📋 Copiar Pix</button>
             `;
+            carregarLista();
         } else {
             throw new Error(resultado.message || 'Erro ao gerar Pix');
         }
@@ -490,7 +505,7 @@ function fecharModal() {
     document.getElementById('modalEditar').classList.remove('active');
 }
 
-function consultarProposta() {
+async function consultarProposta() {
     const cpfInput = document.getElementById('cpfConsulta').value.replace(/\D/g, '');
     const resultadoDiv = document.getElementById('resultadoConsulta');
     
@@ -499,43 +514,49 @@ function consultarProposta() {
         return;
     }
 
-    const dados = localStorage.getItem(`flashcred_${cpfInput}`);
     resultadoDiv.classList.remove('hidden');
+    resultadoDiv.innerHTML = `<p class="text-center text-gray-400">Buscando proposta...</p>`;
 
-    if(!dados) {
-        resultadoDiv.innerHTML = `<div class="bg-red-500/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-center">Nenhuma proposta encontrada para este CPF.</div>`;
-        return;
+    try {
+        const resposta = await fetch(`mercadopago.php?acao=consultar&cpf=${cpfInput}`);
+        const p = await resposta.json();
+
+        if(!p) {
+            resultadoDiv.innerHTML = `<div class="bg-red-500/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-center">Nenhuma proposta encontrada para este CPF.</div>`;
+            return;
+        }
+
+        const entrada = p.valorSolicitado * p.percEntrada / 100;
+        const saldo = p.valorSolicitado - entrada;
+        const parcela = saldo * (1 + (p.percJuros/100)) / p.qtdParcelas;
+
+        const statusTexto = {
+            'em_analise': 'Em Análise ⏳',
+            'aprovado': 'Aprovado ✅',
+            'rejeitado': 'Rejeitado ❌'
+        }[p.status];
+
+        resultadoDiv.innerHTML = `
+            <div class="bg-gray-900 p-4 rounded-xl space-y-2 text-sm border border-gray-700">
+                <p><strong>Nome:</strong> ${p.nome}</p>
+                <p><strong>Status:</strong> <span class="text-amber-400 font-bold">${statusTexto}</span></p>
+                <p><strong>Valor Solicitado:</strong> R$ ${formatarMoeda(p.valorSolicitado)}</p>
+                <p><strong>Entrada (${p.percEntrada}%):</strong> R$ ${formatarMoeda(entrada)}</p>
+                <p><strong>Condições:</strong> ${p.qtdParcelas}x de R$ ${formatarMoeda(parcela)}</p>
+                ${p.status === 'aprovado' && p.cobrancaPix ? `
+                    <div class="mt-3 p-3 bg-gray-800 rounded-lg border border-amber-500/30 space-y-2">
+                        <p class="text-xs text-amber-400 font-bold">💳 Pagamento da Entrada:</p>
+                        <a href="${p.cobrancaPix.link}" target="_blank" class="btn-info block w-full py-2 rounded text-xs font-bold text-center">🔗 Abrir Link de Pagamento do Mercado Pago</a>
+                        <textarea readonly class="w-full p-2 bg-gray-900 text-xs text-gray-300 rounded h-14 select-all">${p.cobrancaPix.copiaECola}</textarea>
+                        <button onclick="navigator.clipboard.writeText('${p.cobrancaPix.copiaECola}'); alert('Código Pix copiado!');" class="btn-primary w-full py-2 rounded text-xs font-bold text-gray-900">📋 Pix Copia e Cola</button>
+                    </div>
+                ` : ''}
+                ${p.entradaPaga ? '<p class="text-green-400 font-bold text-center mt-2">✅ Entrada Confirmada com Sucesso!</p>' : ''}
+            </div>
+        `;
+    } catch(err) {
+        resultadoDiv.innerHTML = `<div class="bg-red-500/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-center">Erro ao buscar proposta.</div>`;
     }
-
-    const p = JSON.parse(dados);
-    const entrada = p.valorSolicitado * p.percEntrada / 100;
-    const saldo = p.valorSolicitado - entrada;
-    const parcela = saldo * (1 + (p.percJuros/100)) / p.qtdParcelas;
-
-    const statusTexto = {
-        'em_analise': 'Em Análise ⏳',
-        'aprovado': 'Aprovado ✅',
-        'rejeitado': 'Rejeitado ❌'
-    }[p.status];
-
-    resultadoDiv.innerHTML = `
-        <div class="bg-gray-900 p-4 rounded-xl space-y-2 text-sm border border-gray-700">
-            <p><strong>Nome:</strong> ${p.nome}</p>
-            <p><strong>Status:</strong> <span class="text-amber-400 font-bold">${statusTexto}</span></p>
-            <p><strong>Valor Solicitado:</strong> R$ ${formatarMoeda(p.valorSolicitado)}</p>
-            <p><strong>Entrada (${p.percEntrada}%):</strong> R$ ${formatarMoeda(entrada)}</p>
-            <p><strong>Condições:</strong> ${p.qtdParcelas}x de R$ ${formatarMoeda(parcela)}</p>
-            ${p.status === 'aprovado' && p.cobrancaPix ? `
-                <div class="mt-3 p-3 bg-gray-800 rounded-lg border border-amber-500/30 space-y-2">
-                    <p class="text-xs text-amber-400 font-bold">💳 Pagamento da Entrada:</p>
-                    <a href="${p.cobrancaPix.link}" target="_blank" class="btn-info block w-full py-2 rounded text-xs font-bold text-center">🔗 Abrir Link de Pagamento do Mercado Pago</a>
-                    <textarea readonly class="w-full p-2 bg-gray-900 text-xs text-gray-300 rounded h-14 select-all">${p.cobrancaPix.copiaECola}</textarea>
-                    <button onclick="navigator.clipboard.writeText('${p.cobrancaPix.copiaECola}'); alert('Código Pix copiado!');" class="btn-primary w-full py-2 rounded text-xs font-bold text-gray-900">📋 Pix Copia e Cola</button>
-                </div>
-            ` : ''}
-            ${p.entradaPaga ? '<p class="text-green-400 font-bold text-center mt-2">✅ Entrada Confirmada com Sucesso!</p>' : ''}
-        </div>
-    `;
 }
 </script>
 </body>
