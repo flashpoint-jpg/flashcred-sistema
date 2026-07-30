@@ -10,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <script>
         const CONFIG = {
             SUPABASE_URL: 'SUA_URL_DO_SUPABASE_AQUI',
@@ -19,6 +20,22 @@
         let supabaseClient = null;
         if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_URL !== 'SUA_URL_DO_SUPABASE_AQUI') {
             supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+        }
+
+        // Função para alternar entre as abas do sistema
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('bg-emerald-600', 'text-white', 'shadow');
+                el.classList.add('text-slate-600');
+            });
+
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            const btn = document.getElementById('btn-' + tabId);
+            if (btn) {
+                btn.classList.remove('text-slate-600');
+                btn.classList.add('bg-emerald-600', 'text-white', 'shadow');
+            }
         }
 
         // Função para liberar o formulário após clicar no WhatsApp
@@ -34,13 +51,116 @@
                     <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i> Produtos Escolhidos com Sucesso!
                 </h3>
                 <p class="text-xs text-emerald-800 leading-relaxed">
-                    Agora preencha os dados abaixo para finalizar sua solicitação de limite Pix.
+                    Agora preencha os dados abaixo e informe o valor combinado para finalizar sua solicitação.
                 </p>
             `;
 
             // Abre o WhatsApp da empresa em nova aba
-            window.open('https://wa.me/5511973294235?text=Olá,%20gostaria%20de%20escolher%20os%20móveis%20e%20definir%20o%20valor%20da%20minha%20compra.', '_blank');
+            window.open('https://wa.me/5511973294235?text=Olá,%20gostaria%20de%20escolher%20os%20móveis%20e%20definir%20o%20valor%20da%20minha%20compra%20para%20o%20limite%20Pix.', '_blank');
         }
+
+        // Validação simples de CPF
+        function validarCampoCPF(input) {
+            const erro = document.getElementById('erro-cpf');
+            if (input.value.length < 11) {
+                erro.classList.remove('hidden');
+            } else {
+                erro.classList.add('hidden');
+            }
+        }
+
+        // Validação de Idade (Maior de 18 anos)
+        function validarIdade(input) {
+            const erro = document.getElementById('erro-idade');
+            const hoje = new Date();
+            const nascimento = new Date(input.value);
+            let idade = hoje.getFullYear() - nascimento.getFullYear();
+            const m = hoje.getMonth() - nascimento.getMonth();
+            if (m < 0 || (m === 0 && hoje.getDate() < nascimento.getDate())) {
+                idade--;
+            }
+            if (idade < 18) {
+                erro.classList.remove('hidden');
+                input.value = '';
+            } else {
+                erro.classList.add('hidden');
+            }
+        }
+
+        // Consulta de CEP Automática via ViaCEP
+        async function consultarCEP(cep) {
+            const cepLimpo = cep.replace(/\D/g, '');
+            if (cepLimpo.length === 8) {
+                try {
+                    const response = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+                    const data = await response.json();
+                    if (!data.erro) {
+                        document.getElementById('endereco').value = `${data.logradouro}, Bairro: ${data.bairro} - ${data.localidade}/${data.uf}`;
+                    }
+                } catch (e) {
+                    console.error('Erro ao buscar CEP');
+                }
+            }
+        }
+
+        // Envio da Proposta
+        function enviarProposta(event) {
+            event.preventDefault();
+            alert('Solicitação de Limite Pix enviada com sucesso! Nossa equipe analisará em instantes.');
+            document.getElementById('form-proposta').reset();
+            switchTab('acompanhar');
+        }
+
+        // Consulta de proposta do cliente
+        function consultarProposta() {
+            const busca = document.getElementById('busca-cpf').value;
+            const resultado = document.getElementById('resultado-busca');
+            if (!busca) {
+                alert('Digite seu CPF ou Protocolo.');
+                return;
+            }
+            resultado.classList.remove('hidden');
+            resultado.innerHTML = `
+                <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
+                    <h4 class="font-bold text-emerald-900 text-sm">Status da Solicitação</h4>
+                    <p class="text-xs text-emerald-700">Protocolo: <strong>FP-98421</strong></p>
+                    <p class="text-xs text-emerald-700">Status: <span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">Em Análise</span></p>
+                    <p class="text-xs text-slate-600 mt-2">Seu limite está sendo processado. Acompanhe as novidades pelo nosso WhatsApp oficial.</p>
+                </div>
+            `;
+        }
+
+        // Funções do Painel Admin
+        function carregarPainelAdmin() {
+            const lista = document.getElementById('lista-admin');
+            lista.innerHTML = `
+                <div class="bg-white border border-slate-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
+                    <div>
+                        <p class="font-bold text-sm text-slate-900">João da Silva (CPF: 123.456.789-00)</p>
+                        <p class="text-xs text-slate-500">Valor Escolhido: R$ 1.500,00 • 12x no Pix</p>
+                    </div>
+                    <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">Aprovado</span>
+                </div>
+            `;
+            document.getElementById('fin-entradas').innerText = 'R$ 1.500,00';
+            document.getElementById('fin-saidas').innerText = 'R$ 0,00';
+            document.getElementById('fin-balanco').innerText = 'R$ 1.500,00';
+        }
+
+        function adicionarDespesa(event) {
+            event.preventDefault();
+            alert('Despesa adicionada com sucesso!');
+            document.getElementById('desc-despesa').value = '';
+            document.getElementById('valor-despesa').value = '';
+        }
+
+        function abrirModalCadastroManual() {
+            alert('Abrir painel de cadastro manual de cliente.');
+        }
+
+        window.onload = function() {
+            carregarPainelAdmin();
+        };
     </script>
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col font-sans">
@@ -86,7 +206,7 @@
                         <h2 class="text-xl font-bold flex items-center gap-2 text-slate-900 mt-2">
                             <i class="fa-brands fa-pix text-emerald-600"></i> Solicitação de Pix Parcelado
                         </h2>
-                        <p class="text-sm text-slate-500">As compras são feitas <strong>somente em nossas lojas</strong> físicas/parceiras. Siga as instruções abaixo para liberação!</p>
+                        <p class="text-sm text-slate-500">Atendimento 100% online direto da fábrica. Siga as instruções abaixo para liberação!</p>
                     </div>
 
                     <!-- PONTO DE ATENÇÃO OBRIGATÓRIA ANTES DE PREENCHER -->
@@ -97,7 +217,7 @@
                         <p class="text-xs text-amber-800 leading-relaxed">
                             Antes da aprovação de limite Pix, <strong>é necessário escolher os produtos</strong> clicando no botão do WhatsApp abaixo e definir o valor da compra escolhida:
                         </p>
-                        <button type="button" onclick="liberarFormulario()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm">
+                        <button type="button" onclick="liberarFormulario()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer">
                             <i class="fa-brands fa-whatsapp text-lg"></i> 1º Escolher Produtos no WhatsApp (Liberar Formulário)
                         </button>
                     </div>
@@ -163,7 +283,7 @@
                                 <input type="number" id="renda" step="0.01" required placeholder="0,00" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
                             </div>
 
-                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition shadow-md mt-4 flex items-center justify-center gap-2">
+                            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition shadow-md mt-4 flex items-center justify-center gap-2 cursor-pointer">
                                 <i class="fa-solid fa-paper-plane"></i> Enviar Solicitação de Limite Pix
                             </button>
                         </form>
@@ -186,16 +306,6 @@
                         </div>
                     </div>
 
-                    <!-- Aviso de Lojas -->
-                    <div class="bg-amber-50 border border-amber-200 p-5 rounded-2xl shadow-sm space-y-2">
-                        <h3 class="font-bold text-xs uppercase text-amber-900 flex items-center gap-2">
-                            <i class="fa-solid fa-store text-amber-600 text-sm"></i> Condição de Uso
-                        </h3>
-                        <p class="text-xs text-amber-800 leading-relaxed">
-                            As compras são feitas <strong>somente nas nossas lojas</strong>. Apresente seu código aprovado no balcão de atendimento.
-                        </p>
-                    </div>
-
                     <!-- Garantias e Segurança -->
                     <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4">
                         <h3 class="font-bold text-sm uppercase text-slate-700 flex items-center gap-2 border-b border-slate-100 pb-2">
@@ -214,14 +324,6 @@
                                 <i class="fa-solid fa-circle-check text-emerald-600 mt-0.5 text-sm"></i>
                                 <div><strong class="text-slate-800">CNPJ Verificado:</strong> Distribuidora Flash Point registrada e legalizada.</div>
                             </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-emerald-600 mt-0.5 text-sm"></i>
-                                <div><strong class="text-slate-800">Contrato Assinado:</strong> Segurança jurídica de ponta a ponta na sua compra.</div>
-                            </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-emerald-600 mt-0.5 text-sm"></i>
-                                <div><strong class="text-slate-800">Desconto Antecipado:</strong> Ganhe abatimento pagando parcelas antes do vencimento via Pix.</div>
-                            </li>
                         </ul>
                     </div>
                 </div>
@@ -233,10 +335,10 @@
         <section id="tab-acompanhar" class="tab-content hidden max-w-2xl mx-auto space-y-6">
             <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm text-center">
                 <h2 class="text-xl font-bold mb-2 text-slate-900">Consultar Limite & Carnê Pix Parcelado</h2>
-                <p class="text-sm text-slate-500 mb-4">Digite o seu CPF ou Código de Protocolo para verificar o status e instruções de compra na loja.</p>
+                <p class="text-sm text-slate-500 mb-4">Digite o seu CPF ou Código de Protocolo para verificar o status.</p>
                 <div class="flex gap-2 max-w-md mx-auto">
                     <input type="text" id="busca-cpf" placeholder="CPF ou Protocolo (ex: FP-12345)" class="flex-grow bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
-                    <button onclick="consultarProposta()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold transition text-sm">
+                    <button onclick="consultarProposta()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold transition text-sm cursor-pointer">
                         Buscar
                     </button>
                 </div>
@@ -254,13 +356,13 @@
                     <h2 class="text-xl font-bold flex items-center gap-2 text-slate-900">
                         <i class="fa-solid fa-list-check text-emerald-600"></i> Painel Administrativo - Flash Point
                     </h2>
-                    <p class="text-sm text-slate-500">Gerencie solicitações de Pix parcelado, clientes manuais e controle de caixa.</p>
+                    <p class="text-sm text-slate-500">Gerencie solicitações de Pix parcelado e controle de caixa.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <button onclick="abrirModalCadastroManual()" class="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 text-white shadow-sm">
+                    <button onclick="abrirModalCadastroManual()" class="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 text-white shadow-sm cursor-pointer">
                         <i class="fa-solid fa-user-plus"></i> Novo Cliente Manual
                     </button>
-                    <button onclick="carregarPainelAdmin()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2">
+                    <button onclick="carregarPainelAdmin()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer">
                         <i class="fa-solid fa-rotate"></i> Atualizar
                     </button>
                 </div>
@@ -287,9 +389,9 @@
                 </div>
 
                 <form onsubmit="adicionarDespesa(event)" class="flex flex-col sm:flex-row gap-3 pt-2">
-                    <input type="text" id="desc-despesa" required placeholder="Descrição da despesa (ex: Taxa, Logística...)" class="flex-grow bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-emerald-600">
+                    <input type="text" id="desc-despesa" required placeholder="Descrição da despesa..." class="flex-grow bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-emerald-600">
                     <input type="number" id="valor-despesa" step="0.01" required placeholder="Valor R$" class="w-full sm:w-36 bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-emerald-600">
-                    <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2.5 rounded-xl transition text-sm">
+                    <button type="submit" class="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2.5 rounded-xl transition text-sm cursor-pointer">
                         Adicionar Despesa
                     </button>
                 </form>
@@ -302,19 +404,6 @@
         </section>
 
     </main>
-
-    <!-- MODAL DE PARCELAS -->
-    <div id="modal-parcelas" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white border border-slate-200 w-full max-w-2xl rounded-2xl p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
-                <h3 id="modal-titulo-parcelas" class="text-lg font-bold text-slate-900">Parcelas do Pix</h3>
-                <button onclick="fecharModalParcelas()" class="text-slate-400 hover:text-slate-700 text-lg font-bold"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            <div id="modal-conteudo-parcelas" class="space-y-3">
-                <!-- Gerado dinamicamente -->
-            </div>
-        </div>
-    </div>
 
 </body>
 </html>
