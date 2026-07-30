@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FlashCred - Portal Corporativo de Crédito & Garantia de Entrega</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -57,7 +58,10 @@
 <body class="flex flex-col min-h-screen selection:bg-blue-600 selection:text-white">
 
 <script>
+// --- CONFIGURAÇÕES DO SUPABASE E SISTEMA ---
 const CONFIG = {
+    SUPABASE_URL: 'https://rgcclordmjmwuzrrfbd.supabase.co', // Insira sua URL do Supabase aqui
+    SUPABASE_ANON_KEY: 'SUA_CHAVE_ANON_AQUI', // Insira sua chave anon/public aqui
     SENHA_ADMIN: 'flash2026',
     CHAVE_PIX: '3552949852',
     CNPJ: '35.560.220/0001-54',
@@ -67,6 +71,9 @@ const CONFIG = {
     PARCELAS_MAX: 12,
     DESCONTO_PIX_ANTECIPADO_PADRAO: 2.0 
 };
+
+// Inicialização do cliente Supabase
+const supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
 </script>
 
 <header class="w-full pt-8 pb-4 px-4 flex flex-col items-center justify-center text-center relative z-10 bg-white border-b border-slate-200 shadow-sm">
@@ -381,27 +388,33 @@ function tentarAbrirPainelAdmin() {
     }
 }
 
-// --- SISTEMA DE DADOS (LOCALSTORAGE) ---
-function obterPropostas() {
-    let propostas = localStorage.getItem('flashcred_propostas');
-    return propostas ? JSON.parse(propostas) : [];
+// --- INTEGRAÇÃO COM BANCO DE DADOS (SUPABASE) ---
+async function obterPropostas() {
+    let { data, error } = await supabaseClient
+        .from('propostas')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.error('Erro ao buscar propostas do Supabase:', error);
+        return [];
+    }
+    return data || [];
 }
 
-function salvarPropostas(propostas) {
-    localStorage.setItem('flashcred_propostas', JSON.stringify(propostas));
-}
-
-function obterDespesas() {
-    let desp = localStorage.getItem('flashcred_despesas');
-    return desp ? JSON.parse(desp) : [];
-}
-
-function salvarDespesas(desp) {
-    localStorage.setItem('flashcred_despesas', JSON.stringify(desp));
+async function obterDespesas() {
+    let { data, error } = await supabaseClient
+        .from('despesas')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.error('Erro ao buscar despesas do Supabase:', error);
+        return [];
+    }
+    return data || [];
 }
 
 // --- FORMULÁRIO CLIENTE: SUBMIT ---
-document.getElementById('formSolicitacao').addEventListener('submit', function(e) {
+document.getElementById('formSolicitacao').addEventListener('submit', async function(e) {
     e.preventDefault();
     let nome = document.getElementById('nome').value;
     let cpf = document.getElementById('cpf').value;
@@ -421,25 +434,27 @@ document.getElementById('formSolicitacao').addEventListener('submit', function(e
 
     let novaProposta = {
         id: 'FC-' + Math.floor(100000 + Math.random() * 900000),
-        dataCriacao: new Date().toLocaleDateString('pt-BR'),
-        nome, cpf, cep, numRes, endereco, nascimento, renda, 
-        valorSolicitado: valorNum,
-        valorFormatado: valorStr,
+        datacriacao: new Date().toLocaleDateString('pt-BR'),
+        nome, cpf, cep, numres: numRes, endereco, nascimento, renda, 
+        valorsolicitado: valorNum,
+        valorformatado: valorStr,
         whatsapp,
         status: 'Em Análise',
-        entradaPadrao: CONFIG.ENTRADA_PADRAO,
-        jurosAplicados: CONFIG.JUROS_PADRAO,
-        descontoPix: CONFIG.DESCONTO_PIX_ANTECIPADO_PADRAO,
-        parcelasQtd: CONFIG.PARCELAS_MAX,
-        valorParcela: valorParcela.toFixed(2),
-        totalComJuros: totalComJuros.toFixed(2),
-        modoPagamento: 'Parcelado',
-        comprovantePixEnviado: false
+        entradapadrao: CONFIG.ENTRADA_PADRAO,
+        jurosaplicados: CONFIG.JUROS_PADRAO,
+        descentopix: CONFIG.DESCONTO_PIX_ANTECIPADO_PADRAO,
+        parcelasqtd: CONFIG.PARCELAS_MAX,
+        valorparcela: valorParcela.toFixed(2),
+        totalcomjuros: totalComJuros.toFixed(2)
     };
 
-    let propostas = obterPropostas();
-    propostas.unshift(novaProposta);
-    salvarPropostas(propostas);
+    let { error } = await supabaseClient.from('propostas').insert([novaProposta]);
+
+    if (error) {
+        console.error('Erro ao salvar:', error);
+        alert('Erro ao enviar solicitação para o banco de dados.');
+        return;
+    }
 
     alert('Solicitação enviada com sucesso! Código ID: ' + novaProposta.id);
     this.reset();
@@ -450,7 +465,7 @@ document.getElementById('formSolicitacao').addEventListener('submit', function(e
 });
 
 // --- CONSULTAR PROPOSTA PELO CLIENTE ---
-function consultarProposta() {
+async function consultarProposta() {
     let cpfInput = document.getElementById('cpfConsulta').value.trim();
     let container = document.getElementById('resultadoConsulta');
     container.classList.remove('hidden');
@@ -460,7 +475,7 @@ function consultarProposta() {
         return;
     }
 
-    let propostas = obterPropostas();
+    let propostas = await obterPropostas();
     let filtradas = propostas.filter(p => p.cpf === cpfInput);
 
     if (filtradas.length === 0) {
@@ -474,8 +489,8 @@ function consultarProposta() {
         if (p.status === 'Aprovado' || p.status === 'Pago Pix') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
         if (p.status === 'Rejeitado') badgeColor = 'bg-rose-100 text-rose-800 border-rose-200';
 
-        let valorVal = parseFloat(p.valorSolicitado) || 0;
-        let descPixVal = valorVal * ((100 - (p.descontoPix || 2.0)) / 100);
+        let valorVal = parseFloat(p.valorsolicitado) || 0;
+        let descPixVal = valorVal * ((100 - (p.descentopix || 2.0)) / 100);
 
         html += `
             <div class="glass-panel p-5 rounded-2xl border border-slate-200 mb-4 space-y-3 bg-white shadow-sm">
@@ -485,9 +500,9 @@ function consultarProposta() {
                 </div>
                 <div class="grid grid-cols-2 gap-2 text-xs">
                     <div><strong class="text-slate-400">Cliente:</strong> <span class="text-slate-800 font-bold">${p.nome}</span></div>
-                    <div><strong class="text-slate-400">Valor Solic.:</strong> <span class="text-blue-900 font-extrabold">R$ ${p.valorFormatado}</span></div>
-                    <div><strong class="text-slate-400">Endereço:</strong> <span class="text-slate-800">${p.endereco}, Nº ${p.numRes}</span></div>
-                    <div><strong class="text-slate-400">Data:</strong> <span class="text-slate-800">${p.dataCriacao}</span></div>
+                    <div><strong class="text-slate-400">Valor Solic.:</strong> <span class="text-blue-900 font-extrabold">R$ ${p.valorformatado}</span></div>
+                    <div><strong class="text-slate-400">Endereço:</strong> <span class="text-slate-800">${p.endereco}, Nº ${p.numres}</span></div>
+                    <div><strong class="text-slate-400">Data:</strong> <span class="text-slate-800">${p.datacriacao}</span></div>
                 </div>
 
                 ${p.status === 'Aprovado' ? `
@@ -498,16 +513,16 @@ function consultarProposta() {
 
                         <div class="bg-white p-3 rounded-xl border border-blue-100 space-y-2">
                             <p class="text-xs font-bold text-slate-800">Opção Parcelada (Boleto/Cartão/Pix Parcelado):</p>
-                            <p class="text-xs text-slate-600">• Entrada de <strong>${p.entradaPadrao}%</strong> (Taxa de Cadastro e Reserva Logística)</p>
-                            <p class="text-xs text-slate-600">• Restante em até <strong>${p.parcelasQtd}x</strong> de <strong>R$ ${p.valorParcela}</strong></p>
+                            <p class="text-xs text-slate-600">• Entrada de <strong>${p.entradapadrao}%</strong> (Taxa de Cadastro e Reserva Logística)</p>
+                            <p class="text-xs text-slate-600">• Restante em até <strong>${p.parcelasqtd}x</strong> de <strong>R$ ${p.valorparcela}</strong></p>
                             <a href="https://api.whatsapp.com/send?phone=55${CONFIG.WHATSAPP_SUPORTE}&text=Olá,%20gostaria%20de%20prosseguir%20com%20a%20opção%20parcelada%20da%20proposta%20ID:%20${p.id}%20(Cliente:%20${encodeURIComponent(p.nome)})" target="_blank" class="btn-whatsapp block text-center py-2.5 rounded-xl text-xs font-bold shadow-sm">
-                                💬 Pagar Entrada (${p.entradaPadrao}%) via WhatsApp
+                                💬 Pagar Entrada (${p.entradapadrao}%) via WhatsApp
                             </a>
                         </div>
 
                         <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 space-y-2">
-                            <p class="text-xs font-bold text-emerald-900">⚡ PIX Antecipado (${p.descontoPix}% de Desconto):</p>
-                            <p class="text-xs text-emerald-700">De R$ ${p.valorFormatado} por apenas <strong class="text-emerald-900 text-sm">R$ ${descPixVal.toFixed(2).replace('.', ',')} à vista</strong> com liberação imediata e frete grátis.</p>
+                            <p class="text-xs font-bold text-emerald-900">⚡ PIX Antecipado (${p.descentopix}% de Desconto):</p>
+                            <p class="text-xs text-emerald-700">De R$ ${p.valorformatado} por apenas <strong class="text-emerald-900 text-sm">R$ ${descPixVal.toFixed(2).replace('.', ',')} à vista</strong> com liberação imediata e frete grátis.</p>
                             <div class="p-3 bg-white rounded-xl border border-emerald-200 text-center space-y-2">
                                 <p class="text-[10px] text-slate-500 font-bold uppercase">Chave Pix CNPJ Oficial:</p>
                                 <div class="flex items-center justify-center gap-2">
@@ -541,9 +556,9 @@ function copiarChave(chave) {
 }
 
 // --- PAINEL ADMIN: CARREGAR LISTA & CAIXA ---
-function carregarLista() {
-    let propostas = obterPropostas();
-    let despesas = obterDespesas();
+async function carregarLista() {
+    let propostas = await obterPropostas();
+    let despesas = await obterDespesas();
 
     document.getElementById('resumoTotal').innerText = propostas.length;
     document.getElementById('resumoAnalise').innerText = propostas.filter(p => p.status === 'Em Análise').length;
@@ -553,7 +568,7 @@ function carregarLista() {
     let totalEntradas = 0;
     let totalDevendo = 0;
     propostas.forEach(p => {
-        let v = parseFloat(p.valorSolicitado) || 0;
+        let v = parseFloat(p.valorsolicitado) || 0;
         if (p.status === 'Pago Pix') {
             totalEntradas += v;
         } else if (p.status === 'Aprovado') {
@@ -575,7 +590,7 @@ function carregarLista() {
 
     let grid = document.getElementById('listaPropostasGrid');
     if (propostas.length === 0) {
-        grid.innerHTML = `<div class="p-6 text-center text-slate-500 font-medium text-xs">Nenhuma proposta cadastrada no sistema.</div>`;
+        grid.innerHTML = `<div class="p-6 text-center text-slate-500 font-medium text-xs">Nenhuma proposta cadastrada no banco de dados.</div>`;
         return;
     }
 
@@ -596,9 +611,9 @@ function carregarLista() {
                     <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${badgeColor}">${p.status}</span>
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div><strong class="text-slate-400">Valor:</strong> <span class="text-blue-900 font-extrabold">R$ ${p.valorFormatado}</span></div>
+                    <div><strong class="text-slate-400">Valor:</strong> <span class="text-blue-900 font-extrabold">R$ ${p.valorformatado}</span></div>
                     <div><strong class="text-slate-400">WhatsApp:</strong> <span class="text-slate-800">${p.whatsapp}</span></div>
-                    <div><strong class="text-slate-400">Endereço:</strong> <span class="text-slate-800">${p.endereco}, Nº ${p.numRes}</span></div>
+                    <div><strong class="text-slate-400">Endereço:</strong> <span class="text-slate-800">${p.endereco}, Nº ${p.numres}</span></div>
                     <div><strong class="text-slate-400">Renda:</strong> <span class="text-slate-800">R$ ${p.renda}</span></div>
                 </div>
                 <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
@@ -615,28 +630,37 @@ function carregarLista() {
     grid.innerHTML = html;
 }
 
-function mudarStatus(id, novoStatus) {
-    let propostas = obterPropostas();
-    let p = propostas.find(item => item.id === id);
-    if (p) {
-        p.status = novoStatus;
-        salvarPropostas(propostas);
+async function mudarStatus(id, novoStatus) {
+    let { error } = await supabaseClient
+        .from('propostas')
+        .update({ status: novoStatus })
+        .eq('id', id);
+
+    if (error) {
+        alert('Erro ao atualizar status.');
+    } else {
         carregarLista();
     }
 }
 
-function excluirProposta(id) {
+async function excluirProposta(id) {
     if (confirm('Deseja realmente excluir esta proposta?')) {
-        let propostas = obterPropostas();
-        propostas = propostas.filter(item => item.id !== id);
-        salvarPropostas(propostas);
-        carregarLista();
+        let { error } = await supabaseClient
+            .from('propostas')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            alert('Erro ao excluir proposta.');
+        } else {
+            carregarLista();
+        }
     }
 }
 
 // --- MODAL DE EDIÇÃO DE BENEFÍCIOS ---
-function abrirModalEditar(id) {
-    let propostas = obterPropostas();
+async function abrirModalEditar(id) {
+    let propostas = await obterPropostas();
     let p = propostas.find(item => item.id === id);
     if (!p) return;
 
@@ -648,15 +672,15 @@ function abrirModalEditar(id) {
             </div>
             <div>
                 <label class="block text-xs font-bold uppercase tracking-wider mb-1 text-slate-700">Entrada Padrão (%)</label>
-                <input type="number" id="editEntrada" value="${p.entradaPadrao || 39}" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 outline-none focus:border-blue-900">
+                <input type="number" id="editEntrada" value="${p.entradapadrao || 39}" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 outline-none focus:border-blue-900">
             </div>
             <div>
                 <label class="block text-xs font-bold uppercase tracking-wider mb-1 text-slate-700">Juros Aplicados (%)</label>
-                <input type="number" id="editJuros" value="${p.jurosAplicados || 6}" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 outline-none focus:border-blue-900">
+                <input type="number" id="editJuros" value="${p.jurosaplicados || 6}" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 outline-none focus:border-blue-900">
             </div>
             <div>
                 <label class="block text-xs font-bold uppercase tracking-wider mb-1 text-slate-700">Desconto Pix Antecipado (%)</label>
-                <input type="number" step="0.1" id="editDesconto" value="${p.descontoPix || 2.0}" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 outline-none focus:border-blue-900">
+                <input type="number" step="0.1" id="editDesconto" value="${p.descentopix || 2.0}" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 outline-none focus:border-blue-900">
             </div>
             <button onclick="salvarEdicaoProposta('${p.id}')" class="btn-primary w-full py-3 rounded-xl text-xs font-bold shadow-md mt-2">Salvar Alterações</button>
         </div>
@@ -669,27 +693,34 @@ function fecharModal() {
     document.getElementById('modalEditar').classList.remove('active');
 }
 
-function salvarEdicaoProposta(id) {
-    let propostas = obterPropostas();
+async function salvarEdicaoProposta(id) {
+    let entrada = parseFloat(document.getElementById('editEntrada').value) || 39;
+    let juros = parseFloat(document.getElementById('editJuros').value) || 6;
+    let desconto = parseFloat(document.getElementById('editDesconto').value) || 2.0;
+
+    let propostas = await obterPropostas();
     let p = propostas.find(item => item.id === id);
-    if (p) {
-        let entrada = parseFloat(document.getElementById('editEntrada').value) || 39;
-        let juros = parseFloat(document.getElementById('editJuros').value) || 6;
-        let desconto = parseFloat(document.getElementById('editDesconto').value) || 2.0;
+    if (!p) return;
 
-        p.entradaPadrao = entrada;
-        p.jurosAplicados = juros;
-        p.descontoPix = desconto;
+    let valorNum = parseFloat(p.valorsolicitado) || 0;
+    let jurosDecimal = juros / 100;
+    let totalComJuros = valorNum * (1 + jurosDecimal);
+    let valorParcela = totalComJuros / (p.parcelasqtd || 12);
 
-        let valorNum = parseFloat(p.valorSolicitado) || 0;
-        let jurosDecimal = juros / 100;
-        let totalComJuros = valorNum * (1 + jurosDecimal);
-        let valorParcela = totalComJuros / (p.parcelasQtd || 12);
+    let { error } = await supabaseClient
+        .from('propostas')
+        .update({
+            entradapadrao: entrada,
+            jurosaplicados: juros,
+            descentopix: desconto,
+            totalcomjuros: totalComJuros.toFixed(2),
+            valorparcela: valorParcela.toFixed(2)
+        })
+        .eq('id', id);
 
-        p.totalComJuros = totalComJuros.toFixed(2);
-        p.valorParcela = valorParcela.toFixed(2);
-
-        salvarPropostas(propostas);
+    if (error) {
+        alert('Erro ao atualizar configurações.');
+    } else {
         fecharModal();
         carregarLista();
         alert('Configurações atualizadas com sucesso!');
@@ -705,7 +736,7 @@ function fecharModalDespesa() {
     document.getElementById('modalDespesa').classList.remove('active');
 }
 
-function salvarDespesa() {
+async function salvarDespesa() {
     let desc = document.getElementById('descDespesa').value;
     let valorStr = document.getElementById('valorDespesa').value;
     let valorNum = parseFloat(valorStr.replace(/\./g, '').replace(',', '.')) || 0;
@@ -715,19 +746,20 @@ function salvarDespesa() {
         return;
     }
 
-    let despesas = obterDespesas();
-    despesas.push({
-        id: Date.now(),
+    let { error } = await supabaseClient.from('despesas').insert([{
         descricao: desc,
         valor: valorNum,
         data: new Date().toLocaleDateString('pt-BR')
-    });
-    salvarDespesas(despesas);
+    }]);
 
-    document.getElementById('descDespesa').value = '';
-    document.getElementById('valorDespesa').value = '';
-    fecharModalDespesa();
-    carregarLista();
+    if (error) {
+        alert('Erro ao registrar despesa no banco.');
+    } else {
+        document.getElementById('descDespesa').value = '';
+        document.getElementById('valorDespesa').value = '';
+        fecharModalDespesa();
+        carregarLista();
+    }
 }
 </script>
 
