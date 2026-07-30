@@ -22,33 +22,33 @@
             supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
         }
 
-        let listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [
-            {
-                id: 1,
-                protocolo: 'FP-410640',
-                nome: 'Felipe Costa',
-                cpf: '335.529.498-52',
-                whatsapp: '(35) 99884-5703',
-                cep: '37550-000',
-                endereco: 'Rua Principal, 100 - Centro - Pouso Alegre/MG',
-                limite: 5000,
-                valorEntrada: 500,
-                porcentagemEntrada: 10,
-                parcelas: 12,
-                jurosParcelamento: 1.5,
-                descontoAntecipado: 100,
-                status: 'aguardando',
-                entradaPaga: false,
-                pixCopiaECola: '',
-                qrCodeBase64: ''
-            }
-        ];
+        let listaClientes = [];
+        let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
 
-        function salvarDadosLocal() {
-            localStorage.setItem('flash_clientes', JSON.stringify(listaClientes));
+        // Carregar dados diretamente do Supabase ao iniciar
+        async function carregarDadosDoBanco() {
+            if (!supabaseClient) return;
+            try {
+                const { data, error } = await supabaseClient
+                    .from('clientes') // Substitua pelo nome da sua tabela no Supabase se for diferente
+                    .select('*');
+                
+                if (error) {
+                    console.error('Erro ao buscar dados do Supabase:', error.message);
+                } else if (data) {
+                    listaClientes = data;
+                }
+            } catch (e) {
+                console.error('Erro de conexão com o banco:', e);
+            }
         }
 
-        let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
+        window.addEventListener('DOMContentLoaded', async () => {
+            await carregarDadosDoBanco();
+            if (adminLogado) {
+                carregarPainelAdmin();
+            }
+        });
 
         function switchTab(tabId) {
             if (tabId === 'painel' && !adminLogado) {
@@ -163,7 +163,7 @@
             }
         }
 
-        function enviarProposta(event) {
+        async function enviarProposta(event) {
             event.preventDefault();
             const nome = document.getElementById('nome').value;
             const cpf = document.getElementById('cpf').value;
@@ -174,7 +174,6 @@
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
 
             const novaProposta = {
-                id: Date.now(),
                 protocolo: protocolo,
                 nome: nome,
                 cpf: cpf,
@@ -193,11 +192,18 @@
                 qrCodeBase64: ''
             };
 
-            // Recarrega os dados do localStorage para garantir sincronia com outras abas/sessões
-            listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [];
-            listaClientes.push(novaProposta);
-            salvarDadosLocal();
+            if (supabaseClient) {
+                const { error } = await supabaseClient
+                    .from('clientes')
+                    .insert([novaProposta]);
 
+                if (error) {
+                    alert('Erro ao salvar no banco de dados: ' + error.message);
+                    return;
+                }
+            }
+
+            await carregarDadosDoBanco();
             alert('Solicitação enviada com sucesso! Seu protocolo é ' + protocolo);
             document.getElementById('form-proposta').reset();
             
@@ -211,7 +217,7 @@
         }
 
         async function gerarPixViaAPI(clienteId) {
-            const cliente = listaClientes.find(c => c.id === clienteId);
+            const cliente = listaClientes.find(c => c.id === clienteId || c.protocolo === clienteId);
             if (!cliente) return;
 
             try {
@@ -236,7 +242,13 @@
                     cliente.pixCopiaECola = data.point_of_interaction.transaction_data.qr_code;
                     cliente.qrCodeBase64 = data.point_of_interaction.transaction_data.qr_code_base64;
                     cliente.status = 'aprovado';
-                    salvarDadosLocal();
+                    
+                    await supabaseClient
+                        .from('clientes')
+                        .update({ pixCopiaECola: cliente.pixCopiaECola, qrCodeBase64: cliente.qrCodeBase64, status: 'aprovado' })
+                        .eq('id', cliente.id);
+
+                    await carregarDadosDoBanco();
                     carregarPainelAdmin();
                     alert('Pix gerado com sucesso via Mercado Pago!');
                 } else {
@@ -266,8 +278,8 @@
             document.getElementById(`rt-parcelas-topo-${clienteId}`).innerText = `${parcelas}x de R$ ${valorParcelaCalc.toFixed(2)} / mês`;
         }
 
-        function salvarEdicaoAdmin(clienteId) {
-            const cliente = listaClientes.find(c => c.id === clienteId);
+        async function salvarEdicaoAdmin(clienteId) {
+            const cliente = listaClientes.find(c => c.id === clienteId || c.protocolo === clienteId);
             if (!cliente) return;
 
             cliente.limite = parseFloat(document.getElementById(`edit-limite-${clienteId}`).value) || cliente.limite;
@@ -278,41 +290,65 @@
             cliente.descontoAntecipado = parseFloat(document.getElementById(`edit-desc-${clienteId}`).value) || 0;
             cliente.pixCopiaECola = document.getElementById(`edit-copiacola-${clienteId}`).value || '';
 
-            salvarDadosLocal();
+            if (supabaseClient) {
+                await supabaseClient
+                    .from('clientes')
+                    .update({
+                        limite: cliente.limite,
+                        porcentagemEntrada: cliente.porcentagemEntrada,
+                        valorEntrada: cliente.valorEntrada,
+                        parcelas: cliente.parcelas,
+                        jurosParcelamento: cliente.jurosParcelamento,
+                        descontoAntecipado: cliente.descontoAntecipado,
+                        pixCopiaECola: cliente.pixCopiaECola
+                    })
+                    .eq('id', cliente.id);
+            }
+
+            await carregarDadosDoBanco();
             carregarPainelAdmin();
-            alert('Proposta e parcelas salvas com sucesso!');
+            alert('Proposta e parcelas salvas com sucesso no banco!');
         }
 
-        function alterarStatusCliente(clienteId, novoStatus) {
-            const cliente = listaClientes.find(c => c.id === clienteId);
+        async function alterarStatusCliente(clienteId, novoStatus) {
+            const cliente = listaClientes.find(c => c.id === clienteId || c.protocolo === clienteId);
             if (cliente) {
                 cliente.status = novoStatus;
-                salvarDadosLocal();
+                if (supabaseClient) {
+                    await supabaseClient.from('clientes').update({ status: novoStatus }).eq('id', cliente.id);
+                }
+                await carregarDadosDoBanco();
                 carregarPainelAdmin();
             }
         }
 
-        function alternarEntradaPaga(clienteId) {
-            const cliente = listaClientes.find(c => c.id === clienteId);
+        async function alternarEntradaPaga(clienteId) {
+            const cliente = listaClientes.find(c => c.id === clienteId || c.protocolo === clienteId);
             if (cliente) {
                 cliente.entradaPaga = !cliente.entradaPaga;
                 if (cliente.entradaPaga) {
                     alert(`[NOTIFICAÇÃO BANCO]: O pagamento da entrada Pix do protocolo ${cliente.protocolo} foi confirmado pelo banco!`);
                 }
-                salvarDadosLocal();
+                if (supabaseClient) {
+                    await supabaseClient.from('clientes').update({ entradaPaga: cliente.entradaPaga }).eq('id', cliente.id);
+                }
+                await carregarDadosDoBanco();
                 carregarPainelAdmin();
             }
         }
 
-        function excluirPropostaAdmin(clienteId) {
-            if (confirm('Tem certeza de que deseja APAGAR definitivamente esta proposta?')) {
-                listaClientes = listaClientes.filter(c => c.id !== clienteId);
-                salvarDadosLocal();
+        async function excluirPropostaAdmin(clienteId) {
+            if (confirm('Tem certeza de que deseja APAGAR definitivamente esta proposta do banco?')) {
+                const cliente = listaClientes.find(c => c.id === clienteId || c.protocolo === clienteId);
+                if (cliente && supabaseClient) {
+                    await supabaseClient.from('clientes').delete().eq('id', cliente.id);
+                }
+                await carregarDadosDoBanco();
                 carregarPainelAdmin();
             }
         }
 
-        function consultarProposta() {
+        async function consultarProposta() {
             const busca = document.getElementById('busca-cpf').value.trim();
             const resultado = document.getElementById('resultado-busca');
             if (!busca) {
@@ -320,7 +356,7 @@
                 return;
             }
 
-            listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [];
+            await carregarDadosDoBanco();
             const cliente = listaClientes.find(c => c.cpf === busca || c.protocolo === busca);
             resultado.classList.remove('hidden');
 
@@ -337,7 +373,7 @@
             const qrImg = cliente.qrCodeBase64 ? `data:image/png;base64,${cliente.qrCodeBase64}` : `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cliente.pixCopiaECola || 'Pix Flash Point')}`;
 
             const valorRestante = cliente.limite - cliente.valorEntrada;
-            const valorComJuros = valorRestante * (1 + (cliente.jurosParcelamento / 100));
+            const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
             const valorPorParcela = cliente.parcelas > 0 ? (valorComJuros / cliente.parcelas) : 0;
 
             resultado.innerHTML = `
@@ -370,9 +406,9 @@
             `;
         }
 
-        function carregarPainelAdmin() {
+        async function carregarPainelAdmin() {
             if (!adminLogado) return;
-            listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [];
+            await carregarDadosDoBanco();
             
             let totalGeral = 0;
             let totalEntradasEsperadas = 0;
@@ -423,7 +459,7 @@
             lista.innerHTML = '';
 
             if (listaClientes.length === 0) {
-                lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border">Nenhuma proposta cadastrada.</div>`;
+                lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border">Nenhuma proposta cadastrada no banco.</div>`;
                 return;
             }
 
