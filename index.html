@@ -22,8 +22,8 @@
             supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
         }
 
-        // Banco de dados simulado local na memória
-        let listaClientes = [
+        // Banco de dados simulado local na memória (salvo também no localStorage para não perder ao atualizar)
+        let listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [
             {
                 id: 1,
                 protocolo: 'FP-410640',
@@ -31,16 +31,23 @@
                 cpf: '335.529.498-52',
                 whatsapp: '(35) 99884-5703',
                 limite: 5000,
+                valorEntrada: 500,
+                porcentagemEntrada: 10,
                 status: 'aprovado', // 'aprovado', 'aguardando', 'cancelado'
                 entradaPaga: false
             }
         ];
 
-        let adminLogado = false;
+        // Salva os clientes no localStorage para persistir os dados
+        function salvarDadosLocal() {
+            localStorage.setItem('flash_clientes', JSON.stringify(listaClientes));
+        }
+
+        // Verifica se o admin já estava logado na sessão atual
+        let adminLogado = sessionStorage.getItem('flash_admin_logado') === 'true';
 
         // Função para alternar entre as abas do sistema
         function switchTab(tabId) {
-            // Se tentar acessar o painel admin e não estiver logado, exibe a tela de login
             if (tabId === 'painel' && !adminLogado) {
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
                 document.getElementById('tab-login-admin').classList.remove('hidden');
@@ -51,6 +58,10 @@
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
             document.getElementById('tab-' + tabId).classList.remove('hidden');
             atualizarBotoesNav(tabId);
+
+            if (tabId === 'painel' && adminLogado) {
+                carregarPainelAdmin();
+            }
         }
 
         function atualizarBotoesNav(tabId) {
@@ -65,17 +76,19 @@
             }
         }
 
-        // Validação da Senha do Painel Admin atualizada para flash@2026
+        // Validação da Senha do Painel Admin (flash@2026)
         function verificarSenhaAdmin(event) {
             event.preventDefault();
             const senhaDigitada = document.getElementById('senha-admin').value;
             
             if (senhaDigitada === 'flash@2026') {
                 adminLogado = true;
+                sessionStorage.setItem('flash_admin_logado', 'true');
                 document.getElementById('senha-admin').value = '';
                 document.getElementById('erro-senha').classList.add('hidden');
                 document.getElementById('tab-login-admin').classList.add('hidden');
                 document.getElementById('tab-painel').classList.remove('hidden');
+                atualizarBotoesNav('painel');
                 carregarPainelAdmin();
             } else {
                 document.getElementById('erro-senha').classList.remove('hidden');
@@ -84,6 +97,7 @@
 
         function logoutAdmin() {
             adminLogado = false;
+            sessionStorage.removeItem('flash_admin_logado');
             switchTab('solicitar');
         }
 
@@ -147,6 +161,7 @@
             }
         }
 
+        // Função de envio corrigida para salvar e atualizar corretamente
         function enviarProposta(event) {
             event.preventDefault();
             const nome = document.getElementById('nome').value;
@@ -155,21 +170,29 @@
             const valor = parseFloat(document.getElementById('valor').value) || 1000;
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
 
-            listaClientes.push({
+            const novaProposta = {
                 id: Date.now(),
                 protocolo: protocolo,
                 nome: nome,
                 cpf: cpf,
                 whatsapp: whatsapp,
                 limite: valor,
+                valorEntrada: valor * 0.10, // Padrão 10%
+                porcentagemEntrada: 10,
                 status: 'aguardando',
                 entradaPaga: false
-            });
+            };
+
+            listaClientes.push(novaProposta);
+            salvarDadosLocal();
 
             alert('Solicitação de Limite Pix enviada com sucesso! Seu protocolo é ' + protocolo);
             document.getElementById('form-proposta').reset();
-            carregarPainelAdmin();
+            
+            // Refoca no rastreamento e preenche a busca para o cliente ver na hora
             switchTab('acompanhar');
+            document.getElementById('busca-cpf').value = protocolo;
+            consultarProposta();
         }
 
         function consultarProposta() {
@@ -209,12 +232,13 @@
                     <p class="text-xs text-slate-700">Protocolo: <strong>${cliente.protocolo}</strong></p>
                     <p class="text-xs text-slate-700">Status Atual: ${badgeStatus}</p>
                     <p class="text-xs text-slate-700">Entrada Pix Manual: <strong>${cliente.entradaPaga ? '🟢 Paga (Confirmada)' : '🟡 Pendente'}</strong></p>
-                    <p class="text-xs text-slate-700">Limite Solicitado/Definido: <strong>R$ ${cliente.limite.toFixed(2)}</strong></p>
+                    <p class="text-xs text-slate-700">Valor da Entrada: <strong>R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 0}%)</strong></p>
+                    <p class="text-xs text-slate-700">Limite Total: <strong>R$ ${cliente.limite.toFixed(2)}</strong></p>
                 </div>
             `;
         }
 
-        // Funções do Painel Admin
+        // Funções do Painel Admin com Edição de Porcentagem e Valor da Entrada
         function carregarPainelAdmin() {
             if (!adminLogado) return;
 
@@ -223,12 +247,22 @@
 
             let totalAprovadoVendas = 0;
 
+            if (listaClientes.length === 0) {
+                lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border border-slate-200">Nenhuma proposta cadastrada no momento.</div>`;
+                document.getElementById('fin-entradas').innerText = `R$ 0,00`;
+                document.getElementById('fin-balanco').innerText = `R$ 0,00`;
+                return;
+            }
+
             listaClientes.forEach(cliente => {
                 if (cliente.status === 'aprovado') {
                     totalAprovadoVendas += cliente.limite;
                 }
 
-                // Semáforo visual
+                // Valores padrão caso não existam
+                if (cliente.valorEntrada === undefined) cliente.valorEntrada = cliente.limite * 0.10;
+                if (cliente.porcentagemEntrada === undefined) cliente.porcentagemEntrada = 10;
+
                 let semaforoBg = 'bg-amber-500';
                 let statusTexto = '🟡 Aguardando';
                 if (cliente.status === 'aprovado') {
@@ -260,20 +294,32 @@
                         </div>
                     </div>
 
-                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                        <div class="w-full sm:w-auto flex items-center gap-2">
-                            <label class="text-xs font-bold uppercase text-slate-600">LIMITE R$:</label>
-                            <input type="number" id="limite-${cliente.id}" value="${cliente.limite}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 w-32 focus:outline-none focus:border-emerald-600">
-                            <button onclick="alterarLimite(${cliente.id})" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer">
-                                Editar Limite
-                            </button>
+                    <!-- Campos de Edição: Limite, Valor da Entrada e Porcentagem -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 items-end">
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Limite Total (R$)</label>
+                            <input type="number" id="limite-${cliente.id}" value="${cliente.limite}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
                         </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Valor da Entrada (R$)</label>
+                            <input type="number" step="0.01" id="valorentrada-${cliente.id}" value="${cliente.valorEntrada}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Porcentagem Entrada (%)</label>
+                            <input type="number" step="0.1" id="porcentagem-${cliente.id}" value="${cliente.porcentagemEntrada}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1">
+                        <button onclick="salvarEdicoes(${cliente.id})" class="w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer">
+                            <i class="fa-solid fa-floppy-disk mr-1"></i> Salvar Alterações (Limite / Entrada)
+                        </button>
 
                         <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-                            <button onclick="verParcelas('${cliente.nome}', ${cliente.limite})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                            <button onclick="verParcelas('${cliente.nome}', ${cliente.limite})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer">
                                 <i class="fa-solid fa-calendar-days"></i> Ver Parcelas
                             </button>
-                            <a href="https://wa.me/55${cliente.whatsapp.replace(/\D/g, '')}?text=Olá%20${cliente.nome},%20sobre%20seu%20limite%20Pix%20na%20Distribuidora%20Flash%20Point..." target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                            <a href="https://wa.me/55${cliente.whatsapp.replace(/\D/g, '')}?text=Olá%20${cliente.nome},%20sobre%20seu%20limite%20Pix%20na%20Distribuidora%20Flash%20Point..." target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
                                 <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp
                             </a>
                         </div>
@@ -290,6 +336,7 @@
             const cliente = listaClientes.find(c => c.id === id);
             if (cliente) {
                 cliente.status = novoStatus;
+                salvarDadosLocal();
                 carregarPainelAdmin();
             }
         }
@@ -298,6 +345,7 @@
             const cliente = listaClientes.find(c => c.id === id);
             if (cliente) {
                 cliente.entradaPaga = !cliente.entradaPaga;
+                salvarDadosLocal();
                 carregarPainelAdmin();
             }
         }
@@ -305,17 +353,24 @@
         function excluirCliente(id) {
             if (confirm('Deseja realmente excluir esta proposta?')) {
                 listaClientes = listaClientes.filter(c => c.id !== id);
+                salvarDadosLocal();
                 carregarPainelAdmin();
             }
         }
 
-        function alterarLimite(id) {
-            const novoValor = parseFloat(document.getElementById('limite-' + id).value) || 0;
+        function salvarEdicoes(id) {
+            const novoLimite = parseFloat(document.getElementById('limite-' + id).value) || 0;
+            const novoValorEntrada = parseFloat(document.getElementById('valorentrada-' + id).value) || 0;
+            const novaPorcentagem = parseFloat(document.getElementById('porcentagem-' + id).value) || 0;
+
             const cliente = listaClientes.find(c => c.id === id);
             if (cliente) {
-                cliente.limite = novoValor;
+                cliente.limite = novoLimite;
+                cliente.valorEntrada = novoValorEntrada;
+                cliente.porcentagemEntrada = novaPorcentagem;
+                salvarDadosLocal();
                 carregarPainelAdmin();
-                alert('Limite atualizado com sucesso!');
+                alert('Alterações salvas com sucesso!');
             }
         }
 
@@ -348,15 +403,23 @@
                 cpf: cpf || '000.000.000-00',
                 whatsapp: whatsapp || '(00) 00000-0000',
                 limite: limite,
+                valorEntrada: limite * 0.10,
+                porcentagemEntrada: 10,
                 status: 'aprovado',
                 entradaPaga: false
             });
+            salvarDadosLocal();
             carregarPainelAdmin();
             alert('Cliente cadastrado manualmente com sucesso!');
         }
 
         window.onload = function() {
-            switchTab('solicitar');
+            // Se já estiver logado na sessão, vai direto para o painel se recarregar nele, senão vai para solicitar
+            if (adminLogado) {
+                switchTab('painel');
+            } else {
+                switchTab('solicitar');
+            }
         };
     </script>
 </head>
@@ -572,7 +635,7 @@
                 </form>
             </div>
 
-            <!-- Lista de Clientes com o Semáforo e Botões de Ação -->
+            <!-- Lista de Clientes com Edição de Limite, Valor e Porcentagem de Entrada -->
             <div id="lista-admin" class="space-y-4">
                 <!-- Injetado via JS -->
             </div>
