@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -47,12 +46,14 @@
         }
 
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
+        let intervaloAtualizacaoAdmin = null;
 
         function switchTab(tabId) {
             if (tabId === 'painel' && !adminLogado) {
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
                 document.getElementById('tab-login-admin').classList.remove('hidden');
                 atualizarBotoesNav('painel');
+                pararAtualizacaoAutomatica();
                 return;
             }
 
@@ -62,6 +63,9 @@
 
             if (tabId === 'painel' && adminLogado) {
                 carregarPainelAdmin();
+                iniciarAtualizacaoAutomatica();
+            } else {
+                pararAtualizacaoAutomatica();
             }
         }
 
@@ -90,6 +94,7 @@
                 document.getElementById('tab-painel').classList.remove('hidden');
                 atualizarBotoesNav('painel');
                 carregarPainelAdmin();
+                iniciarAtualizacaoAutomatica();
             } else {
                 document.getElementById('erro-senha').classList.remove('hidden');
             }
@@ -98,7 +103,30 @@
         function logoutAdmin() {
             adminLogado = false;
             localStorage.removeItem('flash_admin_logado');
+            pararAtualizacaoAutomatica();
             switchTab('solicitar');
+        }
+
+        function iniciarAtualizacaoAutomatica() {
+            pararAtualizacaoAutomatica();
+            // Atualiza automaticamente a cada 5 segundos sem piscar a tela ou fechar modais se estiver editando
+            intervaloAtualizacaoAdmin = setInterval(() => {
+                if (adminLogado && !document.getElementById('modal-container').hasChildNodes()) {
+                    let dadosAtuais = JSON.parse(localStorage.getItem('flash_clientes')) || [];
+                    // Se houver alteração de quantidade ou dados, recarrega o painel silenciosamente
+                    if (dadosAtuais.length !== listaClientes.length) {
+                        listaClientes = dadosAtuais;
+                        carregarPainelAdmin();
+                    }
+                }
+            }, 5000);
+        }
+
+        function pararAtualizacaoAutomatica() {
+            if (intervaloAtualizacaoAdmin) {
+                clearInterval(intervaloAtualizacaoAdmin);
+                intervaloAtualizacaoAdmin = null;
+            }
         }
 
         function liberarFormulario() {
@@ -522,15 +550,6 @@
             }
         }
 
-        setInterval(() => {
-            if (adminLogado) {
-                const painelAberto = !document.getElementById('tab-painel').classList.contains('hidden');
-                if (painelAberto) {
-                    carregarPainelAdmin();
-                }
-            }
-        }, 4000);
-
         function mudarStatus(id, novoStatus) {
             const cliente = listaClientes.find(c => c.id === id);
             if (cliente) {
@@ -556,6 +575,12 @@
                 carregarPainelAdmin();
             }
         }
+
+        window.onload = function() {
+            if (adminLogado) {
+                switchTab('painel');
+            }
+        };
     </script>
 </head>
 <body class="bg-slate-100 min-h-screen font-sans text-slate-800">
@@ -587,29 +612,33 @@
                 <p class="text-sm text-slate-500 mt-2">Leia atentamente as condições abaixo antes de iniciar sua solicitação.</p>
             </div>
 
-            <div class="relative bg-slate-900 border border-emerald-500/30 p-6 rounded-3xl mb-8 shadow-xl overflow-hidden">
-                <div class="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-emerald-500 opacity-20 blur-3xl rounded-full pointer-events-none"></div>
+            <!-- ANÚNCIO / AVISO IMPORTANTE ATUALIZADO -->
+            <div class="relative bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-950 border border-emerald-500/40 p-6 sm:p-8 rounded-3xl mb-8 shadow-2xl overflow-hidden">
+                <div class="absolute -top-10 -right-10 w-40 h-40 bg-emerald-500 opacity-20 blur-3xl rounded-full pointer-events-none"></div>
                 
                 <div class="relative z-10 space-y-5">
-                    <div class="flex items-center gap-3 border-b border-slate-700 pb-4">
-                        <div class="bg-emerald-500/20 text-emerald-400 p-2.5 rounded-xl shadow-inner">
-                            <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+                    <div class="flex items-center gap-3 border-b border-slate-700/80 pb-4">
+                        <div class="bg-emerald-500/20 text-emerald-400 p-3 rounded-2xl shadow-inner">
+                            <i class="fa-solid fa-bullhorn text-xl"></i>
                         </div>
-                        <h3 class="font-black text-sm sm:text-base text-white tracking-wide uppercase">
-                            Aviso Importante: Como Funciona a Liberação
-                        </h3>
+                        <div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400">Anúncio & Condições</span>
+                            <h3 class="font-black text-sm sm:text-lg text-white tracking-wide">
+                                Condições Especiais de Parcelamento Flash Point
+                            </h3>
+                        </div>
                     </div>
                     
-                    <ul class="space-y-4 text-sm text-slate-300 leading-relaxed">
-                        <li class="flex items-start gap-3">
-                            <i class="fa-solid fa-handshake text-emerald-400 mt-1 text-lg shrink-0"></i>
-                            <span><strong class="text-white">Valores e Prazos 100% Flexíveis:</strong> Não trabalhamos com limites e parcelas engessadas. O valor final da sua compra e a quantidade de parcelas (podendo ser em <strong>24x, 36x ou até 48x</strong>) são totalmente negociáveis através do nosso atendimento via WhatsApp.</span>
-                        </li>
-                        <li class="flex items-start gap-3">
-                            <i class="fa-solid fa-lock-open text-emerald-400 mt-1 text-lg shrink-0"></i>
-                            <span><strong class="text-white">Garantia de Liberação:</strong> A aprovação definitiva do seu limite de crédito, o parcelamento e a separação dos produtos ocorrem <strong>EXCLUSIVAMENTE após o nosso sistema validar o pagamento da sua entrada.</strong></span>
-                        </li>
-                    </ul>
+                    <div class="space-y-3 text-xs sm:text-sm text-slate-200 leading-relaxed">
+                        <p class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-emerald-400 mt-1 shrink-0"></i>
+                            <span>Negocie valores e parcelamentos flexíveis direto com nossa equipe via WhatsApp (podendo estender em até <strong>36x ou 48x</strong>).</span>
+                        </p>
+                        <p class="flex items-start gap-2.5">
+                            <i class="fa-solid fa-circle-check text-emerald-400 mt-1 shrink-0"></i>
+                            <span>A liberação definitiva do crédito e separação dos produtos ocorrem <strong>imediatamente após a validação do pagamento da entrada</strong> em nosso sistema.</span>
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -695,7 +724,7 @@
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
                 <div>
                     <h2 class="text-xl font-bold text-slate-900">Painel de Controle</h2>
-                    <p class="text-xs text-slate-500">Gerencie propostas em balões estruturados e aprove o Pix via API.</p>
+                    <p class="text-xs text-slate-500">As novas propostas aparecem aqui automaticamente em tempo real.</p>
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer shadow">Sair do Painel</button>
             </div>
@@ -716,5 +745,3 @@
     </main>
 </body>
 </html>
-
-```
