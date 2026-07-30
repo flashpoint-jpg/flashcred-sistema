@@ -12,11 +12,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <script>
-        // CONFIGURAÇÕES DO SISTEMA (SUPABASE E API DE PAGAMENTO)
+        // CONFIGURAÇÕES DO SISTEMA (SUPABASE)
         const CONFIG = {
             SUPABASE_URL: 'https://rgcclordmjmwuzrrfbd.supabase.co',
-            SUPABASE_ANON_KEY: 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi',
-            MERCADO_PAGO_TOKEN: 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471'
+            SUPABASE_ANON_KEY: 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi'
         };
 
         let supabaseClient = null;
@@ -37,7 +36,7 @@
                 porcentagemEntrada: 10,
                 status: 'aprovado',
                 entradaPaga: false,
-                pixCopiaECola: '00020126580014br.gov.bcb.pix...',
+                pixCopiaECola: '',
                 qrCodeBase64: ''
             }
         ];
@@ -81,7 +80,6 @@
             event.preventDefault();
             const senhaDigitada = document.getElementById('senha-admin').value;
             
-            // Senha configurada internamente de forma segura
             if (senhaDigitada === 'flash@2026') {
                 adminLogado = true;
                 sessionStorage.setItem('flash_admin_logado', 'true');
@@ -196,31 +194,31 @@
             consultarProposta();
         }
 
-        // Função de integração com API de Pagamento (Mercado Pago / Pix Automático)
+        // Chamada atualizada para a Edge Function correta (hyper-action)
         async function gerarPixViaAPI(clienteId) {
             const cliente = listaClientes.find(c => c.id === clienteId);
             if (!cliente) return;
 
             try {
-                const response = await fetch("https://api.mercadopago.com/v1/payments", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Authorization": `Bearer ${CONFIG.MERCADO_PAGO_TOKEN}`
-                    },
-                    body: JSON.stringify({
+                if (!supabaseClient) {
+                    alert('Supabase não configurado corretamente.');
+                    return;
+                }
+
+                const { data, error } = await supabaseClient.functions.invoke('hyper-action', {
+                    body: {
                         transaction_amount: cliente.valorEntrada,
                         description: `Entrada Pix Parcelado - Protocolo ${cliente.protocolo}`,
-                        payment_method_id: "pix",
-                        payer: {
-                            email: "cliente@flashpoint.com",
-                            first_name: cliente.nome.split(" ")[0]
-                        }
-                    })
+                        payer_email: "cliente@flashpoint.com",
+                        payer_first_name: cliente.nome.split(" ")[0]
+                    }
                 });
 
-                const data = await response.json();
-                if (data.point_of_interaction) {
+                if (error) {
+                    throw new Error(error.message || 'Erro na função do Supabase');
+                }
+
+                if (data && data.point_of_interaction) {
                     cliente.pixCopiaECola = data.point_of_interaction.transaction_data.qr_code;
                     cliente.qrCodeBase64 = data.point_of_interaction.transaction_data.qr_code_base64;
                     cliente.status = 'aprovado';
@@ -229,11 +227,11 @@
                     alert('Proposta aprovada e Pix gerado com sucesso via Mercado Pago!');
                 } else {
                     console.error("Retorno da API:", data);
-                    alert('Erro ao gerar Pix na API: Verifique os dados ou token.');
+                    alert('Erro ao gerar Pix: Verifique os dados no console.');
                 }
             } catch (err) {
                 console.error(err);
-                alert('Falha na comunicação com a API de pagamento.');
+                alert('Falha na comunicação com a API de pagamento: ' + err.message);
             }
         }
 
