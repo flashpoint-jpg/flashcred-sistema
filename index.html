@@ -1,9 +1,10 @@
+```html
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distribuidora Flash Point - Pix Parcelado (Produção)</title>
+    <title>Distribuidora Flash Point - Pix Parcelado</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- SDK do Supabase -->
@@ -22,13 +23,30 @@
             supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
         }
 
-        let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
-
-        document.addEventListener('DOMContentLoaded', () => {
-            if (adminLogado) {
-                carregarPainelAdminCompleto();
+        let listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [
+            {
+                id: 1,
+                protocolo: 'FP-410640',
+                nome: 'Felipe Costa',
+                cpf: '335.529.498-52',
+                whatsapp: '(35) 99884-5703',
+                limite: 5000,
+                valorEntrada: 500,
+                porcentagemEntrada: 10,
+                parcelas: 1,
+                jurosParcelamento: 0,
+                status: 'aprovado',
+                entradaPaga: false,
+                pixCopiaECola: '',
+                qrCodeBase64: ''
             }
-        });
+        ];
+
+        function salvarDadosLocal() {
+            localStorage.setItem('flash_clientes', JSON.stringify(listaClientes));
+        }
+
+        let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
 
         function switchTab(tabId) {
             if (tabId === 'painel' && !adminLogado) {
@@ -43,19 +61,19 @@
             atualizarBotoesNav(tabId);
 
             if (tabId === 'painel' && adminLogado) {
-                carregarPainelAdminCompleto();
+                carregarPainelAdmin();
             }
         }
 
         function atualizarBotoesNav(tabId) {
             document.querySelectorAll('.tab-btn').forEach(el => {
-                el.classList.remove('bg-emerald-600', 'text-white', 'shadow-md');
-                el.classList.add('text-slate-300', 'hover:text-white');
+                el.classList.remove('bg-emerald-600', 'text-white', 'shadow');
+                el.classList.add('text-slate-600');
             });
             const btn = document.getElementById('btn-' + tabId);
             if (btn) {
-                btn.classList.remove('text-slate-300', 'hover:text-white');
-                btn.classList.add('bg-emerald-600', 'text-white', 'shadow-md');
+                btn.classList.remove('text-slate-600');
+                btn.classList.add('bg-emerald-600', 'text-white', 'shadow');
             }
         }
 
@@ -68,7 +86,10 @@
                 localStorage.setItem('flash_admin_logado', 'true');
                 document.getElementById('senha-admin').value = '';
                 document.getElementById('erro-senha').classList.add('hidden');
-                switchTab('painel');
+                document.getElementById('tab-login-admin').classList.add('hidden');
+                document.getElementById('tab-painel').classList.remove('hidden');
+                atualizarBotoesNav('painel');
+                carregarPainelAdmin();
             } else {
                 document.getElementById('erro-senha').classList.remove('hidden');
             }
@@ -86,20 +107,61 @@
             formContainer.classList.add('opacity-100', 'pointer-events-auto');
 
             const aviso = document.getElementById('aviso-bloqueio');
-            aviso.className = 'bg-emerald-50 border border-emerald-200 p-6 rounded-2xl shadow-sm space-y-3 mb-8';
+            aviso.className = 'bg-emerald-50 border border-emerald-200 p-5 rounded-2xl shadow-sm space-y-2 mb-8';
             aviso.innerHTML = `
                 <h3 class="font-bold text-xs uppercase text-emerald-900 flex items-center gap-2">
-                    <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Atendimento Iniciado com Sucesso!
+                    <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i> Produtos Escolhidos com Sucesso!
                 </h3>
                 <p class="text-xs text-emerald-800 leading-relaxed">
-                    Sua conversa foi direcionada. Preencha os dados abaixo e informe o valor combinado para gerar sua análise e Pix de entrada.
+                    Agora preencha os dados abaixo e informe o valor combinado negociado para finalizar sua solicitação.
                 </p>
             `;
 
-            window.open('https://wa.me/5511973294235?text=Olá,%20gostaria%20de%20negociar%20meu%20limite%20no%20Pix%20Parcelado.', '_blank');
+            window.open('https://wa.me/5511973294235?text=Olá,%20gostaria%20de%20conversar%20sobre%20os%20produtos%20e%20valores%20para%20o%20limite%20Pix.', '_blank');
         }
 
-        async function enviarProposta(event) {
+        function validarCampoCPF(input) {
+            const erro = document.getElementById('erro-cpf');
+            if (input.value.length < 11) {
+                erro.classList.remove('hidden');
+            } else {
+                erro.classList.add('hidden');
+            }
+        }
+
+        function validarIdade(input) {
+            const erro = document.getElementById('erro-idade');
+            const hoje = new Date();
+            const nascimento = new Date(input.value);
+            let idade = hoje.getFullYear() - nascimento.getFullYear();
+            const m = hoje.getMonth() - nascimento.getMonth();
+            if (m < 0 || (m === 0 && hoje.getDate() < nascimento.getDate())) {
+                idade--;
+            }
+            if (idade < 18) {
+                erro.classList.remove('hidden');
+                input.value = '';
+            } else {
+                erro.classList.add('hidden');
+            }
+        }
+
+        async function consultarCEP(cep) {
+            const cepLimpo = cep.replace(/\D/g, '');
+            if (cepLimpo.length === 8) {
+                try {
+                    const response = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+                    const data = await response.json();
+                    if (!data.erro) {
+                        document.getElementById('endereco').value = `${data.logradouro}, Bairro: ${data.bairro} - ${data.localidade}/${data.uf}`;
+                    }
+                } catch (e) {
+                    console.error('Erro ao buscar CEP');
+                }
+            }
+        }
+
+        function enviarProposta(event) {
             event.preventDefault();
             const nome = document.getElementById('nome').value;
             const cpf = document.getElementById('cpf').value;
@@ -107,57 +169,80 @@
             const valor = parseFloat(document.getElementById('valor').value) || 1000;
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
 
-            // Busca configurações atuais direto do banco de produção (Supabase)
-            let porcentagem = 10;
-            let chavePix = 'financeiro@flashpoint.com';
-            let nomeBeneficiario = 'Distribuidora Flash Point';
-
-            if (supabaseClient) {
-                const { data } = await supabaseClient.from('configuracoes').select('*').single();
-                if (data) {
-                    porcentagem = parseFloat(data.porcentagem_entrada) || 10;
-                    chavePix = data.chave_pix || chavePix;
-                    nomeBeneficiario = data.nome_beneficiario || nomeBeneficiario;
-                }
-            }
-
-            const valorEntrada = (valor * porcentagem) / 100;
-            const pixCopiaCola = `00020126580014br.gov.bcb.pix0136${chavePix}5204000053039865802BR5925${nomeBeneficiario}6009SaoPaulo62070503***6304`;
-
             const novaProposta = {
+                id: Date.now(),
                 protocolo: protocolo,
                 nome: nome,
                 cpf: cpf,
                 whatsapp: whatsapp,
                 limite: valor,
-                valor_entrada: valorEntrada,
-                porcentagem_entrada: porcentagem,
+                valorEntrada: valor * 0.10,
+                porcentagemEntrada: 10,
                 parcelas: 1,
+                jurosParcelamento: 0,
                 status: 'aguardando',
-                entrada_paga: false,
-                pix_copia_e_cola: pixCopiaCola
+                entradaPaga: false,
+                pixCopiaECola: '',
+                qrCodeBase64: ''
             };
 
-            if (!supabaseClient) {
-                alert('Erro crítico: Banco de dados não conectado para produção.');
-                return;
-            }
+            listaClientes.push(novaProposta);
+            salvarDadosLocal();
 
-            const { error } = await supabaseClient.from('propostas').insert([novaProposta]);
-            if (error) {
-                alert('Erro ao enviar proposta para o servidor. Tente novamente.');
-                return;
-            }
-
-            alert('Solicitação enviada com sucesso! Seu protocolo é: ' + protocolo);
+            alert('Solicitação de Limite Pix enviada com sucesso! Seu protocolo é ' + protocolo);
             document.getElementById('form-proposta').reset();
             
+            if (adminLogado) {
+                carregarPainelAdmin();
+            }
+
             switchTab('acompanhar');
             document.getElementById('busca-cpf').value = protocolo;
             consultarProposta();
         }
 
-        async function consultarProposta() {
+        async function gerarPixViaAPI(clienteId) {
+            const cliente = listaClientes.find(c => c.id === clienteId);
+            if (!cliente) return;
+
+            try {
+                if (!supabaseClient) {
+                    alert('Supabase não configurado corretamente.');
+                    return;
+                }
+
+                const { data, error } = await supabaseClient.functions.invoke('rapid-action', {
+                    body: {
+                        transaction_amount: cliente.valorEntrada,
+                        description: `Entrada Pix Parcelado em ${cliente.parcelas}x - Protocolo ${cliente.protocolo}`,
+                        payer_email: "cliente@flashpoint.com",
+                        payer_first_name: cliente.nome.split(" ")[0],
+                        installments: cliente.parcelas
+                    }
+                });
+
+                if (error) {
+                    throw new Error(error.message || 'Erro na função do Supabase');
+                }
+
+                if (data && data.point_of_interaction) {
+                    cliente.pixCopiaECola = data.point_of_interaction.transaction_data.qr_code;
+                    cliente.qrCodeBase64 = data.point_of_interaction.transaction_data.qr_code_base64;
+                    cliente.status = 'aprovado';
+                    salvarDadosLocal();
+                    carregarPainelAdmin();
+                    alert(`Proposta aprovada e Pix gerado com sucesso em ${cliente.parcelas}x via Mercado Pago!`);
+                } else {
+                    console.error("Retorno da API:", data);
+                    alert('Erro ao gerar Pix: Verifique os dados no console.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Falha na comunicação com a API de pagamento: ' + err.message);
+            }
+        }
+
+        function consultarProposta() {
             const busca = document.getElementById('busca-cpf').value.trim();
             const resultado = document.getElementById('resultado-busca');
             if (!busca) {
@@ -165,23 +250,13 @@
                 return;
             }
 
-            if (!supabaseClient) {
-                alert('Banco de dados indisponível.');
-                return;
-            }
-
-            const { data: cliente, error } = await supabaseClient
-                .from('propostas')
-                .select('*')
-                .or(`cpf.eq.${busca},protocolo.eq.${busca}`)
-                .maybeSingle();
-
+            const cliente = listaClientes.find(c => c.cpf === busca || c.protocolo === busca);
             resultado.classList.remove('hidden');
 
-            if (error || !cliente) {
+            if (!cliente) {
                 resultado.innerHTML = `
                     <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2 text-center">
-                        <h4 class="font-bold text-rose-900 text-sm">Nenhum registro encontrado</h4>
+                        <h4 class="font-bold text-rose-900 text-sm">Nenhuma solicitação encontrada</h4>
                         <p class="text-xs text-rose-700">Verifique se digitou o CPF ou Protocolo corretamente.</p>
                     </div>
                 `;
@@ -192,31 +267,28 @@
             let secaoPix = '';
 
             if (cliente.status === 'aprovado') {
-                badgeStatus = '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-xs">🟢 Aprovado</span>';
-                const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(cliente.pix_copia_e_cola)}`;
+                badgeStatus = '<span class="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-bold">🟢 Aprovado</span>';
+                const qrImg = cliente.qrCodeBase64 ? `data:image/png;base64,${cliente.qrCodeBase64}` : `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cliente.pixCopiaECola || 'Pix Flash Point')}`;
                 
                 secaoPix = `
-                    <div class="mt-4 pt-4 border-t border-slate-200 space-y-4 bg-emerald-50/60 p-4 rounded-2xl border border-emerald-200">
-                        <div class="flex items-center justify-between">
-                            <h5 class="font-bold text-emerald-900 text-xs uppercase flex items-center gap-1.5">
-                                <i class="fa-brands fa-pix text-emerald-600 text-base"></i> Pagamento da Entrada Pix
-                            </h5>
-                            <span class="text-xs font-black text-emerald-700">R$ ${(cliente.valor_entrada || 0).toFixed(2)}</span>
-                        </div>
-                        <p class="text-[11px] text-slate-600">
-                            Efetue o pagamento da entrada de ${cliente.porcentagem_entrada || 10}% para liberação instantânea do seu limite total de <strong>R$ ${(cliente.limite || 0).toFixed(2)}</strong>.
+                    <div class="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
+                        <h5 class="font-bold text-emerald-900 text-xs uppercase flex items-center gap-1.5">
+                            <i class="fa-brands fa-pix text-emerald-600 text-base"></i> Pagamento da Entrada Pix (Automático)
+                        </h5>
+                        <p class="text-xs text-slate-700">
+                            Valor da Entrada: <strong>R$ ${(cliente.valorEntrada || 0).toFixed(2)}</strong> (${cliente.porcentagemEntrada || 10}%) em ${cliente.parcelas || 1}x negociados.
                         </p>
                         
-                        <div class="flex flex-col items-center justify-center p-3 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                        <div class="flex flex-col items-center justify-center p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
                             <img src="${qrImg}" alt="QR Code Pix" class="w-36 h-36 mb-2">
-                            <span class="text-[10px] text-slate-500 font-medium">Aponte a câmera do seu banco</span>
+                            <span class="text-[10px] text-slate-500 font-medium">Escaneie com o app do banco</span>
                         </div>
 
                         <div class="space-y-1">
                             <label class="block text-[10px] font-bold uppercase text-slate-600">Pix Copia e Cola:</label>
                             <div class="flex gap-2">
-                                <input type="text" id="pix-copia-cola" readonly value="${cliente.pix_copia_e_cola}" class="bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-700 w-full focus:outline-none">
-                                <button onclick="copiarChavePix()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer shadow">
+                                <input type="text" id="pix-copia-cola" readonly value="${cliente.pixCopiaECola || 'Aguardando chave...'}" class="bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-700 w-full focus:outline-none">
+                                <button onclick="copiarChavePix()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer">
                                     <i class="fa-solid fa-copy"></i> Copiar
                                 </button>
                             </div>
@@ -224,24 +296,20 @@
                     </div>
                 `;
             } else if (cliente.status === 'aguardando') {
-                badgeStatus = '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-xs">🟡 Aguardando Análise</span>';
-                secaoPix = `<p class="text-xs text-amber-800 mt-2 bg-amber-50 p-4 rounded-xl border border-amber-200 leading-relaxed">Sua proposta está na fila de análise da gerência. Assim que aprovada, o QR Code e as chaves de pagamento aparecerão instantaneamente aqui.</p>`;
+                badgeStatus = '<span class="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full font-bold">🟡 Aguardando Análise</span>';
+                secaoPix = `<p class="text-xs text-amber-700 mt-2 bg-amber-50 p-3 rounded-xl border border-amber-200">Sua proposta e valores estão sendo negociados/analisados. O QR Code Pix aparecerá aqui após a validação do sistema.</p>`;
             } else {
-                badgeStatus = '<span class="bg-rose-100 text-rose-800 px-3 py-1 rounded-full font-bold text-xs">🔴 Reprovado / Cancelado</span>';
-                secaoPix = `<p class="text-xs text-rose-800 mt-2 bg-rose-50 p-4 rounded-xl border border-rose-200">Esta solicitação não foi aprovada. Entre em contato via WhatsApp para mais detalhes.</p>`;
+                badgeStatus = '<span class="bg-rose-100 text-rose-800 px-2.5 py-1 rounded-full font-bold">🔴 Cancelado / Reprovado</span>';
             }
 
             resultado.innerHTML = `
-                <div class="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 text-left shadow-sm">
-                    <div class="flex justify-between items-center border-b border-slate-200 pb-3">
-                        <span class="bg-slate-900 text-white text-xs font-bold px-3 py-1 rounded-lg">${cliente.protocolo}</span>
-                        ${badgeStatus}
-                    </div>
-                    <div class="space-y-1 text-xs text-slate-700">
-                        <p>Cliente: <strong>${cliente.nome}</strong></p>
-                        <p>Limite Solicitado: <strong>R$ ${(cliente.limite || 0).toFixed(2)}</strong></p>
-                        <p>Status da Entrada: <strong class="${cliente.entrada_paga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entrada_paga ? '🟢 Paga & Validada' : '🟡 Pendente de Pagamento'}</strong></p>
-                    </div>
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-left">
+                    <h4 class="font-bold text-slate-900 text-sm">Detalhes da Solicitação</h4>
+                    <p class="text-xs text-slate-700">Cliente: <strong>${cliente.nome}</strong></p>
+                    <p class="text-xs text-slate-700">Protocolo: <strong>${cliente.protocolo}</strong></p>
+                    <p class="text-xs text-slate-700">Status Atual: ${badgeStatus}</p>
+                    <p class="text-xs text-slate-700">Status da Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga (Validada)' : '🟡 Pendente de Validação'}</strong></p>
+                    <p class="text-xs text-slate-700">Limite Negociado: <strong>R$ ${cliente.limite.toFixed(2)}</strong> (${cliente.parcelas}x flexíveis)</p>
                     ${secaoPix}
                 </div>
             `;
@@ -252,46 +320,49 @@
             inputPix.select();
             inputPix.setSelectionRange(0, 99999);
             navigator.clipboard.writeText(inputPix.value);
-            alert('Chave Pix Copia e Cola copiada com sucesso!');
+            alert('Chave Pix copiada com sucesso!');
         }
 
-        async function carregarPainelAdminCompleto() {
-            if (!adminLogado || !supabaseClient) return;
+        function carregarPainelAdmin() {
+            if (!adminLogado) return;
 
-            // Carrega configurações da nuvem
-            const { data: configData } = await supabaseClient.from('configuracoes').select('*').single();
-            if (configData) {
-                document.getElementById('conf-porcentagem').value = configData.porcentagem_entrada || 10;
-                document.getElementById('conf-chave').value = configData.chave_pix || '';
-                document.getElementById('conf-beneficiario').value = configData.nome_beneficiario || '';
-            }
+            listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [];
 
             const lista = document.getElementById('lista-admin');
-            lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border border-slate-200">Sincronizando propostas com o servidor...</div>`;
-
-            const { data: propostas, error } = await supabaseClient.from('propostas').select('*').order('id', { ascending: false });
-            
             lista.innerHTML = '';
 
-            if (error || !propostas || propostas.length === 0) {
-                lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border border-slate-200">Nenhuma proposta cadastrada no sistema.</div>`;
+            let totalAprovadoVendas = 0;
+
+            if (listaClientes.length === 0) {
+                lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border border-slate-200">Nenhuma proposta cadastrada.</div>`;
+                document.getElementById('fin-entradas').innerText = `R$ 0,00`;
+                document.getElementById('fin-balanco').innerText = `R$ 0,00`;
                 return;
             }
 
-            propostas.forEach(cliente => {
-                let badgeStatusHtml = '<span class="bg-amber-100 text-amber-800 text-[11px] font-bold px-3 py-1 rounded-full">🟡 Aguardando</span>';
+            listaClientes.forEach(cliente => {
                 if (cliente.status === 'aprovado') {
-                    badgeStatusHtml = '<span class="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-3 py-1 rounded-full">🟢 Aprovado</span>';
-                } else if (cliente.status === 'cancelado') {
-                    badgeStatusHtml = '<span class="bg-rose-100 text-rose-800 text-[11px] font-bold px-3 py-1 rounded-full">🔴 Reprovado</span>';
+                    totalAprovadoVendas += cliente.limite || 0;
                 }
 
-                let badgeEntrada = cliente.entrada_paga ? 
-                    '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-1 rounded-full">🟢 Entrada Paga</span>' : 
-                    '<span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-1 rounded-full">🟡 Entrada Pendente</span>';
+                if (cliente.valorEntrada === undefined) cliente.valorEntrada = (cliente.limite || 1000) * 0.10;
+                if (cliente.porcentagemEntrada === undefined) cliente.porcentagemEntrada = 10;
+                if (cliente.parcelas === undefined) cliente.parcelas = 1;
+                if (cliente.jurosParcelamento === undefined) cliente.jurosParcelamento = 0;
+
+                let badgeStatusHtml = '<span class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full">🟡 Aguardando</span>';
+                if (cliente.status === 'aprovado') {
+                    badgeStatusHtml = '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">🟢 Aprovado</span>';
+                } else if (cliente.status === 'cancelado') {
+                    badgeStatusHtml = '<span class="bg-rose-100 text-rose-800 text-xs font-bold px-3 py-1 rounded-full">🔴 Reprovado</span>';
+                }
+
+                let badgeEntradaHtml = cliente.entradaPaga ? 
+                    '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">🟢 Entrada Paga/Validada</span>' : 
+                    '<span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">🟡 Entrada Pendente</span>';
 
                 const card = document.createElement('div');
-                card.className = "bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4";
+                card.className = "bg-white border border-slate-200 p-6 rounded-3xl shadow-sm hover:shadow-md transition space-y-4";
                 card.innerHTML = `
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
                         <div class="space-y-1">
@@ -300,212 +371,344 @@
                                 <h3 class="font-bold text-slate-900 text-base">${cliente.nome}</h3>
                                 ${badgeStatusHtml}
                             </div>
-                            <p class="text-xs text-slate-500">CPF: <strong>${cliente.cpf}</strong> | WhatsApp: <a href="https://wa.me/55${cliente.whatsapp.replace(/\D/g,'')}" target="_blank" class="text-emerald-600 underline font-bold">${cliente.whatsapp}</a></p>
+                            <p class="text-xs text-slate-500">CPF: <strong>${cliente.cpf}</strong> | WhatsApp: <strong>${cliente.whatsapp}</strong></p>
                         </div>
                         <div class="flex items-center gap-2">
-                            ${badgeEntrada}
+                            ${badgeEntradaHtml}
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center items-center">
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
                         <div>
-                            <span class="block text-[10px] font-bold uppercase text-slate-400">Limite Solicitado</span>
-                            <span class="text-xs sm:text-sm font-black text-slate-900">R$ ${(cliente.limite || 0).toFixed(2)}</span>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Valor Total</span>
+                            <span class="text-xs sm:text-sm font-black text-slate-900">R$ ${cliente.limite.toFixed(2)}</span>
                         </div>
                         <div>
-                            <span class="block text-[10px] font-bold uppercase text-slate-400">Entrada Pix (${cliente.porcentagem_entrada || 10}%)</span>
-                            <span class="text-xs sm:text-sm font-black text-emerald-600">R$ ${(cliente.valor_entrada || 0).toFixed(2)}</span>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Entrada</span>
+                            <span class="text-xs sm:text-sm font-black text-emerald-600">R$ ${cliente.valorEntrada.toFixed(2)}</span>
                         </div>
                         <div>
-                            <span class="block text-[10px] font-bold uppercase text-slate-400">Validar Pagamento</span>
-                            <button onclick="alternarEntradaPaga('${cliente.id}', ${!cliente.entrada_paga})" class="mt-1 px-3 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition ${cliente.entrada_paga ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}">
-                                ${cliente.entrada_paga ? 'Marcar Pendente' : 'Confirmar Entrada'}
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">% Entrada</span>
+                            <span class="text-xs sm:text-sm font-bold text-slate-700">${cliente.porcentagemEntrada}%</span>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Parcelas</span>
+                            <span class="text-xs sm:text-sm font-bold text-slate-700">${cliente.parcelas}x</span>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Juros</span>
+                            <span class="text-xs sm:text-sm font-bold text-slate-700">${cliente.jurosParcelamento}%</span>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                        <div class="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                            <button onclick="gerarPixViaAPI(${cliente.id})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                                <i class="fa-solid fa-qrcode"></i> Aprovar + Pix API
+                            </button>
+                            <button onclick="abrirModalEdicao(${cliente.id})" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                                <i class="fa-solid fa-pen-to-square"></i> Editar Proposta
+                            </button>
+                            <button onclick="toggleEntradaPaga(${cliente.id})" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                                <i class="fa-solid fa-check-double"></i> Validar Entrada
                             </button>
                         </div>
-                        <div>
-                            <span class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Ações de Status</span>
-                            <div class="flex justify-center gap-1 flex-wrap">
-                                <button onclick="mudarStatus('${cliente.id}', 'aprovado')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Aprovar</button>
-                                <button onclick="mudarStatus('${cliente.id}', 'cancelado')" class="bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Reprovar</button>
-                            </div>
+                        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                            <a href="https://wa.me/55${cliente.whatsapp.replace(/\D/g, '')}?text=Olá%20${cliente.nome},%20sobre%20sua%20negociação%20na%20Flash%20Point..." target="_blank" class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp
+                            </a>
+                            <button onclick="mudarStatus(${cliente.id}, 'cancelado')" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer" title="Reprovar">
+                                <i class="fa-solid fa-ban"></i>
+                            </button>
+                            <button onclick="excluirCliente(${cliente.id})" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer" title="Excluir">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
                         </div>
                     </div>
                 `;
                 lista.appendChild(card);
             });
+
+            document.getElementById('fin-entradas').innerText = `R$ ${totalAprovadoVendas.toFixed(2)}`;
+            document.getElementById('fin-balanco').innerText = `R$ ${totalAprovadoVendas.toFixed(2)}`;
         }
 
-        async function salvarConfiguracoesAdmin(event) {
-            event.preventDefault();
-            const porcentagem = parseFloat(document.getElementById('conf-porcentagem').value);
-            const chave = document.getElementById('conf-chave').value;
-            const beneficiario = document.getElementById('conf-beneficiario').value;
+        function abrirModalEdicao(id) {
+            const cliente = listaClientes.find(c => c.id === id);
+            if (!cliente) return;
 
-            if (!supabaseClient) return;
+            document.getElementById('modal-container').innerHTML = `
+                <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl space-y-5 border border-slate-100">
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                            <h3 class="font-bold text-slate-900 text-lg flex items-center gap-2">
+                                <i class="fa-solid fa-pen-to-square text-emerald-600"></i> Editar Proposta: ${cliente.protocolo}
+                            </h3>
+                            <button onclick="fecharModal()" class="text-slate-400 hover:text-slate-600 text-lg font-bold p-1">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
 
-            const { error } = await supabaseClient.from('configuracoes').upsert({ 
-                id: 1, 
-                porcentagem_entrada: porcentagem, 
-                chave_pix: chave, 
-                nome_beneficiario: beneficiario 
-            });
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Nome do Cliente</label>
+                                <input type="text" id="edit-nome" value="${cliente.nome}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">CPF</label>
+                                    <input type="text" id="edit-cpf" value="${cliente.cpf}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">WhatsApp</label>
+                                    <input type="text" id="edit-whatsapp" value="${cliente.whatsapp}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Valor Total (R$)</label>
+                                    <input type="number" step="0.01" id="edit-limite" value="${cliente.limite}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Valor Entrada (R$)</label>
+                                    <input type="number" step="0.01" id="edit-valorentrada" value="${cliente.valorEntrada}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Entrada (%)</label>
+                                    <input type="number" step="0.1" id="edit-porcentagem" value="${cliente.porcentagemEntrada}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Parcelas</label>
+                                    <input type="number" min="1" max="48" id="edit-parcelas" value="${cliente.parcelas}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Juros (%)</label>
+                                    <input type="number" step="0.1" id="edit-juros" value="${cliente.jurosParcelamento}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                            </div>
+                        </div>
 
-            if (error) {
-                alert('Erro ao salvar configurações no servidor.');
-                return;
+                        <div class="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button onclick="fecharModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold transition">Cancelar</button>
+                            <button onclick="salvarEdicoesModal(${cliente.id})" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md">Salvar Alterações</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function fecharModal() {
+            document.getElementById('modal-container').innerHTML = '';
+        }
+
+        function salvarEdicoesModal(id) {
+            const cliente = listaClientes.find(c => c.id === id);
+            if (cliente) {
+                cliente.nome = document.getElementById('edit-nome').value;
+                cliente.cpf = document.getElementById('edit-cpf').value;
+                cliente.whatsapp = document.getElementById('edit-whatsapp').value;
+                cliente.limite = parseFloat(document.getElementById('edit-limite').value) || 0;
+                cliente.valorEntrada = parseFloat(document.getElementById('edit-valorentrada').value) || 0;
+                cliente.porcentagemEntrada = parseFloat(document.getElementById('edit-porcentagem').value) || 0;
+                cliente.parcelas = parseInt(document.getElementById('edit-parcelas').value) || 1;
+                cliente.jurosParcelamento = parseFloat(document.getElementById('edit-juros').value) || 0;
+                
+                salvarDadosLocal();
+                carregarPainelAdmin();
+                fecharModal();
+                alert('Proposta atualizada com sucesso!');
             }
-
-            alert('Configurações de produção atualizadas com sucesso!');
-            carregarPainelAdminCompleto();
         }
 
-        async function mudarStatus(id, novoStatus) {
-            if (!supabaseClient) return;
-            await supabaseClient.from('propostas').update({ status: novoStatus }).eq('id', id);
-            carregarPainelAdminCompleto();
+        setInterval(() => {
+            if (adminLogado) {
+                const painelAberto = !document.getElementById('tab-painel').classList.contains('hidden');
+                if (painelAberto) {
+                    carregarPainelAdmin();
+                }
+            }
+        }, 4000);
+
+        function mudarStatus(id, novoStatus) {
+            const cliente = listaClientes.find(c => c.id === id);
+            if (cliente) {
+                cliente.status = novoStatus;
+                salvarDadosLocal();
+                carregarPainelAdmin();
+            }
         }
 
-        async function alternarEntradaPaga(id, novoEstado) {
-            if (!supabaseClient) return;
-            await supabaseClient.from('propostas').update({ entrada_paga: novoEstado }).eq('id', id);
-            carregarPainelAdminCompleto();
+        function toggleEntradaPaga(id) {
+            const cliente = listaClientes.find(c => c.id === id);
+            if (cliente) {
+                cliente.entradaPaga = !cliente.entradaPaga;
+                salvarDadosLocal();
+                carregarPainelAdmin();
+            }
+        }
+
+        function excluirCliente(id) {
+            if (confirm('Deseja realmente excluir esta proposta?')) {
+                listaClientes = listaClientes.filter(c => c.id !== id);
+                salvarDadosLocal();
+                carregarPainelAdmin();
+            }
         }
     </script>
 </head>
 <body class="bg-slate-100 min-h-screen font-sans text-slate-800">
-    <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
+    <div id="modal-container"></div>
+
+    <header class="bg-slate-900 text-white shadow-md">
         <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-3">
-                <div class="bg-emerald-600 p-2.5 rounded-2xl text-white font-bold text-lg shadow">
+                <div class="bg-emerald-600 p-2.5 rounded-xl text-white font-bold text-lg shadow">
                     <i class="fa-solid fa-bolt"></i>
                 </div>
                 <div>
-                    <h1 class="font-bold text-base tracking-wide">Distribuidora Flash Point</h1>
-                    <p class="text-[11px] text-slate-400">Sistema Profissional de Vendas & Pix Parcelado</p>
+                    <h1 class="font-bold text-lg tracking-wide">Distribuidora Flash Point</h1>
+                    <p class="text-xs text-slate-400">Sistema de Vendas & Pix Parcelado</p>
                 </div>
             </div>
-            <nav class="flex items-center gap-2 bg-slate-800 p-1.5 rounded-2xl border border-slate-700 shadow-inner">
-                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition bg-emerald-600 text-white shadow-md cursor-pointer">Solicitar Limite</button>
-                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition text-slate-300 hover:text-white cursor-pointer">Acompanhar</button>
-                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition text-slate-300 hover:text-white cursor-pointer">Painel Admin</button>
+            <nav class="flex items-center gap-2 bg-slate-800 p-1.5 rounded-2xl border border-slate-700">
+                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition bg-emerald-600 text-white shadow">Solicitar Limite</button>
+                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition text-slate-600">Acompanhar</button>
+                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition text-slate-600">Painel Admin</button>
             </nav>
         </div>
     </header>
 
     <main class="max-w-6xl mx-auto px-4 py-8">
-        <!-- ABA SOLICITAR -->
-        <div id="tab-solicitar" class="tab-content grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div class="lg:col-span-1 space-y-6">
-                <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
-                    <h3 class="font-bold text-xs uppercase text-slate-900 flex items-center gap-2">
-                        <i class="fa-solid fa-circle-info text-emerald-600"></i> Anúncio & Condições
-                    </h3>
-                    <div class="space-y-3 text-xs text-slate-600 leading-relaxed">
-                        <p><strong>Condições Especiais de Parcelamento Flash Point</strong></p>
-                        <p>Negocie valores e parcelamentos flexíveis direto com nossa equipe via WhatsApp (podendo estender em até <strong>36x ou 48x</strong>).</p>
-                        <p>A liberação definitiva do crédito e separação dos produtos ocorrem <strong>imediatamente após a validação do pagamento da entrada</strong>.</p>
+        <div id="tab-solicitar" class="tab-content max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200">
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-slate-900">Solicitação de Crédito Pix Parcelado</h2>
+                <p class="text-sm text-slate-500 mt-2">Leia atentamente as condições abaixo antes de iniciar sua solicitação.</p>
+            </div>
+
+            <div class="relative bg-slate-900 border border-emerald-500/30 p-6 rounded-3xl mb-8 shadow-xl overflow-hidden">
+                <div class="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-emerald-500 opacity-20 blur-3xl rounded-full pointer-events-none"></div>
+                
+                <div class="relative z-10 space-y-5">
+                    <div class="flex items-center gap-3 border-b border-slate-700 pb-4">
+                        <div class="bg-emerald-500/20 text-emerald-400 p-2.5 rounded-xl shadow-inner">
+                            <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+                        </div>
+                        <h3 class="font-black text-sm sm:text-base text-white tracking-wide uppercase">
+                            Aviso Importante: Como Funciona a Liberação
+                        </h3>
                     </div>
+                    
+                    <ul class="space-y-4 text-sm text-slate-300 leading-relaxed">
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-handshake text-emerald-400 mt-1 text-lg shrink-0"></i>
+                            <span><strong class="text-white">Valores e Prazos 100% Flexíveis:</strong> Não trabalhamos com limites e parcelas engessadas. O valor final da sua compra e a quantidade de parcelas (podendo ser em <strong>24x, 36x ou até 48x</strong>) são totalmente negociáveis através do nosso atendimento via WhatsApp.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-lock-open text-emerald-400 mt-1 text-lg shrink-0"></i>
+                            <span><strong class="text-white">Garantia de Liberação:</strong> A aprovação definitiva do seu limite de crédito, o parcelamento e a separação dos produtos ocorrem <strong>EXCLUSIVAMENTE após o nosso sistema validar o pagamento da sua entrada.</strong></span>
+                        </li>
+                    </ul>
                 </div>
             </div>
 
-            <div class="lg:col-span-2 bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200">
-                <div class="text-center mb-8">
-                    <h2 class="text-2xl font-bold text-slate-900">Solicitação de Crédito Pix Parcelado</h2>
-                    <p class="text-sm text-slate-500 mt-2">Leia atentamente as condições ao lado antes de iniciar sua solicitação.</p>
-                </div>
+            <div id="aviso-bloqueio" class="bg-amber-50 border border-amber-200 p-6 rounded-2xl shadow-sm space-y-3 mb-8">
+                <h3 class="font-bold text-sm uppercase text-amber-900 flex items-center gap-2">
+                    <i class="fa-solid fa-comments text-amber-600 text-lg"></i> Etapa Obrigatória Inicial
+                </h3>
+                <p class="text-sm text-amber-800 leading-relaxed">
+                    Para iniciar sua análise e liberar o formulário abaixo, clique no botão para conversar com nossa equipe e definir os valores e produtos desejados.
+                </p>
+                <button onclick="liberarFormulario()" class="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md">
+                    <i class="fa-brands fa-whatsapp text-lg"></i> Conversar e Negociar no WhatsApp
+                </button>
+            </div>
 
-                <div id="aviso-bloqueio" class="bg-amber-50 border border-amber-200 p-6 rounded-2xl shadow-sm space-y-3 mb-8">
-                    <h3 class="font-bold text-xs uppercase text-amber-900 flex items-center gap-2">
-                        <i class="fa-solid fa-comments text-amber-600 text-base"></i> Etapa Obrigatória Inicial
-                    </h3>
-                    <p class="text-xs text-amber-800 leading-relaxed">
-                        Para iniciar sua análise e liberar o formulário abaixo, clique no botão para conversar com nossa equipe e definir os valores e produtos desejados.
-                    </p>
-                    <button onclick="liberarFormulario()" class="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md">
-                        <i class="fa-brands fa-whatsapp text-base"></i> Conversar e Negociar no WhatsApp
+            <div id="meu-formulario" class="opacity-40 pointer-events-none transition-all duration-300">
+                <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Nome Completo</label>
+                        <input type="text" id="nome" required placeholder="Digite seu nome completo" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">CPF</label>
+                            <input type="text" id="cpf" required placeholder="000.000.000-00" oninput="validarCampoCPF(this)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
+                            <span id="erro-cpf" class="text-[10px] text-rose-600 hidden font-bold mt-1 block">CPF incompleto ou inválido.</span>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Data de Nascimento</label>
+                            <input type="date" id="nascimento" required onchange="validarIdade(this)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
+                            <span id="erro-idade" class="text-[10px] text-rose-600 hidden font-bold mt-1 block">Você precisa ter mais de 18 anos.</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">WhatsApp</label>
+                            <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">CEP</label>
+                            <input type="text" id="cep" required placeholder="00000-000" onblur="consultarCEP(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Endereço Completo</label>
+                        <input type="text" id="endereco" required placeholder="Preenchido automaticamente pelo CEP" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Valor Combinado / Negociado (R$)</label>
+                        <input type="number" id="valor" required placeholder="Ex: 1500" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
+                    </div>
+                    <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-4 rounded-xl text-sm transition cursor-pointer shadow-md">
+                        Enviar Solicitação para Análise
                     </button>
-                </div>
-
-                <div id="meu-formulario" class="opacity-40 pointer-events-none transition-all duration-300">
-                    <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4">
-                        <div>
-                            <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Nome Completo</label>
-                            <input type="text" id="nome" required placeholder="Digite seu nome completo" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
-                        </div>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">CPF</label>
-                                <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">WhatsApp</label>
-                                <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-[11px] font-bold uppercase text-slate-600 mb-1">Valor Combinado / Negociado (R$)</label>
-                            <input type="number" id="valor" required placeholder="Ex: 1500" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
-                        </div>
-                        <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-4 rounded-xl text-xs transition cursor-pointer shadow-md">
-                            Enviar Solicitação para Análise
-                        </button>
-                    </form>
-                </div>
+                </form>
             </div>
         </div>
 
-        <!-- ABA ACOMPANHAR -->
         <div id="tab-acompanhar" class="tab-content hidden max-w-xl mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200 text-center space-y-4">
             <h2 class="text-xl font-bold text-slate-900">Acompanhar Proposta</h2>
+            <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para ver o status e o Pix.</p>
             <div class="flex gap-2">
-                <input type="text" id="busca-cpf" placeholder="Digite seu CPF ou Protocolo" class="bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 w-full focus:outline-none font-medium">
+                <input type="text" id="busca-cpf" placeholder="Digite seu CPF ou Protocolo" class="bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 w-full focus:outline-none focus:border-emerald-600 font-medium">
                 <button onclick="consultarProposta()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shrink-0 cursor-pointer shadow">Consultar</button>
             </div>
             <div id="resultado-busca" class="hidden text-left mt-4"></div>
         </div>
 
-        <!-- ABA LOGIN ADMIN -->
         <div id="tab-login-admin" class="tab-content hidden max-w-sm mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200 text-center space-y-4">
             <h2 class="text-xl font-bold text-slate-900">Área Administrativa</h2>
+            <p class="text-xs text-slate-500">Insira a senha de acesso para gerenciar as propostas.</p>
             <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4 text-left">
                 <div>
                     <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Senha de Acesso</label>
-                    <input type="password" id="senha-admin" required placeholder="Digite a senha" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none font-medium">
+                    <input type="password" id="senha-admin" required placeholder="Digite a senha" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
                     <span id="erro-senha" class="text-[10px] text-rose-600 hidden font-bold mt-1 block">Senha incorreta.</span>
                 </div>
                 <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-xl text-xs transition cursor-pointer shadow-md">Entrar no Painel</button>
             </form>
         </div>
 
-        <!-- ABA PAINEL ADMIN -->
         <div id="tab-painel" class="tab-content hidden space-y-6">
-            <div class="flex flex-col sm:flex-row justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200 gap-4">
-                <h2 class="text-xl font-bold text-slate-900">Painel de Controle Administrativo</h2>
-                <button onclick="logoutAdmin()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer shadow">Sair</button>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900">Painel de Controle</h2>
+                    <p class="text-xs text-slate-500">Gerencie propostas em balões estruturados e aprove o Pix via API.</p>
+                </div>
+                <button onclick="logoutAdmin()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer shadow">Sair do Painel</button>
             </div>
 
-            <!-- Caixa de Configurações Dinâmicas de Produção -->
-            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
-                <h3 class="font-bold text-xs uppercase text-slate-900 flex items-center gap-2">
-                    <i class="fa-solid fa-gear text-emerald-600"></i> Configurações Globais do Sistema (Produção)
-                </h3>
-                <form onsubmit="salvarConfiguracoesAdmin(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Porcentagem da Entrada (%)</label>
-                        <input type="number" id="conf-porcentagem" step="0.1" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Chave Pix de Recebimento</label>
-                        <input type="text" id="conf-chave" required placeholder="Chave Pix" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Nome do Beneficiário</label>
-                        <input type="text" id="conf-beneficiario" required placeholder="Nome no Pix" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none">
-                    </div>
-                    <div class="sm:col-span-3 flex justify-end">
-                        <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition cursor-pointer shadow">Salvar Configurações</button>
-                    </div>
-                </form>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <span class="text-[10px] font-bold uppercase text-slate-500">Total em Vendas Aprovadas</span>
+                    <h3 id="fin-entradas" class="text-2xl font-black text-emerald-600 mt-1">R$ 0,00</h3>
+                </div>
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <span class="text-[10px] font-bold uppercase text-slate-500">Balanço Geral de Limites</span>
+                    <h3 id="fin-balanco" class="text-2xl font-black text-slate-900 mt-1">R$ 0,00</h3>
+                </div>
             </div>
 
             <div class="space-y-4" id="lista-admin"></div>
@@ -513,3 +716,5 @@
     </main>
 </body>
 </html>
+
+```
