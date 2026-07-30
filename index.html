@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distribuidora Flash Point - Pix Parcelado</title>
+    <title>Distribuidora Flash Point - Pix Parcelado & FlashCred</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- SDK do Supabase -->
@@ -37,7 +37,7 @@
                 parcelas: 12,
                 jurosParcelamento: 1.5,
                 descontoAntecipado: 100,
-                status: 'aprovado',
+                status: 'aguardando',
                 entradaPaga: false,
                 pixCopiaECola: '',
                 qrCodeBase64: ''
@@ -109,13 +109,13 @@
             formContainer.classList.add('opacity-100', 'pointer-events-auto');
 
             const aviso = document.getElementById('aviso-bloqueio');
-            aviso.className = 'bg-emerald-50 border border-emerald-200 p-5 rounded-2xl shadow-sm space-y-2 mb-8';
+            aviso.className = 'bg-emerald-50 border border-emerald-200 p-4 rounded-2xl shadow-sm space-y-1 mb-6';
             aviso.innerHTML = `
                 <h3 class="font-bold text-xs uppercase text-emerald-900 flex items-center gap-2">
                     <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i> Benefícios Garantidos Ativados!
                 </h3>
                 <p class="text-xs text-emerald-800 leading-relaxed">
-                    Formulário liberado com sucesso. Preencha seus dados abaixo e informe o valor combinado para prosseguir com a entrega rápida e segura.
+                    Formulário liberado com sucesso. Preencha seus dados abaixo para prosseguir.
                 </p>
             `;
 
@@ -193,6 +193,8 @@
                 qrCodeBase64: ''
             };
 
+            // Recarrega os dados do localStorage para garantir sincronia com outras abas/sessões
+            listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [];
             listaClientes.push(novaProposta);
             salvarDadosLocal();
 
@@ -318,6 +320,7 @@
                 return;
             }
 
+            listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [];
             const cliente = listaClientes.find(c => c.cpf === busca || c.protocolo === busca);
             resultado.classList.remove('hidden');
 
@@ -347,12 +350,14 @@
                     <p class="text-xs text-slate-700">Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga (Validada pelo Banco)' : '🟡 Pendente'}</strong></p>
                     <p class="text-xs text-slate-700">Valor Total: <strong>R$ ${cliente.limite.toFixed(2)}</strong></p>
                     
+                    ${cliente.status === 'aprovado' ? `
                     <div class="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
                         <span class="block text-[11px] font-bold text-slate-900">Planos de Parcelamento:</span>
                         <p class="text-xs text-emerald-700 font-bold">Entrada: R$ ${cliente.valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada}%)</p>
                         <p class="text-xs text-slate-700 font-semibold">+ ${cliente.parcelas}x de R$ ${valorPorParcela.toFixed(2)} no Pix Parcelado</p>
                         ${cliente.descontoAntecipado > 0 ? `<p class="text-[11px] text-amber-700 font-bold">🎁 Desconto para quitação antecipada: R$ ${cliente.descontoAntecipado.toFixed(2)}</p>` : ''}
                     </div>
+                    ` : ''}
 
                     <div class="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
                         <h5 class="font-bold text-emerald-900 text-xs uppercase">Pagamento da Entrada Pix</h5>
@@ -540,7 +545,7 @@
                 </div>
                 <div>
                     <h1 class="font-black text-xl text-slate-900 tracking-tight">Distribuidora Flash Point</h1>
-                    <p class="text-xs font-semibold text-emerald-600">Sistema de Vendas & Pix Parcelado</p>
+                    <p class="text-xs font-semibold text-emerald-600">Sistema de Vendas & FlashCred</p>
                 </div>
             </div>
             
@@ -554,70 +559,102 @@
         <main class="mt-8">
             <!-- ABA SOLICITAR -->
             <section id="tab-solicitar" class="tab-content space-y-6">
-                <!-- NOVA NOTIFICAÇÃO / QUADRO DE DESTAQUE COM OS BENEFÍCIOS -->
-                <div class="bg-gradient-to-br from-emerald-900 via-slate-900 to-slate-900 text-white p-6 md:p-8 rounded-3xl shadow-xl space-y-5 text-left border-2 border-emerald-500/40 relative overflow-hidden">
-                    <div class="absolute -right-6 -bottom-6 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
-                    
-                    <div class="flex items-center gap-3 border-b border-emerald-500/30 pb-4">
-                        <div class="w-12 h-12 bg-emerald-500 text-slate-950 rounded-2xl flex items-center justify-center font-black text-xl shadow-lg shadow-emerald-500/30">
-                            <i class="fa-solid fa-circle-check"></i>
-                        </div>
-                        <div>
-                            <span class="bg-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase px-2.5 py-1 rounded-full tracking-wider">Aprovação na Hora</span>
-                            <h3 class="font-black text-base md:text-lg text-white mt-1">Aqui no distribuidor Flash Point você compra no pix parcelado!</h3>
+                <!-- SEÇÃO FLASHCRED DESTAQUE SUAVE E ELEGANTE -->
+                <div class="bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/60 border border-emerald-200/60 p-6 md:p-8 rounded-3xl shadow-sm space-y-6 text-left relative">
+                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-emerald-100 pb-5">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center font-black text-xl shadow-md shadow-emerald-600/20 shrink-0">
+                                <i class="fa-solid fa-bolt"></i>
+                            </div>
+                            <div>
+                                <span class="text-[10px] font-bold uppercase tracking-widest text-emerald-700 bg-emerald-100/90 px-2.5 py-0.5 rounded-full">Exclusivo FlashCred</span>
+                                <h2 class="font-extrabold text-base md:text-xl text-slate-900 mt-1">Por que o FlashCred é a melhor forma de você comprar seu móvel?</h2>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div class="bg-slate-800/90 p-3.5 rounded-2xl border border-emerald-500/20 flex items-center gap-3 shadow-sm">
-                            <div class="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
-                                <i class="fa-solid fa-couch"></i>
+                    <!-- FRASES CURTAS EM DESTAQUE (CHIP TAGS) -->
+                    <div class="flex flex-wrap gap-2">
+                        <span class="bg-emerald-100/70 text-emerald-800 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-emerald-200/50">✨ Compre sem sair de casa</span>
+                        <span class="bg-emerald-100/70 text-emerald-800 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-emerald-200/50">🚚 Receba seu móvel direto na sua casa</span>
+                        <span class="bg-emerald-100/70 text-emerald-800 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-emerald-200/50">💳 Entrada de apenas 2% e até 48 vezes</span>
+                        <span class="bg-emerald-100/70 text-emerald-800 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-emerald-200/50">🤝 Aprovamos mesmo com restrição</span>
+                        <span class="bg-emerald-100/70 text-emerald-800 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-emerald-200/50">💰 Parcelamento que cabe no seu bolso</span>
+                        <span class="bg-emerald-100/70 text-emerald-800 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-emerald-200/50">⚡ Pagamento fácil via Pix</span>
+                    </div>
+
+                    <!-- BLOCOS DE CONTEÚDO DETALHADO -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+                        <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
+                            <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                                <i class="fa-solid fa-store text-emerald-600"></i> Loja Online Prática e Confiável
                             </div>
-                            <div>
-                                <strong class="block text-white font-bold">Saia com seus móveis novos</strong>
-                                <span class="text-slate-300 text-[11px]">Praticidade e agilidade para a sua casa.</span>
-                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Você compra sem sair de casa, pelo celular ou computador. Toda a segurança e qualidade da FlashPoint com atendimento dedicado e entrega garantida!</p>
                         </div>
 
-                        <div class="bg-slate-800/90 p-3.5 rounded-2xl border border-emerald-500/20 flex items-center gap-3 shadow-sm">
-                            <div class="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
-                                <i class="fa-solid fa-ban text-rose-400"></i>
+                        <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
+                            <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                                <i class="fa-solid fa-ban text-rose-500"></i> Não Precisa de Cartão de Crédito
                             </div>
-                            <div>
-                                <strong class="block text-white font-bold">Não precisa de cartão</strong>
-                                <span class="text-slate-300 text-[11px]">Tudo facilitado direto pelo Pix Parcelado.</span>
-                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Sem necessidade de cartão, conta bancária ou score alto. Mesmo com nome sujo ou restrição, nós analisamos e aprovamos. A gente confia em você!</p>
                         </div>
 
-                        <div class="bg-slate-800/90 p-3.5 rounded-2xl border border-emerald-500/20 flex items-center gap-3 shadow-sm">
-                            <div class="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
-                                <i class="fa-solid fa-face-smile text-emerald-400"></i>
+                        <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
+                            <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                                <i class="fa-solid fa-wallet text-emerald-600"></i> Parcele do Jeito que Você Consegue Pagar
                             </div>
-                            <div>
-                                <strong class="block text-white font-bold">Não precisa de nome limpo</strong>
-                                <span class="text-slate-300 text-[11px]">Facilitamos a sua negociação sem burocracia.</span>
-                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Entrada flexível de 2% a 70% e parcelamento estendido de 4 até 48 vezes com juros baixos e transparentes, sem surpresas.</p>
                         </div>
 
-                        <div class="bg-slate-800/90 p-3.5 rounded-2xl border border-emerald-500/20 flex items-center gap-3 shadow-sm">
-                            <div class="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
-                                <i class="fa-solid fa-file-circle-check text-emerald-400"></i>
+                        <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
+                            <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                                <i class="fa-solid fa-bolt text-amber-500"></i> Aprovação Rápida, Sem Burocracia
                             </div>
-                            <div>
-                                <strong class="block text-white font-bold">Sem comprovante de residência</strong>
-                                <span class="text-slate-300 text-[11px]">Processo rápido, focado em trazer <strong>só benefício</strong>!</span>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Preenche o cadastro e damos o retorno logo em seguida. Sem esperar dias por banco ou pilhas de documentos. Fecha negócio na hora!</p>
+                        </div>
+
+                        <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
+                            <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                                <i class="fa-brands fa-pix text-emerald-600"></i> Pagamento Fácil e Seguro via Pix
                             </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Código Pix exclusivo direto para a FlashPoint, sem intermediários, sem burocracia e com confirmação rápida.</p>
+                        </div>
+
+                        <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
+                            <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                                <i class="fa-solid fa-house-chimney text-emerald-600"></i> Receba Tudo no Conforto da Sua Casa
+                            </div>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Organizamos a entrega do seu móvel diretamente na sua residência, acompanhando todo o percurso com todo cuidado.</p>
+                        </div>
+                    </div>
+
+                    <!-- RESUMO RÁPIDO EM LISTA -->
+                    <div class="bg-emerald-900/5 border border-emerald-200/80 p-4 rounded-2xl space-y-2">
+                        <h4 class="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-clipboard-check text-emerald-600"></i> Resumo Rápido para Você:
+                        </h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-700 font-medium">
+                            <div>✅ Compre sem sair de casa na loja online</div>
+                            <div>✅ Receba seu pedido diretamente em casa</div>
+                            <div>✅ Sem precisar de cartão de crédito</div>
+                            <div>✅ Aprovamos mesmo com nome sujo</div>
+                            <div>✅ Entrada flexível: de 2% a 70%</div>
+                            <div>✅ Parcele em até 48 vezes</div>
+                            <div>✅ Aprovação rápida na hora</div>
+                            <div>✅ Pagamento fácil via Pix seguro</div>
+                            <div>✅ Tudo direto com a FlashPoint</div>
+                            <div>✅ Contrato claro e digital</div>
                         </div>
                     </div>
 
                     <div class="pt-2">
-                        <button onclick="liberarFormulario()" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 rounded-2xl text-xs transition shadow-lg flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider">
+                        <button onclick="liberarFormulario()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl text-xs transition shadow-md flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider">
                             <i class="fa-brands fa-whatsapp text-base"></i> Negociar Limite e Produtos no WhatsApp
                         </button>
                     </div>
                 </div>
 
-                <div id="aviso-bloqueio" class="bg-amber-50 border border-amber-200 p-5 rounded-2xl shadow-sm space-y-2">
+                <div id="aviso-bloqueio" class="bg-amber-50 border border-amber-200 p-4 rounded-2xl shadow-sm space-y-1">
                     <h3 class="font-bold text-xs uppercase text-amber-900 flex items-center gap-2">
                         <i class="fa-solid fa-triangle-exclamation text-amber-600 text-sm"></i> Formulário Bloqueado
                     </h3>
