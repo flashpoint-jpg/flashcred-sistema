@@ -22,7 +22,7 @@
             supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
         }
 
-        // Banco de dados simulado local na memória para gerenciar dinamicamente os clientes
+        // Banco de dados simulado local na memória
         let listaClientes = [
             {
                 id: 1,
@@ -36,20 +36,55 @@
             }
         ];
 
+        let adminLogado = false;
+
         // Função para alternar entre as abas do sistema
         function switchTab(tabId) {
+            // Se tentar acessar o painel admin e não estiver logado, exibe a tela de login
+            if (tabId === 'painel' && !adminLogado) {
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+                document.getElementById('tab-login-admin').classList.remove('hidden');
+                atualizarBotoesNav('painel');
+                return;
+            }
+
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            atualizarBotoesNav(tabId);
+        }
+
+        function atualizarBotoesNav(tabId) {
             document.querySelectorAll('.tab-btn').forEach(el => {
                 el.classList.remove('bg-emerald-600', 'text-white', 'shadow');
                 el.classList.add('text-slate-600');
             });
-
-            document.getElementById('tab-' + tabId).classList.remove('hidden');
             const btn = document.getElementById('btn-' + tabId);
             if (btn) {
                 btn.classList.remove('text-slate-600');
                 btn.classList.add('bg-emerald-600', 'text-white', 'shadow');
             }
+        }
+
+        // Validação da Senha do Painel Admin atualizada para flash@2026
+        function verificarSenhaAdmin(event) {
+            event.preventDefault();
+            const senhaDigitada = document.getElementById('senha-admin').value;
+            
+            if (senhaDigitada === 'flash@2026') {
+                adminLogado = true;
+                document.getElementById('senha-admin').value = '';
+                document.getElementById('erro-senha').classList.add('hidden');
+                document.getElementById('tab-login-admin').classList.add('hidden');
+                document.getElementById('tab-painel').classList.remove('hidden');
+                carregarPainelAdmin();
+            } else {
+                document.getElementById('erro-senha').classList.remove('hidden');
+            }
+        }
+
+        function logoutAdmin() {
+            adminLogado = false;
+            switchTab('solicitar');
         }
 
         function liberarFormulario() {
@@ -179,8 +214,10 @@
             `;
         }
 
-        // Funções do Painel Admin Atualizadas com Semáforo, Aprovar, Reprovar, Excluir, Editar e Entrada Paga
+        // Funções do Painel Admin
         function carregarPainelAdmin() {
+            if (!adminLogado) return;
+
             const lista = document.getElementById('lista-admin');
             lista.innerHTML = '';
 
@@ -191,7 +228,7 @@
                     totalAprovadoVendas += cliente.limite;
                 }
 
-                // Definir cor do semáforo visual
+                // Semáforo visual
                 let semaforoBg = 'bg-amber-500';
                 let statusTexto = '🟡 Aguardando';
                 if (cliente.status === 'aprovado') {
@@ -208,7 +245,6 @@
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
                         <div>
                             <div class="flex items-center gap-2">
-                                <!-- Semáforo Visual -->
                                 <span class="w-3.5 h-3.5 rounded-full ${semaforoBg} inline-block shadow-sm" title="Status: ${statusTexto}"></span>
                                 <span class="bg-slate-100 text-slate-800 text-xs font-bold px-2 py-0.5 rounded">${cliente.protocolo}</span>
                                 <h4 class="font-bold text-slate-900 text-base">${cliente.nome}</h4>
@@ -320,7 +356,7 @@
         }
 
         window.onload = function() {
-            carregarPainelAdmin();
+            switchTab('solicitar');
         };
     </script>
 </head>
@@ -340,13 +376,13 @@
             </div>
             
             <nav class="flex flex-wrap gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-                <button onclick="switchTab('solicitar')" id="btn-solicitar" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900">
+                <button onclick="switchTab('solicitar')" id="btn-solicitar" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all bg-emerald-600 text-white shadow">
                     <i class="fa-solid fa-file-circle-plus mr-2"></i>Solicitar Pix Parcelado
                 </button>
                 <button onclick="switchTab('acompanhar')" id="btn-acompanhar" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900">
                     <i class="fa-solid fa-magnifying-glass mr-2"></i>Acompanhar
                 </button>
-                <button onclick="switchTab('painel')" id="btn-painel" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all bg-emerald-600 text-white shadow">
+                <button onclick="switchTab('painel')" id="btn-painel" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900">
                     <i class="fa-solid fa-gauge-high mr-2"></i>Painel Admin
                 </button>
             </nav>
@@ -357,7 +393,7 @@
     <main class="flex-grow max-w-7xl w-full mx-auto p-4 sm:p-6">
 
         <!-- ABA 1: SOLICITAR -->
-        <section id="tab-solicitar" class="tab-content hidden">
+        <section id="tab-solicitar" class="tab-content">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                 <div class="lg:col-span-2 bg-white border border-slate-200 p-6 sm:p-8 rounded-2xl shadow-sm">
                     <div class="mb-6 border-b border-slate-100 pb-4">
@@ -462,8 +498,31 @@
             <div id="resultado-busca" class="hidden bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4"></div>
         </section>
 
-        <!-- ABA 3: PAINEL ADMIN -->
-        <section id="tab-painel" class="tab-content space-y-6">
+        <!-- TELA DE LOGIN DO PAINEL ADMIN -->
+        <section id="tab-login-admin" class="tab-content hidden max-w-md mx-auto py-12">
+            <div class="bg-white border border-slate-200 p-8 rounded-2xl shadow-sm space-y-6 text-center">
+                <div class="bg-emerald-100 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto text-emerald-600 text-2xl shadow-inner">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-slate-900">Área Administrativa</h2>
+                    <p class="text-xs text-slate-500 mt-1">Digite a senha de acesso para gerenciar o painel (Senha: <strong>flash@2026</strong>)</p>
+                </div>
+                <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4 text-left">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Senha de Acesso</label>
+                        <input type="password" id="senha-admin" required placeholder="••••••••••" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-emerald-600">
+                        <span id="erro-senha" class="text-xs text-rose-600 hidden font-semibold mt-1 block">Senha incorreta. Tente novamente.</span>
+                    </div>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition shadow-md cursor-pointer">
+                        Entrar no Painel
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- ABA 3: PAINEL ADMIN (PROTEGIDO) -->
+        <section id="tab-painel" class="tab-content hidden space-y-6">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
                 <div>
                     <h2 class="text-xl font-bold flex items-center gap-2 text-slate-900">
@@ -477,6 +536,9 @@
                     </button>
                     <button onclick="carregarPainelAdmin()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2 cursor-pointer">
                         <i class="fa-solid fa-rotate"></i> Atualizar
+                    </button>
+                    <button onclick="logoutAdmin()" class="bg-rose-100 hover:bg-rose-200 text-rose-700 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer">
+                        <i class="fa-solid fa-right-from-bracket"></i> Sair
                     </button>
                 </div>
             </div>
