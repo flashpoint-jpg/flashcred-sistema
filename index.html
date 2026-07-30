@@ -1,6 +1,4 @@
 <script>
-    // --- Substitua estas funções no seu <script> ---
-
     function carregarPainelAdmin() {
         if (!adminLogado) return;
 
@@ -18,13 +16,13 @@
 
         listaClientes.forEach(cliente => {
             if (cliente.status === 'aprovado') {
-                totalAprovadoVendas += cliente.limite;
+                totalAprovadoVendas += cliente.limite || 0;
             }
 
-            if (cliente.valorEntrada === undefined) cliente.valorEntrada = cliente.limite * 0.10;
+            if (cliente.valorEntrada === undefined) cliente.valorEntrada = (cliente.limite || 1000) * 0.10;
             if (cliente.porcentagemEntrada === undefined) cliente.porcentagemEntrada = 10;
             if (cliente.parcelas === undefined) cliente.parcelas = 1;
-            if (cliente.jurosParcelamento === undefined) cliente.jurosParcelamento = 0; // Novo campo de juros
+            if (cliente.jurosParcelamento === undefined) cliente.jurosParcelamento = 0;
 
             let semaforoBg = 'bg-amber-500';
             if (cliente.status === 'aprovado') {
@@ -37,14 +35,11 @@
             card.className = "bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-4";
             card.innerHTML = `
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <span class="w-3.5 h-3.5 rounded-full ${semaforoBg} inline-block shadow-sm"></span>
-                            <span class="bg-slate-100 text-slate-800 text-xs font-bold px-2 py-0.5 rounded">${cliente.protocolo}</span>
-                            <h4 class="font-bold text-slate-900 text-base">${cliente.nome}</h4>
-                        </div>
-                        <p class="text-xs text-slate-500 mt-0.5">CPF: ${cliente.cpf} | WhatsApp: ${cliente.whatsapp}</p>
-                        <p class="text-xs text-slate-600 mt-1">Entrada Pix: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga' : '🟡 Pendente'}</strong></p>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="w-3.5 h-3.5 rounded-full ${semaforoBg} inline-block shadow-sm"></span>
+                        <span class="bg-slate-100 text-slate-800 text-xs font-bold px-2 py-0.5 rounded">${cliente.protocolo}</span>
+                        <span class="text-xs text-slate-500 font-semibold">Status: <strong>${cliente.status}</strong></span>
+                        <span class="text-xs text-slate-600 font-semibold">Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga' : '🟡 Pendente'}</strong></span>
                     </div>
                     <div class="flex items-center gap-1.5 flex-wrap">
                         <button onclick="gerarPixViaAPI(${cliente.id})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer" title="Aprovar e Gerar Pix via API">Aprovar + Pix API</button>
@@ -54,11 +49,27 @@
                     </div>
                 </div>
 
-                <!-- Grid com os inputs ajustados para incluir Juros (%) -->
+                <!-- DADOS CADASTRAIS EDITÁVEIS (Nome, CPF, WhatsApp) -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Nome do Cliente</label>
+                        type="text" id="nome-${cliente.id}" value="${cliente.nome || ''}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">CPF</label>
+                        <input type="text" id="cpf-${cliente.id}" value="${cliente.cpf || ''}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">WhatsApp</label>
+                        <input type="text" id="whatsapp-${cliente.id}" value="${cliente.whatsapp || ''}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
+                    </div>
+                </div>
+
+                <!-- VALORES, PARCELAS E JUROS EDITÁVEIS -->
                 <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 items-end">
                     <div>
                         <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Limite Total (R$)</label>
-                        <input type="number" id="limite-${cliente.id}" value="${cliente.limite}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
+                        <input type="number" step="0.01" id="limite-${cliente.id}" value="${cliente.limite}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Valor Entrada (R$)</label>
@@ -74,13 +85,13 @@
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Juros (%)</label>
-                        <input type="number" step="0.1" id="juros-${cliente.id}" value="${cliente.jurosParcelamento}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600" placeholder="Ex: 2.5">
+                        <input type="number" step="0.1" id="juros-${cliente.id}" value="${cliente.jurosParcelamento}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
                     </div>
                 </div>
 
                 <div class="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1">
                     <button onclick="salvarEdicoes(${cliente.id})" class="w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer">
-                        <i class="fa-solid fa-floppy-disk mr-1"></i> Salvar Alterações
+                        <i class="fa-solid fa-floppy-disk mr-1"></i> Salvar Todas as Alterações
                     </button>
                     <div class="flex items-center gap-2">
                         <a href="https://wa.me/55${cliente.whatsapp.replace(/\D/g, '')}?text=Olá%20${cliente.nome},%20sobre%20seu%20limite%20Pix..." target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
@@ -97,6 +108,9 @@
     }
 
     function salvarEdicoes(id) {
+        const novoNome = document.getElementById('nome-' + id).value;
+        const novoCpf = document.getElementById('cpf-' + id).value;
+        const novoWhatsapp = document.getElementById('whatsapp-' + id).value;
         const novoLimite = parseFloat(document.getElementById('limite-' + id).value) || 0;
         const novoValorEntrada = parseFloat(document.getElementById('valorentrada-' + id).value) || 0;
         const novaPorcentagem = parseFloat(document.getElementById('porcentagem-' + id).value) || 0;
@@ -105,14 +119,18 @@
 
         const cliente = listaClientes.find(c => c.id === id);
         if (cliente) {
+            cliente.nome = novoNome;
+            cliente.cpf = novoCpf;
+            cliente.whatsapp = novoWhatsapp;
             cliente.limite = novoLimite;
             cliente.valorEntrada = novoValorEntrada;
             cliente.porcentagemEntrada = novaPorcentagem;
             cliente.parcelas = novasParcelas;
             cliente.jurosParcelamento = novosJuros;
+            
             salvarDadosLocal();
             carregarPainelAdmin();
-            alert('Alterações, parcelas e juros salvos com sucesso!');
+            alert('Proposta atualizada e salva com sucesso!');
         }
     }
 </script>
