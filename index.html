@@ -19,13 +19,21 @@
 
         let supabaseClient = null;
         if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_URL !== 'SUA_URL_DO_SUPABASE_AQUI') {
-            supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+            try {
+                supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+            } catch (e) {
+                console.error('Erro ao inicializar Supabase:', e);
+            }
         }
 
         let listaClientes = [];
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
 
         async function carregarDadosDoBanco() {
+            // Se houver dados locais salvos por fallback, carrega eles também
+            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            listaClientes = [...locais];
+
             if (!supabaseClient) return;
             try {
                 const { data, error } = await supabaseClient
@@ -35,10 +43,11 @@
                 if (error) {
                     console.error('Erro ao buscar dados do Supabase:', error.message);
                 } else if (data) {
+                    // Mescla com os dados do Supabase dando prioridade ao banco
                     listaClientes = data;
                 }
             } catch (e) {
-                console.error('Erro de conexão com o banco:', e);
+                console.warn('Aviso: Usando armazenamento local temporário devido a bloqueio de rede/fetch.', e);
             }
         }
 
@@ -191,15 +200,29 @@
                 qrCodeBase64: ''
             };
 
-            if (supabaseClient) {
-                const { error } = await supabaseClient
-                    .from('clientes')
-                    .insert([novaProposta]);
+            let salvoNoBanco = false;
 
-                if (error) {
-                    alert('Erro ao salvar no banco de dados: ' + error.message);
-                    return;
+            if (supabaseClient) {
+                try {
+                    const { error } = await supabaseClient
+                        .from('clientes')
+                        .insert([novaProposta]);
+
+                    if (!error) {
+                        salvoNoBanco = true;
+                    } else {
+                        console.warn('Erro do Supabase, salvando localmente:', error.message);
+                    }
+                } catch (err) {
+                    console.warn('Falha de fetch no Supabase, salvando localmente.');
                 }
+            }
+
+            // Fallback seguro local caso a API falhe por bloqueador ou rede
+            if (!salvoNoBanco) {
+                let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+                locais.push(novaProposta);
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
             }
 
             await carregarDadosDoBanco();
@@ -289,32 +312,50 @@
             cliente.descontoAntecipado = parseFloat(document.getElementById(`edit-desc-${clienteId}`).value) || 0;
             cliente.pixCopiaECola = document.getElementById(`edit-copiacola-${clienteId}`).value || '';
 
-            if (supabaseClient) {
-                await supabaseClient
-                    .from('clientes')
-                    .update({
-                        limite: cliente.limite,
-                        porcentagemEntrada: cliente.porcentagemEntrada,
-                        valorEntrada: cliente.valorEntrada,
-                        parcelas: cliente.parcelas,
-                        jurosParcelamento: cliente.jurosParcelamento,
-                        descontoAntecipado: cliente.descontoAntecipado,
-                        pixCopiaECola: cliente.pixCopiaECola
-                    })
-                    .eq('id', cliente.id);
+            if (supabaseClient && cliente.id) {
+                try {
+                    await supabaseClient
+                        .from('clientes')
+                        .update({
+                            limite: cliente.limite,
+                            porcentagemEntrada: cliente.porcentagemEntrada,
+                            valorEntrada: cliente.valorEntrada,
+                            parcelas: cliente.parcelas,
+                            jurosParcelamento: cliente.jurosParcelamento,
+                            descontoAntecipado: cliente.descontoAntecipado,
+                            pixCopiaECola: cliente.pixCopiaECola
+                        })
+                        .eq('id', cliente.id);
+                } catch(e) {}
+            }
+
+            // Atualiza localStorage se for local
+            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
+            if (idx !== -1) {
+                locais[idx] = cliente;
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
             }
 
             await carregarDadosDoBanco();
             carregarPainelAdmin();
-            alert('Proposta e parcelas salvas com sucesso no banco!');
+            alert('Proposta e parcelas salvas com sucesso!');
         }
 
         async function alterarStatusCliente(clienteId, novoStatus) {
             const cliente = listaClientes.find(c => c.id === clienteId || c.protocolo === clienteId);
             if (cliente) {
                 cliente.status = novoStatus;
-                if (supabaseClient) {
-                    await supabaseClient.from('clientes').update({ status: novoStatus }).eq('id', cliente.id);
+                if (supabaseClient && cliente.id) {
+                    try {
+                        await supabaseClient.from('clientes').update({ status: novoStatus }).eq('id', cliente.id);
+                    } catch(e) {}
+                }
+                let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+                const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
+                if (idx !== -1) {
+                    locais[idx].status = novoStatus;
+                    localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
                 }
                 await carregarDadosDoBanco();
                 carregarPainelAdmin();
@@ -326,10 +367,18 @@
             if (cliente) {
                 cliente.entradaPaga = !cliente.entradaPaga;
                 if (cliente.entradaPaga) {
-                    alert(`[NOTIFICAÇÃO BANCO]: O pagamento da entrada Pix do protocolo ${cliente.protocolo} foi confirmado pelo banco!`);
+                    alert(`[NOTIFICAÇÃO BANCO]: O pagamento da entrada Pix do protocolo ${cliente.protocolo} foi confirmado!`);
                 }
-                if (supabaseClient) {
-                    await supabaseClient.from('clientes').update({ entradaPaga: cliente.entradaPaga }).eq('id', cliente.id);
+                if (supabaseClient && cliente.id) {
+                    try {
+                        await supabaseClient.from('clientes').update({ entradaPaga: cliente.entradaPaga }).eq('id', cliente.id);
+                    } catch(e) {}
+                }
+                let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+                const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
+                if (idx !== -1) {
+                    locais[idx].entradaPaga = cliente.entradaPaga;
+                    localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
                 }
                 await carregarDadosDoBanco();
                 carregarPainelAdmin();
@@ -337,10 +386,17 @@
         }
 
         async function excluirPropostaAdmin(clienteId) {
-            if (confirm('Tem certeza de que deseja APAGAR definitivamente esta proposta do banco?')) {
+            if (confirm('Tem certeza de que deseja APAGAR definitivamente esta proposta?')) {
                 const cliente = listaClientes.find(c => c.id === clienteId || c.protocolo === clienteId);
-                if (cliente && supabaseClient) {
-                    await supabaseClient.from('clientes').delete().eq('id', cliente.id);
+                if (cliente) {
+                    if (supabaseClient && cliente.id) {
+                        try {
+                            await supabaseClient.from('clientes').delete().eq('id', cliente.id);
+                        } catch(e) {}
+                    }
+                    let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+                    locais = locais.filter(c => c.protocolo !== cliente.protocolo);
+                    localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
                 }
                 await carregarDadosDoBanco();
                 carregarPainelAdmin();
@@ -382,7 +438,7 @@
                     <p class="text-xs text-slate-700">Protocolo: <strong>${cliente.protocolo}</strong></p>
                     <p class="text-xs text-slate-700">📍 Endereço: <strong>${cliente.endereco || 'Não informado'}</strong> (CEP: ${cliente.cep || 'N/A'})</p>
                     <p class="text-xs text-slate-700">Status: ${badgeStatus}</p>
-                    <p class="text-xs text-slate-700">Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga (Validada pelo Banco)' : '🟡 Pendente'}</strong></p>
+                    <p class="text-xs text-slate-700">Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga' : '🟡 Pendente'}</strong></p>
                     <p class="text-xs text-slate-700">Valor Total: <strong>R$ ${cliente.limite.toFixed(2)}</strong></p>
                     
                     ${cliente.status === 'aprovado' ? `
@@ -458,7 +514,7 @@
             lista.innerHTML = '';
 
             if (listaClientes.length === 0) {
-                lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border">Nenhuma proposta cadastrada no banco.</div>`;
+                lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border">Nenhuma proposta cadastrada.</div>`;
                 return;
             }
 
@@ -475,6 +531,7 @@
                 const valorFinanciado = cliente.limite - cliente.valorEntrada;
                 const totalComJuros = valorFinanciado * (1 + (cliente.jurosParcelamento / 100));
                 const valorParcelaIndividual = cliente.parcelas > 0 ? (totalComJuros / cliente.parcelas) : 0;
+                const uniqueKey = cliente.id || cliente.protocolo;
 
                 const card = document.createElement('div');
                 card.className = "bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4 text-left";
@@ -499,24 +556,24 @@
                     <div class="bg-slate-900 text-white p-4 rounded-2xl space-y-2">
                         <div class="flex justify-between items-center text-xs border-b border-slate-700 pb-2">
                             <span class="font-bold text-emerald-400 uppercase">Detalhamento das Parcelas (Tempo Real)</span>
-                            <span id="rt-parcelas-topo-${cliente.id}" class="text-emerald-400 font-black text-sm">${cliente.parcelas}x de R$ ${valorParcelaIndividual.toFixed(2)} / mês</span>
+                            <span id="rt-parcelas-topo-${uniqueKey}" class="text-emerald-400 font-black text-sm">${cliente.parcelas}x de R$ ${valorParcelaIndividual.toFixed(2)} / mês</span>
                         </div>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px] pt-1">
                             <div>
                                 <span class="text-slate-400 block text-[10px]">Valor Total</span>
-                                <span id="rt-total-${cliente.id}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${cliente.limite.toFixed(2)}</span>
+                                <span id="rt-total-${uniqueKey}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${cliente.limite.toFixed(2)}</span>
                             </div>
                             <div>
                                 <span class="text-slate-400 block text-[10px]">Entrada</span>
-                                <span id="rt-entrada-${cliente.id}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${cliente.valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada}%)</span>
+                                <span id="rt-entrada-${uniqueKey}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${cliente.valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada}%)</span>
                             </div>
                             <div>
                                 <span class="text-slate-400 block text-[10px]">Saldo Parcelado</span>
-                                <span id="rt-saldo-${cliente.id}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${totalComJuros.toFixed(2)}</span>
+                                <span id="rt-saldo-${uniqueKey}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${totalComJuros.toFixed(2)}</span>
                             </div>
                             <div>
                                 <span class="text-slate-400 block text-[10px]">Desc. Quitação</span>
-                                <span id="rt-desc-${cliente.id}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${cliente.descontoAntecipado.toFixed(2)}</span>
+                                <span id="rt-desc-${uniqueKey}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${cliente.descontoAntecipado.toFixed(2)}</span>
                             </div>
                         </div>
                     </div>
@@ -524,44 +581,44 @@
                     <div class="grid grid-cols-2 md:grid-cols-6 gap-2 bg-slate-50 p-3 rounded-xl border">
                         <div>
                             <label class="block text-[9px] font-bold uppercase text-slate-500">Valor Total (R$)</label>
-                            <input type="number" id="edit-limite-${cliente.id}" value="${cliente.limite}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
+                            <input type="number" id="edit-limite-${uniqueKey}" value="${cliente.limite}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div>
                             <label class="block text-[9px] font-bold uppercase text-slate-500">% Entrada</label>
-                            <input type="number" id="edit-porc-${cliente.id}" value="${cliente.porcentagemEntrada}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
+                            <input type="number" id="edit-porc-${uniqueKey}" value="${cliente.porcentagemEntrada}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div>
                             <label class="block text-[9px] font-bold uppercase text-slate-500">Nº Parcelas</label>
-                            <input type="number" id="edit-parc-${cliente.id}" value="${cliente.parcelas}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
+                            <input type="number" id="edit-parc-${uniqueKey}" value="${cliente.parcelas}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div>
                             <label class="block text-[9px] font-bold uppercase text-slate-500">Juros (%)</label>
-                            <input type="number" id="edit-juros-${cliente.id}" value="${cliente.jurosParcelamento}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
+                            <input type="number" id="edit-juros-${uniqueKey}" value="${cliente.jurosParcelamento}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div>
                             <label class="block text-[9px] font-bold uppercase text-slate-500">Desc. Quitação</label>
-                            <input type="number" id="edit-desc-${cliente.id}" value="${cliente.descontoAntecipado}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
+                            <input type="number" id="edit-desc-${uniqueKey}" value="${cliente.descontoAntecipado}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div class="flex items-end">
-                            <button onclick="salvarEdicaoAdmin(${cliente.id})" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-2 rounded text-[11px] cursor-pointer">Salvar</button>
+                            <button onclick="salvarEdicaoAdmin('${uniqueKey}')" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-2 rounded text-[11px] cursor-pointer">Salvar</button>
                         </div>
                     </div>
 
                     <div>
-                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Pix Copia e Cola (Cole aqui o código Pix do seu banco):</label>
-                        <input type="text" id="edit-copiacola-${cliente.id}" value="${cliente.pixCopiaECola || ''}" placeholder="00020126580014br.gov.bcb.pix..." class="w-full bg-slate-50 border rounded-lg px-3 py-1.5 text-xs text-slate-900">
+                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Pix Copia e Cola:</label>
+                        <input type="text" id="edit-copiacola-${uniqueKey}" value="${cliente.pixCopiaECola || ''}" placeholder="00020126580014br.gov.bcb.pix..." class="w-full bg-slate-50 border rounded-lg px-3 py-1.5 text-xs text-slate-900">
                     </div>
 
                     <div class="flex flex-wrap gap-2 pt-2 items-center justify-between border-t border-slate-100">
                         <div class="flex flex-wrap gap-2">
-                            <button onclick="gerarPixViaAPI(${cliente.id})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                            <button onclick="gerarPixViaAPI('${uniqueKey}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
                                 <i class="fa-brands fa-pix"></i> Gerar Pix API
                             </button>
-                            <button onclick="alterarStatusCliente(${cliente.id}, 'aprovado')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Aprovar</button>
-                            <button onclick="alterarStatusCliente(${cliente.id}, 'reprovado')" class="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Desaprovar</button>
-                            <button onclick="alternarEntradaPaga(${cliente.id})" class="bg-amber-50 hover:bg-amber-100 text-amber-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Simular Notificação Banco</button>
+                            <button onclick="alterarStatusCliente('${uniqueKey}', 'aprovado')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Aprovar</button>
+                            <button onclick="alterarStatusCliente('${uniqueKey}', 'reprovado')" class="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Desaprovar</button>
+                            <button onclick="alternarEntradaPaga('${uniqueKey}')" class="bg-amber-50 hover:bg-amber-100 text-amber-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Simular Notificação Banco</button>
                         </div>
-                        <button onclick="excluirPropostaAdmin(${cliente.id})" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                        <button onclick="excluirPropostaAdmin('${uniqueKey}')" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
                             <i class="fa-solid fa-trash"></i> Apagar Proposta
                         </button>
                     </div>
@@ -594,7 +651,7 @@
         <main class="mt-8">
             <!-- ABA SOLICITAR -->
             <section id="tab-solicitar" class="tab-content space-y-6">
-                <!-- SEÇÃO FLASHCRED DESTAQUE SUAVE E ELEGANTE -->
+                <!-- SEÇÃO FLASHCRED DESTAQUE -->
                 <div class="bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/60 border border-emerald-200/60 p-6 md:p-8 rounded-3xl shadow-sm space-y-6 text-left relative">
                     <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-emerald-100 pb-5">
                         <div class="flex items-center gap-3.5">
@@ -608,7 +665,7 @@
                         </div>
                     </div>
 
-                    <!-- FRASES CURTAS EM DESTAQUE (CHIP TAGS) -->
+                    <!-- FRASES CURTAS EM DESTAQUE -->
                     <div class="flex flex-wrap gap-2">
                         <span class="bg-emerald-100/70 text-emerald-800 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-emerald-200/50">✨ Compre sem sair de casa</span>
                         <span class="bg-emerald-100/70 text-emerald-800 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-emerald-200/50">🚚 Receba seu móvel direto na sua casa</span>
@@ -618,71 +675,38 @@
                         <span class="bg-emerald-100/70 text-emerald-800 text-[11px] font-bold px-3 py-1.5 rounded-xl border border-emerald-200/50">⚡ Pagamento fácil via Pix</span>
                     </div>
 
-                    <!-- BLOCOS DE CONTEÚDO DETALHADO -->
+                    <!-- BLOCOS DE CONTEÚDO -->
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
                         <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
                             <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
                                 <i class="fa-solid fa-store text-emerald-600"></i> Loja Online Prática e Confiável
                             </div>
-                            <p class="text-slate-600 text-[11px] leading-relaxed">Você compra sem sair de casa, pelo celular ou computador. Toda a segurança e qualidade da FlashPoint com atendimento dedicado e entrega garantida!</p>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Você compra sem sair de casa, pelo celular ou computador com total segurança e entrega garantida!</p>
                         </div>
 
                         <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
                             <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
                                 <i class="fa-solid fa-ban text-rose-500"></i> Não Precisa de Cartão de Crédito
                             </div>
-                            <p class="text-slate-600 text-[11px] leading-relaxed">Sem necessidade de cartão, conta bancária ou score alto. Mesmo com nome sujo ou restrição, nós analisamos e aprovamos. A gente confia em você!</p>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Sem necessidade de cartão ou score alto. Mesmo com restrição, nós analisamos e aprovamos.</p>
                         </div>
 
                         <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
                             <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
                                 <i class="fa-solid fa-wallet text-emerald-600"></i> Parcele do Jeito que Você Consegue Pagar
                             </div>
-                            <p class="text-slate-600 text-[11px] leading-relaxed">Entrada flexível de 2% a 70% e parcelamento estendido de 4 até 48 vezes com juros baixos e transparentes, sem surpresas.</p>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Entrada flexível e parcelamento estendido de 4 até 48 vezes com juros baixos e transparentes.</p>
                         </div>
 
                         <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
                             <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
                                 <i class="fa-solid fa-bolt text-amber-500"></i> Aprovação Rápida, Sem Burocracia
                             </div>
-                            <p class="text-slate-600 text-[11px] leading-relaxed">Preenche o cadastro e damos o retorno logo em seguida. Sem esperar dias por banco ou pilhas de documentos. Fecha negócio na hora!</p>
-                        </div>
-
-                        <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
-                            <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
-                                <i class="fa-brands fa-pix text-emerald-600"></i> Pagamento Fácil e Seguro via Pix
-                            </div>
-                            <p class="text-slate-600 text-[11px] leading-relaxed">Código Pix exclusivo direto para a FlashPoint, sem intermediários, sem burocracia e com confirmação rápida.</p>
-                        </div>
-
-                        <div class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-2xs space-y-1">
-                            <div class="flex items-center gap-2 font-bold text-slate-900 text-sm">
-                                <i class="fa-solid fa-house-chimney text-emerald-600"></i> Receba Tudo no Conforto da Sua Casa
-                            </div>
-                            <p class="text-slate-600 text-[11px] leading-relaxed">Organizamos a entrega do seu móvel diretamente na sua residência, acompanhando todo o percurso com todo cuidado.</p>
+                            <p class="text-slate-600 text-[11px] leading-relaxed">Preenche o cadastro e damos o retorno logo em seguida para fechar negócio na hora.</p>
                         </div>
                     </div>
 
-                    <!-- RESUMO RÁPIDO EM LISTA -->
-                    <div class="bg-emerald-900/5 border border-emerald-200/80 p-4 rounded-2xl space-y-2">
-                        <h4 class="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                            <i class="fa-solid fa-clipboard-check text-emerald-600"></i> Resumo Rápido para Você:
-                        </h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-700 font-medium">
-                            <div>✅ Compre sem sair de casa na loja online</div>
-                            <div>✅ Receba seu pedido diretamente em casa</div>
-                            <div>✅ Sem precisar de cartão de crédito</div>
-                            <div>✅ Aprovamos mesmo com nome sujo</div>
-                            <div>✅ Entrada flexível: de 2% a 70%</div>
-                            <div>✅ Parcele em até 48 vezes</div>
-                            <div>✅ Aprovação rápida na hora</div>
-                            <div>✅ Pagamento fácil via Pix seguro</div>
-                            <div>✅ Tudo direto com a FlashPoint</div>
-                            <div>✅ Contrato claro e digital</div>
-                        </div>
-                    </div>
-
-                    <!-- PASSO A PASSO EXPLÍCITO PARA O CLIENTE NÃO SE PERDER -->
+                    <!-- PASSO A PASSO EXPLÍCITO -->
                     <div class="bg-amber-100/80 border border-amber-300 p-4 rounded-2xl space-y-2 text-slate-900">
                         <h4 class="font-black text-xs uppercase tracking-wider flex items-center gap-2 text-amber-900">
                             <i class="fa-solid fa-triangle-exclamation text-amber-600 text-sm"></i> ATENÇÃO: COMO FAZER SUA SOLICITAÇÃO CORRETAMENTE
