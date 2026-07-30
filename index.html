@@ -34,6 +34,7 @@
                 limite: 5000,
                 valorEntrada: 500,
                 porcentagemEntrada: 10,
+                parcelas: 1,
                 status: 'aprovado',
                 entradaPaga: false,
                 pixCopiaECola: '',
@@ -177,6 +178,7 @@
                 limite: valor,
                 valorEntrada: valor * 0.10,
                 porcentagemEntrada: 10,
+                parcelas: 1,
                 status: 'aguardando',
                 entradaPaga: false,
                 pixCopiaECola: '',
@@ -194,10 +196,13 @@
             consultarProposta();
         }
 
-        // Chamada atualizada para a Edge Function correta (hyper-action)
+        // Chamada atualizada enviando a quantidade de parcelas para a Edge Function 'hyper-action'
         async function gerarPixViaAPI(clienteId) {
             const cliente = listaClientes.find(c => c.id === clienteId);
             if (!cliente) return;
+
+            const inputParcelas = document.getElementById(`parcelas-${clienteId}`);
+            const qtdParcelas = inputParcelas ? parseInt(inputParcelas.value) || 1 : (cliente.parcelas || 1);
 
             try {
                 if (!supabaseClient) {
@@ -208,9 +213,10 @@
                 const { data, error } = await supabaseClient.functions.invoke('hyper-action', {
                     body: {
                         transaction_amount: cliente.valorEntrada,
-                        description: `Entrada Pix Parcelado - Protocolo ${cliente.protocolo}`,
+                        description: `Entrada Pix Parcelado em ${qtdParcelas}x - Protocolo ${cliente.protocolo}`,
                         payer_email: "cliente@flashpoint.com",
-                        payer_first_name: cliente.nome.split(" ")[0]
+                        payer_first_name: cliente.nome.split(" ")[0],
+                        installments: qtdParcelas
                     }
                 });
 
@@ -221,10 +227,11 @@
                 if (data && data.point_of_interaction) {
                     cliente.pixCopiaECola = data.point_of_interaction.transaction_data.qr_code;
                     cliente.qrCodeBase64 = data.point_of_interaction.transaction_data.qr_code_base64;
+                    cliente.parcelas = qtdParcelas;
                     cliente.status = 'aprovado';
                     salvarDadosLocal();
                     carregarPainelAdmin();
-                    alert('Proposta aprovada e Pix gerado com sucesso via Mercado Pago!');
+                    alert(`Proposta aprovada e Pix gerado com sucesso em ${qtdParcelas}x via Mercado Pago!`);
                 } else {
                     console.error("Retorno da API:", data);
                     alert('Erro ao gerar Pix: Verifique os dados no console.');
@@ -270,7 +277,7 @@
                             <i class="fa-brands fa-pix text-emerald-600 text-base"></i> Pagamento da Entrada Pix (Automático)
                         </h5>
                         <p class="text-xs text-slate-700">
-                            Valor da Entrada: <strong>R$ ${(cliente.valorEntrada || 0).toFixed(2)}</strong> (${cliente.porcentagemEntrada || 10}%)
+                            Valor da Entrada: <strong>R$ ${(cliente.valorEntrada || 0).toFixed(2)}</strong> (${cliente.porcentagemEntrada || 10}%) em ${cliente.parcelas || 1}x
                         </p>
                         
                         <div class="flex flex-col items-center justify-center p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -339,6 +346,7 @@
 
                 if (cliente.valorEntrada === undefined) cliente.valorEntrada = cliente.limite * 0.10;
                 if (cliente.porcentagemEntrada === undefined) cliente.porcentagemEntrada = 10;
+                if (cliente.parcelas === undefined) cliente.parcelas = 1;
 
                 let semaforoBg = 'bg-amber-500';
                 if (cliente.status === 'aprovado') {
@@ -368,7 +376,7 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 items-end">
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 items-end">
                         <div>
                             <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Limite Total (R$)</label>
                             <input type="number" id="limite-${cliente.id}" value="${cliente.limite}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
@@ -378,8 +386,12 @@
                             <input type="number" step="0.01" id="valorentrada-${cliente.id}" value="${cliente.valorEntrada}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Porcentagem Entrada (%)</label>
+                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Porcentagem (%)</label>
                             <input type="number" step="0.1" id="porcentagem-${cliente.id}" value="${cliente.porcentagemEntrada}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Qtd. Parcelas</label>
+                            <input type="number" min="1" max="24" id="parcelas-${cliente.id}" value="${cliente.parcelas}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
                         </div>
                     </div>
 
@@ -431,15 +443,17 @@
             const novoLimite = parseFloat(document.getElementById('limite-' + id).value) || 0;
             const novoValorEntrada = parseFloat(document.getElementById('valorentrada-' + id).value) || 0;
             const novaPorcentagem = parseFloat(document.getElementById('porcentagem-' + id).value) || 0;
+            const novasParcelas = parseInt(document.getElementById('parcelas-' + id).value) || 1;
 
             const cliente = listaClientes.find(c => c.id === id);
             if (cliente) {
                 cliente.limite = novoLimite;
                 cliente.valorEntrada = novoValorEntrada;
                 cliente.porcentagemEntrada = novaPorcentagem;
+                cliente.parcelas = novasParcelas;
                 salvarDadosLocal();
                 carregarPainelAdmin();
-                alert('Alterações salvas!');
+                alert('Alterações e parcelas salvas com sucesso!');
             }
         }
 
