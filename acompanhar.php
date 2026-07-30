@@ -1,4 +1,5 @@
 <?php
+// Dados do pedido (podem ser puxados do seu banco de dados dinamicamente)
 $id_pedido = "PIX-984210";
 $data_pedido = "29/07/2026";
 $valor_parcela = "R$ 158,50";
@@ -247,24 +248,24 @@ $whatsapp_formatado = "(11) 97329-4235";
         <p>Pedido #<?php echo $id_pedido; ?> • Realizado em <?php echo $data_pedido; ?></p>
     </header>
 
-    <!-- Aviso de Pix Parcelado na Hora -->
+    <!-- Aviso de Pix Parcelado -->
     <div class="badge-instant">
         <svg viewBox="0 0 24 24"><path d="M13,2L3,14H12L11,22L21,10H12L13,2Z"/></svg>
         <div>
-            <span>PIX Parcelado na Hora:</span> Seu crédito foi aprovado e o pedido será enviado diretamente da fábrica após a confirmação da 1ª parcela.
+            <span>PIX Parcelado Direto da Fábrica:</span> Envie o comprovante da 1ª parcela e nossa equipe fará a liberação imediata após a verificação.
         </div>
     </div>
 
-    <!-- Informação de Compra 100% Online / Fábrica -->
+    <!-- Informação de Compra 100% Online / Fábrica (Sem loja física/parceiros) -->
     <div class="info-fabrica">
-        📦 <strong>Atendimento 100% Digital:</strong> Não trabalhamos com lojas físicas ou parceiros intermediários. Sua compra é feita diretamente da fábrica com total segurança. Acompanhe também pelo nosso <strong>Catálogo Digital</strong>, <strong>Facebook</strong> e <strong>Instagram</strong>.
+        📦 <strong>Atendimento 100% Online:</strong> Não trabalhamos com lojas físicas ou parceiros intermediários. Sua compra é feita diretamente da fábrica com total segurança. Acompanhe nossas novidades pelo nosso <strong>Catálogo Digital</strong>, <strong>Facebook</strong> e <strong>Instagram</strong>.
     </div>
 
     <!-- Status e Pagamento Pix -->
     <div class="card">
         <div class="status-box">
             <span class="status-title">Status da Solicitação</span>
-            <span class="status-value">Aguardando Pagamento da 1ª Parcela</span>
+            <span class="status-value">Aguardando Análise e Confirmação da Entrada</span>
         </div>
 
         <div class="pix-container">
@@ -272,8 +273,8 @@ $whatsapp_formatado = "(11) 97329-4235";
                 [QR CODE PIX]
             </div>
             <div class="pix-details">
-                <h3>Pague com PIX para liberar na hora</h3>
-                <p>Escaneie o QR Code ao lado pelo aplicativo do seu banco ou utilize o código Copia e Cola.</p>
+                <h3>Pague a entrada via PIX</h3>
+                <p>Efetue o pagamento da 1ª parcela para que possamos analisar e liberar o seu pedido imediatamente.</p>
                 <button class="btn" onclick="alert('Código PIX copiado com sucesso!')">
                     📋 Copiar Código PIX
                 </button>
@@ -301,7 +302,7 @@ $whatsapp_formatado = "(11) 97329-4235";
                     <td>01 / 12</td>
                     <td>29/07/2026</td>
                     <td><?php echo $valor_parcela; ?></td>
-                    <td><strong style="color: #D97706;">Pendente</strong></td>
+                    <td><strong style="color: #D97706;">Aguardando Entrada</strong></td>
                 </tr>
                 <tr>
                     <td>02 / 12</td>
@@ -329,14 +330,14 @@ $whatsapp_formatado = "(11) 97329-4235";
     <div class="card">
         <div class="section-title"><span>Documentação e Canais Oficiais</span></div>
         <div class="parecer-box" style="margin-bottom: 16px;">
-            <span>✨ <strong>Parecer da Análise:</strong> Crédito pré-aprovado com sucesso.</span>
-            <span style="font-weight: 600;">Aprovado</span>
+            <span>✨ <strong>Parecer da Análise:</strong> Aguardando validação do pagamento da entrada.</span>
+            <span style="font-weight: 600; color: #D97706;">Em Análise</span>
         </div>
         <div class="actions-grid">
             <button class="btn btn-outline" onclick="alert('Baixando contrato em PDF...')">
                 📄 Baixar Contrato Assinado
             </button>
-            <a href="https://wa.me/<?php echo $whatsapp_numero; ?>?text=Olá,%20gostaria%20de%20tirar%20dúvidas%20sobre%20meu%20pedido%20<?php echo $id_pedido; ?>" target="_blank" class="btn" style="background: #25D366; text-decoration: none; justify-content: center;">
+            <a href="https://wa.me/<?php echo $whatsapp_numero; ?>?text=Olá,%20acabei%20de%20enviar%20a%20solicitação%20do%20pedido%20<?php echo $id_pedido; ?>%20e%20gostaria%20de%20enviar%20o%20comprovante." target="_blank" class="btn" style="background: #25D366; text-decoration: none; justify-content: center;">
                 💬 Suporte WhatsApp (<?php echo $whatsapp_formatado; ?>)
             </a>
         </div>
