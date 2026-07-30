@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -45,7 +46,7 @@
             localStorage.setItem('flash_clientes', JSON.stringify(listaClientes));
         }
 
-        let adminLogado = sessionStorage.getItem('flash_admin_logado') === 'true';
+        let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
 
         function switchTab(tabId) {
             if (tabId === 'painel' && !adminLogado) {
@@ -82,7 +83,7 @@
             
             if (senhaDigitada === 'flash@2026') {
                 adminLogado = true;
-                sessionStorage.setItem('flash_admin_logado', 'true');
+                localStorage.setItem('flash_admin_logado', 'true');
                 document.getElementById('senha-admin').value = '';
                 document.getElementById('erro-senha').classList.add('hidden');
                 document.getElementById('tab-login-admin').classList.add('hidden');
@@ -96,7 +97,7 @@
 
         function logoutAdmin() {
             adminLogado = false;
-            sessionStorage.removeItem('flash_admin_logado');
+            localStorage.removeItem('flash_admin_logado');
             switchTab('solicitar');
         }
 
@@ -106,17 +107,17 @@
             formContainer.classList.add('opacity-100', 'pointer-events-auto');
 
             const aviso = document.getElementById('aviso-bloqueio');
-            aviso.className = 'bg-emerald-50 border border-emerald-200 p-5 rounded-2xl shadow-sm space-y-2 mb-6';
+            aviso.className = 'bg-emerald-50 border border-emerald-200 p-5 rounded-2xl shadow-sm space-y-2 mb-8';
             aviso.innerHTML = `
                 <h3 class="font-bold text-xs uppercase text-emerald-900 flex items-center gap-2">
                     <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i> Produtos Escolhidos com Sucesso!
                 </h3>
                 <p class="text-xs text-emerald-800 leading-relaxed">
-                    Agora preencha os dados abaixo e informe o valor combinado para finalizar sua solicitação.
+                    Agora preencha os dados abaixo e informe o valor combinado negociado para finalizar sua solicitação.
                 </p>
             `;
 
-            window.open('https://wa.me/5511973294235?text=Olá,%20gostaria%20de%20escolher%20os%20móveis%20e%20definir%20o%20valor%20da%20minha%20compra%20para%20o%20limite%20Pix.', '_blank');
+            window.open('https://wa.me/5511973294235?text=Olá,%20gostaria%20de%20conversar%20sobre%20os%20produtos%20e%20valores%20para%20o%20limite%20Pix.', '_blank');
         }
 
         function validarCampoCPF(input) {
@@ -191,6 +192,10 @@
             alert('Solicitação de Limite Pix enviada com sucesso! Seu protocolo é ' + protocolo);
             document.getElementById('form-proposta').reset();
             
+            if (adminLogado) {
+                carregarPainelAdmin();
+            }
+
             switchTab('acompanhar');
             document.getElementById('busca-cpf').value = protocolo;
             consultarProposta();
@@ -200,23 +205,19 @@
             const cliente = listaClientes.find(c => c.id === clienteId);
             if (!cliente) return;
 
-            const inputParcelas = document.getElementById(`parcelas-${clienteId}`);
-            const qtdParcelas = inputParcelas ? parseInt(inputParcelas.value) || 1 : (cliente.parcelas || 1);
-
             try {
                 if (!supabaseClient) {
                     alert('Supabase não configurado corretamente.');
                     return;
                 }
 
-                // Chamando corretamente a função 'rapid-action' do Supabase
                 const { data, error } = await supabaseClient.functions.invoke('rapid-action', {
                     body: {
                         transaction_amount: cliente.valorEntrada,
-                        description: `Entrada Pix Parcelado em ${qtdParcelas}x - Protocolo ${cliente.protocolo}`,
+                        description: `Entrada Pix Parcelado em ${cliente.parcelas}x - Protocolo ${cliente.protocolo}`,
                         payer_email: "cliente@flashpoint.com",
                         payer_first_name: cliente.nome.split(" ")[0],
-                        installments: qtdParcelas
+                        installments: cliente.parcelas
                     }
                 });
 
@@ -227,11 +228,10 @@
                 if (data && data.point_of_interaction) {
                     cliente.pixCopiaECola = data.point_of_interaction.transaction_data.qr_code;
                     cliente.qrCodeBase64 = data.point_of_interaction.transaction_data.qr_code_base64;
-                    cliente.parcelas = qtdParcelas;
                     cliente.status = 'aprovado';
                     salvarDadosLocal();
                     carregarPainelAdmin();
-                    alert(`Proposta aprovada e Pix gerado com sucesso em ${qtdParcelas}x via Mercado Pago!`);
+                    alert(`Proposta aprovada e Pix gerado com sucesso em ${cliente.parcelas}x via Mercado Pago!`);
                 } else {
                     console.error("Retorno da API:", data);
                     alert('Erro ao gerar Pix: Verifique os dados no console.');
@@ -276,7 +276,7 @@
                             <i class="fa-brands fa-pix text-emerald-600 text-base"></i> Pagamento da Entrada Pix (Automático)
                         </h5>
                         <p class="text-xs text-slate-700">
-                            Valor da Entrada: <strong>R$ ${(cliente.valorEntrada || 0).toFixed(2)}</strong> (${cliente.porcentagemEntrada || 10}%) em ${cliente.parcelas || 1}x
+                            Valor da Entrada: <strong>R$ ${(cliente.valorEntrada || 0).toFixed(2)}</strong> (${cliente.porcentagemEntrada || 10}%) em ${cliente.parcelas || 1}x negociados.
                         </p>
                         
                         <div class="flex flex-col items-center justify-center p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
@@ -297,7 +297,7 @@
                 `;
             } else if (cliente.status === 'aguardando') {
                 badgeStatus = '<span class="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full font-bold">🟡 Aguardando Análise</span>';
-                secaoPix = `<p class="text-xs text-amber-700 mt-2 bg-amber-50 p-3 rounded-xl border border-amber-200">Sua proposta está sendo analisada. O QR Code Pix da API aparecerá aqui assim que for aprovada.</p>`;
+                secaoPix = `<p class="text-xs text-amber-700 mt-2 bg-amber-50 p-3 rounded-xl border border-amber-200">Sua proposta e valores estão sendo negociados/analisados. O QR Code Pix aparecerá aqui após a validação do sistema.</p>`;
             } else {
                 badgeStatus = '<span class="bg-rose-100 text-rose-800 px-2.5 py-1 rounded-full font-bold">🔴 Cancelado / Reprovado</span>';
             }
@@ -308,8 +308,8 @@
                     <p class="text-xs text-slate-700">Cliente: <strong>${cliente.nome}</strong></p>
                     <p class="text-xs text-slate-700">Protocolo: <strong>${cliente.protocolo}</strong></p>
                     <p class="text-xs text-slate-700">Status Atual: ${badgeStatus}</p>
-                    <p class="text-xs text-slate-700">Status da Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga (Confirmada)' : '🟡 Pendente'}</strong></p>
-                    <p class="text-xs text-slate-700">Limite Total Liberado: <strong>R$ ${cliente.limite.toFixed(2)}</strong></p>
+                    <p class="text-xs text-slate-700">Status da Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga (Validada)' : '🟡 Pendente de Validação'}</strong></p>
+                    <p class="text-xs text-slate-700">Limite Negociado: <strong>R$ ${cliente.limite.toFixed(2)}</strong> (${cliente.parcelas}x flexíveis)</p>
                     ${secaoPix}
                 </div>
             `;
@@ -325,6 +325,8 @@
 
         function carregarPainelAdmin() {
             if (!adminLogado) return;
+
+            listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [];
 
             const lista = document.getElementById('lista-admin');
             lista.innerHTML = '';
@@ -348,77 +350,79 @@
                 if (cliente.parcelas === undefined) cliente.parcelas = 1;
                 if (cliente.jurosParcelamento === undefined) cliente.jurosParcelamento = 0;
 
-                let semaforoBg = 'bg-amber-500';
+                let badgeStatusHtml = '<span class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full">🟡 Aguardando</span>';
                 if (cliente.status === 'aprovado') {
-                    semaforoBg = 'bg-emerald-500';
+                    badgeStatusHtml = '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">🟢 Aprovado</span>';
                 } else if (cliente.status === 'cancelado') {
-                    semaforoBg = 'bg-rose-500';
+                    badgeStatusHtml = '<span class="bg-rose-100 text-rose-800 text-xs font-bold px-3 py-1 rounded-full">🔴 Reprovado</span>';
                 }
 
+                let badgeEntradaHtml = cliente.entradaPaga ? 
+                    '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">🟢 Entrada Paga/Validada</span>' : 
+                    '<span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">🟡 Entrada Pendente</span>';
+
                 const card = document.createElement('div');
-                card.className = "bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-4";
+                card.className = "bg-white border border-slate-200 p-6 rounded-3xl shadow-sm hover:shadow-md transition space-y-4";
                 card.innerHTML = `
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <span class="w-3.5 h-3.5 rounded-full ${semaforoBg} inline-block shadow-sm"></span>
-                            <span class="bg-slate-100 text-slate-800 text-xs font-bold px-2 py-0.5 rounded">${cliente.protocolo}</span>
-                            <span class="text-xs text-slate-500 font-semibold">Status: <strong>${cliente.status}</strong></span>
-                            <span class="text-xs text-slate-600 font-semibold">Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga' : '🟡 Pendente'}</strong></span>
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="bg-slate-900 text-white text-xs font-bold px-3 py-1 rounded-lg">${cliente.protocolo}</span>
+                                <h3 class="font-bold text-slate-900 text-base">${cliente.nome}</h3>
+                                ${badgeStatusHtml}
+                            </div>
+                            <p class="text-xs text-slate-500">CPF: <strong>${cliente.cpf}</strong> | WhatsApp: <strong>${cliente.whatsapp}</strong></p>
                         </div>
-                        <div class="flex items-center gap-1.5 flex-wrap">
-                            <button onclick="gerarPixViaAPI(${cliente.id})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer" title="Aprovar e Gerar Pix via API">Aprovar + Pix API</button>
-                            <button onclick="mudarStatus(${cliente.id}, 'cancelado')" class="bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer">Reprovar</button>
-                            <button onclick="toggleEntradaPaga(${cliente.id})" class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer">Entrada Paga</button>
-                            <button onclick="excluirCliente(${cliente.id})" class="bg-slate-700 hover:bg-slate-800 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"><i class="fa-solid fa-trash"></i></button>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                        <div>
-                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Nome do Cliente</label>
-                            <input type="text" id="nome-${cliente.id}" value="${cliente.nome || ''}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">CPF</label>
-                            <input type="text" id="cpf-${cliente.id}" value="${cliente.cpf || ''}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">WhatsApp</label>
-                            <input type="text" id="whatsapp-${cliente.id}" value="${cliente.whatsapp || ''}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 items-end">
-                        <div>
-                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Limite Total (R$)</label>
-                            <input type="number" step="0.01" id="limite-${cliente.id}" value="${cliente.limite}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Valor Entrada (R$)</label>
-                            <input type="number" step="0.01" id="valorentrada-${cliente.id}" value="${cliente.valorEntrada}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Entrada (%)</label>
-                            <input type="number" step="0.1" id="porcentagem-${cliente.id}" value="${cliente.porcentagemEntrada}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Parcelas</label>
-                            <input type="number" min="1" max="24" id="parcelas-${cliente.id}" value="${cliente.parcelas}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Juros (%)</label>
-                            <input type="number" step="0.1" id="juros-${cliente.id}" value="${cliente.jurosParcelamento}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-900 w-full focus:outline-none focus:border-emerald-600">
-                        </div>
-                    </div>
-
-                    <div class="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1">
-                        <button onclick="salvarEdicoes(${cliente.id})" class="w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer">
-                            <i class="fa-solid fa-floppy-disk mr-1"></i> Salvar Todas as Alterações
-                        </button>
                         <div class="flex items-center gap-2">
-                            <a href="https://wa.me/55${cliente.whatsapp.replace(/\D/g, '')}?text=Olá%20${cliente.nome},%20sobre%20seu%20limite%20Pix..." target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
-                                <i class="fa-brands fa-whatsapp"></i> WhatsApp
+                            ${badgeEntradaHtml}
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Valor Total</span>
+                            <span class="text-xs sm:text-sm font-black text-slate-900">R$ ${cliente.limite.toFixed(2)}</span>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Entrada</span>
+                            <span class="text-xs sm:text-sm font-black text-emerald-600">R$ ${cliente.valorEntrada.toFixed(2)}</span>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">% Entrada</span>
+                            <span class="text-xs sm:text-sm font-bold text-slate-700">${cliente.porcentagemEntrada}%</span>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Parcelas</span>
+                            <span class="text-xs sm:text-sm font-bold text-slate-700">${cliente.parcelas}x</span>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Juros</span>
+                            <span class="text-xs sm:text-sm font-bold text-slate-700">${cliente.jurosParcelamento}%</span>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                        <div class="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                            <button onclick="gerarPixViaAPI(${cliente.id})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                                <i class="fa-solid fa-qrcode"></i> Aprovar + Pix API
+                            </button>
+                            <button onclick="abrirModalEdicao(${cliente.id})" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                                <i class="fa-solid fa-pen-to-square"></i> Editar Proposta
+                            </button>
+                            <button onclick="toggleEntradaPaga(${cliente.id})" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                                <i class="fa-solid fa-check-double"></i> Validar Entrada
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                            <a href="https://wa.me/55${cliente.whatsapp.replace(/\D/g, '')}?text=Olá%20${cliente.nome},%20sobre%20sua%20negociação%20na%20Flash%20Point..." target="_blank" class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp
                             </a>
+                            <button onclick="mudarStatus(${cliente.id}, 'cancelado')" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer" title="Reprovar">
+                                <i class="fa-solid fa-ban"></i>
+                            </button>
+                            <button onclick="excluirCliente(${cliente.id})" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer" title="Excluir">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
                         </div>
                     </div>
                 `;
@@ -429,32 +433,103 @@
             document.getElementById('fin-balanco').innerText = `R$ ${totalAprovadoVendas.toFixed(2)}`;
         }
 
-        function salvarEdicoes(id) {
-            const novoNome = document.getElementById('nome-' + id).value;
-            const novoCpf = document.getElementById('cpf-' + id).value;
-            const novoWhatsapp = document.getElementById('whatsapp-' + id).value;
-            const novoLimite = parseFloat(document.getElementById('limite-' + id).value) || 0;
-            const novoValorEntrada = parseFloat(document.getElementById('valorentrada-' + id).value) || 0;
-            const novaPorcentagem = parseFloat(document.getElementById('porcentagem-' + id).value) || 0;
-            const novasParcelas = parseInt(document.getElementById('parcelas-' + id).value) || 1;
-            const novosJuros = parseFloat(document.getElementById('juros-' + id).value) || 0;
+        function abrirModalEdicao(id) {
+            const cliente = listaClientes.find(c => c.id === id);
+            if (!cliente) return;
 
+            document.getElementById('modal-container').innerHTML = `
+                <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl space-y-5 border border-slate-100">
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                            <h3 class="font-bold text-slate-900 text-lg flex items-center gap-2">
+                                <i class="fa-solid fa-pen-to-square text-emerald-600"></i> Editar Proposta: ${cliente.protocolo}
+                            </h3>
+                            <button onclick="fecharModal()" class="text-slate-400 hover:text-slate-600 text-lg font-bold p-1">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Nome do Cliente</label>
+                                <input type="text" id="edit-nome" value="${cliente.nome}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">CPF</label>
+                                    <input type="text" id="edit-cpf" value="${cliente.cpf}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">WhatsApp</label>
+                                    <input type="text" id="edit-whatsapp" value="${cliente.whatsapp}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Valor Total (R$)</label>
+                                    <input type="number" step="0.01" id="edit-limite" value="${cliente.limite}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Valor Entrada (R$)</label>
+                                    <input type="number" step="0.01" id="edit-valorentrada" value="${cliente.valorEntrada}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Entrada (%)</label>
+                                    <input type="number" step="0.1" id="edit-porcentagem" value="${cliente.porcentagemEntrada}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Parcelas</label>
+                                    <input type="number" min="1" max="48" id="edit-parcelas" value="${cliente.parcelas}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Juros (%)</label>
+                                    <input type="number" step="0.1" id="edit-juros" value="${cliente.jurosParcelamento}" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:border-emerald-600">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                            <button onclick="fecharModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold transition">Cancelar</button>
+                            <button onclick="salvarEdicoesModal(${cliente.id})" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md">Salvar Alterações</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function fecharModal() {
+            document.getElementById('modal-container').innerHTML = '';
+        }
+
+        function salvarEdicoesModal(id) {
             const cliente = listaClientes.find(c => c.id === id);
             if (cliente) {
-                cliente.nome = novoNome;
-                cliente.cpf = novoCpf;
-                cliente.whatsapp = novoWhatsapp;
-                cliente.limite = novoLimite;
-                cliente.valorEntrada = novoValorEntrada;
-                cliente.porcentagemEntrada = novaPorcentagem;
-                cliente.parcelas = novasParcelas;
-                cliente.jurosParcelamento = novosJuros;
+                cliente.nome = document.getElementById('edit-nome').value;
+                cliente.cpf = document.getElementById('edit-cpf').value;
+                cliente.whatsapp = document.getElementById('edit-whatsapp').value;
+                cliente.limite = parseFloat(document.getElementById('edit-limite').value) || 0;
+                cliente.valorEntrada = parseFloat(document.getElementById('edit-valorentrada').value) || 0;
+                cliente.porcentagemEntrada = parseFloat(document.getElementById('edit-porcentagem').value) || 0;
+                cliente.parcelas = parseInt(document.getElementById('edit-parcelas').value) || 1;
+                cliente.jurosParcelamento = parseFloat(document.getElementById('edit-juros').value) || 0;
                 
                 salvarDadosLocal();
                 carregarPainelAdmin();
-                alert('Proposta atualizada e salva com sucesso!');
+                fecharModal();
+                alert('Proposta atualizada com sucesso!');
             }
         }
+
+        setInterval(() => {
+            if (adminLogado) {
+                const painelAberto = !document.getElementById('tab-painel').classList.contains('hidden');
+                if (painelAberto) {
+                    carregarPainelAdmin();
+                }
+            }
+        }, 4000);
 
         function mudarStatus(id, novoStatus) {
             const cliente = listaClientes.find(c => c.id === id);
@@ -484,6 +559,8 @@
     </script>
 </head>
 <body class="bg-slate-100 min-h-screen font-sans text-slate-800">
+    <div id="modal-container"></div>
+
     <header class="bg-slate-900 text-white shadow-md">
         <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-3">
@@ -504,22 +581,47 @@
     </header>
 
     <main class="max-w-6xl mx-auto px-4 py-8">
-        <!-- ABA SOLICITAR -->
         <div id="tab-solicitar" class="tab-content max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200">
-            <div class="text-center mb-6">
-                <h2 class="text-xl font-bold text-slate-900">Solicitação de Crédito Pix Parcelado</h2>
-                <p class="text-xs text-slate-500 mt-1">Escolha seus produtos no WhatsApp primeiro para liberar o formulário.</p>
+            <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-slate-900">Solicitação de Crédito Pix Parcelado</h2>
+                <p class="text-sm text-slate-500 mt-2">Leia atentamente as condições abaixo antes de iniciar sua solicitação.</p>
             </div>
 
-            <div id="aviso-bloqueio" class="bg-amber-50 border border-amber-200 p-5 rounded-2xl shadow-sm space-y-2 mb-6">
-                <h3 class="font-bold text-xs uppercase text-amber-900 flex items-center gap-2">
-                    <i class="fa-solid fa-triangle-exclamation text-amber-600 text-sm"></i> Etapa Obrigatória Inicial
+            <div class="relative bg-slate-900 border border-emerald-500/30 p-6 rounded-3xl mb-8 shadow-xl overflow-hidden">
+                <div class="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-emerald-500 opacity-20 blur-3xl rounded-full pointer-events-none"></div>
+                
+                <div class="relative z-10 space-y-5">
+                    <div class="flex items-center gap-3 border-b border-slate-700 pb-4">
+                        <div class="bg-emerald-500/20 text-emerald-400 p-2.5 rounded-xl shadow-inner">
+                            <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+                        </div>
+                        <h3 class="font-black text-sm sm:text-base text-white tracking-wide uppercase">
+                            Aviso Importante: Como Funciona a Liberação
+                        </h3>
+                    </div>
+                    
+                    <ul class="space-y-4 text-sm text-slate-300 leading-relaxed">
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-handshake text-emerald-400 mt-1 text-lg shrink-0"></i>
+                            <span><strong class="text-white">Valores e Prazos 100% Flexíveis:</strong> Não trabalhamos com limites e parcelas engessadas. O valor final da sua compra e a quantidade de parcelas (podendo ser em <strong>24x, 36x ou até 48x</strong>) são totalmente negociáveis através do nosso atendimento via WhatsApp.</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <i class="fa-solid fa-lock-open text-emerald-400 mt-1 text-lg shrink-0"></i>
+                            <span><strong class="text-white">Garantia de Liberação:</strong> A aprovação definitiva do seu limite de crédito, o parcelamento e a separação dos produtos ocorrem <strong>EXCLUSIVAMENTE após o nosso sistema validar o pagamento da sua entrada.</strong></span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div id="aviso-bloqueio" class="bg-amber-50 border border-amber-200 p-6 rounded-2xl shadow-sm space-y-3 mb-8">
+                <h3 class="font-bold text-sm uppercase text-amber-900 flex items-center gap-2">
+                    <i class="fa-solid fa-comments text-amber-600 text-lg"></i> Etapa Obrigatória Inicial
                 </h3>
-                <p class="text-xs text-amber-800 leading-relaxed">
-                    Para iniciar sua análise, clique no botão abaixo para escolher seus móveis e definir os valores pelo WhatsApp com nossa equipe.
+                <p class="text-sm text-amber-800 leading-relaxed">
+                    Para iniciar sua análise e liberar o formulário abaixo, clique no botão para conversar com nossa equipe e definir os valores e produtos desejados.
                 </p>
-                <button onclick="liberarFormulario()" class="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow">
-                    <i class="fa-brands fa-whatsapp text-sm"></i> Escolher Produtos no WhatsApp
+                <button onclick="liberarFormulario()" class="w-full mt-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl text-sm transition flex items-center justify-center gap-2 cursor-pointer shadow-md">
+                    <i class="fa-brands fa-whatsapp text-lg"></i> Conversar e Negociar no WhatsApp
                 </button>
             </div>
 
@@ -556,17 +658,16 @@
                         <input type="text" id="endereco" required placeholder="Preenchido automaticamente pelo CEP" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Valor Combinado dos Produtos (R$)</label>
+                        <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Valor Combinado / Negociado (R$)</label>
                         <input type="number" id="valor" required placeholder="Ex: 1500" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:border-emerald-600 font-medium">
                     </div>
-                    <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded-xl text-xs transition cursor-pointer shadow-md">
-                        Enviar Solicitação de Análise
+                    <button type="submit" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-4 rounded-xl text-sm transition cursor-pointer shadow-md">
+                        Enviar Solicitação para Análise
                     </button>
                 </form>
             </div>
         </div>
 
-        <!-- ABA ACOMPANHAR -->
         <div id="tab-acompanhar" class="tab-content hidden max-w-xl mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200 text-center space-y-4">
             <h2 class="text-xl font-bold text-slate-900">Acompanhar Proposta</h2>
             <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para ver o status e o Pix.</p>
@@ -577,7 +678,6 @@
             <div id="resultado-busca" class="hidden text-left mt-4"></div>
         </div>
 
-        <!-- ABA LOGIN ADMIN -->
         <div id="tab-login-admin" class="tab-content hidden max-w-sm mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200 text-center space-y-4">
             <h2 class="text-xl font-bold text-slate-900">Área Administrativa</h2>
             <p class="text-xs text-slate-500">Insira a senha de acesso para gerenciar as propostas.</p>
@@ -591,12 +691,11 @@
             </form>
         </div>
 
-        <!-- ABA PAINEL ADMIN -->
         <div id="tab-painel" class="tab-content hidden space-y-6">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
                 <div>
                     <h2 class="text-xl font-bold text-slate-900">Painel de Controle</h2>
-                    <p class="text-xs text-slate-500">Gerencie propostas, edite valores e aprove o Pix via API do Mercado Pago.</p>
+                    <p class="text-xs text-slate-500">Gerencie propostas em balões estruturados e aprove o Pix via API.</p>
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer shadow">Sair do Painel</button>
             </div>
@@ -617,3 +716,5 @@
     </main>
 </body>
 </html>
+
+```
