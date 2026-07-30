@@ -2,766 +2,549 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>FlashCred - Portal Corporativo de Crédito & Garantia de Entrega</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Crédito & Gestão de Parcelas</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SDK do Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-                    },
-                    colors: {
-                        corporatebg: '#f8fafc',
-                        cardbg: '#ffffff',
-                        bordercolor: '#e2e8f0',
-                        brandblue: '#1e3a8a',
-                        brandgold: '#d97706',
-                        brandgreen: '#059669'
-                    }
+        // CONFIGURAÇÕES DO SISTEMA E INTEGRAÇÕES
+        const CONFIG = {
+            SUPABASE_URL: 'SUA_URL_DO_SUPABASE_AQUI',
+            SUPABASE_ANON_KEY: 'SUA_CHAVE_ANON_AQUI',
+            MERCADO_PAGO_TOKEN: 'APP_USR-7170135311283307-060413-5a020eb3911c0f0a4f6bb999c0d12e95-247547625'
+        };
+
+        let supabaseClient = null;
+        if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_URL !== 'SUA_URL_DO_SUPABASE_AQUI') {
+            supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+        }
+    </script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+
+    <!-- CABEÇALHO -->
+    <header class="bg-slate-800 border-b border-slate-700 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="bg-blue-600 p-2.5 rounded-xl text-white shadow-lg">
+                    <i class="fa-solid fa-wallet text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wide">Gestão de Crédito & Parcelas</h1>
+                    <p class="text-xs text-slate-400">Painel Operacional Integrado</p>
+                </div>
+            </div>
+            
+            <nav class="flex flex-wrap gap-2 bg-slate-900/60 p-1.5 rounded-xl border border-slate-700/50">
+                <button onclick="switchTab('solicitar')" id="btn-solicitar" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all bg-blue-600 text-white shadow">
+                    <i class="fa-solid fa-file-circle-plus mr-2"></i>Solicitar
+                </button>
+                <button onclick="switchTab('acompanhar')" id="btn-acompanhar" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-magnifying-glass mr-2"></i>Acompanhar
+                </button>
+                <button onclick="switchTab('painel')" id="btn-painel" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-gauge-high mr-2"></i>Painel Admin
+                </button>
+                <button onclick="switchTab('financeiro')" id="btn-financeiro" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-300 hover:text-white">
+                    <i class="fa-solid fa-chart-pie mr-2"></i>Financeiro
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- CONTEÚDO PRINCIPAL -->
+    <main class="flex-grow max-w-7xl w-full mx-auto p-4 sm:p-6">
+
+        <!-- ABA 1: SOLICITAR -->
+        <section id="tab-solicitar" class="tab-content max-w-2xl mx-auto bg-slate-800/80 border border-slate-700 p-6 sm:p-8 rounded-2xl shadow-xl">
+            <div class="mb-6 border-b border-slate-700 pb-4">
+                <h2 class="text-xl font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-user-plus text-blue-500"></i> Nova Solicitação de Crédito
+                </h2>
+                <p class="text-sm text-slate-400">Preencha os dados do cliente para análise e geração automática de parcelas.</p>
+            </div>
+
+            <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Nome Completo</label>
+                        <input type="text" id="nome" required class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">CPF</label>
+                        <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">WhatsApp</label>
+                        <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Valor Desejado (R$)</label>
+                        <input type="number" id="valor" step="0.01" required placeholder="0,00" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Qtd de Parcelas</label>
+                        <select id="qtd-parcelas" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                            <option value="1">1 Parcela (À vista)</option>
+                            <option value="2">2 Parcelas</option>
+                            <option value="3" selected>3 Parcelas</option>
+                            <option value="6">6 Parcelas</option>
+                            <option value="12">12 Parcelas</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Renda Mensal (R$)</label>
+                        <input type="number" id="renda" step="0.01" required placeholder="0,00" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Endereço Completo</label>
+                    <input type="text" id="endereco" required placeholder="Rua, Número, Bairro - Cidade/UF" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition shadow-lg mt-4 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-paper-plane"></i> Enviar Solicitação
+                </button>
+            </form>
+        </section>
+
+        <!-- ABA 2: ACOMPANHAR -->
+        <section id="tab-acompanhar" class="tab-content hidden max-w-2xl mx-auto space-y-6">
+            <div class="bg-slate-800/80 border border-slate-700 p-6 rounded-2xl shadow-xl text-center">
+                <h2 class="text-xl font-bold mb-2">Consultar Proposta & Parcelas</h2>
+                <p class="text-sm text-slate-400 mb-4">Digite o seu CPF ou Código de Protocolo para ver o status e o carnê.</p>
+                <div class="flex gap-2 max-w-md mx-auto">
+                    <input type="text" id="busca-cpf" placeholder="CPF ou Protocolo (ex: FC-12345)" class="flex-grow bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500">
+                    <button onclick="consultarProposta()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl font-semibold transition text-sm">
+                        Buscar
+                    </button>
+                </div>
+            </div>
+
+            <div id="resultado-busca" class="hidden bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-xl space-y-4">
+                <!-- Preenchido via JavaScript -->
+            </div>
+        </section>
+
+        <!-- ABA 3: PAINEL ADMIN -->
+        <section id="tab-painel" class="tab-content hidden space-y-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-800/80 border border-slate-700 p-6 rounded-2xl shadow-xl">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-blue-500"></i> Lista de Clientes & Gestão de Parcelas
+                    </h2>
+                    <p class="text-sm text-slate-400">Aprove, rejeite, altere valores, gere Pix e controle as parcelas de cada cliente.</p>
+                </div>
+                <button onclick="carregarPainelAdmin()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2">
+                    <i class="fa-solid fa-rotate"></i> Atualizar Dados
+                </button>
+            </div>
+
+            <div id="lista-admin" class="space-y-4">
+                <!-- Cards injetados via JS -->
+            </div>
+        </section>
+
+        <!-- ABA 4: FINANCEIRO -->
+        <section id="tab-financeiro" class="tab-content hidden space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-slate-800 border border-slate-700 p-5 rounded-2xl">
+                    <p class="text-xs uppercase font-bold text-slate-400">Total Aprovado (Entradas)</p>
+                    <p id="fin-entradas" class="text-2xl font-black text-emerald-400 mt-1">R$ 0,00</p>
+                </div>
+                <div class="bg-slate-800 border border-slate-700 p-5 rounded-2xl">
+                    <p class="text-xs uppercase font-bold text-slate-400">Total Despesas (Saídas)</p>
+                    <p id="fin-saidas" class="text-2xl font-black text-rose-400 mt-1">R$ 0,00</p>
+                </div>
+                <div class="bg-slate-800 border border-slate-700 p-5 rounded-2xl">
+                    <p class="text-xs uppercase font-bold text-slate-400">Balanço de Caixa</p>
+                    <p id="fin-balanco" class="text-2xl font-black text-blue-400 mt-1">R$ 0,00</p>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/80 border border-slate-700 p-6 rounded-2xl shadow-xl max-w-xl">
+                <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-receipt text-blue-500"></i> Registrar Nova Despesa
+                </h3>
+                <form onsubmit="adicionarDespesa(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Descrição</label>
+                        <input type="text" id="desc-despesa" required placeholder="Ex: Taxa de sistema, marketing..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase text-slate-400 mb-1">Valor (R$)</label>
+                        <input type="number" id="valor-despesa" step="0.01" required placeholder="0,00" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-500">
+                    </div>
+                    <button type="submit" class="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2.5 rounded-xl transition text-sm">
+                        Adicionar Despesa
+                    </button>
+                </form>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODAL DE GERENCIAMENTO DE PARCELAS -->
+    <div id="modal-parcelas" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-2xl rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
+                <h3 id="modal-titulo-parcelas" class="text-lg font-bold">Parcelas do Cliente</h3>
+                <button onclick="fecharModalParcelas()" class="text-slate-400 hover:text-white text-lg font-bold"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="modal-conteudo-parcelas" class="space-y-3">
+                <!-- Gerado dinamicamente -->
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT DE CONTROLE -->
+    <script>
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('bg-blue-600', 'text-white', 'shadow');
+                el.classList.add('text-slate-300');
+            });
+            
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`btn-${tabId}`);
+            activeBtn.classList.add('bg-blue-600', 'text-white', 'shadow');
+            activeBtn.classList.remove('text-slate-300');
+
+            if (tabId === 'painel') carregarPainelAdmin();
+            if (tabId === 'financeiro') carregarFinanceiro();
+        }
+
+        function gerarProtocolo() {
+            return 'FC-' + Math.floor(100000 + Math.random() * 900000);
+        }
+
+        function gerarListaParcelas(valorTotal, qtd) {
+            let parcelas = [];
+            let valorParcela = (valorTotal / qtd).toFixed(2);
+            let hoje = new Date();
+
+            for (let i = 1; i <= qtd; i++) {
+                let vencimento = new Date(hoje);
+                vencimento.setMonth(hoje.getMonth() + i);
+                let dataFormatada = vencimento.toISOString().split('T')[0];
+
+                parcelas.push({
+                    numero: i,
+                    valor: Number(valorParcela),
+                    vencimento: dataFormatada,
+                    status: 'Pendente'
+                });
+            }
+            return parcelas;
+        }
+
+        async function enviarProposta(e) {
+            e.preventDefault();
+            let valorTotal = parseFloat(document.getElementById('valor').value);
+            let qtd = parseInt(document.getElementById('qtd-parcelas').value);
+            
+            const dados = {
+                protocolo: gerarProtocolo(),
+                nome: document.getElementById('nome').value,
+                cpf: document.getElementById('cpf').value,
+                whatsapp: document.getElementById('whatsapp').value,
+                valor: valorTotal,
+                qtd_parcelas: qtd,
+                endereco: document.getElementById('endereco').value,
+                renda: parseFloat(document.getElementById('renda').value),
+                status: 'Análise',
+                parcelas: gerarListaParcelas(valorTotal, qtd)
+            };
+
+            if (supabaseClient) {
+                const { error } = await supabaseClient.from('propostas').insert([dados]);
+                if (error) {
+                    alert('Erro ao salvar no banco: ' + error.message);
+                    return;
+                }
+            } else {
+                let propostas = JSON.parse(localStorage.getItem('propostas') || '[]');
+                propostas.push(dados);
+                localStorage.setItem('propostas', JSON.stringify(propostas));
+            }
+
+            alert(`Solicitação enviada com sucesso! Seu protocolo é: ${dados.protocolo}`);
+            document.getElementById('form-proposta').reset();
+            switchTab('acompanhar');
+        }
+
+        async function consultarProposta() {
+            const termo = document.getElementById('busca-cpf').value.trim();
+            if (!termo) return alert('Digite um CPF ou Protocolo.');
+
+            let proposta = null;
+            if (supabaseClient) {
+                const { data } = await supabaseClient
+                    .from('propostas')
+                    .select('*')
+                    .or(`cpf.eq.${termo},protocolo.eq.${termo}`);
+                if (data && data.length > 0) proposta = data[0];
+            } else {
+                let propostas = JSON.parse(localStorage.getItem('propostas') || '[]');
+                proposta = propostas.find(p => p.cpf === termo || p.protocolo === termo);
+            }
+
+            const resDiv = document.getElementById('resultado-busca');
+            resDiv.classList.remove('hidden');
+
+            if (!proposta) {
+                resDiv.innerHTML = `<p class="text-rose-400 font-medium">Nenhuma proposta encontrada para este CPF ou Protocolo.</p>`;
+                return;
+            }
+
+            let badgeColor = 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+            if (proposta.status === 'Aprovado') badgeColor = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+            if (proposta.status === 'Rejeitado') badgeColor = 'bg-rose-500/20 text-rose-400 border-rose-500/30';
+
+            let parcelasHtml = (proposta.parcelas || []).map(p => `
+                <div class="flex justify-between items-center bg-slate-900/50 p-2.5 rounded-lg text-xs border border-slate-700/50">
+                    <span><strong>Parcela ${p.numero}</strong> - Vencimento: ${p.vencimento}</span>
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold">R$ ${p.valor.toFixed(2)}</span>
+                        <span class="px-2 py-0.5 rounded font-bold ${p.status === 'Pago' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}">${p.status}</span>
+                    </div>
+                </div>
+            `).join('');
+
+            resDiv.innerHTML = `
+                <div class="flex justify-between items-center border-b border-slate-700 pb-3">
+                    <span class="font-mono text-sm text-slate-400">${proposta.protocolo}</span>
+                    <span class="px-3 py-1 rounded-full text-xs font-bold border ${badgeColor}">${proposta.status}</span>
+                </div>
+                <div class="text-left space-y-2 text-sm">
+                    <p><strong>Nome:</strong> ${proposta.nome}</p>
+                    <p><strong>Valor Total:</strong> R$ ${Number(proposta.valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-700">
+                    <h4 class="text-xs font-bold uppercase text-slate-400 mb-2">Carnê de Parcelas</h4>
+                    <div class="space-y-2">${parcelasHtml}</div>
+                </div>
+            `;
+        }
+
+        async function carregarPainelAdmin() {
+            let propostas = [];
+            if (supabaseClient) {
+                const { data } = await supabaseClient.from('propostas').select('*').order('created_at', { ascending: false });
+                if (data) propostas = data;
+            } else {
+                propostas = JSON.parse(localStorage.getItem('propostas') || '[]');
+            }
+
+            const listaDiv = document.getElementById('lista-admin');
+            if (propostas.length === 0) {
+                listaDiv.innerHTML = `<div class="bg-slate-800 p-6 rounded-2xl text-center text-slate-400">Nenhuma proposta cadastrada.</div>`;
+                return;
+            }
+
+            listaDiv.innerHTML = propostas.map((p, index) => `
+                <div class="bg-slate-800 border border-slate-700 p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div class="space-y-1">
+                        <div class="flex items-center gap-2">
+                            <span class="font-mono text-xs text-blue-400 bg-blue-950 px-2 py-0.5 rounded">${p.protocolo}</span>
+                            <h3 class="font-bold text-base">${p.nome}</h3>
+                            <span class="text-xs text-slate-400">(${p.cpf})</span>
+                        </div>
+                        <p class="text-xs text-slate-300"><strong>WhatsApp:</strong> ${p.whatsapp} | <strong>Renda:</strong> R$ ${Number(p.renda || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+                        
+                        <div class="flex items-center gap-2 pt-2">
+                            <label class="text-xs font-bold text-slate-400 uppercase">Valor Total R$:</label>
+                            <input type="number" step="0.01" id="val-edit-${index}" value="${p.valor}" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs w-28 text-white focus:outline-none focus:border-blue-500">
+                            <button onclick="atualizarValorProposta('${p.protocolo}', ${index})" class="bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded text-xs font-semibold transition">Alterar Valor</button>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="abrirModalParcelas('${p.protocolo}')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1">
+                            <i class="fa-solid fa-calendar-days"></i> Ver Parcelas
+                        </button>
+                        <button onclick="mudarStatus('${p.protocolo}', 'Análise')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition">Análise</button>
+                        <button onclick="mudarStatus('${p.protocolo}', 'Aprovado')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition">Aprovar</button>
+                        <button onclick="mudarStatus('${p.protocolo}', 'Rejeitado')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 transition">Rejeitar</button>
+                        <button onclick="enviarWhatsApp('${p.whatsapp}', '${p.nome}', '${p.protocolo}', '${p.status}', ${p.valor})" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-green-600 hover:bg-green-500 text-white transition flex items-center gap-1.5">
+                            <i class="fa-brands fa-whatsapp"></i> WhatsApp
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        let propostaAtualModal = null;
+        async function abrirModalParcelas(protocolo) {
+            let propostas = [];
+            if (supabaseClient) {
+                const { data } = await supabaseClient.from('propostas').select('*').eq('protocolo', protocolo);
+                if (data) propostas = data;
+            } else {
+                propostas = JSON.parse(localStorage.getItem('propostas') || '[]');
+            }
+
+            let p = propostas.find(item => item.protocolo === protocolo);
+            if (!p) return alert('Proposta não encontrada.');
+            propostaAtualModal = p;
+
+            document.getElementById('modal-titulo-parcelas').innerText = `Parcelas - ${p.nome} (${p.protocolo})`;
+            renderizarConteudoModalParcelas();
+            document.getElementById('modal-parcelas').classList.remove('hidden');
+        }
+
+        function fecharModalParcelas() {
+            document.getElementById('modal-parcelas').classList.add('hidden');
+            carregarPainelAdmin();
+        }
+
+        function renderizarConteudoModalParcelas() {
+            let container = document.getElementById('modal-conteudo-parcelas');
+            if (!propostaAtualModal.parcelas || propostaAtualModal.parcelas.length === 0) {
+                propostaAtualModal.parcelas = gerarListaParcelas(propostaAtualModal.valor, 1);
+            }
+
+            container.innerHTML = propostaAtualModal.parcelas.map((parc, idx) => `
+                <div class="bg-slate-900 border border-slate-700 p-3 rounded-xl flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
+                    <span class="font-bold">Parcela ${parc.numero}</span>
+                    <div class="flex items-center gap-2">
+                        <label class="text-slate-400">Vencimento:</label>
+                        <input type="date" value="${parc.vencimento}" onchange="atualizarDadosParcela(${idx}, 'vencimento', this.value)" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-slate-400">R$:</label>
+                        <input type="number" step="0.01" value="${parc.valor}" onchange="atualizarDadosParcela(${idx}, 'valor', this.value)" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 w-20 text-white">
+                    </div>
+                    <select onchange="atualizarDadosParcela(${idx}, 'status', this.value)" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 font-bold ${parc.status === 'Pago' ? 'text-emerald-400' : 'text-amber-400'}">
+                        <option value="Pendente" ${parc.status === 'Pendente' ? 'selected' : ''}>Pendente</option>
+                        <option value="Pago" ${parc.status === 'Pago' ? 'selected' : ''}>Pago</option>
+                    </select>
+                </div>
+            `).join('');
+        }
+
+        async function atualizarDadosParcela(index, campo, valor) {
+            if (campo === 'valor') valor = parseFloat(valor);
+            propostaAtualModal.parcelas[index][campo] = valor;
+
+            if (supabaseClient) {
+                await supabaseClient.from('propostas').update({ parcelas: propostaAtualModal.parcelas }).eq('protocolo', propostaAtualModal.protocolo);
+            } else {
+                let propostas = JSON.parse(localStorage.getItem('propostas') || '[]');
+                let p = propostas.find(item => item.protocolo === propostaAtualModal.protocolo);
+                if (p) {
+                    p.parcelas = propostaAtualModal.parcelas;
+                    localStorage.setItem('propostas', JSON.stringify(propostas));
                 }
             }
         }
+
+        async function atualizarValorProposta(protocolo, index) {
+            const novoValor = parseFloat(document.getElementById(`val-edit-${index}`).value);
+            if (isNaN(novoValor)) return alert('Digite um valor válido.');
+
+            let parcelasNovas = gerarListaParcelas(novoValor, 3);
+
+            if (supabaseClient) {
+                const { error } = await supabaseClient.from('propostas').update({ valor: novoValor, parcelas: parcelasNovas }).eq('protocolo', protocolo);
+                if (error) return alert('Erro ao atualizar: ' + error.message);
+            } else {
+                let propostas = JSON.parse(localStorage.getItem('propostas') || '[]');
+                let p = propostas.find(item => item.protocolo === protocolo);
+                if (p) {
+                    p.valor = novoValor;
+                    p.parcelas = parcelasNovas;
+                    localStorage.setItem('propostas', JSON.stringify(propostas));
+                }
+            }
+            alert('Valor e parcelas recalculados com sucesso!');
+            carregarPainelAdmin();
+        }
+
+        async function mudarStatus(protocolo, novoStatus) {
+            if (supabaseClient) {
+                const { error } = await supabaseClient.from('propostas').update({ status: novoStatus }).eq('protocolo', protocolo);
+                if (error) return alert('Erro ao atualizar status: ' + error.message);
+            } else {
+                let propostas = JSON.parse(localStorage.getItem('propostas') || '[]');
+                let p = propostas.find(item => item.protocolo === protocolo);
+                if (p) {
+                    p.status = novoStatus;
+                    localStorage.setItem('propostas', JSON.stringify(propostas));
+                }
+            }
+            carregarPainelAdmin();
+        }
+
+        function enviarWhatsApp(telefone, nome, protocolo, status, valor) {
+            let numeroLimpo = telefone.replace(/\D/g, '');
+            if (!numeroLimpo.startsWith('55')) numeroLimpo = '55' + numeroLimpo;
+
+            let mensagem = `Olá *${nome}*, trazemos atualizações sobre a sua solicitação (*Protocolo: ${protocolo}*).\n\n`;
+            mensagem += `📋 *Status:* ${status}\n`;
+            mensagem += `💰 *Valor Total:* R$ ${Number(valor).toLocaleString('pt-BR', {minimumFractionDigits: 2})}\n\n`;
+            mensagem += `Acesse o site com seu CPF ou protocolo para consultar o carnê das parcelas e instruções de pagamento.`;
+
+            const url = `https://api.whatsapp.com/send?phone=${numeroLimpo}&text=${encodeURIComponent(mensagem)}`;
+            window.open(url, '_blank');
+        }
+
+        async function carregarFinanceiro() {
+            let propostas = [];
+            let despesas = [];
+
+            if (supabaseClient) {
+                const resP = await supabaseClient.from('propostas').select('*');
+                if (resP.data) propostas = resP.data;
+                const resD = await supabaseClient.from('despesas').select('*');
+                if (resD.data) despesas = resD.data;
+            } else {
+                propostas = JSON.parse(localStorage.getItem('propostas') || '[]');
+                despesas = JSON.parse(localStorage.getItem('despesas') || '[]');
+            }
+
+            let totalEntradas = propostas.filter(p => p.status === 'Aprovado').reduce((acc, p) => acc + Number(p.valor), 0);
+            let totalSaidas = despesas.reduce((acc, d) => acc + Number(d.valor), 0);
+            let balanco = totalEntradas - totalSaidas;
+
+            document.getElementById('fin-entradas').innerText = `R$ ${totalEntradas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+            document.getElementById('fin-saidas').innerText = `R$ ${totalSaidas.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+            document.getElementById('fin-balanco').innerText = `R$ ${balanco.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
+        }
+
+        async function adicionarDespesa(e) {
+            e.preventDefault();
+            const novaDespesa = {
+                descricao: document.getElementById('desc-despesa').value,
+                valor: parseFloat(document.getElementById('valor-despesa').value)
+            };
+
+            if (supabaseClient) {
+                const { error } = await supabaseClient.from('despesas').insert([novaDespesa]);
+                if (error) return alert('Erro ao salvar despesa: ' + error.message);
+            } else {
+                let despesas = JSON.parse(localStorage.getItem('despesas') || '[]');
+                despesas.push(novaDespesa);
+                localStorage.setItem('despesas', JSON.stringify(despesas));
+            }
+
+            alert('Despesa registrada com sucesso!');
+            document.getElementById('desc-despesa').value = '';
+            document.getElementById('valor-despesa').value = '';
+            carregarFinanceiro();
+        }
     </script>
-    <style>
-        body { background-color: #f8fafc; color: #0f172a; font-family: 'Plus Jakarta Sans', sans-serif; min-height: 100vh; overflow-x: hidden; margin: 0; padding: 0; }
-        .glass-panel { background: #ffffff; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.05), 0 8px 10px -6px rgba(15, 23, 42, 0.05); }
-        .btn-primary { background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%); color: #ffffff; font-weight: 700; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        .btn-primary:hover { background: linear-gradient(135deg, #1e40af 0%, #172554 100%); transform: translateY(-1px); box-shadow: 0 8px 20px -4px rgba(30, 58, 138, 0.25); }
-        .btn-success { background: #059669; color: white; transition: all 0.2s; font-weight: 600; }
-        .btn-success:hover { background: #047857; }
-        .btn-danger { background: #dc2626; color: white; transition: all 0.2s; font-weight: 600; }
-        .btn-danger:hover { background: #b91c1c; }
-        .btn-info { background: #2563eb; color: white; transition: all 0.2s; font-weight: 600; }
-        .btn-info:hover { background: #1d4ed8; }
-        .btn-whatsapp { background: #16a34a; color: white; transition: all 0.2s; font-weight: 600; }
-        .btn-whatsapp:hover { background: #15803d; }
-        .aba { display: none; opacity: 0; transform: translateY(8px); transition: opacity 0.3s ease, transform 0.3s ease; width: 100%; }
-        .aba.ativa { display: block; opacity: 1; transform: translateY(0); }
-        .modal { display: none; opacity: 0; transition: opacity 0.3s ease; }
-        .modal.active { display: flex; opacity: 1; }
-        .text-logo-flash { color: #1e3a8a; }
-        .text-logo-point { color: #d97706; }
-        main { width: 100%; min-height: calc(100vh - 150px); padding-bottom: 120px; box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-    </style>
-</head>
-<body class="flex flex-col min-h-screen selection:bg-blue-600 selection:text-white">
-
-<script>
-// --- CONFIGURAÇÕES DO SUPABASE E SISTEMA ---
-const CONFIG = {
-    SUPABASE_URL: 'https://rgcclordmjmwuzrrfbd.supabase.co', // Insira sua URL do Supabase aqui
-    SUPABASE_ANON_KEY: 'SUA_CHAVE_ANON_AQUI', // Insira sua chave anon/public aqui
-    SENHA_ADMIN: 'flash2026',
-    CHAVE_PIX: '3552949852',
-    CNPJ: '35.560.220/0001-54',
-    WHATSAPP_SUPORTE: '11973294235',
-    ENTRADA_PADRAO: 39,
-    JUROS_PADRAO: 6,
-    PARCELAS_MAX: 12,
-    DESCONTO_PIX_ANTECIPADO_PADRAO: 2.0 
-};
-
-// Inicialização do cliente Supabase
-const supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-</script>
-
-<header class="w-full pt-8 pb-4 px-4 flex flex-col items-center justify-center text-center relative z-10 bg-white border-b border-slate-200 shadow-sm">
-    <div class="inline-flex items-center gap-3 px-6 py-3 rounded-2xl bg-white border border-slate-200 shadow-sm mb-3">
-        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-900 to-amber-600 flex items-center justify-center text-white font-black text-lg shadow-md">🛡️</div>
-        <div class="text-left">
-            <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight"><span class="text-logo-flash">FLASH</span><span class="text-logo-point">POINT</span></h1>
-            <p class="text-[10px] tracking-[0.25em] text-slate-500 uppercase font-bold">Portal Bancário de Crédito & Entrega Garantida</p>
-        </div>
-    </div>
-    <div class="flex flex-wrap items-center justify-center gap-3 text-[11px] text-slate-600 font-semibold mb-2">
-        <span class="bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 flex items-center gap-1.5">🔒 CNPJ Verificado: <strong class="text-blue-900">35.560.220/0001-54</strong></span>
-        <span class="bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200 flex items-center gap-1.5">✅ Garantia Contratual de Entrega</span>
-        <a href="https://api.whatsapp.com/send?phone=5511973294235" target="_blank" class="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full border border-emerald-200 hover:bg-emerald-100 transition font-bold">💬 Suporte Oficial WhatsApp</a>
-    </div>
-</header>
-
-<main class="flex-1 w-full max-w-4xl mx-auto px-4 sm:px-6 relative z-10 mt-6">
-
-    <!-- ABA 1: FORMULÁRIO CLIENTE -->
-    <div id="aba-cliente" class="aba aba-cliente ativa w-full">
-        <div class="glass-panel p-6 sm:p-10 rounded-3xl shadow-xl relative overflow-hidden w-full">
-            <div class="mb-8 bg-blue-50 border border-blue-200 p-5 rounded-2xl text-sm text-slate-700 leading-relaxed shadow-sm">
-                <div class="flex items-center gap-2 font-bold text-blue-900 mb-2 text-base">
-                    <span>✨</span> Simulação e Solicitação de Crédito com Segurança Bancária
-                </div>
-                <p class="mb-3 text-slate-600">Preencha seus dados abaixo. Emitimos recibo oficial com CNPJ, contrato digital autenticado e garantia integral de entrega dos seus móveis.</p>
-                <div class="flex flex-wrap gap-2">
-                    <span class="bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1 rounded-xl font-bold text-xs">Desconto Pix Antecipado</span>
-                    <span class="bg-amber-100 text-amber-800 border border-amber-200 px-3 py-1 rounded-xl font-bold text-xs">Empresa 100% Verificada CNPJ</span>
-                </div>
-            </div>
-
-            <form id="formSolicitacao" class="space-y-4 w-full">
-                <div>
-                    <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">Nome Completo</label>
-                    <input type="text" id="nome" required class="w-full p-4 bg-slate-50 border border-slate-300 focus:border-blue-900 focus:bg-white rounded-2xl text-sm outline-none transition text-slate-900 placeholder-slate-400 font-medium" placeholder="Digite seu nome completo">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">CPF</label>
-                    <input type="text" id="cpf" maxlength="14" required placeholder="000.000.000-00" class="w-full p-4 bg-slate-50 border border-slate-300 focus:border-blue-900 focus:bg-white rounded-2xl text-sm outline-none transition text-slate-900 placeholder-slate-400 font-medium">
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">CEP</label>
-                        <input type="text" id="cep" maxlength="9" required placeholder="00000-000" onblur="consultarCEP(this.value)" class="w-full p-4 bg-slate-50 border border-slate-300 focus:border-blue-900 focus:bg-white rounded-2xl text-sm outline-none transition text-slate-900 placeholder-slate-400 font-medium">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">Número da Residência</label>
-                        <input type="text" id="numeroResidencia" required placeholder="Ex: 123" class="w-full p-4 bg-slate-50 border border-slate-300 focus:border-blue-900 focus:bg-white rounded-2xl text-sm outline-none transition text-slate-900 placeholder-slate-400 font-medium">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">Endereço Completo</label>
-                    <input type="text" id="endereco" required readonly placeholder="Preenchido automaticamente via CEP" class="w-full p-4 bg-slate-100 border border-slate-200 rounded-2xl text-sm outline-none text-slate-500 font-medium cursor-not-allowed">
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">Data de Nascimento</label>
-                        <input type="date" id="nascimento" required class="w-full p-4 bg-slate-50 border border-slate-300 focus:border-blue-900 focus:bg-white rounded-2xl text-sm outline-none transition text-slate-900 font-medium">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">Renda Mensal (R$)</label>
-                        <input type="text" id="renda" required placeholder="0,00" class="w-full p-4 bg-slate-50 border border-slate-300 focus:border-blue-900 focus:bg-white rounded-2xl text-sm outline-none transition text-slate-900 placeholder-slate-400 font-medium">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">Valor Desejado para Compra (R$)</label>
-                    <input type="text" id="valor" required placeholder="0,00" class="w-full p-4 bg-slate-50 border border-slate-300 focus:border-blue-900 focus:bg-white rounded-2xl text-sm outline-none transition text-slate-900 placeholder-slate-400 font-medium">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">WhatsApp para Contato</label>
-                    <input type="text" id="whatsapp" required placeholder="(11) 9XXXX-XXXX" class="w-full p-4 bg-slate-50 border border-slate-300 focus:border-blue-900 focus:bg-white rounded-2xl text-sm outline-none transition text-slate-900 placeholder-slate-400 font-medium">
-                </div>
-                <button type="submit" class="btn-primary w-full py-4 rounded-2xl text-sm tracking-wide shadow-lg mt-4 font-bold">Enviar Solicitação com Segurança</button>
-            </form>
-        </div>
-    </div>
-
-    <!-- ABA 2: CONSULTA CLIENTE -->
-    <div id="aba-consulta" class="aba aba-consulta w-full">
-        <div class="glass-panel p-6 sm:p-10 rounded-3xl shadow-xl relative overflow-hidden w-full max-w-2xl mx-auto">
-            <h2 class="text-xl sm:text-2xl font-bold text-blue-900 text-center mb-6">🔍 Acompanhar Proposta & Recibos</h2>
-            <div class="space-y-4">
-                <div>
-                    <label class="block text-xs font-bold uppercase tracking-wider mb-2 text-slate-700">Informe seu CPF cadastrado</label>
-                    <input type="text" id="cpfConsulta" placeholder="000.000.000-00" class="w-full p-4 bg-slate-50 border border-slate-300 focus:border-blue-900 focus:bg-white rounded-2xl text-sm outline-none transition text-slate-900 placeholder-slate-400 font-medium">
-                </div>
-                <button onclick="consultarProposta()" class="btn-primary w-full py-4 rounded-2xl text-sm tracking-wide shadow-lg font-bold">Consultar Proposta</button>
-            </div>
-            <div id="resultadoConsulta" class="mt-6 hidden"></div>
-        </div>
-    </div>
-
-    <!-- ABA 3: PAINEL ADMIN INTEGRADO -->
-    <div id="aba-admin" class="aba aba-admin w-full space-y-6">
-        <div class="glass-panel p-6 rounded-3xl shadow-xl flex flex-wrap justify-between items-center gap-4">
-            <div>
-                <h2 class="text-xl sm:text-2xl font-extrabold text-blue-900 tracking-wide">📊 Painel Administrativo & Financeiro</h2>
-                <p class="text-xs font-semibold text-slate-500 mt-1">Gerenciamento de Propostas, Baixa Pix Manual e Caixa Completo</p>
-            </div>
-            <div class="flex gap-3">
-                <button onclick="carregarLista()" class="btn-info px-4 py-2.5 rounded-2xl text-xs font-bold shadow-sm">🔄 Atualizar</button>
-                <button onclick="sairLogin()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2.5 rounded-2xl text-xs font-bold transition shadow-sm">Bloquear</button>
-            </div>
-        </div>
-
-        <!-- MÓDULO FINANCEIRO: RESUMO DE CAIXA E FIADOS -->
-        <div class="glass-panel p-6 rounded-3xl shadow-xl bg-gradient-to-br from-slate-900 to-blue-950 text-white">
-            <div class="flex flex-wrap justify-between items-center mb-4 border-b border-slate-800 pb-3">
-                <h3 class="text-base font-extrabold flex items-center gap-2">💰 Módulo de Controle Financeiro Total</h3>
-                <button onclick="abrirModalDespesa()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-md">+ Registrar Saída / Despesa</button>
-            </div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 text-center">
-                    <p class="text-[10px] uppercase tracking-wider text-emerald-400 font-bold">Total Entradas (Caixa)</p>
-                    <p id="finTotalEntradas" class="text-xl sm:text-2xl font-black text-white mt-1">R$ 0,00</p>
-                </div>
-                <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 text-center">
-                    <p class="text-[10px] uppercase tracking-wider text-rose-400 font-bold">Total Saídas (Despesas)</p>
-                    <p id="finTotalSaidas" class="text-xl sm:text-2xl font-black text-rose-400 mt-1">R$ 0,00</p>
-                </div>
-                <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 text-center">
-                    <p class="text-[10px] uppercase tracking-wider text-cyan-300 font-bold">Balanço / Lucro Líquido</p>
-                    <p id="finLucroLiquido" class="text-xl sm:text-2xl font-black text-cyan-300 mt-1">R$ 0,00</p>
-                </div>
-                <div class="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 text-center">
-                    <p class="text-[10px] uppercase tracking-wider text-amber-400 font-bold">Total Fiado / Devendo</p>
-                    <p id="finTotalDevendo" class="text-xl sm:text-2xl font-black text-amber-400 mt-1">R$ 0,00</p>
-                </div>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="glass-panel p-4 rounded-2xl text-center shadow-sm">
-                <p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Total Propostas</p>
-                <p id="resumoTotal" class="text-2xl sm:text-3xl font-black text-slate-900 mt-1">0</p>
-            </div>
-            <div class="glass-panel p-4 rounded-2xl text-center shadow-sm">
-                <p class="text-[10px] uppercase tracking-wider text-amber-600 font-bold">Em Análise</p>
-                <p id="resumoAnalise" class="text-2xl sm:text-3xl font-black text-amber-600 mt-1">0</p>
-            </div>
-            <div class="glass-panel p-4 rounded-2xl text-center shadow-sm">
-                <p class="text-[10px] uppercase tracking-wider text-emerald-600 font-bold">Aprovadas</p>
-                <p id="resumoAprovado" class="text-2xl sm:text-3xl font-black text-emerald-600 mt-1">0</p>
-            </div>
-            <div class="glass-panel p-4 rounded-2xl text-center shadow-sm">
-                <p class="text-[10px] uppercase tracking-wider text-rose-600 font-bold">Rejeitadas</p>
-                <p id="resumoRejeitado" class="text-2xl sm:text-3xl font-black text-rose-600 mt-1">0</p>
-            </div>
-        </div>
-
-        <div class="glass-panel p-6 rounded-3xl shadow-xl w-full">
-            <h3 class="text-lg font-bold mb-4 text-blue-900 tracking-wide">📋 Lista de Clientes & Comandos Pix Manual</h3>
-            <div id="listaPropostasGrid" class="space-y-4">
-                <div class="p-6 text-center text-slate-500 font-medium">Carregando dados...</div>
-            </div>
-        </div>
-    </div>
-
-</main>
-
-<!-- MENU INFERIOR FLUTUANTE -->
-<nav class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[94%] max-w-md">
-    <div class="glass-panel p-2 rounded-2xl shadow-xl flex items-center justify-around border border-slate-200 bg-white/95 backdrop-blur-md">
-        <button onclick="mostrarAba('cliente')" class="nav-btn nav-btn-cliente flex flex-col items-center justify-center py-2 px-4 rounded-xl text-blue-900 bg-blue-50 transition font-bold">
-            <span class="text-lg">📝</span>
-            <span class="text-[10px] mt-0.5 uppercase tracking-wider">Solicitar</span>
-        </button>
-        <button onclick="mostrarAba('consulta')" class="nav-btn nav-btn-consulta flex flex-col items-center justify-center py-2 px-4 rounded-xl text-slate-500 hover:text-slate-900 transition font-bold">
-            <span class="text-lg">🔍</span>
-            <span class="text-[10px] mt-0.5 uppercase tracking-wider">Acompanhar</span>
-        </button>
-        <button onclick="tentarAbrirPainelAdmin()" class="nav-btn nav-btn-login flex flex-col items-center justify-center py-2 px-4 rounded-xl text-slate-500 hover:text-slate-900 transition font-bold">
-            <span class="text-lg">🔐</span>
-            <span class="text-[10px] mt-0.5 uppercase tracking-wider">Painel</span>
-        </button>
-    </div>
-</nav>
-
-<footer class="w-full text-center py-6 px-4 text-[11px] text-slate-500 relative z-10 border-t border-slate-200 mt-auto font-medium space-y-1 bg-white">
-    <p>🛡️ Flash Point • CNPJ: 35.560.220/0001-54 • Sistema Bancário de Crédito Certificado & Seguro</p>
-    <p>Atendimento WhatsApp Oficial: (11) 97329-4235</p>
-</footer>
-
-<!-- MODAL DE EDIÇÃO -->
-<div id="modalEditar" class="modal fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center p-4 z-50">
-    <div class="glass-panel rounded-3xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-200 bg-white">
-        <div class="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
-            <h3 class="text-lg font-bold text-blue-900">✏️ Editar Proposta e Benefício Pix</h3>
-            <button onclick="fecharModal()" class="text-slate-400 hover:text-slate-900 text-2xl leading-none">&times;</button>
-        </div>
-        <div id="conteudoModal" class="space-y-3 text-sm"></div>
-    </div>
-</div>
-
-<!-- MODAL DE REGISTRAR DESPESA / SAÍDA -->
-<div id="modalDespesa" class="modal fixed inset-0 bg-slate-900/60 backdrop-blur-sm items-center justify-center p-4 z-50">
-    <div class="glass-panel rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-200 bg-white space-y-4">
-        <div class="flex justify-between items-center border-b border-slate-100 pb-3">
-            <h3 class="text-base font-bold text-rose-700">📉 Registrar Saída / Despesa</h3>
-            <button onclick="fecharModalDespesa()" class="text-slate-400 hover:text-slate-900 text-2xl leading-none">&times;</button>
-        </div>
-        <div class="space-y-3 text-sm">
-            <div>
-                <label class="block text-xs font-bold uppercase tracking-wider mb-1 text-slate-700">Descrição da Saída / Despesa</label>
-                <input type="text" id="descDespesa" placeholder="Ex: Compra de Material, Logística, Aluguel" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-rose-600 font-medium text-slate-900">
-            </div>
-            <div>
-                <label class="block text-xs font-bold uppercase tracking-wider mb-1 text-slate-700">Valor da Saída (R$)</label>
-                <input type="text" id="valorDespesa" placeholder="0,00" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm outline-none focus:border-rose-600 font-medium text-slate-900">
-            </div>
-            <button onclick="salvarDespesa()" class="btn-danger w-full py-3 rounded-xl text-sm font-bold shadow-md mt-2">Confirmar e Registrar Saída</button>
-        </div>
-    </div>
-</div>
-
-<script>
-// --- FUNÇÕES DE MÁSCARA E FORMATAÇÃO ---
-function formatarMoedaInput(e) {
-    let v = e.target.value.replace(/\D/g, '');
-    v = (v / 100).toFixed(2) + '';
-    v = v.replace(".", ",");
-    v = v.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-    e.target.value = v;
-}
-
-function mascaraCPF(e) {
-    let v = e.target.value.replace(/\D/g, '');
-    if (v.length > 11) v = v.slice(0, 11);
-    v = v.replace(/(\d{3})(\d)/, '$1.$2');
-    v = v.replace(/(\d{3})(\d)/, '$1.$2');
-    v = v.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-    e.target.value = v;
-}
-
-function mascaraCEP(e) {
-    let v = e.target.value.replace(/\D/g, '');
-    if (v.length > 8) v = v.slice(0, 8);
-    v = v.replace(/(\d{5})(\d)/, '$1-$2');
-    e.target.value = v;
-}
-
-function mascaraWhatsApp(e) {
-    let v = e.target.value.replace(/\D/g, '');
-    if (v.length > 11) v = v.slice(0, 11);
-    v = v.replace(/^(\d{2})(\d)/g, '($1) $2');
-    v = v.replace(/(\d)(\d{4})$/, '$1-$2');
-    e.target.value = v;
-}
-
-document.getElementById('renda').addEventListener('input', formatarMoedaInput);
-document.getElementById('valor').addEventListener('input', formatarMoedaInput);
-document.getElementById('cpf').addEventListener('input', mascaraCPF);
-document.getElementById('cpfConsulta').addEventListener('input', mascaraCPF);
-document.getElementById('cep').addEventListener('input', mascaraCEP);
-document.getElementById('whatsapp').addEventListener('input', mascaraWhatsApp);
-
-// --- CONSULTAR CEP VIA VIACEP ---
-async function consultarCEP(cepVal) {
-    let cepLimpo = cepVal.replace(/\D/g, '');
-    if (cepLimpo.length !== 8) return;
-    try {
-        let res = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
-        let data = await res.json();
-        if (!data.erro) {
-            document.getElementById('endereco').value = `${data.logradouro}, ${data.bairro} - ${data.localidade}/${data.uf}`;
-        } else {
-            alert('CEP não encontrado.');
-        }
-    } catch (err) {
-        console.error(err);
-    }
-}
-
-// --- NAVEGAÇÃO DE ABAS ---
-function mostrarAba(nomeAba) {
-    document.querySelectorAll('.aba').forEach(el => el.classList.remove('ativa'));
-    document.querySelectorAll('.nav-btn').forEach(el => {
-        el.classList.remove('text-blue-900', 'bg-blue-50');
-        el.classList.add('text-slate-500');
-    });
-
-    if (nomeAba === 'cliente') {
-        document.getElementById('aba-cliente').classList.add('ativa');
-        document.querySelector('.nav-btn-cliente').classList.add('text-blue-900', 'bg-blue-50');
-        document.querySelector('.nav-btn-cliente').classList.remove('text-slate-500');
-    } else if (nomeAba === 'consulta') {
-        document.getElementById('aba-consulta').classList.add('ativa');
-        document.querySelector('.nav-btn-consulta').classList.add('text-blue-900', 'bg-blue-50');
-        document.querySelector('.nav-btn-consulta').classList.remove('text-slate-500');
-    } else if (nomeAba === 'admin') {
-        document.getElementById('aba-admin').classList.add('ativa');
-        document.querySelector('.nav-btn-login').classList.add('text-blue-900', 'bg-blue-50');
-        document.querySelector('.nav-btn-login').classList.remove('text-slate-500');
-        carregarLista();
-    }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-// --- LOGOUT / BLOQUEIO ADMIN ---
-function sairLogin() {
-    mostrarAba('cliente');
-}
-
-function tentarAbrirPainelAdmin() {
-    let senha = prompt('Digite a senha administrativa do sistema:');
-    if (senha === CONFIG.SENHA_ADMIN) {
-        mostrarAba('admin');
-    } else if (senha !== null) {
-        alert('Senha incorreta!');
-    }
-}
-
-// --- INTEGRAÇÃO COM BANCO DE DADOS (SUPABASE) ---
-async function obterPropostas() {
-    let { data, error } = await supabaseClient
-        .from('propostas')
-        .select('*')
-        .order('created_at', { ascending: false });
-    if (error) {
-        console.error('Erro ao buscar propostas do Supabase:', error);
-        return [];
-    }
-    return data || [];
-}
-
-async function obterDespesas() {
-    let { data, error } = await supabaseClient
-        .from('despesas')
-        .select('*')
-        .order('created_at', { ascending: false });
-    if (error) {
-        console.error('Erro ao buscar despesas do Supabase:', error);
-        return [];
-    }
-    return data || [];
-}
-
-// --- FORMULÁRIO CLIENTE: SUBMIT ---
-document.getElementById('formSolicitacao').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    let nome = document.getElementById('nome').value;
-    let cpf = document.getElementById('cpf').value;
-    let cep = document.getElementById('cep').value;
-    let numRes = document.getElementById('numeroResidencia').value;
-    let endereco = document.getElementById('endereco').value;
-    let nascimento = document.getElementById('nascimento').value;
-    let renda = document.getElementById('renda').value;
-    let valorStr = document.getElementById('valor').value;
-    let whatsapp = document.getElementById('whatsapp').value;
-
-    let valorNum = parseFloat(valorStr.replace(/\./g, '').replace(',', '.')) || 0;
-    
-    let juros = CONFIG.JUROS_PADRAO / 100;
-    let totalComJuros = valorNum * (1 + juros);
-    let valorParcela = totalComJuros / CONFIG.PARCELAS_MAX;
-
-    let novaProposta = {
-        id: 'FC-' + Math.floor(100000 + Math.random() * 900000),
-        datacriacao: new Date().toLocaleDateString('pt-BR'),
-        nome, cpf, cep, numres: numRes, endereco, nascimento, renda, 
-        valorsolicitado: valorNum,
-        valorformatado: valorStr,
-        whatsapp,
-        status: 'Em Análise',
-        entradapadrao: CONFIG.ENTRADA_PADRAO,
-        jurosaplicados: CONFIG.JUROS_PADRAO,
-        descentopix: CONFIG.DESCONTO_PIX_ANTECIPADO_PADRAO,
-        parcelasqtd: CONFIG.PARCELAS_MAX,
-        valorparcela: valorParcela.toFixed(2),
-        totalcomjuros: totalComJuros.toFixed(2)
-    };
-
-    let { error } = await supabaseClient.from('propostas').insert([novaProposta]);
-
-    if (error) {
-        console.error('Erro ao salvar:', error);
-        alert('Erro ao enviar solicitação para o banco de dados.');
-        return;
-    }
-
-    alert('Solicitação enviada com sucesso! Código ID: ' + novaProposta.id);
-    this.reset();
-    document.getElementById('endereco').value = '';
-    mostrarAba('consulta');
-    document.getElementById('cpfConsulta').value = cpf;
-    consultarProposta();
-});
-
-// --- CONSULTAR PROPOSTA PELO CLIENTE ---
-async function consultarProposta() {
-    let cpfInput = document.getElementById('cpfConsulta').value.trim();
-    let container = document.getElementById('resultadoConsulta');
-    container.classList.remove('hidden');
-
-    if (!cpfInput) {
-        container.innerHTML = `<div class="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-2xl text-center font-bold text-xs">Por favor, digite o seu CPF.</div>`;
-        return;
-    }
-
-    let propostas = await obterPropostas();
-    let filtradas = propostas.filter(p => p.cpf === cpfInput);
-
-    if (filtradas.length === 0) {
-        container.innerHTML = `<div class="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl text-center font-bold text-xs">Nenhuma proposta encontrada para o CPF informado. Verifique os dados ou preencha o formulário de solicitação.</div>`;
-        return;
-    }
-
-    let html = '';
-    filtradas.forEach(p => {
-        let badgeColor = 'bg-amber-100 text-amber-800 border-amber-200';
-        if (p.status === 'Aprovado' || p.status === 'Pago Pix') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-        if (p.status === 'Rejeitado') badgeColor = 'bg-rose-100 text-rose-800 border-rose-200';
-
-        let valorVal = parseFloat(p.valorsolicitado) || 0;
-        let descPixVal = valorVal * ((100 - (p.descentopix || 2.0)) / 100);
-
-        html += `
-            <div class="glass-panel p-5 rounded-2xl border border-slate-200 mb-4 space-y-3 bg-white shadow-sm">
-                <div class="flex justify-between items-center border-b border-slate-100 pb-2">
-                    <span class="text-xs font-bold text-slate-500">ID: ${p.id}</span>
-                    <span class="px-3 py-1 rounded-full text-xs font-bold border ${badgeColor}">${p.status}</span>
-                </div>
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                    <div><strong class="text-slate-400">Cliente:</strong> <span class="text-slate-800 font-bold">${p.nome}</span></div>
-                    <div><strong class="text-slate-400">Valor Solic.:</strong> <span class="text-blue-900 font-extrabold">R$ ${p.valorformatado}</span></div>
-                    <div><strong class="text-slate-400">Endereço:</strong> <span class="text-slate-800">${p.endereco}, Nº ${p.numres}</span></div>
-                    <div><strong class="text-slate-400">Data:</strong> <span class="text-slate-800">${p.datacriacao}</span></div>
-                </div>
-
-                ${p.status === 'Aprovado' ? `
-                    <div class="bg-blue-50 border border-blue-200 p-4 rounded-2xl space-y-3 mt-3">
-                        <div class="flex items-center gap-2 text-blue-900 font-bold text-xs">
-                            <span>💳</span> Proposta Aprovada! Escolha sua modalidade de liberação:
-                        </div>
-
-                        <div class="bg-white p-3 rounded-xl border border-blue-100 space-y-2">
-                            <p class="text-xs font-bold text-slate-800">Opção Parcelada (Boleto/Cartão/Pix Parcelado):</p>
-                            <p class="text-xs text-slate-600">• Entrada de <strong>${p.entradapadrao}%</strong> (Taxa de Cadastro e Reserva Logística)</p>
-                            <p class="text-xs text-slate-600">• Restante em até <strong>${p.parcelasqtd}x</strong> de <strong>R$ ${p.valorparcela}</strong></p>
-                            <a href="https://api.whatsapp.com/send?phone=55${CONFIG.WHATSAPP_SUPORTE}&text=Olá,%20gostaria%20de%20prosseguir%20com%20a%20opção%20parcelada%20da%20proposta%20ID:%20${p.id}%20(Cliente:%20${encodeURIComponent(p.nome)})" target="_blank" class="btn-whatsapp block text-center py-2.5 rounded-xl text-xs font-bold shadow-sm">
-                                💬 Pagar Entrada (${p.entradapadrao}%) via WhatsApp
-                            </a>
-                        </div>
-
-                        <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 space-y-2">
-                            <p class="text-xs font-bold text-emerald-900">⚡ PIX Antecipado (${p.descentopix}% de Desconto):</p>
-                            <p class="text-xs text-emerald-700">De R$ ${p.valorformatado} por apenas <strong class="text-emerald-900 text-sm">R$ ${descPixVal.toFixed(2).replace('.', ',')} à vista</strong> com liberação imediata e frete grátis.</p>
-                            <div class="p-3 bg-white rounded-xl border border-emerald-200 text-center space-y-2">
-                                <p class="text-[10px] text-slate-500 font-bold uppercase">Chave Pix CNPJ Oficial:</p>
-                                <div class="flex items-center justify-center gap-2">
-                                    <code class="bg-slate-100 px-3 py-1.5 rounded-lg text-blue-900 font-bold text-xs select-all">${CONFIG.CHAVE_PIX}</code>
-                                    <button onclick="copiarChave('${CONFIG.CHAVE_PIX}')" class="btn-primary px-3 py-1.5 rounded-lg text-xs font-bold">Copiar</button>
-                                </div>
-                                <p class="text-[10px] text-slate-500">Razão Social: FLASH POINT LTDA • CNPJ: ${CONFIG.CNPJ}</p>
-                            </div>
-                            <a href="https://api.whatsapp.com/send?phone=55${CONFIG.WHATSAPP_SUPORTE}&text=Olá,%20fiz%20o%20PIX%20Antecipado%20da%20proposta%20ID:%20${p.id}%20(Cliente:%20${encodeURIComponent(p.nome)}).%20Segue%20o%20comprovante!" target="_blank" class="btn-success block text-center py-2.5 rounded-xl text-xs font-bold shadow-sm">
-                                ✅ Enviar Comprovante Pix no WhatsApp
-                            </a>
-                        </div>
-                    </div>
-                ` : ''}
-
-                ${p.status === 'Pago Pix' ? `
-                    <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-center space-y-2">
-                        <p class="text-xs font-bold text-emerald-900">✅ Pagamento Verificado & Confirmado pelo Sistema!</p>
-                        <p class="text-xs text-emerald-700">Seu pedido foi encaminhado para a expedição com garantia integral de entrega e emissão de recibo oficial.</p>
-                    </div>
-                ` : ''}
-            </div>
-        `;
-    });
-    container.innerHTML = html;
-}
-
-function copiarChave(chave) {
-    navigator.clipboard.writeText(chave);
-    alert('Chave Pix copiada com sucesso!');
-}
-
-// --- PAINEL ADMIN: CARREGAR LISTA & CAIXA ---
-async function carregarLista() {
-    let propostas = await obterPropostas();
-    let despesas = await obterDespesas();
-
-    document.getElementById('resumoTotal').innerText = propostas.length;
-    document.getElementById('resumoAnalise').innerText = propostas.filter(p => p.status === 'Em Análise').length;
-    document.getElementById('resumoAprovado').innerText = propostas.filter(p => p.status === 'Aprovado' || p.status === 'Pago Pix').length;
-    document.getElementById('resumoRejeitado').innerText = propostas.filter(p => p.status === 'Rejeitado').length;
-
-    let totalEntradas = 0;
-    let totalDevendo = 0;
-    propostas.forEach(p => {
-        let v = parseFloat(p.valorsolicitado) || 0;
-        if (p.status === 'Pago Pix') {
-            totalEntradas += v;
-        } else if (p.status === 'Aprovado') {
-            totalDevendo += v;
-        }
-    });
-
-    let totalSaidas = 0;
-    despesas.forEach(d => {
-        totalSaidas += parseFloat(d.valor) || 0;
-    });
-
-    let lucroLiquido = totalEntradas - totalSaidas;
-
-    document.getElementById('finTotalEntradas').innerText = `R$ ${totalEntradas.toFixed(2).replace('.', ',')}`;
-    document.getElementById('finTotalSaidas').innerText = `R$ ${totalSaidas.toFixed(2).replace('.', ',')}`;
-    document.getElementById('finLucroLiquido').innerText = `R$ ${lucroLiquido.toFixed(2).replace('.', ',')}`;
-    document.getElementById('finTotalDevendo').innerText = `R$ ${totalDevendo.toFixed(2).replace('.', ',')}`;
-
-    let grid = document.getElementById('listaPropostasGrid');
-    if (propostas.length === 0) {
-        grid.innerHTML = `<div class="p-6 text-center text-slate-500 font-medium text-xs">Nenhuma proposta cadastrada no banco de dados.</div>`;
-        return;
-    }
-
-    let html = '';
-    propostas.forEach(p => {
-        let badgeColor = 'bg-amber-100 text-amber-800 border-amber-200';
-        if (p.status === 'Aprovado' || p.status === 'Pago Pix') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-        if (p.status === 'Rejeitado') badgeColor = 'bg-rose-100 text-rose-800 border-rose-200';
-
-        html += `
-            <div class="glass-panel p-5 rounded-2xl border border-slate-200 space-y-3 bg-white shadow-sm">
-                <div class="flex flex-wrap justify-between items-center gap-2 border-b border-slate-100 pb-2">
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs font-bold text-slate-400">${p.id}</span>
-                        <span class="text-xs font-bold text-slate-800">${p.nome}</span>
-                        <span class="text-[10px] text-slate-500 font-mono">(${p.cpf})</span>
-                    </div>
-                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${badgeColor}">${p.status}</span>
-                </div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div><strong class="text-slate-400">Valor:</strong> <span class="text-blue-900 font-extrabold">R$ ${p.valorformatado}</span></div>
-                    <div><strong class="text-slate-400">WhatsApp:</strong> <span class="text-slate-800">${p.whatsapp}</span></div>
-                    <div><strong class="text-slate-400">Endereço:</strong> <span class="text-slate-800">${p.endereco}, Nº ${p.numres}</span></div>
-                    <div><strong class="text-slate-400">Renda:</strong> <span class="text-slate-800">R$ ${p.renda}</span></div>
-                </div>
-                <div class="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-100">
-                    <button onclick="mudarStatus('${p.id}', 'Em Análise')" class="bg-amber-100 text-amber-800 hover:bg-amber-200 px-3 py-1.5 rounded-xl text-xs font-bold transition">Análise</button>
-                    <button onclick="mudarStatus('${p.id}', 'Aprovado')" class="btn-success px-3 py-1.5 rounded-xl text-xs font-bold">Aprovar</button>
-                    <button onclick="mudarStatus('${p.id}', 'Rejeitado')" class="btn-danger px-3 py-1.5 rounded-xl text-xs font-bold">Rejeitar</button>
-                    <button onclick="mudarStatus('${p.id}', 'Pago Pix')" class="btn-whatsapp px-3 py-1.5 rounded-xl text-xs font-bold">⚡ Baixa Pix</button>
-                    <button onclick="abrirModalEditar('${p.id}')" class="btn-info px-3 py-1.5 rounded-xl text-xs font-bold">✏️ Editar Benefícios</button>
-                    <button onclick="excluirProposta('${p.id}')" class="bg-slate-200 hover:bg-rose-600 hover:text-white text-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold transition">🗑️ Excluir</button>
-                </div>
-            </div>
-        `;
-    });
-    grid.innerHTML = html;
-}
-
-async function mudarStatus(id, novoStatus) {
-    let { error } = await supabaseClient
-        .from('propostas')
-        .update({ status: novoStatus })
-        .eq('id', id);
-
-    if (error) {
-        alert('Erro ao atualizar status.');
-    } else {
-        carregarLista();
-    }
-}
-
-async function excluirProposta(id) {
-    if (confirm('Deseja realmente excluir esta proposta?')) {
-        let { error } = await supabaseClient
-            .from('propostas')
-            .delete()
-            .eq('id', id);
-
-        if (error) {
-            alert('Erro ao excluir proposta.');
-        } else {
-            carregarLista();
-        }
-    }
-}
-
-// --- MODAL DE EDIÇÃO DE BENEFÍCIOS ---
-async function abrirModalEditar(id) {
-    let propostas = await obterPropostas();
-    let p = propostas.find(item => item.id === id);
-    if (!p) return;
-
-    let conteudo = `
-        <div class="space-y-3">
-            <div>
-                <label class="block text-xs font-bold uppercase tracking-wider mb-1 text-slate-700">ID da Proposta</label>
-                <input type="text" readonly value="${p.id}" class="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-500">
-            </div>
-            <div>
-                <label class="block text-xs font-bold uppercase tracking-wider mb-1 text-slate-700">Entrada Padrão (%)</label>
-                <input type="number" id="editEntrada" value="${p.entradapadrao || 39}" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 outline-none focus:border-blue-900">
-            </div>
-            <div>
-                <label class="block text-xs font-bold uppercase tracking-wider mb-1 text-slate-700">Juros Aplicados (%)</label>
-                <input type="number" id="editJuros" value="${p.jurosaplicados || 6}" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 outline-none focus:border-blue-900">
-            </div>
-            <div>
-                <label class="block text-xs font-bold uppercase tracking-wider mb-1 text-slate-700">Desconto Pix Antecipado (%)</label>
-                <input type="number" step="0.1" id="editDesconto" value="${p.descentopix || 2.0}" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium text-slate-900 outline-none focus:border-blue-900">
-            </div>
-            <button onclick="salvarEdicaoProposta('${p.id}')" class="btn-primary w-full py-3 rounded-xl text-xs font-bold shadow-md mt-2">Salvar Alterações</button>
-        </div>
-    `;
-    document.getElementById('conteudoModal').innerHTML = conteudo;
-    document.getElementById('modalEditar').classList.add('active');
-}
-
-function fecharModal() {
-    document.getElementById('modalEditar').classList.remove('active');
-}
-
-async function salvarEdicaoProposta(id) {
-    let entrada = parseFloat(document.getElementById('editEntrada').value) || 39;
-    let juros = parseFloat(document.getElementById('editJuros').value) || 6;
-    let desconto = parseFloat(document.getElementById('editDesconto').value) || 2.0;
-
-    let propostas = await obterPropostas();
-    let p = propostas.find(item => item.id === id);
-    if (!p) return;
-
-    let valorNum = parseFloat(p.valorsolicitado) || 0;
-    let jurosDecimal = juros / 100;
-    let totalComJuros = valorNum * (1 + jurosDecimal);
-    let valorParcela = totalComJuros / (p.parcelasqtd || 12);
-
-    let { error } = await supabaseClient
-        .from('propostas')
-        .update({
-            entradapadrao: entrada,
-            jurosaplicados: juros,
-            descentopix: desconto,
-            totalcomjuros: totalComJuros.toFixed(2),
-            valorparcela: valorParcela.toFixed(2)
-        })
-        .eq('id', id);
-
-    if (error) {
-        alert('Erro ao atualizar configurações.');
-    } else {
-        fecharModal();
-        carregarLista();
-        alert('Configurações atualizadas com sucesso!');
-    }
-}
-
-// --- MODAL DESPESAS ---
-function abrirModalDespesa() {
-    document.getElementById('modalDespesa').classList.add('active');
-}
-
-function fecharModalDespesa() {
-    document.getElementById('modalDespesa').classList.remove('active');
-}
-
-async function salvarDespesa() {
-    let desc = document.getElementById('descDespesa').value;
-    let valorStr = document.getElementById('valorDespesa').value;
-    let valorNum = parseFloat(valorStr.replace(/\./g, '').replace(',', '.')) || 0;
-
-    if (!desc || valorNum <= 0) {
-        alert('Preencha a descrição e um valor válido para a despesa.');
-        return;
-    }
-
-    let { error } = await supabaseClient.from('despesas').insert([{
-        descricao: desc,
-        valor: valorNum,
-        data: new Date().toLocaleDateString('pt-BR')
-    }]);
-
-    if (error) {
-        alert('Erro ao registrar despesa no banco.');
-    } else {
-        document.getElementById('descDespesa').value = '';
-        document.getElementById('valorDespesa').value = '';
-        fecharModalDespesa();
-        carregarLista();
-    }
-}
-</script>
-
 </body>
 </html>
