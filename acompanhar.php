@@ -1,21 +1,31 @@
 <?php
-// Dados do pedido
+// Painel Administrativo / Controle - Distribuidora Flash Point
+// 2026 - Controle Manual, Baixa de Entrada e Status em Tempo Real (Estilo Semáforo)
 $id_pedido = "PIX-984210";
-$data_pedido = "29/07/2026";
+$cliente_nome = "João da Silva";
+$cliente_whats = "5511973294235";
+$valor_total = "R$ 1.902,00";
 $valor_parcela = "R$ 158,50";
-$whatsapp_numero = "5511973294235";
-$whatsapp_formatado = "(11) 97329-4235";
+
+// Exemplo de Status do Banco/Pagamento em Tempo Real (Simulando o semáforo)
+// "amarelo" = Aguardando / Pendente
+// "verde" = Pago com Sucesso / Recebido em Tempo Real
+// "vermelho" = Reprovado / Cancelado
+$status_pagamento = "amarelo"; // Altere para "verde" quando o banco confirmar ou se clicar em dar baixa manual
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acompanhar Pedido - PIX Parcelado</title>
+    <title>Painel de Controle - Gestão e Semáforo de Pagamentos</title>
     <style>
         :root {
             --primary: #10B981;
             --primary-dark: #059669;
+            --danger: #EF4444;
+            --danger-dark: #DC2626;
+            --warning: #F59E0B;
             --bg-color: #F8FAFC;
             --card-bg: #FFFFFF;
             --text-main: #1E293B;
@@ -37,149 +47,38 @@ $whatsapp_formatado = "(11) 97329-4235";
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1150px;
             margin: 0 auto;
         }
 
         header {
-            text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 24px;
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
         }
 
         header h1 {
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             color: var(--text-main);
-            margin-bottom: 4px;
         }
 
         header p {
             color: var(--text-muted);
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
 
         .card {
             background: var(--card-bg);
             border-radius: 12px;
             padding: 24px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
             margin-bottom: 20px;
             border: 1px solid var(--border-color);
-        }
-
-        .badge-instant {
-            background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
-            border: 1px solid #A7F3D0;
-            color: #065F46;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .badge-instant svg {
-            width: 24px;
-            height: 24px;
-            fill: var(--primary);
-            flex-shrink: 0;
-        }
-
-        .status-box {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 16px;
-            margin-bottom: 20px;
-        }
-
-        .status-title {
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            letter-spacing: 0.5px;
-        }
-
-        .status-value {
-            font-weight: 700;
-            color: #D97706;
-            background: #FEF3C7;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-        }
-
-        .pix-container {
-            display: grid;
-            grid-template-columns: 200px 1fr;
-            gap: 20px;
-            align-items: center;
-        }
-
-        @media (max-width: 600px) {
-            .pix-container {
-                grid-template-columns: 1fr;
-                text-align: center;
-            }
-            .pix-qrcode {
-                margin: 0 auto;
-            }
-        }
-
-        .pix-qrcode {
-            width: 180px;
-            height: 180px;
-            background: #F1F5F9;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--text-muted);
-            font-size: 0.8rem;
-        }
-
-        .pix-details h3 {
-            margin-bottom: 8px;
-            font-size: 1.1rem;
-        }
-
-        .pix-details p {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin-bottom: 16px;
-        }
-
-        .btn {
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            font-weight: 600;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9rem;
-            text-decoration: none;
-        }
-
-        .btn:hover {
-            background: var(--primary-dark);
-        }
-
-        .btn-outline {
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-        }
-
-        .btn-outline:hover {
-            background: #F8FAFC;
         }
 
         .section-title {
@@ -188,6 +87,11 @@ $whatsapp_formatado = "(11) 97329-4235";
             display: flex;
             justify-content: space-between;
             align-items: center;
+            font-weight: 700;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
         }
 
         table {
@@ -198,9 +102,10 @@ $whatsapp_formatado = "(11) 97329-4235";
         }
 
         th, td {
-            padding: 12px;
+            padding: 14px;
             text-align: left;
             border-bottom: 1px solid var(--border-color);
+            vertical-align: middle;
         }
 
         th {
@@ -209,153 +114,172 @@ $whatsapp_formatado = "(11) 97329-4235";
             background: #F8FAFC;
         }
 
-        .actions-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 12px;
-            margin-top: 16px;
-        }
-
-        .parecer-box {
-            background: #F0FDF4;
-            border: 1px solid #BBF7D0;
-            padding: 12px 16px;
-            border-radius: 8px;
-            color: #166534;
-            font-size: 0.9rem;
+        /* Estilo do Semáforo em Tempo Real */
+        .semaforo-box {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-        }
-
-        .info-fabrica {
-            background: #EFF6FF;
-            border: 1px solid #BFDBFE;
-            padding: 12px 16px;
-            border-radius: 8px;
-            color: #1E40AF;
-            font-size: 0.9rem;
-            margin-bottom: 16px;
-            line-height: 1.5;
-        }
-
-        .info-entrada {
-            background: #FFFBEB;
-            border: 1px solid #FDE68A;
-            padding: 12px 16px;
-            border-radius: 8px;
-            color: #92400E;
+            gap: 8px;
+            font-weight: 700;
             font-size: 0.85rem;
-            margin-bottom: 16px;
-            font-weight: 600;
         }
+
+        .lampada {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 8px rgba(0,0,0,0.2);
+        }
+
+        /* Cores do Semáforo com efeito de piscar quando amarelo/aguardando */
+        .lampada.amarelo {
+            background-color: #F59E0B;
+            animation: piscar 1.2s infinite ease-in-out;
+        }
+
+        .lampada.verde {
+            background-color: #10B981;
+        }
+
+        .lampada.vermelho {
+            background-color: #EF4444;
+        }
+
+        @keyframes piscar {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.8rem;
+            text-decoration: none;
+        }
+
+        .btn:hover { background: var(--primary-dark); }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-warning:hover { background: #D97706; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { background: var(--danger-dark); }
+        .btn-outline { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
+        .btn-outline:hover { background: #F8FAFC; }
+        .btn-whatsapp { background: #25D366; color: white; text-decoration: none; }
+        .btn-whatsapp:hover { background: #20BA5A; }
+        .btn-manual { background: #3B82F6; color: white; }
+        .btn-manual:hover { background: #2563EB; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <header>
-        <h1>Detalhes da Solicitação</h1>
-        <p>Pedido #<?php echo $id_pedido; ?> • Realizado em <?php echo $data_pedido; ?></p>
+        <div>
+            <h1>Painel de Controle e Notificações</h1>
+            <p>Monitoramento bancário em tempo real e controle de aprovação manual.</p>
+        </div>
+        <div>
+            <span style="font-size: 0.85rem; background: #E0F2FE; color: #0369A1; padding: 6px 12px; border-radius: 20px; font-weight: 600;">
+                🟢 Sistema Bancário Sincronizado
+            </span>
+        </div>
     </header>
 
-    <!-- Aviso de Pix Parcelado -->
-    <div class="badge-instant">
-        <svg viewBox="0 0 24 24"><path d="M13,2L3,14H12L11,22L21,10H12L13,2Z"/></svg>
-        <div>
-            <span>PIX Parcelado Direto da Fábrica:</span> Envie sua proposta e nossa equipe fará a liberação após a análise.
-        </div>
-    </div>
-
-    <!-- Informação de Compra 100% Online / Fábrica -->
-    <div class="info-fabrica">
-        📦 <strong>Atendimento 100% Online:</strong> Não trabalhamos com lojas físicas ou parceiros intermediários. Sua compra é feita diretamente da fábrica com total segurança. Acompanhe nossas novidades pelo nosso <strong>Catálogo Digital</strong>, <strong>Facebook</strong> e <strong>Instagram</strong>.
-    </div>
-
-    <!-- Aviso Claro sobre a Entrada (Variável de 10% a 75%) -->
-    <div class="info-entrada">
-        ℹ️ <strong>Condição de Entrada Flexível:</strong> Não exigimos entrada fixa obrigatória. O percentual de entrada varia de <strong>10% a 75%</strong>, conforme a análise detalhada da proposta e perfil de crédito.
-    </div>
-
-    <!-- Status e Pagamento Pix -->
-    <div class="card">
-        <div class="status-box">
-            <span class="status-title">Status da Solicitação</span>
-            <span class="status-value">Aguardando Análise da Proposta</span>
-        </div>
-
-        <div class="pix-container">
-            <div class="pix-qrcode">
-                [QR CODE PIX]
-            </div>
-            <div class="pix-details">
-                <h3>Definição da Entrada (10% a 75%)</h3>
-                <p>O valor da entrada é flexível e definido na análise da proposta (entre 10% e 75%). Após a definição, utilize o QR Code ou copia e cola para efetuar o pagamento.</p>
-                <button class="btn" onclick="alert('Código PIX copiado com sucesso!')">
-                    📋 Copiar Código PIX
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Detalhamento das Parcelas -->
+    <!-- Tabela de Gestão com Semáforo e Botão de Pagamento Manual -->
     <div class="card">
         <div class="section-title">
-            <span>Cronograma de Parcelas</span>
-            <button class="btn btn-outline" style="font-size: 0.8rem; padding: 6px 12px;" onclick="alert('Gerando PDF de todas as parcelas...')">🖨️ Imprimir Parcelas</button>
+            <span>Monitoramento de Entradas e Propostas</span>
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Entrada Flexível: 10% a 75%</span>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Parcela</th>
-                    <th>Vencimento</th>
-                    <th>Valor</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>01 / 12</td>
-                    <td>29/07/2026</td>
-                    <td><?php echo $valor_parcela; ?></td>
-                    <td><strong style="color: #D97706;">Aguardando Análise</strong></td>
-                </tr>
-                <tr>
-                    <td>02 / 12</td>
-                    <td>29/08/2026</td>
-                    <td><?php echo $valor_parcela; ?></td>
-                    <td>A vencer</td>
-                </tr>
-                <tr>
-                    <td>03 / 12</td>
-                    <td>29/09/2026</td>
-                    <td><?php echo $valor_parcela; ?></td>
-                    <td>A vencer</td>
-                </tr>
-            </tbody>
-        </table>
 
-        <div class="actions-grid">
-            <button class="btn btn-outline" onclick="alert('Abrindo simulador de antecipação...')">
-                🚀 Adiantar Parcelas (Desconto)
-            </button>
-        </div>
-    </div>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Pedido / Cliente</th>
+                        <th>Valor Total / Entrada</th>
+                        <th>Status Bancário (Tempo Real)</th>
+                        <th>Ações Administrativas & Baixa Manual</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>
+                            <strong>#<?php echo $id_pedido; ?></strong><br>
+                            <span style="color: var(--text-muted); font-size: 0.8rem;"><?php echo $cliente_nome; ?></span>
+                        </td>
+                        <td>
+                            Total: <?php echo $valor_total; ?><br>
+                            <span style="color: var(--primary-dark); font-weight: 600; font-size: 0.85rem;">Entrada: <?php echo $valor_parcela; ?> (Pendente)</span>
+                        </td>
+                        <td>
+                            <!-- Indicador Estilo Semáforo em Tempo Real -->
+                            <?php if($status_pagamento == 'amarelo'): ?>
+                                <div class="semaforo-box" style="color: #D97706;">
+                                    <span class="lampada amarelo"></span> Aguardando Banco
+                                </div>
+                            <?php elseif($status_pagamento == 'verde'): ?>
+                                <div class="semaforo-box" style="color: #059669;">
+                                    <span class="lampada verde"></span> Entrada Recebida!
+                                </div>
+                            <?php else: ?>
+                                <div class="semaforo-box" style="color: #DC2626;">
+                                    <span class="lampada vermelho"></span> Pagamento Recusado
+                                </div>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <div class="btn-group">
+                                <!-- Botão de Pagar / Dar Baixa Manual na Entrada -->
+                                <button class="btn btn-manual" onclick="alert('Baixa manual da entrada efetuada com sucesso! O status mudou para Recebido.')">
+                                    💰 Pagar Manual (Baixa)
+                                </button>
 
-    <!-- Parecer, Contrato e Suporte WhatsApp -->
-    <div class="card">
-        <div class="section-title"><span>Documentação e Canais Oficiais</span></div>
-        <div class="parecer-box" style="margin-bottom: 16px;">
-            <span>✨ <strong>Parecer da Análise:</strong> Avaliando o percentual de entrada ideal (10% a 75%).</span>
-            <span style="font-weight: 600; color: #D97706;">Em Análise</span>
-        </div>
-        <div class="actions-grid">
-            <button class="btn btn-outline" onclick="alert('Baixando contrato em PDF...')">
-                📄 Baixar Contrato Assinado
-            </button>
-            <a href="https://wa.me/<?php echo $whatsapp_numero; ?>?text=Olá,%20acabei%20de%20enviar%20a%20solicitação%20do%20pedido%20<?php echo $id_pedido; ?>%20e%20gostaria%20de%20tirar%20dúvidas%20sobre%20a%20entrada." target="_blank" class="btn" style="background: #25D366; text-decoration: none; justify-content: center;">
-                💬 Suporte WhatsApp (<?php echo $whatsapp_formatado; ?>)
-            </a>
+                                <!-- Botão de Aprovar -->
+                                <button class="btn" onclick="alert('Pedido #<?php echo $id_pedido; ?> aprovado com sucesso por você!')">
+                                    ✅ Aprovar
+                                </button>
+
+                                <!-- Editar Proposta -->
+                                <button class="btn btn-warning" onclick="alert('Abrindo opções para editar valores, parcelas ou percentual de entrada da proposta...')">
+                                    ✏️ Editar
+                                </button>
+
+                                <!-- Ver Parcelas -->
+                                <button class="btn btn-outline" onclick="alert('Visualizando o cronograma completo e valores pendentes...')">
+                                    📅 Parcelas
+                                </button>
+
+                                <!-- WhatsApp -->
+                                <a href="https://wa.me/<?php echo $cliente_whats; ?>?text=Olá%20<?php echo urlencode($cliente_nome); ?>,%20verificamos%20a%20sua%20solicitação%20do%20pedido%20<?php echo $id_pedido; ?>." target="_blank" class="btn btn-whatsapp">
+                                    💬 WhatsApp
+                                </a>
+
+                                <!-- Recusar -->
+                                <button class="btn btn-danger" onclick="alert('Proposta recusada.')">
+                                    ❌ Recusar
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
