@@ -22,6 +22,20 @@
             supabaseClient = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
         }
 
+        // Banco de dados simulado local na memória para gerenciar dinamicamente os clientes
+        let listaClientes = [
+            {
+                id: 1,
+                protocolo: 'FP-410640',
+                nome: 'Felipe Costa',
+                cpf: '335.529.498-52',
+                whatsapp: '(35) 99884-5703',
+                limite: 5000,
+                status: 'aprovado', // 'aprovado', 'aguardando', 'cancelado'
+                entradaPaga: false
+            }
+        ];
+
         // Função para alternar entre as abas do sistema
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
@@ -38,7 +52,6 @@
             }
         }
 
-        // Função para liberar o formulário após clicar no WhatsApp
         function liberarFormulario() {
             const formContainer = document.getElementById('meu-formulario');
             formContainer.classList.remove('opacity-40', 'pointer-events-none');
@@ -55,11 +68,9 @@
                 </p>
             `;
 
-            // Abre o WhatsApp da empresa em nova aba
             window.open('https://wa.me/5511973294235?text=Olá,%20gostaria%20de%20escolher%20os%20móveis%20e%20definir%20o%20valor%20da%20minha%20compra%20para%20o%20limite%20Pix.', '_blank');
         }
 
-        // Validação simples de CPF
         function validarCampoCPF(input) {
             const erro = document.getElementById('erro-cpf');
             if (input.value.length < 11) {
@@ -69,7 +80,6 @@
             }
         }
 
-        // Validação de Idade (Maior de 18 anos)
         function validarIdade(input) {
             const erro = document.getElementById('erro-idade');
             const hoje = new Date();
@@ -87,7 +97,6 @@
             }
         }
 
-        // Consulta de CEP Automática via ViaCEP
         async function consultarCEP(cep) {
             const cepLimpo = cep.replace(/\D/g, '');
             if (cepLimpo.length === 8) {
@@ -103,48 +112,182 @@
             }
         }
 
-        // Envio da Proposta
         function enviarProposta(event) {
             event.preventDefault();
-            alert('Solicitação de Limite Pix enviada com sucesso! Nossa equipe analisará em instantes.');
+            const nome = document.getElementById('nome').value;
+            const cpf = document.getElementById('cpf').value;
+            const whatsapp = document.getElementById('whatsapp').value;
+            const valor = parseFloat(document.getElementById('valor').value) || 1000;
+            const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
+
+            listaClientes.push({
+                id: Date.now(),
+                protocolo: protocolo,
+                nome: nome,
+                cpf: cpf,
+                whatsapp: whatsapp,
+                limite: valor,
+                status: 'aguardando',
+                entradaPaga: false
+            });
+
+            alert('Solicitação de Limite Pix enviada com sucesso! Seu protocolo é ' + protocolo);
             document.getElementById('form-proposta').reset();
+            carregarPainelAdmin();
             switchTab('acompanhar');
         }
 
-        // Consulta de proposta do cliente
         function consultarProposta() {
-            const busca = document.getElementById('busca-cpf').value;
+            const busca = document.getElementById('busca-cpf').value.trim();
             const resultado = document.getElementById('resultado-busca');
             if (!busca) {
                 alert('Digite seu CPF ou Protocolo.');
                 return;
             }
+
+            const cliente = listaClientes.find(c => c.cpf === busca || c.protocolo === busca);
             resultado.classList.remove('hidden');
+
+            if (!cliente) {
+                resultado.innerHTML = `
+                    <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2 text-center">
+                        <h4 class="font-bold text-rose-900 text-sm">Nenhuma solicitação encontrada</h4>
+                        <p class="text-xs text-rose-700">Verifique se digitou o CPF ou Protocolo corretamente.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let badgeStatus = '';
+            if (cliente.status === 'aprovado') {
+                badgeStatus = '<span class="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-bold">🟢 Aprovado</span>';
+            } else if (cliente.status === 'aguardando') {
+                badgeStatus = '<span class="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full font-bold">🟡 Aguardando Pagamento / Análise</span>';
+            } else {
+                badgeStatus = '<span class="bg-rose-100 text-rose-800 px-2.5 py-1 rounded-full font-bold">🔴 Cancelado / Reprovado</span>';
+            }
+
             resultado.innerHTML = `
-                <div class="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2">
-                    <h4 class="font-bold text-emerald-900 text-sm">Status da Solicitação</h4>
-                    <p class="text-xs text-emerald-700">Protocolo: <strong>FP-98421</strong></p>
-                    <p class="text-xs text-emerald-700">Status: <span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">Em Análise</span></p>
-                    <p class="text-xs text-slate-600 mt-2">Seu limite está sendo processado. Acompanhe as novidades pelo nosso WhatsApp oficial.</p>
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-left">
+                    <h4 class="font-bold text-slate-900 text-sm">Detalhes da Solicitação</h4>
+                    <p class="text-xs text-slate-700">Cliente: <strong>${cliente.nome}</strong></p>
+                    <p class="text-xs text-slate-700">Protocolo: <strong>${cliente.protocolo}</strong></p>
+                    <p class="text-xs text-slate-700">Status Atual: ${badgeStatus}</p>
+                    <p class="text-xs text-slate-700">Entrada Pix Manual: <strong>${cliente.entradaPaga ? '🟢 Paga (Confirmada)' : '🟡 Pendente'}</strong></p>
+                    <p class="text-xs text-slate-700">Limite Solicitado/Definido: <strong>R$ ${cliente.limite.toFixed(2)}</strong></p>
                 </div>
             `;
         }
 
-        // Funções do Painel Admin
+        // Funções do Painel Admin Atualizadas com Semáforo, Aprovar, Reprovar, Excluir, Editar e Entrada Paga
         function carregarPainelAdmin() {
             const lista = document.getElementById('lista-admin');
-            lista.innerHTML = `
-                <div class="bg-white border border-slate-200 p-4 rounded-xl flex justify-between items-center shadow-sm">
-                    <div>
-                        <p class="font-bold text-sm text-slate-900">João da Silva (CPF: 123.456.789-00)</p>
-                        <p class="text-xs text-slate-500">Valor Escolhido: R$ 1.500,00 • 12x no Pix</p>
+            lista.innerHTML = '';
+
+            let totalAprovadoVendas = 0;
+
+            listaClientes.forEach(cliente => {
+                if (cliente.status === 'aprovado') {
+                    totalAprovadoVendas += cliente.limite;
+                }
+
+                // Definir cor do semáforo visual
+                let semaforoBg = 'bg-amber-500';
+                let statusTexto = '🟡 Aguardando';
+                if (cliente.status === 'aprovado') {
+                    semaforoBg = 'bg-emerald-500';
+                    statusTexto = '🟢 Aprovado';
+                } else if (cliente.status === 'reprovado' || cliente.status === 'cancelado') {
+                    semaforoBg = 'bg-rose-500';
+                    statusTexto = '🔴 Cancelado';
+                }
+
+                const card = document.createElement('div');
+                card.className = "bg-white border border-slate-200 p-5 rounded-2xl shadow-sm space-y-4";
+                card.innerHTML = `
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 pb-3">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <!-- Semáforo Visual -->
+                                <span class="w-3.5 h-3.5 rounded-full ${semaforoBg} inline-block shadow-sm" title="Status: ${statusTexto}"></span>
+                                <span class="bg-slate-100 text-slate-800 text-xs font-bold px-2 py-0.5 rounded">${cliente.protocolo}</span>
+                                <h4 class="font-bold text-slate-900 text-base">${cliente.nome}</h4>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-0.5">CPF: ${cliente.cpf} | WhatsApp: ${cliente.whatsapp}</p>
+                            <p class="text-xs text-slate-600 mt-1">Entrada Pix Manual: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Entrada Paga' : '🟡 Entrada Pendente'}</strong></p>
+                        </div>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <button onclick="mudarStatus(${cliente.id}, 'aprovado')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer" title="Aprovar">Aprovar</button>
+                            <button onclick="mudarStatus(${cliente.id}, 'cancelado')" class="bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer" title="Reprovado/Cancelado">Reprovar</button>
+                            <button onclick="toggleEntradaPaga(${cliente.id})" class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer" title="Marcar Entrada Paga Manual">Entrada Paga</button>
+                            <button onclick="excluirCliente(${cliente.id})" class="bg-slate-700 hover:bg-slate-800 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer" title="Excluir"><i class="fa-solid fa-trash"></i></button>
+                        </div>
                     </div>
-                    <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full">Aprovado</span>
-                </div>
-            `;
-            document.getElementById('fin-entradas').innerText = 'R$ 1.500,00';
-            document.getElementById('fin-saidas').innerText = 'R$ 0,00';
-            document.getElementById('fin-balanco').innerText = 'R$ 1.500,00';
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        <div class="w-full sm:w-auto flex items-center gap-2">
+                            <label class="text-xs font-bold uppercase text-slate-600">LIMITE R$:</label>
+                            <input type="number" id="limite-${cliente.id}" value="${cliente.limite}" class="bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-bold text-slate-900 w-32 focus:outline-none focus:border-emerald-600">
+                            <button onclick="alterarLimite(${cliente.id})" class="bg-slate-800 hover:bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer">
+                                Editar Limite
+                            </button>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                            <button onclick="verParcelas('${cliente.nome}', ${cliente.limite})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer">
+                                <i class="fa-solid fa-calendar-days"></i> Ver Parcelas
+                            </button>
+                            <a href="https://wa.me/55${cliente.whatsapp.replace(/\D/g, '')}?text=Olá%20${cliente.nome},%20sobre%20seu%20limite%20Pix%20na%20Distribuidora%20Flash%20Point..." target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+                                <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp
+                            </a>
+                        </div>
+                    </div>
+                `;
+                lista.appendChild(card);
+            });
+
+            document.getElementById('fin-entradas').innerText = `R$ ${totalAprovadoVendas.toFixed(2)}`;
+            document.getElementById('fin-balanco').innerText = `R$ ${totalAprovadoVendas.toFixed(2)}`;
+        }
+
+        function mudarStatus(id, novoStatus) {
+            const cliente = listaClientes.find(c => c.id === id);
+            if (cliente) {
+                cliente.status = novoStatus;
+                carregarPainelAdmin();
+            }
+        }
+
+        function toggleEntradaPaga(id) {
+            const cliente = listaClientes.find(c => c.id === id);
+            if (cliente) {
+                cliente.entradaPaga = !cliente.entradaPaga;
+                carregarPainelAdmin();
+            }
+        }
+
+        function excluirCliente(id) {
+            if (confirm('Deseja realmente excluir esta proposta?')) {
+                listaClientes = listaClientes.filter(c => c.id !== id);
+                carregarPainelAdmin();
+            }
+        }
+
+        function alterarLimite(id) {
+            const novoValor = parseFloat(document.getElementById('limite-' + id).value) || 0;
+            const cliente = listaClientes.find(c => c.id === id);
+            if (cliente) {
+                cliente.limite = novoValor;
+                carregarPainelAdmin();
+                alert('Limite atualizado com sucesso!');
+            }
+        }
+
+        function verParcelas(nomeCliente, limite) {
+            const p3 = (limite / 3).toFixed(2);
+            const p6 = (limite / 6).toFixed(2);
+            const p12 = (limite / 12).toFixed(2);
+            alert(`Simulação para ${nomeCliente} (Total: R$ ${limite.toFixed(2)}):\n- 3x de R$ ${p3}\n- 6x de R$ ${p6}\n- 12x de R$ ${p12}`);
         }
 
         function adicionarDespesa(event) {
@@ -155,7 +298,25 @@
         }
 
         function abrirModalCadastroManual() {
-            alert('Abrir painel de cadastro manual de cliente.');
+            const nome = prompt('Nome do Cliente:');
+            if (!nome) return;
+            const cpf = prompt('CPF do Cliente:');
+            const whatsapp = prompt('WhatsApp do Cliente:');
+            const limite = parseFloat(prompt('Valor do Limite R$:')) || 1000;
+            const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
+
+            listaClientes.push({
+                id: Date.now(),
+                protocolo: protocolo,
+                nome: nome,
+                cpf: cpf || '000.000.000-00',
+                whatsapp: whatsapp || '(00) 00000-0000',
+                limite: limite,
+                status: 'aprovado',
+                entradaPaga: false
+            });
+            carregarPainelAdmin();
+            alert('Cliente cadastrado manualmente com sucesso!');
         }
 
         window.onload = function() {
@@ -165,7 +326,7 @@
 </head>
 <body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col font-sans">
 
-    <!-- CABEÇALHO COM LOGO / DISTRIBUIDORA FLASH POINT -->
+    <!-- CABEÇALHO -->
     <header class="bg-white border-b border-slate-200 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center space-x-3">
@@ -179,27 +340,25 @@
             </div>
             
             <nav class="flex flex-wrap gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-                <button onclick="switchTab('solicitar')" id="btn-solicitar" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all bg-emerald-600 text-white shadow">
+                <button onclick="switchTab('solicitar')" id="btn-solicitar" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900">
                     <i class="fa-solid fa-file-circle-plus mr-2"></i>Solicitar Pix Parcelado
                 </button>
                 <button onclick="switchTab('acompanhar')" id="btn-acompanhar" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900">
                     <i class="fa-solid fa-magnifying-glass mr-2"></i>Acompanhar
                 </button>
-                <button onclick="switchTab('painel')" id="btn-painel" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:text-slate-900">
+                <button onclick="switchTab('painel')" id="btn-painel" class="tab-btn px-4 py-2 rounded-lg text-sm font-medium transition-all bg-emerald-600 text-white shadow">
                     <i class="fa-solid fa-gauge-high mr-2"></i>Painel Admin
                 </button>
             </nav>
         </div>
     </header>
 
-    <!-- CONTEÚDO PRINCIPAL -->
+    <!-- CONTEÚDO -->
     <main class="flex-grow max-w-7xl w-full mx-auto p-4 sm:p-6">
 
         <!-- ABA 1: SOLICITAR -->
-        <section id="tab-solicitar" class="tab-content">
+        <section id="tab-solicitar" class="tab-content hidden">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                
-                <!-- Formulário Principal (2 colunas) -->
                 <div class="lg:col-span-2 bg-white border border-slate-200 p-6 sm:p-8 rounded-2xl shadow-sm">
                     <div class="mb-6 border-b border-slate-100 pb-4">
                         <span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">⚠️ ATENÇÃO: NÃO É CARTÃO DE CRÉDITO</span>
@@ -209,7 +368,6 @@
                         <p class="text-sm text-slate-500">Atendimento 100% online direto da fábrica. Siga as instruções abaixo para liberação!</p>
                     </div>
 
-                    <!-- PONTO DE ATENÇÃO OBRIGATÓRIA ANTES DE PREENCHER -->
                     <div id="aviso-bloqueio" class="bg-amber-50 border border-amber-200 p-5 rounded-2xl shadow-sm space-y-3 mb-6">
                         <h3 class="font-bold text-xs uppercase text-amber-900 flex items-center gap-2">
                             <i class="fa-solid fa-triangle-exclamation text-amber-600 text-sm"></i> ATENÇÃO OBRIGATÓRIA (ANTES DE PREENCHER)
@@ -222,67 +380,58 @@
                         </button>
                     </div>
 
-                    <!-- FORMULÁRIO BLOQUEADO INICIALMENTE -->
                     <div id="meu-formulario" class="opacity-40 pointer-events-none transition-all duration-300">
                         <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4">
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Nome Completo</label>
-                                    <input type="text" id="nome" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
+                                    <input type="text" id="nome" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
                                 </div>
                                 <div>
                                     <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">CPF (Validação automática)</label>
-                                    <input type="text" id="cpf" required placeholder="000.000.000-00" onblur="validarCampoCPF(this)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
-                                    <span id="erro-cpf" class="text-xs text-rose-600 hidden font-semibold">CPF inválido. Verifique os números.</span>
+                                    <input type="text" id="cpf" required placeholder="000.000.000-00" onblur="validarCampoCPF(this)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
+                                    <span id="erro-cpf" class="text-xs text-rose-600 hidden font-semibold">CPF inválido.</span>
                                 </div>
                             </div>
-
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Data de Nascimento (Maior de 18 anos)</label>
-                                    <input type="date" id="nascimento" required onchange="validarIdade(this)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
-                                    <span id="erro-idade" class="text-xs text-rose-600 hidden font-semibold">Você deve ter pelo menos 18 anos para solicitar.</span>
+                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Data de Nascimento</label>
+                                    <input type="date" id="nascimento" required onchange="validarIdade(this)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
+                                    <span id="erro-idade" class="text-xs text-rose-600 hidden font-semibold">Maior de 18 anos obrigatório.</span>
                                 </div>
                                 <div>
                                     <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">WhatsApp</label>
-                                    <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
+                                    <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
                                 </div>
                             </div>
-
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
-                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Valor da Compra Escolhida (R$)</label>
-                                    <input type="number" id="valor" step="0.01" required placeholder="Definido no WhatsApp" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
+                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Valor da Compra (R$)</label>
+                                    <input type="number" id="valor" step="0.01" required placeholder="Definido no WhatsApp" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Qtd de Parcelas no Pix</label>
-                                    <select id="qtd-parcelas" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
-                                        <option value="1">1 Parcela (À vista no Pix)</option>
-                                        <option value="2">2 Parcelas</option>
+                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Qtd de Parcelas</label>
+                                    <select id="qtd-parcelas" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
                                         <option value="3" selected>3 Parcelas</option>
                                         <option value="6">6 Parcelas</option>
                                         <option value="12">12 Parcelas</option>
                                     </select>
                                 </div>
                             </div>
-
-                            <!-- CEP COM PREENCHIMENTO AUTOMÁTICO -->
                             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div>
-                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">CEP (Busca Automática)</label>
-                                    <input type="text" id="cep" required placeholder="00000-000" maxlength="9" onblur="consultarCEP(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
+                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">CEP</label>
+                                    <input type="text" id="cep" required placeholder="00000-000" maxlength="9" onblur="consultarCEP(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
                                 </div>
                                 <div class="sm:col-span-2">
-                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Endereço Completo (Preenchido)</label>
-                                    <input type="text" id="endereco" required placeholder="Rua, Número, Bairro - Cidade/UF" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
+                                    <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Endereço</label>
+                                    <input type="text" id="endereco" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
                                 </div>
                             </div>
-
                             <div>
-                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Renda Mensal Estimada (R$)</label>
-                                <input type="number" id="renda" step="0.01" required placeholder="0,00" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
+                                <label class="block text-xs font-semibold uppercase text-slate-600 mb-1">Renda Mensal (R$)</label>
+                                <input type="number" id="renda" step="0.01" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
                             </div>
-
                             <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition shadow-md mt-4 flex items-center justify-center gap-2 cursor-pointer">
                                 <i class="fa-solid fa-paper-plane"></i> Enviar Solicitação de Limite Pix
                             </button>
@@ -290,44 +439,14 @@
                     </div>
                 </div>
 
-                <!-- Painel Lateral / Banners e Garantias (1 coluna) -->
                 <div class="space-y-4">
-                    <!-- Banner Pix Parcelado -->
                     <div class="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-6 rounded-2xl shadow-sm space-y-3">
                         <div class="flex items-center gap-2 font-black text-lg">
                             <i class="fa-brands fa-pix text-2xl"></i> Pix Parcelado na Hora!
                         </div>
-                        <p class="text-xs leading-relaxed text-emerald-50">
-                            Compre seus móveis no <strong>Pix parcelado</strong>. Limite aprovado <strong>em segundos</strong>! 
-                        </p>
-                        <div class="bg-white/10 backdrop-blur px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between text-emerald-100">
-                            <span>⚡ Aprovado em Segundos</span>
-                            <span>🔒 Sem Cartão</span>
-                        </div>
-                    </div>
-
-                    <!-- Garantias e Segurança -->
-                    <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4">
-                        <h3 class="font-bold text-sm uppercase text-slate-700 flex items-center gap-2 border-b border-slate-100 pb-2">
-                            <i class="fa-solid fa-shield-halved text-emerald-600"></i> Garantias & Segurança
-                        </h3>
-                        <ul class="space-y-3 text-xs text-slate-600">
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-emerald-600 mt-0.5 text-sm"></i>
-                                <div><strong class="text-slate-800">Entrega Garantida:</strong> Compromisso total com o recebimento seguro dos seus móveis no prazo combinado.</div>
-                            </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-emerald-600 mt-0.5 text-sm"></i>
-                                <div><strong class="text-slate-800">Entrega via Contrato:</strong> Toda transação formalizada por contrato seguro para sua total tranquilidade.</div>
-                            </li>
-                            <li class="flex items-start gap-2.5">
-                                <i class="fa-solid fa-circle-check text-emerald-600 mt-0.5 text-sm"></i>
-                                <div><strong class="text-slate-800">CNPJ Verificado:</strong> Distribuidora Flash Point registrada e legalizada.</div>
-                            </li>
-                        </ul>
+                        <p class="text-xs leading-relaxed text-emerald-50">Limite aprovado em segundos direto com a distribuidora.</p>
                     </div>
                 </div>
-
             </div>
         </section>
 
@@ -335,28 +454,22 @@
         <section id="tab-acompanhar" class="tab-content hidden max-w-2xl mx-auto space-y-6">
             <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm text-center">
                 <h2 class="text-xl font-bold mb-2 text-slate-900">Consultar Limite & Carnê Pix Parcelado</h2>
-                <p class="text-sm text-slate-500 mb-4">Digite o seu CPF ou Código de Protocolo para verificar o status.</p>
-                <div class="flex gap-2 max-w-md mx-auto">
-                    <input type="text" id="busca-cpf" placeholder="CPF ou Protocolo (ex: FP-12345)" class="flex-grow bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 text-slate-900">
-                    <button onclick="consultarProposta()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold transition text-sm cursor-pointer">
-                        Buscar
-                    </button>
+                <div class="flex gap-2 max-w-md mx-auto mt-4">
+                    <input type="text" id="busca-cpf" placeholder="CPF ou Protocolo" class="flex-grow bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-sm text-slate-900">
+                    <button onclick="consultarProposta()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl font-semibold text-sm cursor-pointer">Buscar</button>
                 </div>
             </div>
-
-            <div id="resultado-busca" class="hidden bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4">
-                <!-- Preenchido via JavaScript -->
-            </div>
+            <div id="resultado-busca" class="hidden bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4"></div>
         </section>
 
         <!-- ABA 3: PAINEL ADMIN -->
-        <section id="tab-painel" class="tab-content hidden space-y-6">
+        <section id="tab-painel" class="tab-content space-y-6">
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
                 <div>
                     <h2 class="text-xl font-bold flex items-center gap-2 text-slate-900">
                         <i class="fa-solid fa-list-check text-emerald-600"></i> Painel Administrativo - Flash Point
                     </h2>
-                    <p class="text-sm text-slate-500">Gerencie solicitações de Pix parcelado e controle de caixa.</p>
+                    <p class="text-sm text-slate-500">Gerenciamento de clientes, limites, semáforo de status e caixa.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <button onclick="abrirModalCadastroManual()" class="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 text-white shadow-sm cursor-pointer">
@@ -368,7 +481,7 @@
                 </div>
             </div>
 
-            <!-- Resumo Financeiro no Painel Admin -->
+            <!-- Resumo Financeiro -->
             <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4">
                 <h3 class="text-base font-bold flex items-center gap-2 text-slate-900 border-b border-slate-100 pb-3">
                     <i class="fa-solid fa-chart-pie text-emerald-600"></i> Módulo Financeiro & Caixa
@@ -397,9 +510,9 @@
                 </form>
             </div>
 
-            <!-- Lista de Clientes -->
+            <!-- Lista de Clientes com o Semáforo e Botões de Ação -->
             <div id="lista-admin" class="space-y-4">
-                <!-- Cards injetados via JS -->
+                <!-- Injetado via JS -->
             </div>
         </section>
 
