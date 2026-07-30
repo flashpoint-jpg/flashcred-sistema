@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distribuidora Flash Point - Sistema Profissional</title>
+    <title>Distribuidora Flash Point - Pix Parcelado (Produção)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- SDK do Supabase -->
@@ -28,18 +28,7 @@
             if (adminLogado) {
                 carregarPainelAdminCompleto();
             }
-            carregarConfiguracoesGerais();
         });
-
-        async function carregarConfiguracoesGerais() {
-            if (!supabaseClient) return;
-            const { data } = await supabaseClient.from('configuracoes').select('*').single();
-            if (data) {
-                localStorage.setItem('flash_porcentagem_entrada', data.porcentagem_entrada || 10);
-                localStorage.setItem('flash_chave_pix', data.chave_pix || '');
-                localStorage.setItem('flash_nome_beneficiario', data.nome_beneficiario || 'Flash Point');
-            }
-        }
 
         function switchTab(tabId) {
             if (tabId === 'painel' && !adminLogado) {
@@ -103,7 +92,7 @@
                     <i class="fa-solid fa-circle-check text-emerald-600 text-base"></i> Atendimento Iniciado com Sucesso!
                 </h3>
                 <p class="text-xs text-emerald-800 leading-relaxed">
-                    Sua conversa foi direcionada. Agora preencha os dados abaixo e informe o valor combinado para gerar sua análise e Pix de entrada.
+                    Sua conversa foi direcionada. Preencha os dados abaixo e informe o valor combinado para gerar sua análise e Pix de entrada.
                 </p>
             `;
 
@@ -118,12 +107,21 @@
             const valor = parseFloat(document.getElementById('valor').value) || 1000;
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
 
-            const porcentagem = parseFloat(localStorage.getItem('flash_porcentagem_entrada')) || 10;
-            const valorEntrada = (valor * porcentagem) / 100;
-            const chavePix = localStorage.getItem('flash_chave_pix') || 'financeiro@flashpoint.com';
-            const nomeBeneficiario = localStorage.getItem('flash_nome_beneficiario') || 'Distribuidora Flash Point';
+            // Busca configurações atuais direto do banco de produção (Supabase)
+            let porcentagem = 10;
+            let chavePix = 'financeiro@flashpoint.com';
+            let nomeBeneficiario = 'Distribuidora Flash Point';
 
-            // Payload Pix Copia e Cola Simplificado / Real
+            if (supabaseClient) {
+                const { data } = await supabaseClient.from('configuracoes').select('*').single();
+                if (data) {
+                    porcentagem = parseFloat(data.porcentagem_entrada) || 10;
+                    chavePix = data.chave_pix || chavePix;
+                    nomeBeneficiario = data.nome_beneficiario || nomeBeneficiario;
+                }
+            }
+
+            const valorEntrada = (valor * porcentagem) / 100;
             const pixCopiaCola = `00020126580014br.gov.bcb.pix0136${chavePix}5204000053039865802BR5925${nomeBeneficiario}6009SaoPaulo62070503***6304`;
 
             const novaProposta = {
@@ -140,16 +138,15 @@
                 pix_copia_e_cola: pixCopiaCola
             };
 
-            if (supabaseClient) {
-                const { error } = await supabaseClient.from('propostas').insert([novaProposta]);
-                if (error) {
-                    alert('Erro ao enviar proposta. Tente novamente.');
-                    return;
-                }
-            } else {
-                let local = JSON.parse(localStorage.getItem('flash_clientes')) || [];
-                local.push({ ...novaProposta, id: Date.now() });
-                localStorage.setItem('flash_clientes', JSON.stringify(local));
+            if (!supabaseClient) {
+                alert('Erro crítico: Banco de dados não conectado para produção.');
+                return;
+            }
+
+            const { error } = await supabaseClient.from('propostas').insert([novaProposta]);
+            if (error) {
+                alert('Erro ao enviar proposta para o servidor. Tente novamente.');
+                return;
             }
 
             alert('Solicitação enviada com sucesso! Seu protocolo é: ' + protocolo);
@@ -168,23 +165,20 @@
                 return;
             }
 
-            let cliente = null;
-
-            if (supabaseClient) {
-                const { data, error } = await supabaseClient
-                    .from('propostas')
-                    .select('*')
-                    .or(`cpf.eq.${busca},protocolo.eq.${busca}`)
-                    .maybeSingle();
-                if (!error) cliente = data;
-            } else {
-                let local = JSON.parse(localStorage.getItem('flash_clientes')) || [];
-                cliente = local.find(c => c.cpf === busca || c.protocolo === busca);
+            if (!supabaseClient) {
+                alert('Banco de dados indisponível.');
+                return;
             }
+
+            const { data: cliente, error } = await supabaseClient
+                .from('propostas')
+                .select('*')
+                .or(`cpf.eq.${busca},protocolo.eq.${busca}`)
+                .maybeSingle();
 
             resultado.classList.remove('hidden');
 
-            if (!cliente) {
+            if (error || !cliente) {
                 resultado.innerHTML = `
                     <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2 text-center">
                         <h4 class="font-bold text-rose-900 text-sm">Nenhum registro encontrado</h4>
@@ -262,27 +256,24 @@
         }
 
         async function carregarPainelAdminCompleto() {
-            if (!adminLogado) return;
+            if (!adminLogado || !supabaseClient) return;
 
-            // Carregar configurações nos inputs do painel
-            document.getElementById('conf-porcentagem').value = localStorage.getItem('flash_porcentagem_entrada') || 10;
-            document.getElementById('conf-chave').value = localStorage.getItem('flash_chave_pix') || '';
-            document.getElementById('conf-beneficiario').value = localStorage.getItem('flash_nome_beneficiario') || '';
-
-            const lista = document.getElementById('lista-admin');
-            lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border border-slate-200">Sincronizando propostas em tempo real...</div>`;
-
-            let propostas = [];
-            if (supabaseClient) {
-                const { data, error } = await supabaseClient.from('propostas').select('*').order('id', { ascending: false });
-                if (!error) propostas = data;
-            } else {
-                propostas = JSON.parse(localStorage.getItem('flash_clientes')) || [];
+            // Carrega configurações da nuvem
+            const { data: configData } = await supabaseClient.from('configuracoes').select('*').single();
+            if (configData) {
+                document.getElementById('conf-porcentagem').value = configData.porcentagem_entrada || 10;
+                document.getElementById('conf-chave').value = configData.chave_pix || '';
+                document.getElementById('conf-beneficiario').value = configData.nome_beneficiario || '';
             }
 
+            const lista = document.getElementById('lista-admin');
+            lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border border-slate-200">Sincronizando propostas com o servidor...</div>`;
+
+            const { data: propostas, error } = await supabaseClient.from('propostas').select('*').order('id', { ascending: false });
+            
             lista.innerHTML = '';
 
-            if (propostas.length === 0) {
+            if (error || !propostas || propostas.length === 0) {
                 lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border border-slate-200">Nenhuma proposta cadastrada no sistema.</div>`;
                 return;
             }
@@ -327,15 +318,15 @@
                         </div>
                         <div>
                             <span class="block text-[10px] font-bold uppercase text-slate-400">Validar Pagamento</span>
-                            <button onclick="alternarEntradaPaga('${cliente.id || cliente.protocolo}', ${!cliente.entrada_paga})" class="mt-1 px-3 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition ${cliente.entrada_paga ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}">
+                            <button onclick="alternarEntradaPaga('${cliente.id}', ${!cliente.entrada_paga})" class="mt-1 px-3 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition ${cliente.entrada_paga ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}">
                                 ${cliente.entrada_paga ? 'Marcar Pendente' : 'Confirmar Entrada'}
                             </button>
                         </div>
                         <div>
                             <span class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Ações de Status</span>
                             <div class="flex justify-center gap-1 flex-wrap">
-                                <button onclick="mudarStatus('${cliente.id || cliente.protocolo}', 'aprovado')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Aprovar</button>
-                                <button onclick="mudarStatus('${cliente.id || cliente.protocolo}', 'cancelado')" class="bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Reprovar</button>
+                                <button onclick="mudarStatus('${cliente.id}', 'aprovado')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Aprovar</button>
+                                <button onclick="mudarStatus('${cliente.id}', 'cancelado')" class="bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Reprovar</button>
                             </div>
                         </div>
                     </div>
@@ -346,49 +337,37 @@
 
         async function salvarConfiguracoesAdmin(event) {
             event.preventDefault();
-            const porcentagem = document.getElementById('conf-porcentagem').value;
+            const porcentagem = parseFloat(document.getElementById('conf-porcentagem').value);
             const chave = document.getElementById('conf-chave').value;
             const beneficiario = document.getElementById('conf-beneficiario').value;
 
-            localStorage.setItem('flash_porcentagem_entrada', porcentagem);
-            localStorage.setItem('flash_chave_pix', chave);
-            localStorage.setItem('flash_nome_beneficiario', beneficiario);
+            if (!supabaseClient) return;
 
-            if (supabaseClient) {
-                // Tenta atualizar ou inserir na tabela de configurações do Supabase
-                await supabaseClient.from('configuracoes').upsert({ id: 1, porcentagem_entrada: porcentagem, chave_pix: chave, nome_beneficiario: beneficiario });
+            const { error } = await supabaseClient.from('configuracoes').upsert({ 
+                id: 1, 
+                porcentagem_entrada: porcentagem, 
+                chave_pix: chave, 
+                nome_beneficiario: beneficiario 
+            });
+
+            if (error) {
+                alert('Erro ao salvar configurações no servidor.');
+                return;
             }
 
-            alert('Configurações atualizadas com sucesso!');
-        }
-
-        async function mudarStatus(idOuProtocolo, novoStatus) {
-            if (supabaseClient) {
-                const queryField = isNaN(idOuProtocolo) ? 'protocolo' : 'id';
-                await supabaseClient.from('propostas').update({ status: novoStatus }).eq(queryField, idOuProtocolo);
-            } else {
-                let local = JSON.parse(localStorage.getItem('flash_clientes')) || [];
-                let cliente = local.find(c => c.id == idOuProtocolo || c.protocolo == idOuProtocolo);
-                if (cliente) {
-                    cliente.status = novoStatus;
-                    localStorage.setItem('flash_clientes', JSON.stringify(local));
-                }
-            }
+            alert('Configurações de produção atualizadas com sucesso!');
             carregarPainelAdminCompleto();
         }
 
-        async function alternarEntradaPaga(idOuProtocolo, novoEstado) {
-            if (supabaseClient) {
-                const queryField = isNaN(idOuProtocolo) ? 'protocolo' : 'id';
-                await supabaseClient.from('propostas').update({ entrada_paga: novoEstado }).eq(queryField, idOuProtocolo);
-            } else {
-                let local = JSON.parse(localStorage.getItem('flash_clientes')) || [];
-                let cliente = local.find(c => c.id == idOuProtocolo || c.protocolo == idOuProtocolo);
-                if (cliente) {
-                    cliente.entrada_paga = novoEstado;
-                    localStorage.setItem('flash_clientes', JSON.stringify(local));
-                }
-            }
+        async function mudarStatus(id, novoStatus) {
+            if (!supabaseClient) return;
+            await supabaseClient.from('propostas').update({ status: novoStatus }).eq('id', id);
+            carregarPainelAdminCompleto();
+        }
+
+        async function alternarEntradaPaga(id, novoEstado) {
+            if (!supabaseClient) return;
+            await supabaseClient.from('propostas').update({ entrada_paga: novoEstado }).eq('id', id);
             carregarPainelAdminCompleto();
         }
     </script>
@@ -505,10 +484,10 @@
                 <button onclick="logoutAdmin()" class="bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer shadow">Sair</button>
             </div>
 
-            <!-- Caixa de Configurações Dinâmicas -->
+            <!-- Caixa de Configurações Dinâmicas de Produção -->
             <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
                 <h3 class="font-bold text-xs uppercase text-slate-900 flex items-center gap-2">
-                    <i class="fa-solid fa-gear text-emerald-600"></i> Configurações Globais do Sistema
+                    <i class="fa-solid fa-gear text-emerald-600"></i> Configurações Globais do Sistema (Produção)
                 </h3>
                 <form onsubmit="salvarConfiguracoesAdmin(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
@@ -517,7 +496,7 @@
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Chave Pix de Recebimento</label>
-                        <input type="text" id="conf-chave" required placeholder="Chave Pix (E-mail, CPF, CNPJ, Tel)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none">
+                        <input type="text" id="conf-chave" required placeholder="Chave Pix" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none">
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Nome do Beneficiário</label>
