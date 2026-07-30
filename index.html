@@ -29,12 +29,14 @@
                 nome: 'Felipe Costa',
                 cpf: '335.529.498-52',
                 whatsapp: '(35) 99884-5703',
+                cep: '37550-000',
+                endereco: 'Rua Principal, 100 - Centro - Pouso Alegre/MG',
                 limite: 5000,
                 valorEntrada: 500,
                 porcentagemEntrada: 10,
-                parcelas: 1,
-                jurosParcelamento: 0,
-                descontoAntecipado: 0,
+                parcelas: 12,
+                jurosParcelamento: 1.5,
+                descontoAntecipado: 100,
                 status: 'aprovado',
                 entradaPaga: false,
                 pixCopiaECola: '',
@@ -166,6 +168,8 @@
             const nome = document.getElementById('nome').value;
             const cpf = document.getElementById('cpf').value;
             const whatsapp = document.getElementById('whatsapp').value;
+            const cep = document.getElementById('cep').value;
+            const endereco = document.getElementById('endereco').value;
             const valor = parseFloat(document.getElementById('valor').value) || 1000;
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
 
@@ -175,10 +179,12 @@
                 nome: nome,
                 cpf: cpf,
                 whatsapp: whatsapp,
+                cep: cep,
+                endereco: endereco,
                 limite: valor,
                 valorEntrada: valor * 0.10,
                 porcentagemEntrada: 10,
-                parcelas: 1,
+                parcelas: 12,
                 jurosParcelamento: 0,
                 descontoAntecipado: 0,
                 status: 'aguardando',
@@ -190,7 +196,7 @@
             listaClientes.push(novaProposta);
             salvarDadosLocal();
 
-            alert('Solicitação de Limite Pix enviada com sucesso! Seu protocolo é ' + protocolo);
+            alert('Solicitação enviada com sucesso! Seu protocolo é ' + protocolo);
             document.getElementById('form-proposta').reset();
             
             if (adminLogado) {
@@ -218,7 +224,7 @@
                         description: `Entrada Pix - Protocolo ${cliente.protocolo}`,
                         payer_email: "cliente@flashpoint.com",
                         payer_first_name: cliente.nome.split(" ")[0],
-                        installments: cliente.parcelas
+                        installments: 1
                     }
                 });
 
@@ -231,10 +237,33 @@
                     salvarDadosLocal();
                     carregarPainelAdmin();
                     alert('Pix gerado com sucesso via Mercado Pago!');
+                } else {
+                    alert('Erro na API de pagamento. Use o campo "Pix Copia e Cola" para colar a chave manual.');
                 }
             } catch (err) {
-                alert('Erro ao gerar Pix API: ' + err.message);
+                alert('Edge Function indisponível ou não configurada no Supabase.\n\nPor favor, insira o código Pix no campo "Pix Copia e Cola (Manual)" abaixo.');
             }
+        }
+
+        // CÁLCULO EM TEMPO REAL NA TELA DO ADMIN
+        function calcularEmTempoReal(clienteId) {
+            const limite = parseFloat(document.getElementById(`edit-limite-${clienteId}`).value) || 0;
+            const porcEntrada = parseFloat(document.getElementById(`edit-porc-${clienteId}`).value) || 0;
+            const parcelas = parseInt(document.getElementById(`edit-parc-${clienteId}`).value) || 1;
+            const juros = parseFloat(document.getElementById(`edit-juros-${clienteId}`).value) || 0;
+            const desconto = parseFloat(document.getElementById(`edit-desc-${clienteId}`).value) || 0;
+
+            const valorEntradaCalc = (limite * porcEntrada) / 100;
+            const saldoFinanciado = limite - valorEntradaCalc;
+            const saldoComJuros = saldoFinanciado * (1 + (juros / 100));
+            const valorParcelaCalc = parcelas > 0 ? (saldoComJuros / parcelas) : 0;
+
+            // Atualiza os textos na tela instantaneamente
+            document.getElementById(`rt-total-${clienteId}`).innerText = `R$ ${limite.toFixed(2)}`;
+            document.getElementById(`rt-entrada-${clienteId}`).innerText = `R$ ${valorEntradaCalc.toFixed(2)} (${porcEntrada}%)`;
+            document.getElementById(`rt-saldo-${clienteId}`).innerText = `R$ ${saldoComJuros.toFixed(2)}`;
+            document.getElementById(`rt-desc-${clienteId}`).innerText = `R$ ${desconto.toFixed(2)}`;
+            document.getElementById(`rt-parcelas-topo-${clienteId}`).innerText = `${parcelas}x de R$ ${valorParcelaCalc.toFixed(2)} / mês`;
         }
 
         function salvarEdicaoAdmin(clienteId) {
@@ -251,7 +280,7 @@
 
             salvarDadosLocal();
             carregarPainelAdmin();
-            alert('Proposta atualizada com sucesso!');
+            alert('Proposta e parcelas salvas com sucesso!');
         }
 
         function alterarStatusCliente(clienteId, novoStatus) {
@@ -268,7 +297,7 @@
             if (cliente) {
                 cliente.entradaPaga = !cliente.entradaPaga;
                 if (cliente.entradaPaga) {
-                    alert(`[NOTIFICAÇÃO BANCO / WEBHOOK]: O pagamento da entrada Pix do protocolo ${cliente.protocolo} foi confirmado pelo banco! Sistema liberado.`);
+                    alert(`[NOTIFICAÇÃO BANCO]: O pagamento da entrada Pix do protocolo ${cliente.protocolo} foi confirmado pelo banco!`);
                 }
                 salvarDadosLocal();
                 carregarPainelAdmin();
@@ -276,7 +305,7 @@
         }
 
         function excluirPropostaAdmin(clienteId) {
-            if (confirm('Deseja realmente excluir esta proposta?')) {
+            if (confirm('Tem certeza de que deseja APAGAR definitivamente esta proposta?')) {
                 listaClientes = listaClientes.filter(c => c.id !== clienteId);
                 salvarDadosLocal();
                 carregarPainelAdmin();
@@ -306,22 +335,33 @@
             let badgeStatus = cliente.status === 'aprovado' ? '<span class="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-bold">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full font-bold">🟡 Aguardando</span>';
             const qrImg = cliente.qrCodeBase64 ? `data:image/png;base64,${cliente.qrCodeBase64}` : `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cliente.pixCopiaECola || 'Pix Flash Point')}`;
 
+            const valorRestante = cliente.limite - cliente.valorEntrada;
+            const valorComJuros = valorRestante * (1 + (cliente.jurosParcelamento / 100));
+            const valorPorParcela = cliente.parcelas > 0 ? (valorComJuros / cliente.parcelas) : 0;
+
             resultado.innerHTML = `
                 <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-left">
                     <h4 class="font-bold text-slate-900 text-sm">Detalhes da Solicitação</h4>
                     <p class="text-xs text-slate-700">Cliente: <strong>${cliente.nome}</strong></p>
                     <p class="text-xs text-slate-700">Protocolo: <strong>${cliente.protocolo}</strong></p>
+                    <p class="text-xs text-slate-700">📍 Endereço: <strong>${cliente.endereco || 'Não informado'}</strong> (CEP: ${cliente.cep || 'N/A'})</p>
                     <p class="text-xs text-slate-700">Status: ${badgeStatus}</p>
                     <p class="text-xs text-slate-700">Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-600' : 'text-amber-600'}">${cliente.entradaPaga ? '🟢 Paga (Validada pelo Banco)' : '🟡 Pendente'}</strong></p>
                     <p class="text-xs text-slate-700">Valor Total: <strong>R$ ${cliente.limite.toFixed(2)}</strong></p>
-                    <p class="text-xs text-slate-700">Desconto Antecipado: <strong>R$ ${(cliente.descontoAntecipado || 0).toFixed(2)}</strong></p>
                     
+                    <div class="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
+                        <span class="block text-[11px] font-bold text-slate-900">Planos de Parcelamento:</span>
+                        <p class="text-xs text-emerald-700 font-bold">Entrada: R$ ${cliente.valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada}%)</p>
+                        <p class="text-xs text-slate-700 font-semibold">+ ${cliente.parcelas}x de R$ ${valorPorParcela.toFixed(2)} no Pix Parcelado</p>
+                        ${cliente.descontoAntecipado > 0 ? `<p class="text-[11px] text-amber-700 font-bold">🎁 Desconto para quitação antecipada: R$ ${cliente.descontoAntecipado.toFixed(2)}</p>` : ''}
+                    </div>
+
                     <div class="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
                         <h5 class="font-bold text-emerald-900 text-xs uppercase">Pagamento da Entrada Pix</h5>
                         <div class="flex flex-col items-center justify-center p-2 bg-white rounded-xl border">
                             <img src="${qrImg}" alt="QR Code" class="w-32 h-32 mb-1">
                         </div>
-                        <input type="text" readonly value="${cliente.pixCopiaECola || 'Aguardando chave Pix manual...'}" class="bg-white border rounded-lg px-3 py-2 text-xs w-full">
+                        <input type="text" readonly value="${cliente.pixCopiaECola || 'Aguardando inserção do código Pix...'}" class="bg-white border rounded-lg px-3 py-2 text-xs w-full">
                     </div>
                 </div>
             `;
@@ -330,6 +370,52 @@
         function carregarPainelAdmin() {
             if (!adminLogado) return;
             listaClientes = JSON.parse(localStorage.getItem('flash_clientes')) || [];
+            
+            let totalGeral = 0;
+            let totalEntradasEsperadas = 0;
+            let totalEntradasPagas = 0;
+            let totalParceladoFuturo = 0;
+
+            listaClientes.forEach(c => {
+                const limite = c.limite || 1000;
+                const vEntrada = c.valorEntrada !== undefined ? c.valorEntrada : (limite * 0.10);
+                const juros = c.jurosParcelamento || 0;
+                
+                const saldoFinanciado = limite - vEntrada;
+                const saldoComJuros = saldoFinanciado * (1 + (juros / 100));
+
+                totalGeral += limite;
+                totalEntradasEsperadas += vEntrada;
+                if (c.entradaPaga) {
+                    totalEntradasPagas += vEntrada;
+                }
+                totalParceladoFuturo += saldoComJuros;
+            });
+
+            const totalEntradasPendentes = totalEntradasEsperadas - totalEntradasPagas;
+
+            const painelResumo = document.getElementById('painel-resumo-financeiro');
+            painelResumo.innerHTML = `
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-900 text-white p-4 rounded-2xl shadow-md text-left">
+                    <div>
+                        <span class="text-[10px] uppercase font-bold text-slate-400 block">Total Geral Propostas</span>
+                        <span class="text-sm md:text-base font-black text-white">R$ ${totalGeral.toFixed(2)}</span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] uppercase font-bold text-emerald-400 block">Entradas Já Recebidas</span>
+                        <span class="text-sm md:text-base font-black text-emerald-400">R$ ${totalEntradasPagas.toFixed(2)}</span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] uppercase font-bold text-amber-400 block">Entradas Pendentes</span>
+                        <span class="text-sm md:text-base font-black text-amber-400">R$ ${totalEntradasPendentes.toFixed(2)}</span>
+                    </div>
+                    <div>
+                        <span class="text-[10px] uppercase font-bold text-blue-400 block">Saldo Futuro (Parcelas)</span>
+                        <span class="text-sm md:text-base font-black text-blue-400">R$ ${totalParceladoFuturo.toFixed(2)}</span>
+                    </div>
+                </div>
+            `;
+
             const lista = document.getElementById('lista-admin');
             lista.innerHTML = '';
 
@@ -341,49 +427,84 @@
             listaClientes.forEach(cliente => {
                 if (cliente.valorEntrada === undefined) cliente.valorEntrada = (cliente.limite || 1000) * 0.10;
                 if (cliente.porcentagemEntrada === undefined) cliente.porcentagemEntrada = 10;
-                if (cliente.parcelas === undefined) cliente.parcelas = 1;
+                if (cliente.parcelas === undefined) cliente.parcelas = 12;
                 if (cliente.jurosParcelamento === undefined) cliente.jurosParcelamento = 0;
                 if (cliente.descontoAntecipado === undefined) cliente.descontoAntecipado = 0;
 
                 let badgeStatusHtml = cliente.status === 'aprovado' ? '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full">🟡 Aguardando</span>';
                 let badgeEntradaHtml = cliente.entradaPaga ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">🟢 Entrada Paga</span>' : '<span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">🟡 Entrada Pendente</span>';
 
+                const valorFinanciado = cliente.limite - cliente.valorEntrada;
+                const totalComJuros = valorFinanciado * (1 + (cliente.jurosParcelamento / 100));
+                const valorParcelaIndividual = cliente.parcelas > 0 ? (totalComJuros / cliente.parcelas) : 0;
+
                 const card = document.createElement('div');
-                card.className = "bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4";
+                card.className = "bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4 text-left";
                 card.innerHTML = `
-                    <div class="flex justify-between items-center border-b pb-3">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-3">
                         <div>
                             <div class="flex items-center gap-2 flex-wrap">
                                 <span class="bg-slate-900 text-white text-xs font-bold px-3 py-1 rounded-lg">${cliente.protocolo}</span>
                                 <h3 class="font-bold text-slate-900 text-base">${cliente.nome}</h3>
                                 ${badgeStatusHtml}
                             </div>
-                            <p class="text-xs text-slate-500 mt-1">CPF: <strong>${cliente.cpf}</strong> | WhatsApp: <strong>${cliente.whatsapp}</strong></p>
+                            <p class="text-xs text-slate-600 mt-1">
+                                📞 WhatsApp: <strong>${cliente.whatsapp}</strong> | CPF: <strong>${cliente.cpf}</strong>
+                            </p>
+                            <p class="text-xs text-slate-500 font-medium mt-0.5">
+                                📍 <strong>Endereço:</strong> ${cliente.endereco || 'Não cadastrado'} (CEP: ${cliente.cep || 'N/A'})
+                            </p>
                         </div>
                         <div>${badgeEntradaHtml}</div>
                     </div>
 
-                    <!-- PAINEL DE EDIÇÃO DE VALORES E CONFIGURAÇÕES -->
+                    <!-- QUADRO COM VALORES GRANDES E VERDES (ATUALIZAÇÃO EM TEMPO REAL) -->
+                    <div class="bg-slate-900 text-white p-4 rounded-2xl space-y-2">
+                        <div class="flex justify-between items-center text-xs border-b border-slate-700 pb-2">
+                            <span class="font-bold text-emerald-400 uppercase">Detalhamento das Parcelas (Tempo Real)</span>
+                            <span id="rt-parcelas-topo-${cliente.id}" class="text-emerald-400 font-black text-sm">${cliente.parcelas}x de R$ ${valorParcelaIndividual.toFixed(2)} / mês</span>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px] pt-1">
+                            <div>
+                                <span class="text-slate-400 block text-[10px]">Valor Total</span>
+                                <span id="rt-total-${cliente.id}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${cliente.limite.toFixed(2)}</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block text-[10px]">Entrada</span>
+                                <span id="rt-entrada-${cliente.id}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${cliente.valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada}%)</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block text-[10px]">Saldo Parcelado</span>
+                                <span id="rt-saldo-${cliente.id}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${totalComJuros.toFixed(2)}</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block text-[10px]">Desc. Quitação</span>
+                                <span id="rt-desc-${cliente.id}" class="font-black text-emerald-400 text-sm md:text-base">R$ ${cliente.descontoAntecipado.toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- FORMULÁRIO DE EDIÇÃO COM EVENTO DE DIGITAÇÃO INSTANTÂNEA -->
                     <div class="grid grid-cols-2 md:grid-cols-6 gap-2 bg-slate-50 p-3 rounded-xl border">
                         <div>
                             <label class="block text-[9px] font-bold uppercase text-slate-500">Valor Total (R$)</label>
-                            <input type="number" id="edit-limite-${cliente.id}" value="${cliente.limite}" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold">
+                            <input type="number" id="edit-limite-${cliente.id}" value="${cliente.limite}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div>
                             <label class="block text-[9px] font-bold uppercase text-slate-500">% Entrada</label>
-                            <input type="number" id="edit-porc-${cliente.id}" value="${cliente.porcentagemEntrada}" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold">
+                            <input type="number" id="edit-porc-${cliente.id}" value="${cliente.porcentagemEntrada}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div>
-                            <label class="block text-[9px] font-bold uppercase text-slate-500">Parcelas</label>
-                            <input type="number" id="edit-parc-${cliente.id}" value="${cliente.parcelas}" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold">
+                            <label class="block text-[9px] font-bold uppercase text-slate-500">Nº Parcelas</label>
+                            <input type="number" id="edit-parc-${cliente.id}" value="${cliente.parcelas}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div>
                             <label class="block text-[9px] font-bold uppercase text-slate-500">Juros (%)</label>
-                            <input type="number" id="edit-juros-${cliente.id}" value="${cliente.jurosParcelamento}" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold">
+                            <input type="number" id="edit-juros-${cliente.id}" value="${cliente.jurosParcelamento}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div>
-                            <label class="block text-[9px] font-bold uppercase text-slate-500">Desc. Antecipado</label>
-                            <input type="number" id="edit-desc-${cliente.id}" value="${cliente.descontoAntecipado}" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold">
+                            <label class="block text-[9px] font-bold uppercase text-slate-500">Desc. Quitação</label>
+                            <input type="number" id="edit-desc-${cliente.id}" value="${cliente.descontoAntecipado}" oninput="calcularEmTempoReal(${cliente.id})" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold text-slate-900">
                         </div>
                         <div class="flex items-end">
                             <button onclick="salvarEdicaoAdmin(${cliente.id})" class="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-1.5 px-2 rounded text-[11px] cursor-pointer">Salvar</button>
@@ -392,11 +513,11 @@
 
                     <!-- CAMPO PIX MANUAL -->
                     <div>
-                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Pix Copia e Cola (Manual ou API):</label>
-                        <input type="text" id="edit-copiacola-${cliente.id}" value="${cliente.pixCopiaECola || ''}" placeholder="Cole aqui o código Pix Copia e Cola..." class="w-full bg-slate-50 border rounded-lg px-3 py-1.5 text-xs">
+                        <label class="block text-[10px] font-bold uppercase text-slate-600 mb-1">Pix Copia e Cola (Cole aqui o código Pix do seu banco):</label>
+                        <input type="text" id="edit-copiacola-${cliente.id}" value="${cliente.pixCopiaECola || ''}" placeholder="00020126580014br.gov.bcb.pix..." class="w-full bg-slate-50 border rounded-lg px-3 py-1.5 text-xs text-slate-900">
                     </div>
 
-                    <!-- BOTÕES DE AÇÃO -->
+                    <!-- BOTÕES DE AÇÃO E APAGAR -->
                     <div class="flex flex-wrap gap-2 pt-2 items-center justify-between border-t border-slate-100">
                         <div class="flex flex-wrap gap-2">
                             <button onclick="gerarPixViaAPI(${cliente.id})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
@@ -404,10 +525,10 @@
                             </button>
                             <button onclick="alterarStatusCliente(${cliente.id}, 'aprovado')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Aprovar</button>
                             <button onclick="alterarStatusCliente(${cliente.id}, 'reprovado')" class="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Desaprovar</button>
-                            <button onclick="alternarEntradaPaga(${cliente.id})" class="bg-amber-50 hover:bg-amber-100 text-amber-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Simular Notificação Banco (Pago)</button>
+                            <button onclick="alternarEntradaPaga(${cliente.id})" class="bg-amber-50 hover:bg-amber-100 text-amber-700 px-3 py-2 rounded-xl text-xs font-bold transition cursor-pointer">Simular Notificação Banco</button>
                         </div>
-                        <button onclick="excluirPropostaAdmin(${cliente.id})" class="text-slate-400 hover:text-rose-600 text-xs font-bold p-2 cursor-pointer">
-                            <i class="fa-solid fa-trash"></i> Excluir
+                        <button onclick="excluirPropostaAdmin(${cliente.id})" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                            <i class="fa-solid fa-trash"></i> Apagar Proposta
                         </button>
                     </div>
                 `;
@@ -452,7 +573,7 @@
                 </div>
 
                 <div id="meu-formulario" class="opacity-40 pointer-events-none transition-all duration-300">
-                    <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4">
+                    <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4 text-left">
                         <h2 class="font-bold text-slate-900 text-base border-b pb-2">Preencha seus Dados para Solicitação</h2>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
@@ -525,14 +646,18 @@
             <!-- ABA PAINEL ADMIN -->
             <section id="tab-painel" class="tab-content hidden space-y-6">
                 <div class="flex justify-between items-center border-b pb-4">
-                    <div>
+                    <div class="text-left">
                         <h2 class="font-bold text-slate-900 text-lg">Gerenciamento de Propostas</h2>
-                        <p class="text-xs text-slate-500">Controle total, edição, descontos e Pix manual</p>
+                        <p class="text-xs text-slate-500">Cálculos e simulações em tempo real</p>
                     </div>
                     <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
                         <i class="fa-solid fa-right-from-bracket"></i> Sair
                     </button>
                 </div>
+
+                <!-- PAINEL DE RESUMO FINANCEIRO -->
+                <div id="painel-resumo-financeiro"></div>
+
                 <div id="lista-admin" class="space-y-4"></div>
             </section>
         </main>
