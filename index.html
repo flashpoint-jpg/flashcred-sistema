@@ -146,9 +146,14 @@
                     </h2>
                     <p class="text-sm text-slate-400">Aprove, rejeite, altere valores, gere Pix e controle as parcelas de cada cliente.</p>
                 </div>
-                <button onclick="carregarPainelAdmin()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2">
-                    <i class="fa-solid fa-rotate"></i> Atualizar Dados
-                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="abrirModalCadastroManual()" class="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 text-white shadow">
+                        <i class="fa-solid fa-user-plus"></i> Novo Cliente Manual
+                    </button>
+                    <button onclick="carregarPainelAdmin()" class="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-2">
+                        <i class="fa-solid fa-rotate"></i> Atualizar
+                    </button>
+                </div>
             </div>
 
             <div id="lista-admin" class="space-y-4">
@@ -208,6 +213,57 @@
         </div>
     </div>
 
+    <!-- MODAL DE CADASTRO MANUAL DE CLIENTE -->
+    <div id="modal-cadastro-manual" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-800 border border-slate-700 w-full max-w-lg rounded-2xl p-6 shadow-2xl">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
+                <h3 class="text-lg font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-user-plus text-emerald-500"></i> Cadastrar Cliente Manualmente
+                </h3>
+                <button onclick="fecharModalCadastroManual()" class="text-slate-400 hover:text-white text-lg font-bold"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="salvarClienteManual(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block uppercase font-bold text-slate-400 mb-1">Nome Completo</label>
+                    <input type="text" id="man-nome" required class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block uppercase font-bold text-slate-400 mb-1">CPF</label>
+                        <input type="text" id="man-cpf" required placeholder="000.000.000-00" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                    </div>
+                    <div>
+                        <label class="block uppercase font-bold text-slate-400 mb-1">WhatsApp</label>
+                        <input type="text" id="man-whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block uppercase font-bold text-slate-400 mb-1">Valor Total (R$)</label>
+                        <input type="number" step="0.01" id="man-valor" required placeholder="0,00" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                    </div>
+                    <div>
+                        <label class="block uppercase font-bold text-slate-400 mb-1">Qtd Parcelas</label>
+                        <select id="man-qtd" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                            <option value="1">1 Parcela</option>
+                            <option value="2">2 Parcelas</option>
+                            <option value="3" selected>3 Parcelas</option>
+                            <option value="6">6 Parcelas</option>
+                            <option value="12">12 Parcelas</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block uppercase font-bold text-slate-400 mb-1">Endereço</label>
+                    <input type="text" id="man-endereco" required placeholder="Rua, Número, Bairro - Cidade/UF" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white">
+                </div>
+                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl transition mt-3 text-sm">
+                    Salvar e Gerar Carnê
+                </button>
+            </form>
+        </div>
+    </div>
+
     <!-- SCRIPT DE CONTROLE -->
     <script>
         function switchTab(tabId) {
@@ -263,7 +319,7 @@
                 valor: valorTotal,
                 qtd_parcelas: qtd,
                 endereco: document.getElementById('endereco').value,
-                renda: parseFloat(document.getElementById('renda').value),
+                renda: parseFloat(document.getElementById('renda').value || 0),
                 status: 'Análise',
                 parcelas: gerarListaParcelas(valorTotal, qtd)
             };
@@ -283,6 +339,50 @@
             alert(`Solicitação enviada com sucesso! Seu protocolo é: ${dados.protocolo}`);
             document.getElementById('form-proposta').reset();
             switchTab('acompanhar');
+        }
+
+        // Funções do Modal de Cadastro Manual
+        function abrirModalCadastroManual() {
+            document.getElementById('modal-cadastro-manual').classList.remove('hidden');
+        }
+
+        function fecharModalCadastroManual() {
+            document.getElementById('modal-cadastro-manual').classList.add('hidden');
+        }
+
+        async function salvarClienteManual(e) {
+            e.preventDefault();
+            let valorTotal = parseFloat(document.getElementById('man-valor').value);
+            let qtd = parseInt(document.getElementById('man-qtd').value);
+
+            const dados = {
+                protocolo: gerarProtocolo(),
+                nome: document.getElementById('man-nome').value,
+                cpf: document.getElementById('man-cpf').value,
+                whatsapp: document.getElementById('man-whatsapp').value,
+                valor: valorTotal,
+                qtd_parcelas: qtd,
+                endereco: document.getElementById('man-endereco').value,
+                renda: 0,
+                status: 'Aprovado', // Já entra aprovado por padrão no manual
+                parcelas: gerarListaParcelas(valorTotal, qtd)
+            };
+
+            if (supabaseClient) {
+                const { error } = await supabaseClient.from('propostas').insert([dados]);
+                if (error) {
+                    alert('Erro ao salvar no banco: ' + error.message);
+                    return;
+                }
+            } else {
+                let propostas = JSON.parse(localStorage.getItem('propostas') || '[]');
+                propostas.push(dados);
+                localStorage.setItem('propostas', JSON.stringify(propostas));
+            }
+
+            alert(`Cliente cadastrado com sucesso! Protocolo: ${dados.protocolo}`);
+            fecharModalCadastroManual();
+            carregarPainelAdmin();
         }
 
         async function consultarProposta() {
@@ -350,7 +450,7 @@
 
             const listaDiv = document.getElementById('lista-admin');
             if (propostas.length === 0) {
-                listaDiv.innerHTML = `<div class="bg-slate-800 p-6 rounded-2xl text-center text-slate-400">Nenhuma proposta cadastrada.</div>`;
+                listaDiv.innerHTML = `<div class="bg-slate-800 p-6 rounded-2xl text-center text-slate-400">Nenhuma proposta cadastrada no sistema. Clique no botão <strong>"Novo Cliente Manual"</strong> acima para incluir o primeiro.</div>`;
                 return;
             }
 
