@@ -112,7 +112,7 @@
             let nomeBeneficiario = 'Distribuidora Flash Point';
 
             if (supabaseClient) {
-                const { data } = await supabaseClient.from('configuracoes').select('*').single();
+                const { data } = await supabaseClient.from('configuracoes').select('*').eq('id', 1).maybeSingle();
                 if (data) {
                     porcentagem = parseFloat(data.porcentagem_entrada) || 10;
                     chavePix = data.chave_pix || chavePix;
@@ -138,13 +138,13 @@
             };
 
             if (!supabaseClient) {
-                alert('Erro crítico: Banco de dados não conectado para produção.');
+                alert('Erro crítico: Banco de dados não conectado.');
                 return;
             }
 
             const { error } = await supabaseClient.from('propostas').insert([novaProposta]);
             if (error) {
-                alert('Erro ao enviar proposta para o servidor. Tente novamente.');
+                alert('Erro ao enviar proposta para o servidor: ' + error.message);
                 return;
             }
 
@@ -257,12 +257,11 @@
         async function carregarPainelAdminCompleto() {
             if (!adminLogado || !supabaseClient) return;
 
-            const { data: configData } = await supabaseClient.from('configuracoes').select('*').single();
-            if (configData) {
-                document.getElementById('conf-porcentagem').value = configData.porcentagem_entrada || 10;
-                document.getElementById('conf-chave').value = configData.chave_pix || '';
-                document.getElementById('conf-beneficiario').value = configData.nome_beneficiario || '';
-            }
+            const { data: configData } = await supabaseClient.from('configuracoes').select('*').eq('id', 1).maybeSingle();
+            
+            document.getElementById('conf-porcentagem').value = configData ? (configData.porcentagem_entrada ?? 10) : 10;
+            document.getElementById('conf-chave').value = configData ? (configData.chave_pix ?? 'financeiro@flashpoint.com') : 'financeiro@flashpoint.com';
+            document.getElementById('conf-beneficiario').value = configData ? (configData.nome_beneficiario ?? 'Distribuidora Flash Point') : 'Distribuidora Flash Point';
 
             const lista = document.getElementById('lista-admin');
             lista.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-slate-500 text-sm border border-slate-200">Sincronizando propostas com o servidor...</div>`;
@@ -316,15 +315,15 @@
                         </div>
                         <div>
                             <span class="block text-[10px] font-bold uppercase text-slate-400">Validar Pagamento</span>
-                            <button onclick="alternarEntradaPaga('${cliente.id}', ${!cliente.entrada_paga})" class="mt-1 px-3 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition ${cliente.entrada_paga ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}">
+                            <button onclick="alternarEntradaPaga('${cliente.id}', ${!cliente.entrada_paga})" class="mt-1 px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition shadow-sm ${cliente.entrada_paga ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}">
                                 ${cliente.entrada_paga ? 'Marcar Pendente' : 'Confirmar Entrada'}
                             </button>
                         </div>
                         <div>
                             <span class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Ações de Status</span>
-                            <div class="flex justify-center gap-1 flex-wrap">
-                                <button onclick="mudarStatus('${cliente.id}', 'aprovado')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Aprovar</button>
-                                <button onclick="mudarStatus('${cliente.id}', 'cancelado')" class="bg-rose-600 hover:bg-rose-700 text-white px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Reprovar</button>
+                            <div class="flex justify-center gap-1.5 flex-wrap">
+                                <button onclick="mudarStatus('${cliente.id}', 'aprovado')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer shadow-sm">Aprovar</button>
+                                <button onclick="mudarStatus('${cliente.id}', 'cancelado')" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer shadow-sm">Reprovar</button>
                             </div>
                         </div>
                     </div>
@@ -349,11 +348,11 @@
             });
 
             if (error) {
-                alert('Erro ao salvar configurações no servidor.');
+                alert('Erro ao salvar configurações no servidor: ' + error.message);
                 return;
             }
 
-            alert('Configurações de produção atualizadas com sucesso!');
+            alert('Configurações atualizadas com sucesso!');
             carregarPainelAdminCompleto();
         }
 
