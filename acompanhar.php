@@ -1,9 +1,9 @@
 <?php
-// Aqui você pode puxar os dados reais do seu banco de dados ou sessão, se desejar.
-// Exemplo: $id_pedido = $_GET['pedido'] ?? 'PIX-984210';
 $id_pedido = "PIX-984210";
 $data_pedido = "29/07/2026";
 $valor_parcela = "R$ 158,50";
+$whatsapp_numero = "5511973294235";
+$whatsapp_formatado = "(11) 97329-4235";
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -65,7 +65,6 @@ $valor_parcela = "R$ 158,50";
             border: 1px solid var(--border-color);
         }
 
-        /* Banner Pix Parcelado na Hora */
         .badge-instant {
             background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);
             border: 1px solid #A7F3D0;
@@ -86,7 +85,6 @@ $valor_parcela = "R$ 158,50";
             flex-shrink: 0;
         }
 
-        /* Status do Pedido */
         .status-box {
             display: flex;
             justify-content: space-between;
@@ -112,7 +110,6 @@ $valor_parcela = "R$ 158,50";
             font-size: 0.85rem;
         }
 
-        /* Seção PIX */
         .pix-container {
             display: grid;
             grid-template-columns: 200px 1fr;
@@ -184,7 +181,6 @@ $valor_parcela = "R$ 158,50";
             background: #F8FAFC;
         }
 
-        /* Tabela de Parcelas */
         .section-title {
             font-size: 1.1rem;
             margin-bottom: 16px;
@@ -212,7 +208,6 @@ $valor_parcela = "R$ 158,50";
             background: #F8FAFC;
         }
 
-        /* Ações e Botões Inferiores */
         .actions-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -231,6 +226,17 @@ $valor_parcela = "R$ 158,50";
             align-items: center;
             justify-content: space-between;
         }
+
+        .info-fabrica {
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            padding: 12px 16px;
+            border-radius: 8px;
+            color: #1E40AF;
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
     </style>
 </head>
 <body>
@@ -245,8 +251,13 @@ $valor_parcela = "R$ 158,50";
     <div class="badge-instant">
         <svg viewBox="0 0 24 24"><path d="M13,2L3,14H12L11,22L21,10H12L13,2Z"/></svg>
         <div>
-            <span>PIX Parcelado na Hora:</span> Seu crédito foi aprovado e o valor será liberado imediatamente após a confirmação do pagamento da 1ª parcela.
+            <span>PIX Parcelado na Hora:</span> Seu crédito foi aprovado e o pedido será enviado diretamente da fábrica após a confirmação da 1ª parcela.
         </div>
+    </div>
+
+    <!-- Informação de Compra 100% Online / Fábrica -->
+    <div class="info-fabrica">
+        📦 <strong>Atendimento 100% Digital:</strong> Não trabalhamos com lojas físicas ou parceiros intermediários. Sua compra é feita diretamente da fábrica com total segurança. Acompanhe também pelo nosso <strong>Catálogo Digital</strong>, <strong>Facebook</strong> e <strong>Instagram</strong>.
     </div>
 
     <!-- Status e Pagamento Pix -->
@@ -314,9 +325,9 @@ $valor_parcela = "R$ 158,50";
         </div>
     </div>
 
-    <!-- Parecer e Contrato -->
+    <!-- Parecer, Contrato e Suporte WhatsApp -->
     <div class="card">
-        <div class="section-title"><span>Documentação e Análise</span></div>
+        <div class="section-title"><span>Documentação e Canais Oficiais</span></div>
         <div class="parecer-box" style="margin-bottom: 16px;">
             <span>✨ <strong>Parecer da Análise:</strong> Crédito pré-aprovado com sucesso.</span>
             <span style="font-weight: 600;">Aprovado</span>
@@ -325,6 +336,9 @@ $valor_parcela = "R$ 158,50";
             <button class="btn btn-outline" onclick="alert('Baixando contrato em PDF...')">
                 📄 Baixar Contrato Assinado
             </button>
+            <a href="https://wa.me/<?php echo $whatsapp_numero; ?>?text=Olá,%20gostaria%20de%20tirar%20dúvidas%20sobre%20meu%20pedido%20<?php echo $id_pedido; ?>" target="_blank" class="btn" style="background: #25D366; text-decoration: none; justify-content: center;">
+                💬 Suporte WhatsApp (<?php echo $whatsapp_formatado; ?>)
+            </a>
         </div>
     </div>
 </div>
