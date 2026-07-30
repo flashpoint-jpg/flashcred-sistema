@@ -159,6 +159,47 @@
             consultarProposta();
         }
 
+        async function gerarPixViaAPI(clienteId) {
+            const cliente = listaClientes.find(c => c.id === clienteId);
+            if (!cliente) return;
+
+            try {
+                if (!supabaseClient) {
+                    alert('Supabase não configurado corretamente.');
+                    return;
+                }
+
+                const { data, error } = await supabaseClient.functions.invoke('rapid-action', {
+                    body: {
+                        transaction_amount: cliente.valorEntrada,
+                        description: `Entrada Pix Parcelado em ${cliente.parcelas}x - Protocolo ${cliente.protocolo}`,
+                        payer_email: "cliente@flashpoint.com",
+                        payer_first_name: cliente.nome.split(" ")[0],
+                        installments: cliente.parcelas
+                    }
+                });
+
+                if (error) {
+                    throw new Error(error.message || 'Erro na função do Supabase');
+                }
+
+                if (data && data.point_of_interaction) {
+                    cliente.pixCopiaECola = data.point_of_interaction.transaction_data.qr_code;
+                    cliente.qrCodeBase64 = data.point_of_interaction.transaction_data.qr_code_base64;
+                    cliente.status = 'aprovado';
+                    salvarDadosLocal();
+                    carregarPainelAdmin();
+                    alert(`Proposta aprovada e Pix gerado com sucesso em ${cliente.parcelas}x via Mercado Pago!`);
+                } else {
+                    console.error("Retorno da API:", data);
+                    alert('Erro ao gerar Pix: Verifique os dados no console.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Falha na comunicação com a API de pagamento: ' + err.message);
+            }
+        }
+
         function consultarProposta() {
             const busca = document.getElementById('busca-cpf').value.trim();
             const resultado = document.getElementById('resultado-busca');
@@ -253,12 +294,20 @@
             }
 
             listaClientes.forEach(cliente => {
+                if (cliente.valorEntrada === undefined) cliente.valorEntrada = (cliente.limite || 1000) * 0.10;
+                if (cliente.porcentagemEntrada === undefined) cliente.porcentagemEntrada = 10;
+                if (cliente.parcelas === undefined) cliente.parcelas = 1;
+
                 let badgeStatusHtml = '<span class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full">🟡 Aguardando</span>';
                 if (cliente.status === 'aprovado') {
                     badgeStatusHtml = '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">🟢 Aprovado</span>';
                 } else if (cliente.status === 'cancelado') {
                     badgeStatusHtml = '<span class="bg-rose-100 text-rose-800 text-xs font-bold px-3 py-1 rounded-full">🔴 Reprovado</span>';
                 }
+
+                let badgeEntradaHtml = cliente.entradaPaga ? 
+                    '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">🟢 Entrada Paga</span>' : 
+                    '<span class="bg-amber-100 text-amber-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">🟡 Entrada Pendente</span>';
 
                 const card = document.createElement('div');
                 card.className = "bg-white border border-slate-200 p-6 rounded-3xl shadow-sm space-y-4";
@@ -272,12 +321,28 @@
                             </div>
                             <p class="text-xs text-slate-500">CPF: <strong>${cliente.cpf}</strong> | WhatsApp: <strong>${cliente.whatsapp}</strong></p>
                         </div>
+                        <div>${badgeEntradaHtml}</div>
                     </div>
-                    <div class="flex justify-between items-center text-xs">
-                        <span class="font-bold text-slate-800">Valor Limite: R$ ${cliente.limite.toFixed(2)}</span>
-                        <div class="flex gap-2">
-                            <button onclick="mudarStatus(${cliente.id}, 'aprovado')" class="bg-emerald-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-emerald-700 cursor-pointer">Aprovar</button>
-                            <button onclick="mudarStatus(${cliente.id}, 'cancelado')" class="bg-rose-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-rose-700 cursor-pointer">Reprovar</button>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-center">
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Valor Total</span>
+                            <span class="text-xs sm:text-sm font-black text-slate-900">R$ ${(cliente.limite || 0).toFixed(2)}</span>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Entrada (10%)</span>
+                            <span class="text-xs sm:text-sm font-black text-emerald-600">R$ ${(cliente.valorEntrada || 0).toFixed(2)}</span>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Parcelas</span>
+                            <span class="text-xs sm:text-sm font-bold text-slate-700">${cliente.parcelas || 1}x</span>
+                        </div>
+                        <div>
+                            <span class="block text-[10px] font-bold uppercase text-slate-400">Ações Admin</span>
+                            <div class="flex justify-center gap-1 mt-1">
+                                <button onclick="mudarStatus(${cliente.id}, 'aprovado')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Aprovar</button>
+                                <button onclick="mudarStatus(${cliente.id}, 'cancelado')" class="bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer">Reprovar</button>
+                            </div>
                         </div>
                     </div>
                 `;
