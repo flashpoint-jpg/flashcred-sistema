@@ -6,6 +6,7 @@ const cors = require('cors');
 const app = express();
 app.use(express.json());
 app.use(cors());
+app.use(express.static(__dirname)); // <- ISSO FAZ O RENDER MOSTRAR O SEU INDEX.HTML NA RAIZ
 
 // --- CONFIGURAÇÃO DO SUPABASE ---
 const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co';
