@@ -12,7 +12,7 @@
         const CONFIG = {
             SUPABASE_URL: 'https://rgcclordmqmwuzrrfbd.supabase.co',
             SUPABASE_ANON_KEY: 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi',
-            CHAVE_PIX_RECEBIMENTO: 'sua-chave-pix-aqui@email.com'
+            CHAVE_PIX_RECEBIMENTO: '33552949852'
         };
 
         let supabaseClient = null;
@@ -26,6 +26,44 @@
 
         let listaClientes = [];
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
+
+        // Função auxiliar para gerar payload Pix EMV válido (compatível com Caixa, Nubank, Itaú, etc)
+        function gerarPayloadPix(chave, nomeRecebedor, cidadeRecebedor, valor) {
+            const normalizar = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+            nomeRecebedor = normalizar(nomeRecebedor || "FLASH POINT").substring(0, 25);
+            cidadeRecebedor = normalizar(cidadeRecebedor || "SAO PAULO").substring(0, 15);
+            
+            const formatarCampo = (id, valorCampo) => {
+                const tamanho = String(valorCampo.length).padStart(2, '0');
+                return `${id}${tamanho}${valorCampo}`;
+            };
+
+            let payloadGui = formatarCampo('00', 'br.gov.bcb.pix') + formatarCampo('01', chave);
+            let contaGui = formatarCampo('26', payloadGui);
+            let mcc = formatarCampo('52', '0000');
+            let moeda = formatarCampo('53', '986');
+            let valorStr = formatarCampo('54', Number(valor).toFixed(2));
+            let pais = formatarCampo('58', 'BR');
+            let nome = formatarCampo('59', nomeRecebedor);
+            let cidade = formatarCampo('60', cidadeRecebedor);
+            
+            let payloadSemCrc = '000201' + contaGui + mcc + moeda + valorStr + pais + nome + cidade + formatarCampo('62', formatarCampo('05', '***')) + '6304';
+            
+            let crc = 0xFFFF;
+            for (let i = 0; i < payloadSemCrc.length; i++) {
+                crc ^= payloadSemCrc.charCodeAt(i) << 8;
+                for (let j = 0; j < 8; j++) {
+                    if ((crc & 0x8000) !== 0) {
+                        crc = (crc << 1) ^ 0x1021;
+                    } else {
+                        crc = crc << 1;
+                    }
+                }
+                crc &= 0xFFFF;
+            }
+            let crcHex = crc.toString(16).toUpperCase().padStart(4, '0');
+            return payloadSemCrc + crcHex;
+        }
 
         async function carregarDadosDoBanco() {
             let dadosRemotos = [];
@@ -43,11 +81,9 @@
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const mapa = new Map();
             
-            // Prioriza dados remotos ou mescla unicamente por protocolo
             [...locais, ...dadosRemotos].forEach(item => {
                 const chave = item.protocolo || item.id;
                 if (chave) {
-                    // Se já existe, mantém o que estiver aprovado ou mais recente
                     if (mapa.has(chave)) {
                         const existente = mapa.get(chave);
                         if (item.status === 'aprovado' || item.entradaPaga) {
@@ -154,6 +190,7 @@
             const valor = parseFloat(document.getElementById('valor').value) || 1000;
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
             const valorEntradaCalc = valor * 0.10;
+            const pixGerado = gerarPayloadPix(CONFIG.CHAVE_PIX_RECEBIMENTO, 'DISTRIBUIDORA FLASH POINT', 'SAO PAULO', valorEntradaCalc);
 
             const novaProposta = {
                 protocolo: protocolo,
@@ -166,12 +203,12 @@
                 valorEntrada: valorEntradaCalc,
                 porcentagemEntrada: 10,
                 parcelas: 12,
-                periodicidade: '15',
+                periodicidade: '15', // Padrão inicial definido de 15 em 15 dias (só aparece se aprovado)
                 jurosParcelamento: 0,
                 descontoAntecipado: 0,
                 status: 'aguardando',
                 entradaPaga: false,
-                pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}5204000053039865802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
+                pixCopiaECola: pixGerado
             };
 
             if (supabaseClient) {
@@ -218,29 +255,6 @@
             });
         }
 
-        function atualizarCalculoCliente(protocolo) {
-            const cliente = listaClientes.find(c => c.protocolo === protocolo);
-            if (!cliente) return;
-
-            const selectParcelas = document.getElementById(`cliente-select-parcelas-${protocolo}`);
-            if (selectParcelas) {
-                cliente.parcelas = parseInt(selectParcelas.value) || 12;
-            }
-
-            const valorRestante = (cliente.limite || 1000) - (cliente.valorEntrada || 0);
-            const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
-            const valorPorParcela = cliente.parcelas > 0 ? (valorComJuros / cliente.parcelas) : 0;
-            const labelPeriodo = cliente.periodicidade === '7' ? 'semanais' : 'quinzenais';
-
-            const elResumo = document.getElementById(`cliente-resumo-parcelamento-${protocolo}`);
-            if (elResumo) {
-                elResumo.innerHTML = `
-                    <p class="text-xs text-emerald-700 font-bold">Entrada Pix: R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</p>
-                    <p class="text-xs text-slate-800 font-semibold">+ ${cliente.parcelas} parcelas ${labelPeriodo} de <strong class="text-blue-950 text-sm">R$ ${valorPorParcela.toFixed(2)}</strong></p>
-                `;
-            }
-        }
-
         async function consultarProposta() {
             const buscaInput = document.getElementById('busca-cpf').value.trim();
             const resultado = document.getElementById('resultado-busca');
@@ -281,15 +295,11 @@
             const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cliente.pixCopiaECola || 'Pix Flash Point')}`;
             
             const parcelasAtuais = cliente.parcelas || 12;
+            const periodicidadeAtual = cliente.periodicidade || '15';
             const valorRestante = (cliente.limite || 1000) - (cliente.valorEntrada || 0);
             const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
             const valorPorParcela = parcelasAtuais > 0 ? (valorComJuros / parcelasAtuais) : 0;
-            const labelPeriodo = cliente.periodicidade === '7' ? 'semanais' : 'quinzenais';
-
-            let optionsHtml = '';
-            for (let i = 4; i <= 48; i++) {
-                optionsHtml += `<option value="${i}" ${i === parcelasAtuais ? 'selected' : ''}>${i}x ${labelPeriodo}</option>`;
-            }
+            const labelPeriodo = periodicidadeAtual === '7' ? 'semanais (a cada 7 dias)' : 'quinzenais (a cada 15 dias)';
 
             resultado.innerHTML = `
                 <div class="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-left shadow-sm">
@@ -299,22 +309,17 @@
                     <p class="text-xs text-slate-700">Status: ${badgeStatus}</p>
                     <p class="text-xs text-slate-700">Confirmação de Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}">${cliente.entradaPaga ? '🟢 Confirmada' : '🟡 Pendente de Pagamento'}</strong></p>
                     <p class="text-xs text-slate-700">Valor Total do Crediário: <strong class="text-slate-900 font-bold">R$ ${(cliente.limite || 1000).toFixed(2)}</strong></p>
-                    <p class="text-xs text-slate-700">Periodicidade das Parcelas: <strong class="text-blue-950 font-bold">${cliente.periodicidade === '7' ? 'A cada 7 dias (Semanal)' : 'A cada 15 dias (Quinzenal)'}</strong></p>
                     
                     ${cliente.status === 'aprovado' ? `
-                    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3 shadow-inner">
-                        <span class="block text-xs font-bold text-blue-950">Escolha a quantidade de parcelas desejada:</span>
-                        <div class="flex items-center gap-3">
-                            <select id="cliente-select-parcelas-${cliente.protocolo}" onchange="atualizarCalculoCliente('${cliente.protocolo}')" class="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 w-full">
-                                ${optionsHtml}
-                            </select>
-                        </div>
-                        <div id="cliente-resumo-parcelamento-${cliente.protocolo}" class="space-y-1 pt-1">
-                            <p class="text-xs text-emerald-700 font-bold">Entrada Pix: R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</p>
-                            <p class="text-xs text-slate-800 font-semibold">+ ${parcelasAtuais} parcelas ${labelPeriodo} de <strong class="text-blue-950 text-sm">R$ ${valorPorParcela.toFixed(2)}</strong></p>
-                        </div>
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2 shadow-inner">
+                        <p class="text-xs text-emerald-700 font-bold">Entrada Pix: R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</p>
+                        <p class="text-xs text-slate-800 font-semibold">Plano Autorizado: <strong class="text-blue-950 text-sm">${parcelasAtuais}x ${labelPeriodo} de R$ ${valorPorParcela.toFixed(2)}</strong></p>
                     </div>
-                    ` : ''}
+                    ` : `
+                    <div class="bg-amber-50/60 p-3 rounded-xl border border-amber-200 text-amber-900 text-xs font-medium">
+                        ⏳ O plano de parcelamento e periodicidade detalhados aparecerão aqui assim que sua proposta for aprovada pela administração.
+                    </div>
+                    `}
 
                     <div class="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                         <h5 class="font-bold text-blue-950 text-xs uppercase flex items-center gap-1.5"><i class="fa-brands fa-pix text-emerald-600"></i> Pagamento Seguro via Pix</h5>
@@ -341,9 +346,8 @@
             }
 
             cliente.status = 'aprovado';
-            cliente.pixCopiaECola = `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}5204000053039865802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
+            cliente.pixCopiaECola = gerarPayloadPix(CONFIG.CHAVE_PIX_RECEBIMENTO, 'DISTRIBUIDORA FLASH POINT', 'SAO PAULO', cliente.valorEntrada);
 
-            // Salva no LocalStorage garantindo imediata visualização pelo cliente
             let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
             if (idx !== -1) {
@@ -373,7 +377,7 @@
 
             const totalComJuros = (cliente.limite - cliente.valorEntrada) * (1 + ((cliente.jurosParcelamento || 0) / 100));
             const vParc = cliente.parcelas > 0 ? (totalComJuros / cliente.parcelas) : 0;
-            const labelPeriodo = cliente.periodicidade === '7' ? 'a cada 7 dias (semanais)' : 'a cada 15 dias (quinzenais)';
+            const labelPeriodo = (cliente.periodicidade || '15') === '7' ? 'a cada 7 dias (semanais)' : 'a cada 15 dias (quinzenais)';
 
             const texto = `Prezado(a) *${cliente.nome}*, 🟢 Informamos que sua proposta de crediário no *FlashCred (Distribuidora Flash Point)* foi *APROVADA*!
 
@@ -421,7 +425,8 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
             cliente.periodicidade = document.getElementById(`edit-periodicidade-${protocolo}`).value || '15';
             cliente.jurosParcelamento = parseFloat(document.getElementById(`edit-juros-${protocolo}`).value) || 0;
             cliente.descontoAntecipado = parseFloat(document.getElementById(`edit-desc-${protocolo}`).value) || 0;
-            cliente.pixCopiaECola = document.getElementById(`edit-copiacola-${protocolo}`).value || '';
+            
+            cliente.pixCopiaECola = gerarPayloadPix(CONFIG.CHAVE_PIX_RECEBIMENTO, 'DISTRIBUIDORA FLASH POINT', 'SAO PAULO', cliente.valorEntrada);
 
             let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
@@ -447,7 +452,7 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
 
             await carregarDadosDoBanco();
             carregarPainelAdmin();
-            alert('Proposta salva com sucesso!');
+            alert('Proposta e periodicidade autorizadas com sucesso!');
         }
 
         async function excluirProposta(protocolo) {
@@ -565,7 +570,7 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
                         </div>
                         <div class="space-y-1.5">
                             <p><strong>Endereço:</strong> <span class="text-slate-800">${cliente.endereco || 'Não informado'}</span></p>
-                            <p><strong>Formato:</strong> <span class="text-blue-900 font-bold">${periodicidade === '7' ? '7 em 7 dias (Semanal)' : '15 em 15 dias (Quinzenal)'}</span></p>
+                            <p><strong>Periodicidade Autorizada:</strong> <span class="text-blue-900 font-bold">${periodicidade === '7' ? '7 em 7 dias (Semanal)' : '15 em 15 dias (Quinzenal)'}</span></p>
                             <p><strong>Plano Atual:</strong> <span id="rt-parcelas-topo-${cardId}" class="text-blue-900 font-bold">${parcelas}x de R$ ${vParc.toFixed(2)}</span></p>
                         </div>
                     </div>
