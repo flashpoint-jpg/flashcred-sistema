@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distribuidora Flash Point - Sistema</title>
+    <title>FlashCred • Pix Parcelado - Distribuidora Flash Point</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -20,18 +20,21 @@
                 supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
             }
         } catch (e) {
-            console.warn('Supabase local/offline fallback ativado.');
+            console.warn('Supabase offline fallback ativado.');
         }
 
         let listaClientes = [];
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
         let intervaloAutoRefresh = null;
 
-        let listaLancamentos = JSON.parse(localStorage.getItem('flash_simples_lancamentos')) || [
-            { id: 1, desc: 'Venda Entrada Pix', tipo: 'Entrada', valor: 1500.00 },
-            { id: 2, desc: 'Conta de Energia', tipo: 'Saída', valor: 350.00 },
-            { id: 3, desc: 'Parcela 1 - Cliente', tipo: 'A Receber', valor: 250.00 }
-        ];
+        // Função utilitária para copiar texto para a área de transferência
+        function copiarTexto(texto, nomeCampo) {
+            navigator.clipboard.writeText(texto).then(() => {
+                alert(`${nomeCampo} copiado com sucesso!`);
+            }).catch(err => {
+                console.error('Erro ao copiar: ', err);
+            });
+        }
 
         async function carregarDadosDoBanco() {
             let dadosRemotos = [];
@@ -55,7 +58,6 @@
         window.addEventListener('DOMContentLoaded', async () => {
             await carregarDadosDoBanco();
             
-            // Mantém a aba correta mesmo após dar F5 (evita sumir do admin)
             const abaSalva = localStorage.getItem('flash_aba_ativa');
             if (abaSalva) {
                 if (abaSalva === 'painel' && !adminLogado) {
@@ -69,7 +71,7 @@
 
             if (adminLogado) {
                 iniciarAutoRefreshAdmin();
-                atualizarTelaFinanceira();
+                atualizarCaixaAutomatico();
             }
         });
 
@@ -141,75 +143,49 @@
             switchTab('solicitar');
         }
 
-        // --- SISTEMA FINANCEIRO DENTRO DO ADMIN ---
-        function atualizarTelaFinanceira() {
+        // --- CAIXA FINANCEIRO AUTOMÁTICO ---
+        function atualizarCaixaAutomatico() {
             const corpo = document.getElementById('tabela-financeiro-corpo');
             if (!corpo) return;
             corpo.innerHTML = '';
 
             let totalEntradas = 0;
-            let totalSaidas = 0;
             let totalReceber = 0;
-            let qtdParcelas = 0;
+            let qtdAprovados = 0;
 
-            if (listaLancamentos.length === 0) {
-                corpo.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-slate-400 text-xs">Nenhum lançamento.</td></tr>`;
-            }
+            listaClientes.forEach(cliente => {
+                if (cliente.status === 'aprovado') {
+                    const valorPedido = cliente.limite || 1000;
+                    // Considera entrada automática de 20% do valor do móvel aprovado (ou ajuste conforme sua regra)
+                    const valorEntrada = valorPedido * 0.20; 
+                    totalEntradas += valorEntrada;
+                    qtdAprovados++;
 
-            listaLancamentos.forEach((item) => {
-                if (item.tipo === 'Entrada') totalEntradas += item.valor;
-                if (item.tipo === 'Saída') totalSaidas += item.valor;
-                if (item.tipo === 'A Receber') {
-                    totalReceber += item.valor;
-                    qtdParcelas++;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="p-2.5 text-slate-900">Pix Entrada - ${cliente.nome} (${cliente.protocolo})</td>
+                        <td class="p-2.5"><span class="px-2 py-0.5 rounded text-xs bg-emerald-100 text-emerald-800 font-bold">Entrada Automática</span></td>
+                        <td class="p-2.5 text-right font-bold text-emerald-700">R$ ${valorEntrada.toFixed(2)}</td>
+                    `;
+                    corpo.appendChild(tr);
+                } else {
+                    totalReceber += (cliente.limite || 1000);
                 }
-
-                let badge = 'bg-slate-100 text-slate-700';
-                if (item.tipo === 'Entrada') badge = 'bg-emerald-100 text-emerald-800 font-bold';
-                if (item.tipo === 'Saída') badge = 'bg-rose-100 text-rose-800 font-bold';
-                if (item.tipo === 'A Receber') badge = 'bg-amber-100 text-amber-800 font-bold';
-
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="p-2.5 text-slate-900">${item.desc}</td>
-                    <td class="p-2.5"><span class="px-2 py-0.5 rounded text-xs ${badge}">${item.tipo}</span></td>
-                    <td class="p-2.5 text-right font-bold">R$ ${item.valor.toFixed(2)}</td>
-                    <td class="p-2.5 text-center"><button onclick="removerLancamento(${item.id})" class="text-rose-500 hover:text-rose-700"><i class="fa-solid fa-trash"></i></button></td>
-                `;
-                corpo.appendChild(tr);
             });
 
-            const saldo = totalEntradas - totalSaidas;
-            if (document.getElementById('res-entradas')) document.getElementById('res-entradas').innerText = `R$ ${totalEntradas.toFixed(2)}`;
-            if (document.getElementById('res-saidas')) document.getElementById('res-saidas').innerText = `R$ ${totalSaidas.toFixed(2)}`;
-            if (document.getElementById('res-receber')) document.getElementById('res-receber').innerText = `R$ ${totalReceber.toFixed(2)}`;
-            if (document.getElementById('res-saldo')) {
-                document.getElementById('res-saldo').innerText = `R$ ${saldo.toFixed(2)}`;
-                document.getElementById('res-saldo').className = saldo >= 0 ? "text-lg font-bold text-emerald-600" : "text-lg font-bold text-rose-600";
+            if (qtdAprovados === 0) {
+                corpo.innerHTML = `<tr><td colspan="3" class="p-3 text-center text-slate-400 text-xs">Nenhum pagamento registrado automaticamente ainda (Aprove solicitações para gerar entradas).</td></tr>`;
             }
 
-            localStorage.setItem('flash_simples_lancamentos', JSON.stringify(listaLancamentos));
+            if (document.getElementById('res-entradas')) document.getElementById('res-entradas').innerText = `R$ ${totalEntradas.toFixed(2)}`;
+            if (document.getElementById('res-saidas')) document.getElementById('res-saidas').innerText = `R$ 0,00`;
+            if (document.getElementById('res-receber')) document.getElementById('res-receber').innerText = `R$ ${totalReceber.toFixed(2)}`;
+            if (document.getElementById('res-saldo')) {
+                document.getElementById('res-saldo').innerText = `R$ ${totalEntradas.toFixed(2)}`;
+                document.getElementById('res-saldo').className = "text-lg font-bold text-emerald-600";
+            }
         }
 
-        function adicionarLancamentoSimples(event) {
-            event.preventDefault();
-            const desc = document.getElementById('fin-desc').value.trim();
-            const tipo = document.getElementById('fin-tipo').value;
-            const valor = parseFloat(document.getElementById('fin-valor').value);
-
-            if (!desc || isNaN(valor)) return;
-
-            listaLancamentos.unshift({ id: Date.now(), desc, tipo, valor });
-            document.getElementById('form-fin-lancamento').reset();
-            atualizarTelaFinanceira();
-        }
-
-        function removerLancamento(id) {
-            listaLancamentos = listaLancamentos.filter(item => item.id !== id);
-            atualizarTelaFinanceira();
-        }
-
-        // Funções Originais do Sistema
         async function consultarCEP(cep) {
             const cepLimpo = cep.replace(/\D/g, '');
             if (cepLimpo.length === 8) {
@@ -248,7 +224,7 @@
             localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
 
             await carregarDadosDoBanco();
-            alert('Solicitação enviada com sucesso! Seu protocolo é: ' + protocolo);
+            alert('Solicitação de Pix Parcelado enviada com sucesso! Seu protocolo é: ' + protocolo);
             document.getElementById('form-proposta').reset();
 
             switchTab('acompanhar');
@@ -274,7 +250,7 @@
                 <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-sm">
                     <p><strong>Protocolo:</strong> ${cliente.protocolo}</p>
                     <p><strong>Cliente:</strong> ${cliente.nome}</p>
-                    <p><strong>Limite Desejado:</strong> R$ ${(cliente.limite || 1000).toFixed(2)}</p>
+                    <p><strong>Valor Solicitado:</strong> R$ ${(cliente.limite || 1000).toFixed(2)}</p>
                     <p><strong>Status:</strong> <span class="px-2 py-1 rounded text-xs font-bold ${aprovado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${aprovado ? 'Aprovado' : 'Em Análise'}</span></p>
                 </div>
             `;
@@ -282,7 +258,7 @@
 
         function carregarPainelAdmin() {
             renderizarTabelaAdminSilencioso();
-            atualizarTelaFinanceira();
+            atualizarCaixaAutomatico();
         }
 
         function renderizarTabelaAdminSilencioso() {
@@ -302,18 +278,46 @@
                 const tr = document.createElement('tr');
                 tr.className = 'border-b border-slate-100 hover:bg-slate-50 text-sm';
                 tr.innerHTML = `
-                    <td class="p-3 font-bold text-blue-950">${cliente.protocolo || '-'}</td>
-                    <td class="p-3"><div>${cliente.nome || '-'}</div><div class="text-xs text-slate-500">${cliente.whatsapp || ''}</div></td>
-                    <td class="p-3">R$ ${(cliente.limite || 1000).toFixed(2)}</td>
+                    <td class="p-3 font-bold text-blue-950">
+                        <div class="flex items-center gap-1.5">
+                            <span>${cliente.protocolo || '-'}</span>
+                            <button onclick="copiarTexto('${cliente.protocolo || ''}', 'Protocolo')" title="Copiar Protocolo" class="text-slate-400 hover:text-blue-900 cursor-pointer"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                    </td>
+                    <td class="p-3">
+                        <div class="flex items-center gap-1.5 font-medium">
+                            <span>${cliente.nome || '-'}</span>
+                            <button onclick="copiarTexto('${cliente.nome || ''}', 'Nome')" title="Copiar Nome" class="text-slate-400 hover:text-blue-900 cursor-pointer"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                        <div class="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
+                            <span>WhatsApp: ${cliente.whatsapp || ''}</span>
+                            <button onclick="copiarTexto('${cliente.whatsapp || ''}', 'WhatsApp')" title="Copiar WhatsApp" class="text-slate-400 hover:text-blue-900 cursor-pointer"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                        <div class="text-xs text-slate-500 flex items-center gap-1.5">
+                            <span>CPF: ${cliente.cpf || ''}</span>
+                            <button onclick="copiarTexto('${cliente.cpf || ''}', 'CPF')" title="Copiar CPF" class="text-slate-400 hover:text-blue-900 cursor-pointer"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                        <div class="text-xs text-slate-500 flex items-center gap-1.5">
+                            <span class="truncate max-w-xs">End: ${cliente.endereco || ''}</span>
+                            <button onclick="copiarTexto('${cliente.endereco || ''}', 'Endereço')" title="Copiar Endereço" class="text-slate-400 hover:text-blue-900 cursor-pointer"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                    </td>
+                    <td class="p-3">
+                        <div class="flex items-center gap-1.5">
+                            <span>R$ ${(cliente.limite || 1000).toFixed(2)}</span>
+                            <button onclick="copiarTexto('${(cliente.limite || 1000).toFixed(2)}', 'Valor')" title="Copiar Valor" class="text-slate-400 hover:text-blue-900 cursor-pointer"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                    </td>
                     <td class="p-3 text-center">${badge}</td>
                     <td class="p-3 text-center">
-                        <button onclick="mudarStatusAdmin('${cliente.protocolo}', '${isAprovado ? 'aguardando' : 'aprovado'})" class="px-3 py-1 rounded text-xs font-bold ${isAprovado ? 'bg-amber-100 text-amber-800' : 'bg-emerald-600 text-white'} cursor-pointer">
+                        <button onclick="mudarStatusAdmin('${cliente.protocolo}', '${isAprovado ? 'aguardando' : 'aprovado'})" class="px-3 py-1.5 rounded text-xs font-bold ${isAprovado ? 'bg-amber-100 text-amber-800' : 'bg-emerald-600 text-white'} cursor-pointer shadow-sm">
                             ${isAprovado ? 'Reverter' : 'Aprovar'}
                         </button>
                     </td>
                 `;
                 corpoAdmin.appendChild(tr);
             });
+            atualizarCaixaAutomatico();
         }
 
         async function mudarStatusAdmin(protocolo, novoStatus) {
@@ -337,15 +341,15 @@
 </head>
 <body class="bg-slate-100 font-sans min-h-screen text-slate-800">
 
-    <!-- Navbar Original -->
+    <!-- Navbar -->
     <nav class="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center flex-wrap gap-2">
             <div class="flex items-center gap-2">
                 <i class="fa-solid fa-bolt text-blue-900 text-xl"></i>
-                <span class="font-bold text-blue-950 text-lg">Distribuidora Flash Point</span>
+                <span class="font-bold text-blue-950 text-lg">FlashCred • Pix Parcelado</span>
             </div>
             <div class="flex gap-2">
-                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer">Solicitar Crédito</button>
+                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer">Solicitação Pix Parcelado</button>
                 <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer">Acompanhar Pedido</button>
                 <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer">Painel Admin</button>
             </div>
@@ -354,43 +358,77 @@
 
     <main class="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
 
-        <!-- ABA 1: SOLICITAR -->
-        <div id="tab-solicitar" class="tab-content bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-            <div class="text-center space-y-1">
-                <h2 class="text-xl sm:text-2xl font-bold text-blue-950">Solicitação de Crédito / Crediário</h2>
-                <p class="text-xs sm:text-sm text-slate-500">Preencha seus dados para análise rápida</p>
+        <!-- ABA 1: SOLICITAÇÃO PIX PARCELADO -->
+        <div id="tab-solicitar" class="tab-content space-y-6">
+            
+            <!-- Caixa Informativo -->
+            <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                <div class="text-center space-y-1">
+                    <h2 class="text-xl sm:text-2xl font-bold text-blue-950">Distribuidora Flash Point</h2>
+                    <p class="text-xs sm:text-sm font-semibold text-emerald-600">FLASHCRED • PIX PARCELADO</p>
+                </div>
+
+                <div class="space-y-3 text-sm text-slate-700 bg-slate-50 p-4 sm:p-6 rounded-xl border border-slate-100">
+                    <div>
+                        <p class="font-bold text-blue-950 mb-1">📌 O que nós fazemos?</p>
+                        <p class="text-slate-600">Vendemos móveis novos direto da fábrica, 100% online e só pelo WhatsApp. Sem loja física, sem burocracia, sem precisar de cartão de crédito — e aprovamos inclusive quem está com nome sujo!</p>
+                    </div>
+
+                    <div>
+                        <p class="font-bold text-blue-950 mb-1">💰 Condições especiais:</p>
+                        <ul class="list-disc list-inside text-slate-600 space-y-1">
+                            <li>Entrada mínima que cabe no seu bolso</li>
+                            <li>Parcele em até 48 vezes no Pix</li>
+                            <li>Sem pegadinhas, sem taxas escondidas</li>
+                            <li>Atendimento e negociação direto com a gente pelo WhatsApp</li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <p class="font-bold text-blue-950 mb-1">📦 Compra segura:</p>
+                        <p class="text-slate-600">Você faz tudo pelo celular, combinamos as condições e nós garantimos a entrega do móvel na sua casa. A forma mais fácil de mobiliar seu lar sem sair de casa!</p>
+                    </div>
+                </div>
             </div>
-            <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Nome Completo</label>
-                    <input type="text" id="nome" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
+
+            <!-- Formulário de Solicitação -->
+            <div class="bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+                <div class="text-center space-y-1">
+                    <h3 class="text-lg sm:text-xl font-bold text-blue-950">Faça sua Solicitação de Pix Parcelado</h3>
+                    <p class="text-xs sm:text-sm text-slate-500">Preencha seus dados para análise rápida</p>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4">
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">CPF</label>
-                        <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Nome Completo</label>
+                        <input type="text" id="nome" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">CPF</label>
+                            <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">WhatsApp</label>
+                            <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">CEP</label>
+                            <input type="text" id="cep" onblur="consultarCEP(this.value)" required placeholder="00000-000" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-bold text-slate-700 mb-1">Endereço Completo</label>
+                            <input type="text" id="endereco" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
+                        </div>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">WhatsApp</label>
-                        <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
+                        <label class="block text-xs font-bold text-slate-700 mb-1">Valor do Pedido (R$)</label>
+                        <input type="number" id="valor" value="1000" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
                     </div>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">CEP</label>
-                        <input type="text" id="cep" onblur="consultarCEP(this.value)" required placeholder="00000-000" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
-                    </div>
-                    <div class="sm:col-span-2">
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Endereço Completo</label>
-                        <input type="text" id="endereco" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-700 mb-1">Valor Desejado (R$)</label>
-                    <input type="number" id="valor" value="1000" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
-                </div>
-                <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3 rounded-xl text-sm transition cursor-pointer">Enviar Solicitação</button>
-            </form>
+                    <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3 rounded-xl text-sm transition cursor-pointer">Enviar Solicitação de Pix Parcelado</button>
+                </form>
+            </div>
         </div>
 
         <!-- ABA 2: ACOMPANHAR -->
@@ -422,29 +460,29 @@
             </form>
         </div>
 
-        <!-- PAINEL ADMIN (Com Caixa e Financeiro Embutido) -->
+        <!-- PAINEL ADMIN (Com Caixa Automático Integrado) -->
         <div id="tab-painel" class="tab-content hidden space-y-6">
             <div class="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <div>
                     <h2 class="text-xl font-bold text-blue-950">Painel Administrativo</h2>
-                    <p class="text-xs text-slate-500">Gerenciamento de clientes e caixa em tempo real</p>
+                    <p class="text-xs text-slate-500">Gerenciamento de solicitações e caixa automático</p>
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer">Sair</button>
             </div>
 
-            <!-- Caixa & Financeiro dentro do Admin -->
+            <!-- Caixa & Financeiro Automático -->
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                 <div class="flex justify-between items-center flex-wrap gap-2">
-                    <h3 class="text-base font-bold text-blue-950"><i class="fa-solid fa-wallet text-emerald-600"></i> Caixa & Financeiro</h3>
+                    <h3 class="text-base font-bold text-blue-950"><i class="fa-solid fa-wallet text-emerald-600"></i> Caixa & Financeiro (Automático por Aprovação)</h3>
                     <div class="bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
-                        <span class="text-xs text-slate-500">Saldo em Caixa: </span>
+                        <span class="text-xs text-slate-500">Total em Entradas Pix: </span>
                         <span id="res-saldo" class="text-base font-bold text-emerald-600">R$ 0,00</span>
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <span class="text-xs text-slate-500 block">Entradas</span>
+                        <span class="text-xs text-slate-500 block">Entradas Confirmadas</span>
                         <span id="res-entradas" class="text-sm font-bold text-emerald-700">R$ 0,00</span>
                     </div>
                     <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -452,39 +490,28 @@
                         <span id="res-saidas" class="text-sm font-bold text-rose-700">R$ 0,00</span>
                     </div>
                     <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <span class="text-xs text-slate-500 block">A Receber (Parcelas)</span>
+                        <span class="text-xs text-slate-500 block">Valores em Análise</span>
                         <span id="res-receber" class="text-sm font-bold text-amber-700">R$ 0,00</span>
                     </div>
                 </div>
 
-                <form id="form-fin-lancamento" onsubmit="adicionarLancamentoSimples(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-2">
-                    <input type="text" id="fin-desc" placeholder="Descrição (Ex: Parcela 1)" required class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-900">
-                    <select id="fin-tipo" class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-900">
-                        <option value="Entrada">Entrada</option>
-                        <option value="Saída">Saída</option>
-                        <option value="A Receber">A Receber</option>
-                    </select>
-                    <input type="number" step="0.01" id="fin-valor" placeholder="Valor R$" required class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-900">
-                    <button type="submit" class="bg-blue-950 hover:bg-blue-900 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition cursor-pointer">Adicionar</button>
-                </form>
-
-                <div class="overflow-x-auto max-h-48 overflow-y-auto">
+                <div class="overflow-x-auto max-h-48 overflow-y-auto border border-slate-100 rounded-xl">
                     <table class="w-full text-left border-collapse">
                         <tbody id="tabela-financeiro-corpo" class="text-xs text-slate-700 divide-y divide-slate-100"></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- Tabela de Clientes -->
+            <!-- Tabela de Clientes com Botões de Copiar -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="p-4 border-b border-slate-200 font-bold text-sm text-blue-950">Solicitações de Clientes (Atualização Automática)</div>
+                <div class="p-4 border-b border-slate-200 font-bold text-sm text-blue-950">Solicitações de Pix Parcelado (Com Botões de Cópia)</div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-slate-50 text-xs text-slate-500 uppercase border-b border-slate-200">
                                 <th class="p-3">Protocolo</th>
-                                <th class="p-3">Cliente / WhatsApp</th>
-                                <th class="p-3">Limite</th>
+                                <th class="p-3">Cliente / Contatos</th>
+                                <th class="p-3">Valor</th>
                                 <th class="p-3 text-center">Status</th>
                                 <th class="p-3 text-center">Ações</th>
                             </tr>
