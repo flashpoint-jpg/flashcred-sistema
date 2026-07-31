@@ -12,7 +12,7 @@
         const CONFIG = {
             SUPABASE_URL: 'https://rgcclordmqmwuzrrfbd.supabase.co',
             SUPABASE_ANON_KEY: 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi',
-            MP_ACCESS_TOKEN: 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471'
+            CHAVE_PIX_RECEBIMENTO: 'sua-chave-pix-aqui@email.com'
         };
 
         let supabaseClient = null;
@@ -42,9 +42,21 @@
 
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const mapa = new Map();
+            
+            // Prioriza dados remotos ou mescla unicamente por protocolo
             [...locais, ...dadosRemotos].forEach(item => {
-                const chave = item.id || item.protocolo;
-                if (chave) mapa.set(chave, item);
+                const chave = item.protocolo || item.id;
+                if (chave) {
+                    // Se já existe, mantém o que estiver aprovado ou mais recente
+                    if (mapa.has(chave)) {
+                        const existente = mapa.get(chave);
+                        if (item.status === 'aprovado' || item.entradaPaga) {
+                            mapa.set(chave, item);
+                        }
+                    } else {
+                        mapa.set(chave, item);
+                    }
+                }
             });
 
             listaClientes = Array.from(mapa.values());
@@ -141,6 +153,7 @@
             event.preventDefault();
             const valor = parseFloat(document.getElementById('valor').value) || 1000;
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
+            const valorEntradaCalc = valor * 0.10;
 
             const novaProposta = {
                 protocolo: protocolo,
@@ -150,7 +163,7 @@
                 cep: document.getElementById('cep').value,
                 endereco: document.getElementById('endereco').value,
                 limite: valor,
-                valorEntrada: valor * 0.10,
+                valorEntrada: valorEntradaCalc,
                 porcentagemEntrada: 10,
                 parcelas: 12,
                 periodicidade: '15',
@@ -158,8 +171,7 @@
                 descontoAntecipado: 0,
                 status: 'aguardando',
                 entradaPaga: false,
-                pixCopiaECola: '',
-                qrCodeBase64: ''
+                pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}5204000053039865802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
             };
 
             if (supabaseClient) {
@@ -266,7 +278,7 @@
             }
 
             let badgeStatus = cliente.status === 'aprovado' ? '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
-            const qrImg = cliente.qrCodeBase64 ? `data:image/png;base64,${cliente.qrCodeBase64}` : `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cliente.pixCopiaECola || 'Pix Flash Point')}`;
+            const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cliente.pixCopiaECola || 'Pix Flash Point')}`;
             
             const parcelasAtuais = cliente.parcelas || 12;
             const valorRestante = (cliente.limite || 1000) - (cliente.valorEntrada || 0);
@@ -320,89 +332,43 @@
             `;
         }
 
-        async function gerarPixViaAPI(clienteId) {
-            const cliente = listaClientes.find(c => c.id == clienteId || c.protocolo === clienteId);
+        async function gerarPixViaAPI(protocolo) {
+            const cliente = listaClientes.find(c => c.protocolo === protocolo || c.id == protocolo);
             if (!cliente) return;
 
             if (cliente.valorEntrada === undefined) {
                 cliente.valorEntrada = (cliente.limite || 1000) * 0.10;
             }
 
-            const primeiroNome = cliente.nome ? cliente.nome.split(" ")[0] : "Cliente";
-            const sobrenome = cliente.nome && cliente.nome.split(" ").length > 1 ? cliente.nome.split(" ").slice(1).join(" ") : "FlashCred";
-            const cpfLimpo = cliente.cpf ? cliente.cpf.replace(/\D/g, '') : "00000000000";
+            cliente.status = 'aprovado';
+            cliente.pixCopiaECola = `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}5204000053039865802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
 
-            let gerouComSucesso = false;
+            // Salva no LocalStorage garantindo imediata visualização pelo cliente
+            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
+            if (idx !== -1) {
+                locais[idx] = cliente;
+            } else {
+                locais.unshift(cliente);
+            }
+            localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
 
-            try {
-                const response = await fetch('https://api.mercadopago.com/v1/payments', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${CONFIG.MP_ACCESS_TOKEN}`,
-                        'Content-Type': 'application/json',
-                        'X-Idempotency-Key': 'fp-' + Date.now()
-                    },
-                    body: JSON.stringify({
-                        transaction_amount: parseFloat(cliente.valorEntrada.toFixed(2)),
-                        description: `Entrada Crediario - Protocolo ${cliente.protocolo}`,
-                        payment_method_id: 'pix',
-                        payer: {
-                            email: `cliente_${cliente.protocolo.toLowerCase()}@flashpoint.com`,
-                            first_name: primeiroNome,
-                            last_name: sobrenome,
-                            identification: {
-                                type: 'CPF',
-                                number: cpfLimpo
-                            }
-                        }
-                    })
-                });
-
-                const data = await response.json();
-                if (response.ok && data.point_of_interaction) {
-                    cliente.pixCopiaECola = data.point_of_interaction.transaction_data.qr_code;
-                    cliente.qrCodeBase64 = data.point_of_interaction.transaction_data.qr_code_base64;
-                    gerouComSucesso = true;
-                } else {
-                    alert('Erro ao comunicar com o Mercado Pago: ' + (data.message || 'Verifique os dados.'));
-                    return;
-                }
-            } catch (e) {
-                alert('Erro de conexão com a API de pagamentos.');
-                return;
+            if (supabaseClient) {
+                try {
+                    await supabaseClient.from('clientes').update({ 
+                        pixCopiaECola: cliente.pixCopiaECola, 
+                        status: 'aprovado' 
+                    }).eq('protocolo', cliente.protocolo);
+                } catch (e) {}
             }
 
-            if (gerouComSucesso) {
-                cliente.status = 'aprovado';
-
-                if (supabaseClient) {
-                    try {
-                        await supabaseClient.from('clientes').update({ 
-                            pixCopiaECola: cliente.pixCopiaECola, 
-                            qrCodeBase64: cliente.qrCodeBase64 || '', 
-                            status: 'aprovado' 
-                        }).eq('protocolo', cliente.protocolo);
-                    } catch (e) {}
-                }
-
-                let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-                const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
-                if (idx !== -1) {
-                    locais[idx] = cliente;
-                    localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-                } else {
-                    locais.unshift(cliente);
-                    localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-                }
-
-                await carregarDadosDoBanco();
-                carregarPainelAdmin();
-                alert('Pix de produção gerado e proposta aprovada com sucesso!');
-            }
+            await carregarDadosDoBanco();
+            carregarPainelAdmin();
+            alert('Proposta aprovada com sucesso e Pix gerado para o cliente!');
         }
 
-        function enviarWhatsAppCliente(id) {
-            const cliente = listaClientes.find(c => c.id == id || c.protocolo === id);
+        function enviarWhatsAppCliente(protocolo) {
+            const cliente = listaClientes.find(c => c.protocolo === protocolo || c.id == protocolo);
             if (!cliente) return;
 
             const totalComJuros = (cliente.limite - cliente.valorEntrada) * (1 + ((cliente.jurosParcelamento || 0) / 100));
@@ -419,45 +385,52 @@
 🔑 *Pix Copia e Cola para a Entrada:*
 \`${cliente.pixCopiaECola || 'Aguardando código Pix'}\`
 
-Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor de Crédito.`;
+Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito.`;
 
             const fone = (cliente.whatsapp || '').replace(/\D/g, '');
             const url = `https://wa.me/55${fone}?text=${encodeURIComponent(texto)}`;
             window.open(url, '_blank');
         }
 
-        function calcularEmTempoReal(id) {
-            const limite = parseFloat(document.getElementById(`edit-limite-${id}`).value) || 0;
-            const porc = parseFloat(document.getElementById(`edit-porc-${id}`).value) || 0;
-            const parc = parseInt(document.getElementById(`edit-parc-${id}`).value) || 1;
-            const juros = parseFloat(document.getElementById(`edit-juros-${id}`).value) || 0;
-            const desc = parseFloat(document.getElementById(`edit-desc-${id}`).value) || 0;
+        function calcularEmTempoReal(protocolo) {
+            const limite = parseFloat(document.getElementById(`edit-limite-${protocolo}`).value) || 0;
+            const porc = parseFloat(document.getElementById(`edit-porc-${protocolo}`).value) || 0;
+            const parc = parseInt(document.getElementById(`edit-parc-${protocolo}`).value) || 1;
+            const juros = parseFloat(document.getElementById(`edit-juros-${protocolo}`).value) || 0;
+            const desc = parseFloat(document.getElementById(`edit-desc-${protocolo}`).value) || 0;
 
             const entradaCalc = (limite * porc) / 100;
             const saldo = (limite - entradaCalc) * (1 + (juros / 100));
             const vParc = parc > 0 ? (saldo / parc) : 0;
 
-            document.getElementById(`rt-total-${id}`).innerText = `R$ ${limite.toFixed(2)}`;
-            document.getElementById(`rt-entrada-${id}`).innerText = `R$ ${entradaCalc.toFixed(2)} (${porc}%)`;
-            document.getElementById(`rt-saldo-${id}`).innerText = `R$ ${saldo.toFixed(2)}`;
-            document.getElementById(`rt-desc-${id}`).innerText = `R$ ${desc.toFixed(2)}`;
-            document.getElementById(`rt-parcelas-topo-${id}`).innerText = `${parc}x de R$ ${vParc.toFixed(2)}`;
+            document.getElementById(`rt-total-${protocolo}`).innerText = `R$ ${limite.toFixed(2)}`;
+            document.getElementById(`rt-entrada-${protocolo}`).innerText = `R$ ${entradaCalc.toFixed(2)} (${porc}%)`;
+            document.getElementById(`rt-saldo-${protocolo}`).innerText = `R$ ${saldo.toFixed(2)}`;
+            document.getElementById(`rt-desc-${protocolo}`).innerText = `R$ ${desc.toFixed(2)}`;
+            document.getElementById(`rt-parcelas-topo-${protocolo}`).innerText = `${parc}x de R$ ${vParc.toFixed(2)}`;
         }
 
-        async function salvarEdicaoAdmin(id) {
-            const cliente = listaClientes.find(c => c.id == id || c.protocolo === id);
+        async function salvarEdicaoAdmin(protocolo) {
+            const cliente = listaClientes.find(c => c.protocolo === protocolo || c.id == protocolo);
             if (!cliente) return;
 
-            cliente.limite = parseFloat(document.getElementById(`edit-limite-${id}`).value) || cliente.limite;
-            cliente.porcentagemEntrada = parseFloat(document.getElementById(`edit-porc-${id}`).value) || cliente.porcentagemEntrada;
+            cliente.limite = parseFloat(document.getElementById(`edit-limite-${protocolo}`).value) || cliente.limite;
+            cliente.porcentagemEntrada = parseFloat(document.getElementById(`edit-porc-${protocolo}`).value) || cliente.porcentagemEntrada;
             cliente.valorEntrada = (cliente.limite * cliente.porcentagemEntrada) / 100;
-            cliente.parcelas = parseInt(document.getElementById(`edit-parc-${id}`).value) || cliente.parcelas;
-            cliente.periodicidade = document.getElementById(`edit-periodicidade-${id}`).value || '15';
-            cliente.jurosParcelamento = parseFloat(document.getElementById(`edit-juros-${id}`).value) || 0;
-            cliente.descontoAntecipado = parseFloat(document.getElementById(`edit-desc-${id}`).value) || 0;
-            cliente.pixCopiaECola = document.getElementById(`edit-copiacola-${id}`).value || '';
+            cliente.parcelas = parseInt(document.getElementById(`edit-parc-${protocolo}`).value) || cliente.parcelas;
+            cliente.periodicidade = document.getElementById(`edit-periodicidade-${protocolo}`).value || '15';
+            cliente.jurosParcelamento = parseFloat(document.getElementById(`edit-juros-${protocolo}`).value) || 0;
+            cliente.descontoAntecipado = parseFloat(document.getElementById(`edit-desc-${protocolo}`).value) || 0;
+            cliente.pixCopiaECola = document.getElementById(`edit-copiacola-${protocolo}`).value || '';
 
-            if (supabaseClient && cliente.id) {
+            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
+            if (idx !== -1) {
+                locais[idx] = cliente;
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+            }
+
+            if (supabaseClient) {
                 try {
                     await supabaseClient.from('clientes').update({
                         limite: cliente.limite,
@@ -472,20 +445,17 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                 } catch (e) {}
             }
 
-            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-            const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
-            if (idx !== -1) {
-                locais[idx] = cliente;
-                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-            }
-
             await carregarDadosDoBanco();
             carregarPainelAdmin();
             alert('Proposta salva com sucesso!');
         }
 
-        async function excluirProposta(id, protocolo) {
-            if (!confirm(`Tem certeza que deseja excluir permanentemente a proposta do protocolo ${protocolo}?`)) return;
+        async function excluirProposta(protocolo) {
+            if (!confirm(`Tem certeza que deseja excluir permanentemente a proposta ${protocolo}?`)) return;
+
+            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            locais = locais.filter(c => c.protocolo !== protocolo);
+            localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
 
             if (supabaseClient) {
                 try {
@@ -493,46 +463,46 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                 } catch (e) {}
             }
 
-            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-            locais = locais.filter(c => c.protocolo !== protocolo);
-            localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-
             await carregarDadosDoBanco();
             carregarPainelAdmin();
             alert('Proposta excluída com sucesso.');
         }
 
-        async function alterarStatusCliente(id, novoStatus) {
-            const cliente = listaClientes.find(c => c.id == id || c.protocolo === id);
+        async function alterarStatusCliente(protocolo, novoStatus) {
+            const cliente = listaClientes.find(c => c.protocolo === protocolo || c.id == protocolo);
             if (cliente) {
                 cliente.status = novoStatus;
-                if (supabaseClient) {
-                    try { await supabaseClient.from('clientes').update({ status: novoStatus }).eq('protocolo', cliente.protocolo); } catch (e) {}
-                }
                 let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
                 const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
                 if (idx !== -1) {
                     locais[idx].status = novoStatus;
                     localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
                 }
+
+                if (supabaseClient) {
+                    try { await supabaseClient.from('clientes').update({ status: novoStatus }).eq('protocolo', cliente.protocolo); } catch (e) {}
+                }
+
                 await carregarDadosDoBanco();
                 carregarPainelAdmin();
             }
         }
 
-        async function alternarEntradaPaga(id) {
-            const cliente = listaClientes.find(c => c.id == id || c.protocolo === id);
+        async function alternarEntradaPaga(protocolo) {
+            const cliente = listaClientes.find(c => c.protocolo === protocolo || c.id == protocolo);
             if (cliente) {
                 cliente.entradaPaga = !cliente.entradaPaga;
-                if (supabaseClient) {
-                    try { await supabaseClient.from('clientes').update({ entradaPaga: cliente.entradaPaga }).eq('protocolo', cliente.protocolo); } catch (e) {}
-                }
                 let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
                 const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
                 if (idx !== -1) {
                     locais[idx].entradaPaga = cliente.entradaPaga;
                     localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
                 }
+
+                if (supabaseClient) {
+                    try { await supabaseClient.from('clientes').update({ entradaPaga: cliente.entradaPaga }).eq('protocolo', cliente.protocolo); } catch (e) {}
+                }
+
                 await carregarDadosDoBanco();
                 carregarPainelAdmin();
             }
@@ -566,7 +536,7 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                     selectAdminParcelas += `<option value="${i}" ${i === parcelas ? 'selected' : ''}>${i}x</option>`;
                 }
 
-                const cardId = cliente.id || cliente.protocolo;
+                const cardId = cliente.protocolo;
 
                 const card = document.createElement('div');
                 card.className = 'bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6';
@@ -583,7 +553,7 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                             <span class="px-3 py-1 rounded-xl text-xs font-bold ${cliente.entradaPaga ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
                                 ${cliente.entradaPaga ? '💳 Entrada Paga' : '⏳ Entrada Pendente'}
                             </span>
-                            <button onclick="excluirProposta('${cardId}', '${cliente.protocolo}')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-3 py-1 rounded-xl text-xs transition cursor-pointer" title="Excluir Proposta"><i class="fa-solid fa-trash"></i></button>
+                            <button onclick="excluirProposta('${cardId}')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-3 py-1 rounded-xl text-xs transition cursor-pointer" title="Excluir Proposta"><i class="fa-solid fa-trash"></i></button>
                         </div>
                     </div>
 
@@ -646,7 +616,7 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                         </div>
 
                         <div class="space-y-1.5">
-                            <label class="block text-[10px] uppercase font-bold text-slate-600">Código Pix Copia e Cola (Produção)</label>
+                            <label class="block text-[10px] uppercase font-bold text-slate-600">Código Pix Copia e Cola</label>
                             <div class="flex gap-2">
                                 <input type="text" id="edit-copiacola-${cardId}" value="${cliente.pixCopiaECola || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-700">
                                 <button id="btn-copia-admin-${cardId}" onclick="copiarTextoPix('edit-copiacola-${cardId}', 'btn-copia-admin-${cardId}')" class="bg-slate-800 hover:bg-slate-900 text-white font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer flex items-center gap-1 shrink-0">
@@ -659,7 +629,7 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                     <!-- Botões de Ação do Admin -->
                     <div class="flex justify-between items-center flex-wrap gap-3 pt-2 border-t border-slate-100">
                         <div class="flex gap-2 flex-wrap">
-                            <button onclick="gerarPixViaAPI('${cardId}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm cursor-pointer transition flex items-center gap-1.5"><i class="fa-solid fa-qrcode"></i> Gerar Pix Real (MP)</button>
+                            <button onclick="gerarPixViaAPI('${cardId}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm cursor-pointer transition flex items-center gap-1.5"><i class="fa-solid fa-qrcode"></i> Aprovar e Gerar Pix</button>
                             <button onclick="enviarWhatsAppCliente('${cardId}')" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm cursor-pointer transition flex items-center gap-1.5"><i class="fa-brands fa-whatsapp"></i> Enviar no WhatsApp</button>
                         </div>
                         <div class="flex gap-2 flex-wrap">
