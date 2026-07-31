@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FlashCred • Pix Parcelado | Distribuidora Flash Point</title>
+    <title>Distribuidora Flash Point - Sistema FlashCred | Crédito e Crediário</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -20,35 +20,29 @@
                 supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
             }
         } catch (e) {
-            console.warn('Supabase offline fallback ativado.');
+            console.warn('Supabase local/offline fallback ativado.');
         }
 
         let listaClientes = [];
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
-        let intervaloAutoRefresh = null;
-
-        function copiarTexto(texto, nomeCampo) {
-            navigator.clipboard.writeText(texto).then(() => {
-                alert(`${nomeCampo} copiado com sucesso!`);
-            }).catch(err => {
-                console.error('Erro ao copiar: ', err);
-            });
-        }
 
         async function carregarDadosDoBanco() {
             let dadosRemotos = [];
             if (supabaseClient) {
                 try {
                     const { data, error } = await supabaseClient.from('clientes').select('*');
-                    if (!error && data) dadosRemotos = data;
-                } catch (e) {}
+                    if (!error && data) {
+                        dadosRemotos = data;
+                    }
+                } catch (e) {
+                    console.warn('Erro ao buscar dados remotos.');
+                }
             }
 
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const mapa = new Map();
-            // Une locais e remotos garantindo unicidade por protocolo ou id
             [...locais, ...dadosRemotos].forEach(item => {
-                const chave = item.protocolo || item.id;
+                const chave = item.id || item.protocolo;
                 if (chave) mapa.set(chave, item);
             });
 
@@ -70,21 +64,9 @@
             }
 
             if (adminLogado) {
-                iniciarAutoRefreshAdmin();
-                atualizarCaixaAutomatico();
+                carregarPainelAdmin();
             }
         });
-
-        function iniciarAutoRefreshAdmin() {
-            if (intervaloAutoRefresh) clearInterval(intervaloAutoRefresh);
-            intervaloAutoRefresh = setInterval(async () => {
-                const painelVisivel = document.getElementById('tab-painel') && !document.getElementById('tab-painel').classList.contains('hidden');
-                if (adminLogado && painelVisivel) {
-                    await carregarDadosDoBanco();
-                    renderizarCardsAdminSilencioso();
-                }
-            }, 5000);
-        }
 
         function switchTab(tabId) {
             localStorage.setItem('flash_aba_ativa', tabId);
@@ -93,7 +75,6 @@
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
                 document.getElementById('tab-login-admin').classList.remove('hidden');
                 atualizarBotoesNav('painel');
-                if (intervaloAutoRefresh) clearInterval(intervaloAutoRefresh);
                 return;
             }
 
@@ -104,21 +85,18 @@
 
             if (tabId === 'painel' && adminLogado) {
                 carregarPainelAdmin();
-                iniciarAutoRefreshAdmin();
-            } else {
-                if (intervaloAutoRefresh) clearInterval(intervaloAutoRefresh);
             }
         }
 
         function atualizarBotoesNav(tabId) {
             document.querySelectorAll('.tab-btn').forEach(el => {
-                el.classList.remove('bg-blue-900', 'text-white', 'shadow-md');
-                el.classList.add('text-slate-700', 'hover:bg-slate-200');
+                el.classList.remove('bg-blue-950', 'text-white', 'shadow-md', 'border-blue-800');
+                el.classList.add('text-slate-600', 'hover:bg-slate-100');
             });
             const btn = document.getElementById('btn-' + tabId);
             if (btn) {
-                btn.classList.remove('text-slate-700', 'hover:bg-slate-200');
-                btn.classList.add('bg-blue-900', 'text-white', 'shadow-md');
+                btn.classList.remove('text-slate-600', 'hover:bg-slate-100');
+                btn.classList.add('bg-blue-950', 'text-white', 'shadow-md', 'border-blue-800');
             }
         }
 
@@ -139,49 +117,25 @@
         function logoutAdmin() {
             adminLogado = false;
             localStorage.removeItem('flash_admin_logado');
-            if (intervaloAutoRefresh) clearInterval(intervaloAutoRefresh);
             switchTab('solicitar');
         }
 
-        function atualizarCaixaAutomatico() {
-            const corpo = document.getElementById('tabela-financeiro-corpo');
-            if (!corpo) return;
-            corpo.innerHTML = '';
+        function liberarFormulario() {
+            const formContainer = document.getElementById('meu-formulario');
+            formContainer.classList.remove('opacity-40', 'pointer-events-none');
+            formContainer.classList.add('opacity-100', 'pointer-events-auto');
 
-            let totalEntradas = 0;
-            let totalReceber = 0;
-            let qtdAprovados = 0;
-
-            listaClientes.forEach(cliente => {
-                if (cliente.status === 'aprovado') {
-                    const valorPedido = cliente.limite || 1000;
-                    const valorEntrada = cliente.valorEntradaManual !== undefined ? cliente.valorEntradaManual : (valorPedido * 0.20); 
-                    totalEntradas += valorEntrada;
-                    qtdAprovados++;
-
-                    const tr = document.createElement('tr');
-                    tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
-                    tr.innerHTML = `
-                        <td class="p-3.5 text-slate-800 font-medium">Pix Entrada - ${cliente.nome} (${cliente.protocolo})</td>
-                        <td class="p-3.5"><span class="px-2.5 py-1 rounded-md text-xs bg-emerald-100 text-emerald-800 font-bold">Entrada Registrada</span></td>
-                        <td class="p-3.5 text-right font-bold text-emerald-700">R$ ${valorEntrada.toFixed(2)}</td>
-                    `;
-                    corpo.appendChild(tr);
-                } else {
-                    totalReceber += (cliente.limite || 1000);
-                }
-            });
-
-            if (qtdAprovados === 0) {
-                corpo.innerHTML = `<tr><td colspan="3" class="p-4 text-center text-slate-400 text-sm">Nenhum pagamento registrado no caixa ainda.</td></tr>`;
-            }
-
-            if (document.getElementById('res-entradas')) document.getElementById('res-entradas').innerText = `R$ ${totalEntradas.toFixed(2)}`;
-            if (document.getElementById('res-saidas')) document.getElementById('res-saidas').innerText = `R$ 0,00`;
-            if (document.getElementById('res-receber')) document.getElementById('res-receber').innerText = `R$ ${totalReceber.toFixed(2)}`;
-            if (document.getElementById('res-saldo')) {
-                document.getElementById('res-saldo').innerText = `R$ ${totalEntradas.toFixed(2)}`;
-            }
+            const aviso = document.getElementById('aviso-bloqueio');
+            aviso.className = 'bg-blue-50 border border-blue-200 p-4 rounded-xl shadow-sm space-y-1 mb-6 text-blue-950';
+            aviso.innerHTML = `
+                <h3 class="font-bold text-sm uppercase flex items-center gap-2">
+                    <i class="fa-solid fa-circle-check text-blue-700 text-base"></i> Pré-Orçamento Registrado com Sucesso!
+                </h3>
+                <p class="text-xs text-blue-900 leading-relaxed">
+                    Formulário de cadastro liberado com segurança. Preencha seus dados abaixo.
+                </p>
+            `;
+            window.open('https://wa.me/5511973294235?text=Olá,%20gostaria%20de%20fazer%20meu%20pré-orçamento%20no%20FlashCred.', '_blank');
         }
 
         async function consultarCEP(cep) {
@@ -191,9 +145,12 @@
                     const response = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
                     const data = await response.json();
                     if (!data.erro) {
-                        document.getElementById('endereco').value = `${data.logradouro}, Bairro: ${data.bairro} - ${data.localidade}/${data.uf}`;
+                        const logradouro = data.logradouro ? data.logradouro + ', ' : '';
+                        document.getElementById('endereco').value = `${logradouro}Bairro: ${data.bairro || ''} - ${data.localidade}/${data.uf}`;
                     }
-                } catch (e) {}
+                } catch (e) {
+                    console.error('Erro ao buscar CEP');
+                }
             }
         }
 
@@ -210,12 +167,21 @@
                 cep: document.getElementById('cep').value,
                 endereco: document.getElementById('endereco').value,
                 limite: valor,
+                valorEntrada: valor * 0.10,
+                porcentagemEntrada: 10,
+                parcelas: 12,
+                jurosParcelamento: 0,
+                descontoAntecipado: 0,
                 status: 'aguardando',
-                valorEntradaManual: valor * 0.20
+                entradaPaga: false,
+                pixCopiaECola: '',
+                qrCodeBase64: ''
             };
 
             if (supabaseClient) {
-                try { await supabaseClient.from('clientes').insert([novaProposta]); } catch (err) {}
+                try {
+                    await supabaseClient.from('clientes').insert([novaProposta]);
+                } catch (err) {}
             }
 
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
@@ -223,7 +189,7 @@
             localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
 
             await carregarDadosDoBanco();
-            alert('Solicitação de Pix Parcelado enviada com sucesso! Seu protocolo é: ' + protocolo);
+            alert('Solicitação enviada com sucesso! Seu protocolo é: ' + protocolo);
             document.getElementById('form-proposta').reset();
 
             switchTab('acompanhar');
@@ -231,324 +197,444 @@
             consultarProposta();
         }
 
-        // Função universal de busca robusta (CPF, Nome ou Protocolo)
-        function consultarProposta() {
-            const termo = document.getElementById('busca-cpf').value.trim().toLowerCase();
+        // Busca restrita e segura na aba "Acompanhar Pedido" (evita falsos positivos com números aleatórios)
+        async function consultarProposta() {
+            const buscaInput = document.getElementById('busca-cpf').value.trim();
             const resultado = document.getElementById('resultado-busca');
-            if (!termo) {
-                resultado.classList.add('hidden');
+            if (!buscaInput) {
+                alert('Digite seu CPF ou Protocolo.');
                 return;
             }
 
-            const cliente = listaClientes.find(c => {
-                const cpfLimpo = (c.cpf || '').toLowerCase().replace(/\D/g, '');
-                const termoLimpo = termo.replace(/\D/g, '');
-                
-                const matchCpf = cpfLimpo && termoLimpo && cpfLimpo.includes(termoLimpo);
-                const matchCpfTexto = (c.cpf || '').toLowerCase().includes(termo);
-                const matchNome = (c.nome || '').toLowerCase().includes(termo);
-                const matchProto = (c.protocolo || '').toLowerCase().includes(termo);
+            await carregarDadosDoBanco();
+            const termoLimpo = buscaInput.toLowerCase();
+            const termoDigitos = buscaInput.replace(/\D/g, '');
 
-                return matchCpf || matchCpfTexto || matchNome || matchProto;
+            const cliente = listaClientes.find(c => {
+                const proto = (c.protocolo || '').toLowerCase();
+                const cpfOriginal = (c.cpf || '').toLowerCase();
+                const cpfDigitos = cpfOriginal.replace(/\D/g, '');
+                const nome = (c.nome || '').toLowerCase();
+
+                const matchProtocoloExato = proto === termoLimpo;
+                const matchCpfExato = termoDigitos.length >= 5 && cpfDigitos === termoDigitos;
+                const matchNomeExato = termoLimpo.length >= 3 && nome.includes(termoLimpo);
+
+                return matchProtocoloExato || matchCpfExato || matchNomeExato;
             });
 
             resultado.classList.remove('hidden');
+
             if (!cliente) {
-                resultado.innerHTML = `<div class="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-sm font-medium text-center">Nenhum pedido encontrado com "${document.getElementById('busca-cpf').value}". Tente pelo CPF completo ou protocolo.</div>`;
+                resultado.innerHTML = `
+                    <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl text-center">
+                        <h4 class="font-bold text-rose-900 text-sm">Nenhuma solicitação encontrada para: ${buscaInput}</h4>
+                    </div>
+                `;
                 return;
             }
 
-            const aprovado = cliente.status === 'aprovado';
+            let badgeStatus = cliente.status === 'aprovado' ? '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
+            const qrImg = cliente.qrCodeBase64 ? `data:image/png;base64,${cliente.qrCodeBase64}` : `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cliente.pixCopiaECola || 'Pix Flash Point')}`;
+            const valorRestante = (cliente.limite || 1000) - (cliente.valorEntrada || 0);
+            const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
+            const valorPorParcela = cliente.parcelas > 0 ? (valorComJuros / cliente.parcelas) : 0;
+
             resultado.innerHTML = `
-                <div class="p-5 bg-white border border-slate-200 rounded-2xl space-y-3 text-sm text-slate-700 shadow-md">
-                    <p class="flex justify-between border-b border-slate-100 pb-2"><strong>Protocolo:</strong> <span class="font-mono text-blue-900 font-bold">${cliente.protocolo}</span></p>
-                    <p class="flex justify-between border-b border-slate-100 pb-2"><strong>Cliente:</strong> <span>${cliente.nome}</span></p>
-                    <p class="flex justify-between border-b border-slate-100 pb-2"><strong>CPF:</strong> <span class="font-mono text-slate-800">${cliente.cpf}</span></p>
-                    <p class="flex justify-between border-b border-slate-100 pb-2"><strong>Valor Solicitado:</strong> <span class="font-bold text-slate-900">R$ ${(cliente.limite || 1000).toFixed(2)}</span></p>
-                    <p class="flex justify-between items-center pt-1"><strong>Status da Análise:</strong> <span class="px-3 py-1 rounded-md text-xs font-bold ${aprovado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${aprovado ? 'Aprovado' : 'Em Análise'}</span></p>
+                <div class="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-left shadow-sm">
+                    <h4 class="font-bold text-blue-950 text-base border-b pb-2 flex items-center gap-2"><i class="fa-solid fa-file-invoice-dollar text-blue-900"></i> Detalhes da Proposta</h4>
+                    <p class="text-xs text-slate-700">Titular: <strong class="text-slate-900 font-semibold">${cliente.nome}</strong></p>
+                    <p class="text-xs text-slate-700">Protocolo de Atendimento: <strong class="text-blue-900 font-bold">${cliente.protocolo}</strong></p>
+                    <p class="text-xs text-slate-700">Status: ${badgeStatus}</p>
+                    <p class="text-xs text-slate-700">Confirmação de Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}">${cliente.entradaPaga ? '🟢 Confirmada' : '🟡 Pendente de Pagamento'}</strong></p>
+                    <p class="text-xs text-slate-700">Valor Total do Crediário: <strong class="text-slate-900 font-bold">R$ ${(cliente.limite || 1000).toFixed(2)}</strong></p>
+                    
+                    ${cliente.status === 'aprovado' ? `
+                    <div class="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1 shadow-inner">
+                        <span class="block text-xs font-bold text-blue-950">Plano de Pagamento Aprovado:</span>
+                        <p class="text-xs text-emerald-700 font-bold">Entrada Pix: R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</p>
+                        <p class="text-xs text-slate-800 font-semibold">+ ${cliente.parcelas || 12}x mensais de R$ ${valorPorParcela.toFixed(2)}</p>
+                    </div>
+                    ` : ''}
+
+                    <div class="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                        <h5 class="font-bold text-blue-950 text-xs uppercase flex items-center gap-1.5"><i class="fa-brands fa-pix text-emerald-600"></i> Pagamento Seguro via Pix</h5>
+                        <div class="flex justify-center p-2 bg-white rounded-xl border shadow-sm">
+                            <img src="${qrImg}" alt="QR Code Pix" class="w-32 h-32">
+                        </div>
+                        <input type="text" readonly value="${cliente.pixCopiaECola || 'Aguardando o sistema gerar o código Pix...'}" class="bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 w-full select-all">
+                    </div>
                 </div>
             `;
         }
 
-        function carregarPainelAdmin() {
-            renderizarCardsAdminSilencioso();
-            atualizarCaixaAutomatico();
-        }
+        async function gerarPixViaAPI(clienteId) {
+            const cliente = listaClientes.find(c => c.id == clienteId || c.protocolo === clienteId);
+            if (!cliente) return;
 
-        // Função de busca dedicada dentro do Painel Admin (filtra os cards em tempo real)
-        function filtrarCardsAdmin() {
-            const termo = document.getElementById('busca-admin').value.trim().toLowerCase();
-            renderizarCardsAdminSilencioso(termo);
-        }
-
-        function renderizarCardsAdminSilencioso(filtro = '') {
-            const containerCards = document.getElementById('container-cards-admin');
-            if (!containerCards) return;
-            containerCards.innerHTML = '';
-
-            let filtrados = listaClientes;
-            if (filtro) {
-                const termoLimpo = filtro.replace(/\D/g, '');
-                filtrados = listaClientes.filter(cliente => {
-                    const cpfLimpo = (cliente.cpf || '').replace(/\D/g, '');
-                    const matchCpf = cpfLimpo && termoLimpo && cpfLimpo.includes(termoLimpo);
-                    const matchCpfTexto = (cliente.cpf || '').toLowerCase().includes(filtro);
-                    const matchNome = (cliente.nome || '').toLowerCase().includes(filtro);
-                    const matchProto = (cliente.protocolo || '').toLowerCase().includes(filtro);
-                    return matchCpf || matchCpfTexto || matchNome || matchProto;
-                });
+            if (cliente.valorEntrada === undefined) {
+                cliente.valorEntrada = (cliente.limite || 1000) * 0.10;
             }
 
-            if (filtrados.length === 0) {
-                containerCards.innerHTML = `<div class="p-8 text-center text-slate-500 text-sm bg-white rounded-3xl border border-slate-200 shadow-sm">Nenhum cliente encontrado com esse critério de busca.</div>`;
-                return;
+            let gerou = false;
+            if (supabaseClient) {
+                try {
+                    const { data, error } = await supabaseClient.functions.invoke('rapid-action', {
+                        body: {
+                            transaction_amount: cliente.valorEntrada,
+                            description: `Entrada Pix - Protocolo ${cliente.protocolo}`,
+                            payer_email: "cliente@flashpoint.com",
+                            payer_first_name: cliente.nome.split(" ")[0]
+                        }
+                    });
+                    if (!error && data && data.point_of_interaction) {
+                        cliente.pixCopiaECola = data.point_of_interaction.transaction_data.qr_code;
+                        cliente.qrCodeBase64 = data.point_of_interaction.transaction_data.qr_code_base64;
+                        gerou = true;
+                    }
+                } catch (e) {}
             }
 
-            filtrados.forEach(cliente => {
-                const isAprovado = cliente.status === 'aprovado';
-                const badge = isAprovado 
-                    ? '<span class="bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-circle-check"></i> Aprovado</span>' 
-                    : '<span class="bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5"><i class="fa-solid fa-clock"></i> Em Análise</span>';
-                
-                const valorAtualEntrada = cliente.valorEntradaManual !== undefined ? cliente.valorEntradaManual : ((cliente.limite || 1000) * 0.20);
-
-                const card = document.createElement('div');
-                card.className = 'bg-white border border-slate-200 hover:border-slate-300 transition rounded-3xl p-6 shadow-sm space-y-5';
-                card.innerHTML = `
-                    <div class="flex justify-between items-start flex-wrap gap-3 border-b border-slate-100 pb-4">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs uppercase tracking-wider text-slate-500 font-bold">Protocolo:</span>
-                            <span class="font-mono text-blue-950 font-bold text-base">${cliente.protocolo || '-'}</span>
-                            <button onclick="copiarTexto('${cliente.protocolo || ''}', 'Protocolo')" title="Copiar Protocolo" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-xl text-xs transition cursor-pointer"><i class="fa-regular fa-copy"></i></button>
-                        </div>
-                        <div>${badge}</div>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div class="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                            <div class="flex justify-between items-center">
-                                <span class="text-xs text-slate-500 uppercase font-bold">Nome:</span>
-                                <div class="flex items-center gap-2">
-                                    <strong class="text-slate-900 text-base">${cliente.nome || '-'}</strong>
-                                    <button onclick="copiarTexto('${cliente.nome || ''}', 'Nome')" title="Copiar Nome" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-1 rounded-lg text-xs transition cursor-pointer"><i class="fa-regular fa-copy"></i></button>
-                                </div>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-xs text-slate-500 uppercase font-bold">WhatsApp:</span>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-slate-800">${cliente.whatsapp || ''}</span>
-                                    <button onclick="copiarTexto('${cliente.whatsapp || ''}', 'WhatsApp')" title="Copiar WhatsApp" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-1 rounded-lg text-xs transition cursor-pointer"><i class="fa-regular fa-copy"></i></button>
-                                </div>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-xs text-slate-500 uppercase font-bold">CPF:</span>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-slate-800 font-mono">${cliente.cpf || ''}</span>
-                                    <button onclick="copiarTexto('${cliente.cpf || ''}', 'CPF')" title="Copiar CPF" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-1 rounded-lg text-xs transition cursor-pointer"><i class="fa-regular fa-copy"></i></button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col justify-between">
-                            <div class="flex justify-between items-center">
-                                <span class="text-xs text-slate-500 uppercase font-bold">Endereço:</span>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-slate-800 text-xs truncate max-w-[200px]" title="${cliente.endereco || ''}">${cliente.endereco || ''}</span>
-                                    <button onclick="copiarTexto('${cliente.endereco || ''}', 'Endereço')" title="Copiar Endereço" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-1 rounded-lg text-xs transition cursor-pointer"><i class="fa-regular fa-copy"></i></button>
-                                </div>
-                            </div>
-                            <div class="flex justify-between items-center border-t border-slate-200 pt-2">
-                                <span class="text-xs text-slate-500 uppercase font-bold">Valor Total:</span>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-slate-900 font-black text-base">R$ ${(cliente.limite || 1000).toFixed(2)}</span>
-                                    <button onclick="copiarTexto('${(cliente.limite || 1000).toFixed(2)}', 'Valor')" title="Copiar Valor" class="bg-slate-200 hover:bg-slate-300 text-slate-700 px-2 py-1 rounded-lg text-xs transition cursor-pointer"><i class="fa-regular fa-copy"></i></button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex justify-between items-center flex-wrap gap-4 pt-3 border-t border-slate-100">
-                        <div class="flex items-center gap-2 bg-slate-100 px-4 py-2.5 rounded-2xl border border-slate-200">
-                            <span class="text-xs text-slate-700 font-bold uppercase">Entrada Pix (R$):</span>
-                            <input type="number" id="entrada-${cliente.protocolo}" value="${valorAtualEntrada.toFixed(2)}" class="w-28 bg-white border border-slate-300 rounded-xl px-3 py-1.5 text-xs text-emerald-700 font-bold focus:outline-none focus:border-blue-900">
-                            <button onclick="atualizarEntrada('${cliente.protocolo}')" class="bg-blue-900 hover:bg-blue-800 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shadow-sm">Salvar</button>
-                        </div>
-
-                        <div>
-                            <button onclick="mudarStatusAdmin('${cliente.protocolo}', '${isAprovado ? 'aguardando' : 'aprovado'})" class="px-5 py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer shadow-md ${isAprovado ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}">
-                                ${isAprovado ? 'Reverter Status' : 'Aprovar Pedido'}
-                            </button>
-                        </div>
-                    </div>
-                `;
-                containerCards.appendChild(card);
-            });
-            atualizarCaixaAutomatico();
-        }
-
-        function atualizarEntrada(protocolo) {
-            const inputVal = document.getElementById('entrada-' + protocolo).value;
-            const novoValor = parseFloat(inputVal) || 0;
-
-            const cliente = listaClientes.find(c => c.protocolo === protocolo);
-            if (cliente) {
-                cliente.valorEntradaManual = novoValor;
-                if (supabaseClient) {
-                    supabaseClient.from('clientes').update({ valorEntradaManual: novoValor }).eq('protocolo', protocolo).then(() => {});
-                }
-                const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-                const idx = locais.findIndex(c => c.protocolo === protocolo);
-                if (idx !== -1) {
-                    locais[idx].valorEntradaManual = novoValor;
-                    localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-                }
-                alert('Valor da entrada atualizado com sucesso!');
-                atualizarCaixaAutomatico();
+            if (!gerou) {
+                cliente.pixCopiaECola = `00020126580014br.gov.bcb.pix0136pix@flashpoint.com5204000053039865802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304${Math.floor(1000 + Math.random() * 9000)}`;
             }
+
+            cliente.status = 'aprovado';
+
+            if (supabaseClient) {
+                try {
+                    await supabaseClient.from('clientes').update({ 
+                        pixCopiaECola: cliente.pixCopiaECola, 
+                        qrCodeBase64: cliente.qrCodeBase64 || '', 
+                        status: 'aprovado' 
+                    }).eq('protocolo', cliente.protocolo);
+                } catch (e) {}
+            }
+
+            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
+            if (idx !== -1) {
+                locais[idx] = cliente;
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+            } else {
+                locais.unshift(cliente);
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+            }
+
+            await carregarDadosDoBanco();
+            carregarPainelAdmin();
+            alert('Proposta aprovada e Pix gerado com sucesso!');
         }
 
-        async function mudarStatusAdmin(protocolo, novoStatus) {
-            const cliente = listaClientes.find(c => c.protocolo === protocolo);
+        function enviarWhatsAppCliente(id) {
+            const cliente = listaClientes.find(c => c.id == id || c.protocolo === id);
+            if (!cliente) return;
+
+            const totalComJuros = (cliente.limite - cliente.valorEntrada) * (1 + ((cliente.jurosParcelamento || 0) / 100));
+            const vParc = cliente.parcelas > 0 ? (totalComJuros / cliente.parcelas) : 0;
+
+            const texto = `Prezado(a) *${cliente.nome}*, 🟢 Informamos que sua proposta de crediário no *FlashCred (Distribuidora Flash Point)* foi *APROVADA*!
+
+📋 *Protocolo:* ${cliente.protocolo}
+💰 *Valor Total:* R$ ${(cliente.limite || 1000).toFixed(2)}
+🔸 *Entrada:* R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)
+💳 *Parcelamento:* ${cliente.parcelas || 12}x de R$ ${vParc.toFixed(2)}
+
+🔑 *Pix Copia e Cola para a Entrada:*
+\`${cliente.pixCopiaECola || 'Aguardando código Pix'}\`
+
+Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor de Crédito.`;
+
+            const fone = (cliente.whatsapp || '').replace(/\D/g, '');
+            const url = `https://wa.me/55${fone}?text=${encodeURIComponent(texto)}`;
+            window.open(url, '_blank');
+        }
+
+        function calcularEmTempoReal(id) {
+            const limite = parseFloat(document.getElementById(`edit-limite-${id}`).value) || 0;
+            const porc = parseFloat(document.getElementById(`edit-porc-${id}`).value) || 0;
+            const parc = parseInt(document.getElementById(`edit-parc-${id}`).value) || 1;
+            const juros = parseFloat(document.getElementById(`edit-juros-${id}`).value) || 0;
+            const desc = parseFloat(document.getElementById(`edit-desc-${id}`).value) || 0;
+
+            const entradaCalc = (limite * porc) / 100;
+            const saldo = (limite - entradaCalc) * (1 + (juros / 100));
+            const vParc = parc > 0 ? (saldo / parc) : 0;
+
+            document.getElementById(`rt-total-${id}`).innerText = `R$ ${limite.toFixed(2)}`;
+            document.getElementById(`rt-entrada-${id}`).innerText = `R$ ${entradaCalc.toFixed(2)} (${porc}%)`;
+            document.getElementById(`rt-saldo-${id}`).innerText = `R$ ${saldo.toFixed(2)}`;
+            document.getElementById(`rt-desc-${id}`).innerText = `R$ ${desc.toFixed(2)}`;
+            document.getElementById(`rt-parcelas-topo-${id}`).innerText = `${parc}x de R$ ${vParc.toFixed(2)}`;
+        }
+
+        async function salvarEdicaoAdmin(id) {
+            const cliente = listaClientes.find(c => c.id == id || c.protocolo === id);
+            if (!cliente) return;
+
+            cliente.limite = parseFloat(document.getElementById(`edit-limite-${id}`).value) || cliente.limite;
+            cliente.porcentagemEntrada = parseFloat(document.getElementById(`edit-porc-${id}`).value) || cliente.porcentagemEntrada;
+            cliente.valorEntrada = (cliente.limite * cliente.porcentagemEntrada) / 100;
+            cliente.parcelas = parseInt(document.getElementById(`edit-parc-${id}`).value) || cliente.parcelas;
+            cliente.jurosParcelamento = parseFloat(document.getElementById(`edit-juros-${id}`).value) || 0;
+            cliente.descontoAntecipado = parseFloat(document.getElementById(`edit-desc-${id}`).value) || 0;
+            cliente.pixCopiaECola = document.getElementById(`edit-copiacola-${id}`).value || '';
+
+            if (supabaseClient && cliente.id) {
+                try {
+                    await supabaseClient.from('clientes').update({
+                        limite: cliente.limite,
+                        porcentagemEntrada: cliente.porcentagemEntrada,
+                        valorEntrada: cliente.valorEntrada,
+                        parcelas: cliente.parcelas,
+                        jurosParcelamento: cliente.jurosParcelamento,
+                        descontoAntecipado: cliente.descontoAntecipado,
+                        pixCopiaECola: cliente.pixCopiaECola
+                    }).eq('protocolo', cliente.protocolo);
+                } catch (e) {}
+            }
+
+            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
+            if (idx !== -1) {
+                locais[idx] = cliente;
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+            }
+
+            await carregarDadosDoBanco();
+            carregarPainelAdmin();
+            alert('Proposta salva com sucesso!');
+        }
+
+        async function alterarStatusCliente(id, novoStatus) {
+            const cliente = listaClientes.find(c => c.id == id || c.protocolo === id);
             if (cliente) {
                 cliente.status = novoStatus;
                 if (supabaseClient) {
-                    try { await supabaseClient.from('clientes').update({ status: novoStatus }).eq('protocolo', protocolo); } catch (e) {}
+                    try { await supabaseClient.from('clientes').update({ status: novoStatus }).eq('protocolo', cliente.protocolo); } catch (e) {}
                 }
-                const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-                const idx = locais.findIndex(c => c.protocolo === protocolo);
+                let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+                const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
                 if (idx !== -1) {
                     locais[idx].status = novoStatus;
                     localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
                 }
                 await carregarDadosDoBanco();
-                renderizarCardsAdminSilencioso(document.getElementById('busca-admin') ? document.getElementById('busca-admin').value : '');
+                carregarPainelAdmin();
             }
+        }
+
+        async function alternarEntradaPaga(id) {
+            const cliente = listaClientes.find(c => c.id == id || c.protocolo === id);
+            if (cliente) {
+                cliente.entradaPaga = !cliente.entradaPaga;
+                if (supabaseClient) {
+                    try { await supabaseClient.from('clientes').update({ entradaPaga: cliente.entradaPaga }).eq('protocolo', cliente.protocolo); } catch (e) {}
+                }
+                let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+                const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
+                if (idx !== -1) {
+                    locais[idx].entradaPaga = cliente.entradaPaga;
+                    localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+                }
+                await carregarDadosDoBanco();
+                carregarPainelAdmin();
+            }
+        }
+
+        function carregarPainelAdmin() {
+            const container = document.getElementById('container-cards-admin');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (listaClientes.length === 0) {
+                container.innerHTML = `<div class="p-8 text-center text-slate-400 bg-white rounded-3xl border border-slate-200">Nenhum cliente cadastrado até o momento.</div>`;
+                return;
+            }
+
+            listaClientes.forEach(cliente => {
+                const total = cliente.limite || 1000;
+                const porc = cliente.porcentagemEntrada !== undefined ? cliente.porcentagemEntrada : 10;
+                const entradaCalc = (total * porc) / 100;
+                const parcelas = cliente.parcelas || 12;
+                const juros = cliente.jurosParcelamento || 0;
+                const desc = cliente.descontoAntecipado || 0;
+
+                const saldo = (total - entradaCalc) * (1 + (juros / 100));
+                const vParc = parcelas > 0 ? (saldo / parcelas) : 0;
+                const isAprovado = cliente.status === 'aprovado';
+
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6';
+                card.innerHTML = `
+                    <div class="flex justify-between items-start flex-wrap gap-3 border-b border-slate-100 pb-4 pt-1">
+                        <div>
+                            <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Protocolo:</span>
+                            <h3 class="font-mono text-blue-950 font-black text-base">${cliente.protocolo}</h3>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-3 py-1 rounded-xl text-xs font-bold ${isAprovado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                                ${isAprovado ? '🟢 Aprovado' : '🟡 Em Análise'}
+                            </span>
+                            <span class="px-3 py-1 rounded-xl text-xs font-bold ${cliente.entradaPaga ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
+                                ${cliente.entradaPaga ? '💳 Entrada Paga' : '⏳ Entrada Pendente'}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <div class="space-y-1.5">
+                            <p><strong>Nome:</strong> <span class="text-slate-800 font-semibold">${cliente.nome}</span></p>
+                            <p><strong>CPF:</strong> <span class="text-slate-800 font-mono">${cliente.cpf}</span></p>
+                            <p><strong>WhatsApp:</strong> <span class="text-slate-800">${cliente.whatsapp}</span></p>
+                        </div>
+                        <div class="space-y-1.5">
+                            <p><strong>Endereço:</strong> <span class="text-slate-800">${cliente.endereco || 'Não informado'}</span></p>
+                            <p><strong>Parcelas Atuais:</strong> <span id="rt-parcelas-topo-${cliente.id || cliente.protocolo}" class="text-blue-900 font-bold">${parcelas}x de R$ ${vParc.toFixed(2)}</span></p>
+                        </div>
+                    </div>
+
+                    <!-- Configurações Editáveis -->
+                    <div class="border border-blue-100 bg-blue-50/40 p-4 rounded-2xl space-y-4">
+                        <h4 class="font-bold text-blue-950 text-xs uppercase flex items-center gap-1.5"><i class="fa-solid fa-sliders text-blue-900"></i> Painel de Ajustes e Configurações</h4>
+                        
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                            <div>
+                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Valor Total (R$)</label>
+                                <input type="number" id="edit-limite-${cliente.id || cliente.protocolo}" value="${total}" oninput="calcularEmTempoReal('${cliente.id || cliente.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">% Entrada</label>
+                                <input type="number" id="edit-porc-${cliente.id || cliente.protocolo}" value="${porc}" oninput="calcularEmTempoReal('${cliente.id || cliente.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Qtd Parcelas</label>
+                                <input type="number" id="edit-parc-${cliente.id || cliente.protocolo}" value="${parcelas}" oninput="calcularEmTempoReal('${cliente.id || cliente.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Juros (%)</label>
+                                <input type="number" step="0.1" id="edit-juros-${cliente.id || cliente.protocolo}" value="${juros}" oninput="calcularEmTempoReal('${cliente.id || cliente.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Desc. Antecipado (%)</label>
+                                <input type="number" step="0.1" id="edit-desc-${cliente.id || cliente.protocolo}" value="${desc}" oninput="calcularEmTempoReal('${cliente.id || cliente.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
+                            </div>
+                        </div>
+
+                        <!-- Resumo Calculado em Tempo Real -->
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] bg-white p-3 rounded-xl border border-blue-200/60 text-slate-700">
+                            <div>Total: <strong id="rt-total-${cliente.id || cliente.protocolo}" class="text-slate-900">R$ ${total.toFixed(2)}</strong></div>
+                            <div>Entrada: <strong id="rt-entrada-${cliente.id || cliente.protocolo}" class="text-emerald-700">R$ ${entradaCalc.toFixed(2)} (${porc}%)</strong></div>
+                            <div>Saldo Fin.: <strong id="rt-saldo-${cliente.id || cliente.protocolo}" class="text-slate-900">R$ ${saldo.toFixed(2)}</strong></div>
+                            <div>Desc. Ant.: <strong id="rt-desc-${cliente.id || cliente.protocolo}" class="text-blue-900">R$ ${desc.toFixed(2)}</strong></div>
+                            <div><button onclick="salvarEdicaoAdmin('${cliente.id || cliente.protocolo}')" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-1.5 px-2 rounded-lg text-xs shadow-sm cursor-pointer transition">Salvar Alterações</button></div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Código Pix Copia e Cola</label>
+                            <input type="text" id="edit-copiacola-${cliente.id || cliente.protocolo}" value="${cliente.pixCopiaECola || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-700">
+                        </div>
+                    </div>
+
+                    <!-- Botões de Ação do Admin -->
+                    <div class="flex justify-between items-center flex-wrap gap-3 pt-2 border-t border-slate-100">
+                        <div class="flex gap-2 flex-wrap">
+                            <button onclick="gerarPixViaAPI('${cliente.id || cliente.protocolo}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm cursor-pointer transition flex items-center gap-1.5"><i class="fa-solid fa-qrcode"></i> Gerar Pix & Aprovar</button>
+                            <button onclick="enviarWhatsAppCliente('${cliente.id || cliente.protocolo}')" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm cursor-pointer transition flex items-center gap-1.5"><i class="fa-brands fa-whatsapp"></i> Enviar no WhatsApp</button>
+                        </div>
+                        <div class="flex gap-2 flex-wrap">
+                            <button onclick="alternarEntradaPaga('${cliente.id || cliente.protocolo}')" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer">${cliente.entradaPaga ? 'Marcar Entrada Pendente' : 'Marcar Entrada Paga'}</button>
+                            <button onclick="alterarStatusCliente('${cliente.id || cliente.protocolo}', '${isAprovado ? 'aguardando' : 'aprovado'}')" class="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer">${isAprovado ? 'Reverter para Análise' : 'Aprovar Pedido'}</button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
         }
     </script>
 </head>
-<body class="bg-slate-100 font-sans min-h-screen text-slate-800 antialiased selection:bg-blue-900 selection:text-white">
+<body class="bg-slate-100 font-sans min-h-screen text-slate-800 antialiased selection:bg-blue-950 selection:text-white">
 
-    <!-- Navbar Institucional Tipo Banco (Clara e Elegante) -->
     <nav class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex justify-between items-center flex-wrap gap-4">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-900 to-blue-700 flex items-center justify-center shadow-md">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-950 to-blue-800 flex items-center justify-center shadow-md">
                     <i class="fa-solid fa-bolt text-white text-lg"></i>
                 </div>
                 <div>
-                    <!-- Nome exato com destaque nas cores -->
-                    <h1 class="font-black text-slate-900 text-base tracking-wide">Distribuidora <span class="text-blue-900">Flash</span></h1>
-                    <p class="text-[10px] tracking-widest text-slate-500 font-bold uppercase">FlashCred • Pix Parcelado</p>
+                    <h1 class="font-black text-slate-900 text-base tracking-wide">Distribuidora <span class="text-blue-950">Flash Point</span></h1>
+                    <p class="text-[10px] tracking-widest text-slate-500 font-bold uppercase">FlashCred • Sistema de Crediário</p>
                 </div>
             </div>
             <div class="flex gap-2 flex-wrap">
-                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2.5 rounded-xl text-sm font-bold transition cursor-pointer">Solicitação Pix Parcelado</button>
-                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2.5 rounded-xl text-sm font-bold transition cursor-pointer">Acompanhar Pedido</button>
-                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2.5 rounded-xl text-sm font-bold transition cursor-pointer">Painel Admin</button>
+                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2.5 rounded-xl text-sm font-bold transition cursor-pointer border border-transparent">Solicitação</button>
+                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2.5 rounded-xl text-sm font-bold transition cursor-pointer border border-transparent">Acompanhar Pedido</button>
+                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2.5 rounded-xl text-sm font-bold transition cursor-pointer border border-transparent">Painel Admin</button>
             </div>
         </div>
     </nav>
 
     <main class="max-w-4xl mx-auto p-4 sm:p-8 space-y-8">
 
-        <!-- ABA 1: SOLICITAÇÃO PIX PARCELADO -->
+        <!-- ABA 1: SOLICITAÇÃO -->
         <div id="tab-solicitar" class="tab-content space-y-8">
-            
-            <!-- Banner Principal (Claro, Limpo e Profissional) -->
             <div class="bg-white p-8 sm:p-10 rounded-3xl shadow-sm border border-slate-200 space-y-8">
-                
                 <div class="text-center space-y-2">
-                    <span class="px-4 py-1.5 rounded-full text-xs font-black tracking-widest bg-blue-50 text-blue-900 border border-blue-200 uppercase">FLASHCRED • PIX PARCELADO</span>
-                    <h2 class="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">Distribuidora Flash</h2>
-                    <p class="text-sm sm:text-base text-slate-600 font-medium">A forma mais fácil de mobiliar seu lar sem sair de casa!</p>
+                    <span class="px-4 py-1.5 rounded-full text-xs font-black tracking-widest bg-blue-50 text-blue-950 border border-blue-200 uppercase">FLASHCRED • CRÉDITO E CREDIÁRIO</span>
+                    <h2 class="text-2xl sm:text-4xl font-black text-slate-900 tracking-tight">Distribuidora Flash Point</h2>
+                    <p class="text-sm sm:text-base text-slate-600 font-medium">A forma mais fácil de mobiliar seu lar sem burocracia!</p>
                 </div>
 
-                <!-- Condições Especiais & Blocos Destacados -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2">
-                    
-                    <!-- Bloco 1 -->
-                    <div class="bg-slate-50 border border-slate-200/80 p-6 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition">
-                        <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-900 flex items-center justify-center font-bold"><i class="fa-solid fa-store text-base"></i></div>
-                        <h4 class="font-bold text-slate-900 text-sm">📌 O que nós fazemos?</h4>
-                        <p class="text-xs text-slate-600 leading-relaxed">Vendemos móveis novos direto da fábrica, 100% online e só pelo WhatsApp. Sem loja física, sem burocracia, sem precisar de cartão de crédito — e aprovamos inclusive quem está com nome sujo!</p>
-                    </div>
-
-                    <!-- Bloco 2 - Condições Especiais em Destaque -->
-                    <div class="bg-blue-50/80 border-2 border-blue-200 p-6 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition">
-                        <div class="w-10 h-10 rounded-xl bg-blue-900 text-white flex items-center justify-center font-bold"><i class="fa-solid fa-coins text-base"></i></div>
-                        <h4 class="font-bold text-blue-950 text-sm">💰 Condições Especiais:</h4>
-                        <ul class="text-xs text-slate-700 space-y-1.5 leading-relaxed font-semibold">
-                            <li>✅ Entrada mínima que cabe no seu bolso</li>
-                            <li>✅ Parcele em até 48 vezes no Pix</li>
-                            <li>✅ Sem pegadinhas, sem taxas escondidas</li>
-                            <li>✅ Atendimento e negociação direto com a gente pelo WhatsApp</li>
-                        </ul>
-                    </div>
-
-                    <!-- Bloco 3 -->
-                    <div class="bg-slate-50 border border-slate-200/80 p-6 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition">
-                        <div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold"><i class="fa-solid fa-shield-halved text-base"></i></div>
-                        <h4 class="font-bold text-slate-900 text-sm">📦 Compra Segura:</h4>
-                        <p class="text-xs text-slate-600 leading-relaxed">Você faz tudo pelo celular, combinamos as condições e nós garantimos a entrega do móvel na sua casa.</p>
-                    </div>
-
+                <div id="aviso-bloqueio" class="bg-amber-50 border border-amber-200 p-5 rounded-2xl shadow-sm space-y-2 text-amber-950">
+                    <h3 class="font-bold text-sm uppercase flex items-center gap-2">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i> Etapa Obrigatória Inicial
+                    </h3>
+                    <p class="text-xs text-amber-900 leading-relaxed">
+                        Para liberar o formulário de cadastro e simular o seu Pix Parcelado, clique no botão abaixo para registrar seu pré-orçamento com nossa equipe no WhatsApp oficial.
+                    </p>
+                    <button onclick="liberarFormulario()" class="inline-flex items-center gap-2 mt-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs tracking-wide shadow-md transition cursor-pointer">
+                        <i class="fa-brands fa-whatsapp text-sm"></i> Clique aqui para registrar pré-orçamento no WhatsApp
+                    </button>
                 </div>
 
-                <!-- Botão Pix Animado e Profissional (Estilo Grande Banco) -->
-                <div class="pt-6 flex flex-col items-center justify-center space-y-3 text-center border-t border-slate-100">
-                    <p class="text-xs text-slate-600 font-bold tracking-wide">💬 Fale conosco e faça sua solicitação pelo WhatsApp 11973294235</p>
-                    <a href="https://wa.me/5511973294235?text=Olá!%20Gostaria%20de%20fazer%20uma%20solicitação%20de%20Pix%20Parcelado%20na%20Distribuidora%20Flash." target="_blank" class="relative group inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-base tracking-wide shadow-xl shadow-emerald-900/20 hover:scale-105 transition duration-300 animate-pulse cursor-pointer">
-                        <div class="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-white">
-                            <i class="fa-brands fa-whatsapp text-xl"></i>
-                        </div>
-                        <span>Clique aqui e chame nós no WhatsApp</span>
-                        <span class="absolute -top-1 -right-1 flex h-3 w-3">
-                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                        </span>
-                    </a>
-                </div>
-
-            </div>
-
-            <!-- Formulário de Solicitação -->
-            <div class="bg-white p-8 sm:p-10 rounded-3xl shadow-sm border border-slate-200 space-y-6">
-                <div class="space-y-1">
-                    <h3 class="text-xl sm:text-2xl font-bold text-blue-950 tracking-tight">Formulário de Solicitação</h3>
-                    <p class="text-sm text-slate-500">Preencha seus dados abaixo para iniciar a liberação do seu Pix Parcelado.</p>
-                </div>
-
-                <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-5">
-                    <div>
-                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Nome Completo</label>
-                        <input type="text" id="nome" required placeholder="Digite seu nome completo" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-900 transition shadow-inner">
+                <div id="meu-formulario" class="opacity-40 pointer-events-none transition duration-300 space-y-6 pt-4 border-t border-slate-100">
+                    <div class="space-y-1">
+                        <h3 class="text-xl font-bold text-blue-950 tracking-tight">Formulário de Cadastro</h3>
+                        <p class="text-sm text-slate-500">Preencha seus dados abaixo para iniciar a análise do seu crédito.</p>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+                    <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-5">
                         <div>
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">CPF</label>
-                            <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-900 transition shadow-inner">
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Nome Completo</label>
+                            <input type="text" id="nome" required placeholder="Digite seu nome completo" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-950 transition shadow-inner">
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">CPF</label>
+                                <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-950 transition shadow-inner">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">WhatsApp</label>
+                                <input type="text" id="whatsapp" required placeholder="(11) 97329-4235" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-950 transition shadow-inner">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">CEP</label>
+                                <input type="text" id="cep" onblur="consultarCEP(this.value)" required placeholder="00000-000" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-950 transition shadow-inner">
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Endereço Completo</label>
+                                <input type="text" id="endereco" required placeholder="Rua, número, bairro e cidade" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-950 transition shadow-inner">
+                            </div>
                         </div>
                         <div>
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">WhatsApp</label>
-                            <input type="text" id="whatsapp" required placeholder="(11) 97329-4235" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-900 transition shadow-inner">
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Valor do Pedido (R$)</label>
+                            <input type="number" id="valor" value="1000" required class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-950 transition shadow-inner font-bold text-lg text-emerald-700">
                         </div>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                        <div>
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">CEP</label>
-                            <input type="text" id="cep" onblur="consultarCEP(this.value)" required placeholder="00000-000" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-900 transition shadow-inner">
-                        </div>
-                        <div class="sm:col-span-2">
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Endereço Completo</label>
-                            <input type="text" id="endereco" required placeholder="Rua, número, bairro e cidade" class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-900 transition shadow-inner">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Valor do Pedido (R$)</label>
-                        <input type="number" id="valor" value="1000" required class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-900 transition shadow-inner font-bold text-lg text-emerald-700">
-                    </div>
-                    <button type="submit" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-4 rounded-2xl text-base transition shadow-xl shadow-blue-900/20 cursor-pointer">Enviar Solicitação de Pix Parcelado</button>
-                </form>
+                        <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 rounded-2xl text-base transition shadow-xl shadow-blue-950/20 cursor-pointer">Enviar Solicitação de Crédito</button>
+                    </form>
+                </div>
             </div>
         </div>
 
@@ -559,8 +645,8 @@
                 <p class="text-sm text-slate-500">Insira seu CPF (com ou sem pontos) ou número de protocolo para conferir o andamento.</p>
             </div>
             <div class="flex gap-3 max-w-lg mx-auto">
-                <input type="text" id="busca-cpf" placeholder="Digite CPF ou Protocolo..." oninput="consultarProposta()" class="flex-1 bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-900 shadow-inner">
-                <button onclick="consultarProposta()" class="bg-blue-900 hover:bg-blue-800 text-white font-bold px-6 py-3.5 rounded-2xl text-sm transition shadow-lg shadow-blue-900/20 cursor-pointer">Consultar</button>
+                <input type="text" id="busca-cpf" placeholder="Digite CPF ou Protocolo..." class="flex-1 bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-950 shadow-inner">
+                <button onclick="consultarProposta()" class="bg-blue-950 hover:bg-blue-900 text-white font-bold px-6 py-3.5 rounded-2xl text-sm transition shadow-lg shadow-blue-950/20 cursor-pointer">Consultar</button>
             </div>
             <div id="resultado-busca" class="hidden max-w-lg mx-auto"></div>
         </div>
@@ -568,71 +654,33 @@
         <!-- LOGIN ADMIN -->
         <div id="tab-login-admin" class="tab-content hidden max-w-md mx-auto bg-white p-8 sm:p-10 rounded-3xl shadow-sm border border-slate-200 space-y-6">
             <div class="text-center space-y-2">
-                <div class="w-12 h-12 bg-blue-100 text-blue-900 rounded-2xl mx-auto flex items-center justify-center text-xl font-bold border border-blue-200"><i class="fa-solid fa-lock"></i></div>
+                <div class="w-12 h-12 bg-blue-100 text-blue-950 rounded-2xl mx-auto flex items-center justify-center text-xl font-bold border border-blue-200"><i class="fa-solid fa-lock"></i></div>
                 <h2 class="text-xl font-bold text-blue-950 tracking-tight">Área Restrita</h2>
                 <p class="text-xs text-slate-500">Insira a credencial de segurança para acessar o painel administrativo.</p>
             </div>
             <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4">
                 <div>
                     <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Senha de Acesso</label>
-                    <input type="password" id="senha-admin" required class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-blue-900 shadow-inner">
+                    <input type="password" id="senha-admin" required class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-blue-950 shadow-inner">
                 </div>
                 <p id="erro-senha" class="hidden text-xs text-rose-600 font-bold text-center">Senha incorreta. Tente novamente.</p>
-                <button type="submit" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-3.5 rounded-2xl text-sm transition shadow-lg shadow-blue-900/20 cursor-pointer">Entrar no Sistema</button>
+                <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3.5 rounded-2xl text-sm transition shadow-lg shadow-blue-950/20 cursor-pointer">Entrar no Sistema</button>
             </form>
         </div>
 
-        <!-- PAINEL ADMIN (EM CARDS / BALÕES) -->
+        <!-- PAINEL ADMIN -->
         <div id="tab-painel" class="tab-content hidden space-y-8">
             <div class="flex justify-between items-center bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200 flex-wrap gap-4">
                 <div>
                     <h2 class="text-xl sm:text-2xl font-bold text-blue-950 tracking-tight">Painel Administrativo</h2>
-                    <p class="text-xs sm:text-sm text-slate-500">Controle financeiro e gestão individual de pedidos.</p>
+                    <p class="text-xs sm:text-sm text-slate-500">Gestão avançada de propostas, configurações de parcelamento e Pix.</p>
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-5 py-2.5 rounded-xl text-xs transition border border-rose-200 cursor-pointer">Encerrar Sessão</button>
             </div>
 
-            <!-- Caixa & Financeiro Automático -->
-            <div class="bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200 space-y-6">
-                <div class="flex justify-between items-center flex-wrap gap-4">
-                    <h3 class="text-lg font-bold text-blue-950 flex items-center gap-2"><i class="fa-solid fa-wallet text-emerald-600"></i> Caixa & Financeiro Automático</h3>
-                    <div class="bg-slate-50 px-4 py-2 rounded-2xl border border-slate-200 flex items-center gap-3">
-                        <span class="text-xs text-slate-500 uppercase tracking-wider font-bold">Saldo Entradas:</span>
-                        <span id="res-saldo" class="text-lg font-black text-emerald-700">R$ 0,00</span>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-1">
-                        <span class="text-xs text-slate-500 uppercase tracking-wider font-bold">Entradas Confirmadas</span>
-                        <span id="res-entradas" class="text-base font-bold text-emerald-700">R$ 0,00</span>
-                    </div>
-                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-1">
-                        <span class="text-xs text-slate-500 uppercase tracking-wider font-bold">Saídas</span>
-                        <span id="res-saidas" class="text-base font-bold text-rose-600">R$ 0,00</span>
-                    </div>
-                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-1">
-                        <span class="text-xs text-slate-500 uppercase tracking-wider font-bold">Valores em Análise</span>
-                        <span id="res-receber" class="text-base font-bold text-amber-700">R$ 0,00</span>
-                    </div>
-                </div>
-
-                <div class="overflow-x-auto max-h-56 overflow-y-auto border border-slate-200 rounded-2xl bg-slate-50">
-                    <table class="w-full text-left border-collapse">
-                        <tbody id="tabela-financeiro-corpo" class="text-xs text-slate-700 divide-y divide-slate-200"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Lista de Clientes em Formato de Cards com Campo de Busca por CPF/Nome/Protocolo -->
             <div class="space-y-4">
-                <div class="flex justify-between items-center flex-wrap gap-4 px-2">
-                    <h3 class="text-lg font-bold text-blue-950 flex items-center gap-2"><i class="fa-solid fa-users text-blue-900"></i> Solicitações de Pix Parcelado</h3>
-                    <div class="w-full sm:w-72">
-                        <input type="text" id="busca-admin" placeholder="🔍 Buscar por CPF, Nome ou Protocolo..." oninput="filtrarCardsAdmin()" class="w-full bg-white border border-slate-300 rounded-2xl px-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-900 shadow-sm">
-                    </div>
-                </div>
-                <div id="container-cards-admin" class="space-y-4"></div>
+                <h3 class="text-lg font-bold text-blue-950 px-2 flex items-center gap-2"><i class="fa-solid fa-users text-blue-900"></i> Solicitações Cadastradas</h3>
+                <div id="container-cards-admin" class="space-y-6"></div>
             </div>
         </div>
 
