@@ -75,7 +75,6 @@
                     .subscribe();
             }
 
-            // Restaurar aba ativa ou usar hash da URL
             const hashAtual = window.location.hash.replace('#', '');
             const abaSalva = hashAtual || localStorage.getItem('flash_aba_ativa') || 'solicitar';
             
@@ -182,8 +181,6 @@
                 parcelas: 48,
                 periodicidade: '30',
                 jurosParcelamento: 0,
-                descontoAntecipado: 0,
-                autorizarExibicaoPlano: false,
                 status: 'aguardando',
                 entradaPaga: false,
                 pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${valorEntradaCalc.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
@@ -197,16 +194,15 @@
                 try {
                     const { error } = await supabaseClient.from('clientes').insert([novaProposta]);
                     if (error) {
-                        console.warn('Erro ao inserir no Supabase, mantido local:', error.message);
+                        console.error('Erro ao salvar no Supabase:', error.message);
                     }
                 } catch (err) {
-                    console.warn('Erro de conexão ao inserir no Supabase.');
+                    console.error('Erro crítico de conexão com Supabase:', err);
                 }
             }
 
             await carregarDadosDoBanco();
             
-            // Notificação visual imediata para o administrador se ele estiver na mesma sessão
             if (adminLogado) {
                 renderizarPainelAdmin();
             }
@@ -220,30 +216,59 @@
             consultarProposta();
         }
 
-        async function alterarStatusCliente(protocolo, novoStatus, entradaPaga) {
+        async function salvarEdicaoAdmin(protocolo) {
+            const nome = document.getElementById(`edit-nome-${protocolo}`).value;
+            const cpf = document.getElementById(`edit-cpf-${protocolo}`).value;
+            const whatsapp = document.getElementById(`edit-whatsapp-${protocolo}`).value;
+            const endereco = document.getElementById(`edit-endereco-${protocolo}`).value;
+            const cep = document.getElementById(`edit-cep-${protocolo}`).value;
+            const limite = parseFloat(document.getElementById(`edit-limite-${protocolo}`).value) || 0;
+            const valorEntrada = parseFloat(document.getElementById(`edit-entrada-${protocolo}`).value) || 0;
+            const parcelas = parseInt(document.getElementById(`edit-parcelas-${protocolo}`).value) || 48;
+            const jurosParcelamento = parseFloat(document.getElementById(`edit-juros-${protocolo}`).value) || 0;
+            const status = document.getElementById(`edit-status-${protocolo}`).value;
+            const entradaPaga = document.getElementById(`edit-entradapaga-${protocolo}`).checked;
+
+            const dadosAtualizados = {
+                nome,
+                cpf,
+                whatsapp,
+                endereco,
+                cep,
+                limite,
+                valorEntrada,
+                parcelas,
+                jurosParcelamento,
+                status,
+                entradaPaga,
+                pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${valorEntrada.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
+            };
+
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const idx = locais.findIndex(c => c.protocolo === protocolo);
             if (idx !== -1) {
-                locais[idx].status = novoStatus;
-                locais[idx].entradaPaga = entradaPaga;
+                locais[idx] = { ...locais[idx], ...dadosAtualizados };
                 localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
             }
 
             if (supabaseClient) {
                 try {
-                    await supabaseClient.from('clientes').update({ status: novoStatus, entradaPaga: entradaPaga }).eq('protocolo', protocolo);
+                    const { error } = await supabaseClient.from('clientes').update(dadosAtualizados).eq('protocolo', protocolo);
+                    if (error) {
+                        console.error('Erro ao atualizar no Supabase:', error.message);
+                    }
                 } catch (e) {
-                    console.warn('Erro ao atualizar no Supabase');
+                    console.warn('Erro de conexão ao atualizar no Supabase.');
                 }
             }
 
             await carregarDadosDoBanco();
             renderizarPainelAdmin();
-            alert('Status atualizado com sucesso!');
+            alert('Proposta atualizada com sucesso!');
         }
 
         async function excluirPropostaAdmin(protocolo) {
-            if (!confirm(`Tem certeza que deseja excluir a proposta ${protocolo}?`)) return;
+            if (!confirm(`Tem certeza que deseja excluir permanentemente a proposta ${protocolo}?`)) return;
 
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const filtrados = locais.filter(c => c.protocolo !== protocolo);
@@ -268,7 +293,7 @@
             if (listaClientes.length === 0) {
                 container.innerHTML = `
                     <div class="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-500 text-xs">
-                        Nenhuma proposta registrada no momento.
+                        Nenhuma proposta registrada no momento na nuvem.
                     </div>
                 `;
                 return;
@@ -284,44 +309,75 @@
                     <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 shadow-sm">
                         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200 pb-3">
                             <div>
-                                <span class="text-[11px] font-bold text-blue-950 block">${c.protocolo}</span>
-                                <h4 class="font-black text-slate-900 text-base">${c.nome}</h4>
+                                <span class="text-[11px] font-bold text-blue-950 block">Protocolo: ${c.protocolo}</span>
+                                <h4 class="font-black text-slate-900 text-base">Edição Completa da Proposta</h4>
                             </div>
                             <div>${badgeStatus}</div>
                         </div>
 
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                             <div>
-                                <span class="text-slate-500 block">CPF</span>
-                                <strong class="text-slate-800">${c.cpf || 'Não informado'}</strong>
+                                <label class="text-slate-500 font-bold block mb-1">Nome do Cliente</label>
+                                <input type="text" id="edit-nome-${c.protocolo}" value="${c.nome || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
                             </div>
                             <div>
-                                <span class="text-slate-500 block">WhatsApp</span>
-                                <strong class="text-slate-800">${c.whatsapp || 'Não informado'}</strong>
+                                <label class="text-slate-500 font-bold block mb-1">CPF</label>
+                                <input type="text" id="edit-cpf-${c.protocolo}" value="${c.cpf || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
                             </div>
                             <div>
-                                <span class="text-slate-500 block">Limite Solicitado</span>
-                                <strong class="text-blue-950 font-black">R$ ${(c.limite || 1500).toFixed(2)}</strong>
-                            </div>
-                            <div>
-                                <span class="text-slate-500 block">Entrada Pix (10%)</span>
-                                <strong class="text-amber-700 font-black">R$ ${(c.valorEntrada || (c.limite * 0.1)).toFixed(2)}</strong>
+                                <label class="text-slate-500 font-bold block mb-1">WhatsApp</label>
+                                <input type="text" id="edit-whatsapp-${c.protocolo}" value="${c.whatsapp || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
                             </div>
                         </div>
 
-                        <div class="text-[11px] text-slate-600 bg-white p-3 rounded-xl border border-slate-200">
-                            <strong>Endereço:</strong> ${c.endereco || 'Não informado'} (CEP: ${c.cep || 'N/I'})
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                            <div>
+                                <label class="text-slate-500 font-bold block mb-1">Endereço Completo</label>
+                                <input type="text" id="edit-endereco-${c.protocolo}" value="${c.endereco || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
+                            </div>
+                            <div>
+                                <label class="text-slate-500 font-bold block mb-1">CEP</label>
+                                <input type="text" id="edit-cep-${c.protocolo}" value="${c.cep || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
+                            </div>
                         </div>
 
-                        <div class="flex flex-wrap gap-2 pt-2">
-                            <button onclick="alterarStatusCliente('${c.protocolo}', 'aprovado', true)" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
-                                <i class="fa-solid fa-check"></i> Aprovar / Marcar Entrada Paga
-                            </button>
-                            <button onclick="alterarStatusCliente('${c.protocolo}', 'aguardando', false)" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
-                                <i class="fa-solid fa-clock"></i> Voltar p/ Aguardando
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                            <div>
+                                <label class="text-slate-500 font-bold block mb-1">Limite (R$)</label>
+                                <input type="number" step="50" id="edit-limite-${c.protocolo}" value="${c.limite || 1500}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-blue-950">
+                            </div>
+                            <div>
+                                <label class="text-slate-500 font-bold block mb-1">Entrada Pix (R$)</label>
+                                <input type="number" step="10" id="edit-entrada-${c.protocolo}" value="${c.valorEntrada || 150}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-amber-700">
+                            </div>
+                            <div>
+                                <label class="text-slate-500 font-bold block mb-1">Qtd Parcelas</label>
+                                <input type="number" id="edit-parcelas-${c.protocolo}" value="${c.parcelas || 48}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
+                            </div>
+                            <div>
+                                <label class="text-slate-500 font-bold block mb-1">Juros (%)</label>
+                                <input type="number" step="0.5" id="edit-juros-${c.protocolo}" value="${c.jurosParcelamento || 0}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
+                            </div>
+                            <div>
+                                <label class="text-slate-500 font-bold block mb-1">Status Interno</label>
+                                <select id="edit-status-${c.protocolo}" class="w-full bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs font-semibold text-slate-800">
+                                    <option value="aguardando" ${c.status === 'aguardando' ? 'selected' : ''}>Aguardando</option>
+                                    <option value="aprovado" ${c.status === 'aprovado' ? 'selected' : ''}>Aprovado</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2 pt-1">
+                            <input type="checkbox" id="edit-entradapaga-${c.protocolo}" ${c.entradaPaga ? 'checked' : ''} class="w-4 h-4 text-blue-950 rounded border-slate-300">
+                            <label for="edit-entradapaga-${c.protocolo}" class="text-xs font-bold text-slate-700">Marcar Entrada como Paga (Libera automaticamente o Pix e o contrato para o cliente)</label>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
+                            <button onclick="salvarEdicaoAdmin('${c.protocolo}')" class="bg-blue-950 hover:bg-blue-900 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
+                                <i class="fa-solid fa-floppy-disk"></i> Salvar Alterações
                             </button>
                             <button onclick="excluirPropostaAdmin('${c.protocolo}')" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm ml-auto">
-                                <i class="fa-solid fa-trash"></i> Excluir
+                                <i class="fa-solid fa-trash"></i> Excluir Proposta
                             </button>
                         </div>
                     </div>
@@ -375,6 +431,26 @@
             }).catch(() => {
                 alert('Erro ao copiar Pix.');
             });
+        }
+
+        function simularPagamentoPixEfetuado(protocolo, nomeCliente) {
+            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === protocolo);
+            if (idx !== -1) {
+                locais[idx].entradaPaga = true;
+                locais[idx].status = 'aprovado';
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+            }
+
+            if (supabaseClient) {
+                supabaseClient.from('clientes').update({ entradaPaga: true, status: 'aprovado' }).eq('protocolo', protocolo).then(() => {});
+            }
+
+            const mensagemZap = encodeURIComponent(`Olá! Acabei de efetuar o pagamento da entrada via Pix referente ao protocolo ${protocolo} (${nomeCliente}). Segue o comprovante para liberação dos móveis.`);
+            const urlZap = `https://wa.me/${CONFIG.WHATSAPP_CONTATO}?text=${mensagemZap}`;
+            
+            window.open(urlZap, '_blank');
+            consultarProposta();
         }
 
         function imprimirComprovante() {
@@ -493,7 +569,7 @@
                         </div>
                         <h3 class="text-2xl font-black text-emerald-900">Entrada Confirmada & Crédito Liberado!</h3>
                         
-                        <div class="p-6 bg-emerald-600 text-white rounded-2xl shadow-lg border border-emerald-500 animate-pulse space-y-2">
+                        <div class="p-6 bg-emerald-600 text-white rounded-2xl shadow-lg border border-emerald-500 space-y-2">
                             <span class="text-xs uppercase tracking-widest font-black opacity-90 block">✨ Valor Liberado ✨</span>
                             <div class="text-3xl font-black">R$ ${(cliente.limite || 1500).toFixed(2)}</div>
                             <p class="text-xs font-semibold text-emerald-100">Valor liberado para utilização e envio dos móveis</p>
@@ -508,6 +584,9 @@
                             <button onclick="abrirContrato('${cliente.protocolo}')" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-lg flex items-center justify-center gap-2 transform hover:-translate-y-0.5">
                                 <i class="fa-solid fa-file-contract"></i> Visualizar e Imprimir Contrato
                             </button>
+                            <a href="https://wa.me/${CONFIG.WHATSAPP_CONTATO}?text=${encodeURIComponent('Olá! Já efetuei o pagamento da minha entrada e gostaria de prosseguir com a entrega.')}" target="_blank" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-lg flex items-center justify-center gap-2">
+                                <i class="fa-brands fa-whatsapp text-base"></i> Falar com Atendente no WhatsApp
+                            </a>
                         </div>
                     </div>
                 `;
@@ -522,10 +601,10 @@
                             <div>${badgeStatus}</div>
                         </div>
 
-                        <div class="p-6 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-2xl shadow-lg border border-amber-400 animate-pulse space-y-2 text-center">
-                            <span class="text-xs uppercase tracking-widest font-black opacity-95 block">⚠️ Proposta Liberada com Sucesso • Aguarde o Pagamento do Pix ⚠️</span>
-                            <div class="text-3xl font-black">R$ ${(cliente.limite || 1500).toFixed(2)}</div>
-                            <p class="text-xs font-semibold text-amber-100">Valor a ser creditado, a ser liberado, aguardando pagamento do pix</p>
+                        <div class="p-6 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-2xl shadow-lg border border-amber-400 space-y-2 text-center">
+                            <span class="text-xs uppercase tracking-widest font-black opacity-95 block">⚠️ Proposta Liberada • Efetue o Pix de Entrada ⚠️</span>
+                            <div class="text-3xl font-black">R$ ${(cliente.valorEntrada || 150).toFixed(2)}</div>
+                            <p class="text-xs font-semibold text-amber-100">Escaneie o QR Code abaixo ou utilize o Pix Copia e Cola para pagar</p>
                         </div>
 
                         <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs">
@@ -540,7 +619,7 @@
                         </div>
 
                         <div class="space-y-3 text-center pt-2">
-                            <p class="text-xs font-bold text-slate-700">Realize o pagamento da entrada para liberar o crédito:</p>
+                            <p class="text-xs font-bold text-slate-700">Realize o pagamento da entrada:</p>
                             <div class="flex justify-center">
                                 <img src="${qrImg}" alt="QR Code Pix" class="w-40 h-40 border-2 border-slate-100 p-2 rounded-2xl bg-white shadow-md">
                             </div>
@@ -554,6 +633,12 @@
                                     </button>
                                 </div>
                             </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <button onclick="simularPagamentoPixEfetuado('${cliente.protocolo}', '${cliente.nome}')" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 px-6 rounded-2xl text-xs transition shadow-xl flex items-center justify-center gap-2">
+                                <i class="fa-brands fa-whatsapp text-base"></i> Já Paguei o Pix • Enviar Comprovante no WhatsApp
+                            </button>
                         </div>
 
                         <div class="border-t border-slate-100 pt-4 space-y-2">
@@ -580,11 +665,10 @@
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 flex flex-col selection:bg-blue-950 selection:text-white">
 
-    <!-- Navegação / Header com Aparência de Marca Grande -->
     <header class="bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-sm sticky top-0 z-50 transition-all duration-300">
         <div class="max-w-4xl mx-auto px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
             <div class="flex items-center gap-3.5">
-                <div class="w-12 h-12 bg-gradient-to-br from-blue-950 to-blue-900 text-white rounded-2xl flex items-center justify-center font-black shadow-lg text-lg transform hover:scale-105 transition-transform duration-300">
+                <div class="w-12 h-12 bg-gradient-to-br from-blue-950 to-blue-900 text-white rounded-2xl flex items-center justify-center font-black shadow-lg text-lg">
                     FP
                 </div>
                 <div>
@@ -601,13 +685,9 @@
         </div>
     </header>
 
-    <!-- Conteúdo Principal -->
     <main class="max-w-4xl mx-auto px-6 py-10 flex-grow w-full space-y-12">
 
-        <!-- ABA 1: SOLICITAR -->
         <section id="tab-solicitar" class="tab-content space-y-10">
-            
-            <!-- Hero Section com Copys Impactantes -->
             <div class="bg-gradient-to-br from-blue-950 via-blue-900 to-indigo-950 text-white p-8 sm:p-12 rounded-3xl shadow-2xl space-y-6 relative overflow-hidden">
                 <div class="absolute -right-10 -bottom-10 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
                 <div class="space-y-3 relative z-10">
@@ -623,8 +703,7 @@
                 </div>
             </div>
 
-            <!-- O que oferecemos -->
-            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6 transform hover:-translate-y-1 transition-all duration-300">
+            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
                 <h3 class="text-lg font-black text-blue-950 tracking-tight flex items-center gap-2">
                     <i class="fa-solid fa-star text-amber-500"></i> O que oferecemos:
                 </h3>
@@ -648,33 +727,10 @@
                 </div>
             </div>
 
-            <!-- Como Funciona (3 Passos) -->
-            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
-                <h3 class="text-lg font-black text-blue-950 tracking-tight">Como funciona? É só seguir 3 passos:</h3>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="p-6 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
-                        <div class="w-10 h-10 rounded-xl bg-blue-950 text-white flex items-center justify-center font-black text-sm shadow-md">1️⃣</div>
-                        <h4 class="font-bold text-blue-950 text-sm">Você escolhe</h4>
-                        <p class="text-xs text-slate-600 leading-relaxed">Escolha os móveis que deseja e fale diretamente com a gente pelo WhatsApp de forma rápida e sem enrolação.</p>
-                    </div>
-                    <div class="p-6 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
-                        <div class="w-10 h-10 rounded-xl bg-blue-950 text-white flex items-center justify-center font-black text-sm shadow-md">2️⃣</div>
-                        <h4 class="font-bold text-blue-950 text-sm">Condições combinadas</h4>
-                        <p class="text-xs text-slate-600 leading-relaxed">Definimos juntos a entrada ideal e a quantidade de parcelas que cabem perfeitamente no seu orçamento.</p>
-                    </div>
-                    <div class="p-6 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
-                        <div class="w-10 h-10 rounded-xl bg-blue-950 text-white flex items-center justify-center font-black text-sm shadow-md">3️⃣</div>
-                        <h4 class="font-bold text-blue-950 text-sm">Pronto!</h4>
-                        <p class="text-xs text-slate-600 leading-relaxed">Pague a entrada via Pix, fechamos o contrato com total segurança e você recebe tudo direto na sua porta.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Formulário de Solicitação Atualizado e Harmonioso -->
             <div class="bg-white p-8 sm:p-10 rounded-3xl border border-slate-200/80 shadow-2xl shadow-slate-100 space-y-6">
                 <div class="space-y-1">
                     <h3 class="text-xl font-black text-blue-950 tracking-tight">Preencha seus dados para iniciar</h3>
-                    <p class="text-xs text-slate-500">Análise rápida, sem burocracia e com total segurança.</p>
+                    <p class="text-xs text-slate-500">Garantimos o envio imediato da sua proposta para o nosso painel em tempo real.</p>
                 </div>
 
                 <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-5">
@@ -710,55 +766,29 @@
                         <input type="number" id="valor" required min="200" max="15000" step="50" value="1500" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition font-bold text-blue-950">
                     </div>
 
-                    <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-xl transform hover:-translate-y-0.5 tracking-wide">
-                        🚀 Enviar Solicitação de Crédito
+                    <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-xl tracking-wide">
+                        🚀 Enviar Solicitação de Crédito (Garantido em Nuvem)
                     </button>
                 </form>
             </div>
 
-            <!-- Vantagens / Sinônimo de Facilidade -->
-            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
-                <h3 class="text-lg font-black text-blue-950 tracking-tight">Sinônimo de facilidade para mobiliar seu lar:</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
-                        <h4 class="font-bold text-blue-950 text-xs flex items-center gap-2">✅ Sem pegadinhas</h4>
-                        <p class="text-[11px] text-slate-600 leading-relaxed">Tudo explicado direitinho, sem letras miúdas e sem taxas escondidas.</p>
-                    </div>
-                    <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
-                        <h4 class="font-bold text-blue-950 text-xs flex items-center gap-2">✅ Rápido e prático</h4>
-                        <p class="text-[11px] text-slate-600 leading-relaxed">Análise e condições definidas na hora, sem espera ou burocracia excessiva.</p>
-                    </div>
-                    <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
-                        <h4 class="font-bold text-blue-950 text-xs flex items-center gap-2">✅ Totalmente seguro</h4>
-                        <p class="text-[11px] text-slate-600 leading-relaxed">Compra direta com a Distribuidora Flash Point, contrato válido e entrega garantida.</p>
-                    </div>
-                    <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
-                        <h4 class="font-bold text-blue-950 text-xs flex items-center gap-2">✅ Para todo mundo</h4>
-                        <p class="text-[11px] text-slate-600 leading-relaxed">Não tem cartão ou está com restrição no nome? Temos a solução ideal para você.</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- CTA Final / WhatsApp -->
             <div class="bg-gradient-to-br from-emerald-950 via-emerald-950 to-blue-950 text-white p-8 rounded-3xl shadow-xl text-center space-y-4">
-                <h3 class="text-xl font-black">Quer começar agora?</h3>
+                <h3 class="text-xl font-black">Quer atendimento imediato?</h3>
                 <p class="text-xs text-emerald-100 max-w-xl mx-auto leading-relaxed">
-                    Atendimento exclusivo pelo WhatsApp • Móveis novos direto da fábrica • Entregamos em todo Brasil, com foco em São Paulo e ABC Paulista.
+                    Fale direto com a nossa central de vendas no WhatsApp: (11) 97329-4235.
                 </p>
                 <div class="pt-2">
-                    <a href="https://wa.me/5511973294235?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20o%20FlashCred%20e%20fazer%20um%20orçamento" target="_blank" class="inline-flex items-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-2xl text-xs transition shadow-lg transform hover:-translate-y-0.5">
-                        <i class="fa-brands fa-whatsapp text-base"></i> Fale Conosco e Faça Seu Orçamento
+                    <a href="https://wa.me/5511973294235?text=Olá!%20Enviei%20minha%20proposta%20no%20site%20da%20Flash%20Point%20e%20gostaria%20de%20atendimento" target="_blank" class="inline-flex items-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-2xl text-xs transition shadow-lg">
+                        <i class="fa-brands fa-whatsapp text-base"></i> Abrir WhatsApp Oficial (11 97329-4235)
                     </a>
                 </div>
             </div>
-
         </section>
 
-        <!-- ABA 2: ACOMPANHAR -->
         <section id="tab-acompanhar" class="tab-content hidden space-y-6">
             <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-4">
                 <h2 class="text-xl font-black text-blue-950 tracking-tight">Acompanhar Status da Proposta</h2>
-                <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para verificar o andamento e efetuar o pagamento da entrada.</p>
+                <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para ver o Pix de entrada e realizar o pagamento real.</p>
 
                 <div class="flex gap-3">
                     <input type="text" id="busca-cpf" placeholder="Digite seu CPF ou Protocolo (ex: FP-123456)" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition">
@@ -769,15 +799,14 @@
             <div id="resultado-busca" class="hidden"></div>
         </section>
 
-        <!-- ABA 3: LOGIN ADMIN -->
         <section id="tab-login-admin" class="tab-content hidden space-y-6">
             <div class="max-w-md mx-auto bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-5">
                 <div class="text-center space-y-2">
                     <div class="w-14 h-14 bg-blue-950 text-white rounded-2xl flex items-center justify-center mx-auto text-lg font-black shadow-lg">
                         <i class="fa-solid fa-lock"></i>
                     </div>
-                    <h2 class="text-xl font-black text-blue-950 tracking-tight">Acesso Restrito</h2>
-                    <p class="text-xs text-slate-500">Digite a senha administrativa para gerenciar o sistema.</p>
+                    <h2 class="text-xl font-black text-blue-950 tracking-tight">Painel Administrativo</h2>
+                    <p class="text-xs text-slate-500">Digite a senha para gerenciar ou editar qualquer detalhe de todas as propostas.</p>
                 </div>
 
                 <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4">
@@ -790,12 +819,11 @@
             </div>
         </section>
 
-        <!-- ABA 4: PAINEL ADMIN -->
         <section id="tab-painel" class="tab-content hidden space-y-6">
             <div class="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xl">
                 <div>
-                    <h2 class="font-black text-blue-950 text-lg tracking-tight">Painel Administrativo</h2>
-                    <p class="text-xs text-slate-500">Gerencie propostas e liberações de crédito em tempo real.</p>
+                    <h2 class="font-black text-blue-950 text-lg tracking-tight">Painel de Controle e Edição Total</h2>
+                    <p class="text-xs text-slate-500">Todos os campos de todas as propostas são totalmente editáveis e sincronizados via Supabase.</p>
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-4 py-2 rounded-2xl text-xs transition border border-rose-200">Sair</button>
             </div>
@@ -808,15 +836,13 @@
                     </button>
                 </div>
                 
-                <div id="lista-propostas-admin" class="space-y-4">
-                    <!-- Preenchido dinamicamente -->
+                <div id="lista-propostas-admin" class="space-y-6">
                 </div>
             </div>
         </section>
 
     </main>
 
-    <!-- Rodapé -->
     <footer class="mt-auto py-8 border-t border-slate-200 bg-white text-center text-xs text-slate-500">
         Distribuidora Flash Point &bull; Sistema FlashCred &copy; 2026
     </footer>
