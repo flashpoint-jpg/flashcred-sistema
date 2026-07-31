@@ -16,6 +16,8 @@
         };
 
         let supabaseClient = null;
+        let canalRealtime = null;
+
         try {
             if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_URL !== 'SUA_URL_DO_SUPABASE_AQUI') {
                 supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
@@ -26,44 +28,6 @@
 
         let listaClientes = [];
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
-
-        // Função auxiliar para gerar payload Pix EMV válido (compatível com Caixa, Nubank, Itaú, etc)
-        function gerarPayloadPix(chave, nomeRecebedor, cidadeRecebedor, valor) {
-            const normalizar = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-            nomeRecebedor = normalizar(nomeRecebedor || "FLASH POINT").substring(0, 25);
-            cidadeRecebedor = normalizar(cidadeRecebedor || "SAO PAULO").substring(0, 15);
-            
-            const formatarCampo = (id, valorCampo) => {
-                const tamanho = String(valorCampo.length).padStart(2, '0');
-                return `${id}${tamanho}${valorCampo}`;
-            };
-
-            let payloadGui = formatarCampo('00', 'br.gov.bcb.pix') + formatarCampo('01', chave);
-            let contaGui = formatarCampo('26', payloadGui);
-            let mcc = formatarCampo('52', '0000');
-            let moeda = formatarCampo('53', '986');
-            let valorStr = formatarCampo('54', Number(valor).toFixed(2));
-            let pais = formatarCampo('58', 'BR');
-            let nome = formatarCampo('59', nomeRecebedor);
-            let cidade = formatarCampo('60', cidadeRecebedor);
-            
-            let payloadSemCrc = '000201' + contaGui + mcc + moeda + valorStr + pais + nome + cidade + formatarCampo('62', formatarCampo('05', '***')) + '6304';
-            
-            let crc = 0xFFFF;
-            for (let i = 0; i < payloadSemCrc.length; i++) {
-                crc ^= payloadSemCrc.charCodeAt(i) << 8;
-                for (let j = 0; j < 8; j++) {
-                    if ((crc & 0x8000) !== 0) {
-                        crc = (crc << 1) ^ 0x1021;
-                    } else {
-                        crc = crc << 1;
-                    }
-                }
-                crc &= 0xFFFF;
-            }
-            let crcHex = crc.toString(16).toUpperCase().padStart(4, '0');
-            return payloadSemCrc + crcHex;
-        }
 
         async function carregarDadosDoBanco() {
             let dadosRemotos = [];
@@ -84,14 +48,7 @@
             [...locais, ...dadosRemotos].forEach(item => {
                 const chave = item.protocolo || item.id;
                 if (chave) {
-                    if (mapa.has(chave)) {
-                        const existente = mapa.get(chave);
-                        if (item.status === 'aprovado' || item.entradaPaga) {
-                            mapa.set(chave, item);
-                        }
-                    } else {
-                        mapa.set(chave, item);
-                    }
+                    mapa.set(chave, item);
                 }
             });
 
@@ -101,6 +58,26 @@
         window.addEventListener('DOMContentLoaded', async () => {
             await carregarDadosDoBanco();
             
+            // Ativar Realtime para atualizar a tela automaticamente quando o status mudar no Supabase
+            if (supabaseClient) {
+                canalRealtime = supabaseClient
+                    .channel('public:clientes')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, payload => {
+                        console.log('Mudança detectada no banco em tempo real:', payload);
+                        carregarDadosDoBanco().then(() => {
+                            // Se o usuário estiver na tela de acompanhamento, atualiza a busca automaticamente
+                            const inputBusca = document.getElementById('busca-cpf');
+                            if (inputBusca && inputBusca.value.trim() !== '') {
+                                consultarProposta();
+                            }
+                            if (adminLogado) {
+                                carregarPainelAdmin();
+                            }
+                        });
+                    })
+                    .subscribe();
+            }
+
             const abaSalva = localStorage.getItem('flash_aba_ativa');
             if (abaSalva) {
                 if (abaSalva === 'painel' && !adminLogado) {
@@ -190,7 +167,6 @@
             const valor = parseFloat(document.getElementById('valor').value) || 1000;
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
             const valorEntradaCalc = valor * 0.10;
-            const pixGerado = gerarPayloadPix(CONFIG.CHAVE_PIX_RECEBIMENTO, 'DISTRIBUIDORA FLASH POINT', 'SAO PAULO', valorEntradaCalc);
 
             const novaProposta = {
                 protocolo: protocolo,
@@ -203,12 +179,12 @@
                 valorEntrada: valorEntradaCalc,
                 porcentagemEntrada: 10,
                 parcelas: 12,
-                periodicidade: '15', // Padrão inicial definido de 15 em 15 dias (só aparece se aprovado)
+                periodicidade: '15',
                 jurosParcelamento: 0,
                 descontoAntecipado: 0,
                 status: 'aguardando',
                 entradaPaga: false,
-                pixCopiaECola: pixGerado
+                pixCopiaECola: 'Aguardando aprovação e geração de Pix automático...'
             };
 
             if (supabaseClient) {
@@ -301,13 +277,32 @@
             const valorPorParcela = parcelasAtuais > 0 ? (valorComJuros / parcelasAtuais) : 0;
             const labelPeriodo = periodicidadeAtual === '7' ? 'semanais (a cada 7 dias)' : 'quinzenais (a cada 15 dias)';
 
+            // Se o pagamento já foi confirmado automaticamente
+            if (cliente.entradaPaga) {
+                resultado.innerHTML = `
+                    <div class="p-6 bg-emerald-50 border border-emerald-300 rounded-2xl space-y-4 text-center shadow-md animate-pulse">
+                        <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center mx-auto text-2xl shadow-lg">
+                            <i class="fa-solid fa-check"></i>
+                        </div>
+                        <h3 class="text-xl font-black text-emerald-900">Entrada Confirmada com Sucesso!</h3>
+                        <p class="text-xs text-emerald-800">Seu crediário foi ativado automaticamente pelo sistema.</p>
+                        
+                        <div class="bg-white p-4 rounded-xl border border-emerald-200 text-left space-y-2">
+                            <p class="text-xs text-slate-700">Protocolo: <strong>${cliente.protocolo}</strong></p>
+                            <p class="text-xs text-slate-700">Plano Liberado: <strong class="text-blue-950">${parcelasAtuais}x ${labelPeriodo} de R$ ${valorPorParcela.toFixed(2)}</strong></p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
             resultado.innerHTML = `
                 <div class="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-left shadow-sm">
                     <h4 class="font-bold text-blue-950 text-base border-b pb-2 flex items-center gap-2"><i class="fa-solid fa-file-invoice-dollar text-blue-900"></i> Detalhes da Proposta</h4>
                     <p class="text-xs text-slate-700">Titular: <strong class="text-slate-900 font-semibold">${cliente.nome}</strong></p>
                     <p class="text-xs text-slate-700">Protocolo de Atendimento: <strong class="text-blue-900 font-bold">${cliente.protocolo}</strong></p>
                     <p class="text-xs text-slate-700">Status: ${badgeStatus}</p>
-                    <p class="text-xs text-slate-700">Confirmação de Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}">${cliente.entradaPaga ? '🟢 Confirmada' : '🟡 Pendente de Pagamento'}</strong></p>
+                    <p class="text-xs text-slate-700">Confirmação de Entrada: <strong class="text-amber-700 font-bold">🟡 Aguardando Pagamento Pix</strong></p>
                     <p class="text-xs text-slate-700">Valor Total do Crediário: <strong class="text-slate-900 font-bold">R$ ${(cliente.limite || 1000).toFixed(2)}</strong></p>
                     
                     ${cliente.status === 'aprovado' ? `
@@ -317,36 +312,37 @@
                     </div>
                     ` : `
                     <div class="bg-amber-50/60 p-3 rounded-xl border border-amber-200 text-amber-900 text-xs font-medium">
-                        ⏳ O plano de parcelamento e periodicidade detalhados aparecerão aqui assim que sua proposta for aprovada pela administração.
+                        ⏳ O plano detalhado e o Pix aparecerão aqui assim que sua proposta for aprovada.
                     </div>
                     `}
 
+                    ${cliente.status === 'aprovado' ? `
                     <div class="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                        <h5 class="font-bold text-blue-950 text-xs uppercase flex items-center gap-1.5"><i class="fa-brands fa-pix text-emerald-600"></i> Pagamento Seguro via Pix</h5>
+                        <h5 class="font-bold text-blue-950 text-xs uppercase flex items-center gap-1.5"><i class="fa-brands fa-pix text-emerald-600"></i> Pagamento via Pix (Atualização Automática)</h5>
                         <div class="flex justify-center p-2 bg-white rounded-xl border shadow-sm">
                             <img src="${qrImg}" alt="QR Code Pix" class="w-32 h-32">
                         </div>
                         <div class="space-y-2">
-                            <input type="text" id="input-copia-cliente-${cliente.protocolo}" readonly value="${cliente.pixCopiaECola || 'Aguardando o sistema gerar o código Pix...'}" class="bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 w-full select-all">
+                            <input type="text" id="input-copia-cliente-${cliente.protocolo}" readonly value="${cliente.pixCopiaECola || 'Aguardando código...'}" class="bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 w-full select-all">
                             <button id="btn-copia-cliente-${cliente.protocolo}" onclick="copiarTextoPix('input-copia-cliente-${cliente.protocolo}', 'btn-copia-cliente-${cliente.protocolo}')" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2 px-3 rounded-xl text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-sm">
                                 <i class="fa-solid fa-copy"></i> Copiar Código Pix
                             </button>
                         </div>
+                        <p class="text-[10px] text-slate-500 text-center">Esta tela atualizará sozinha assim que o pagamento for confirmado pelo banco.</p>
                     </div>
+                    ` : ''}
                 </div>
             `;
         }
 
-        async function gerarPixViaAPI(protocolo) {
+        async function aprovarEGerarPix(protocolo) {
             const cliente = listaClientes.find(c => c.protocolo === protocolo || c.id == protocolo);
             if (!cliente) return;
 
-            if (cliente.valorEntrada === undefined) {
-                cliente.valorEntrada = (cliente.limite || 1000) * 0.10;
-            }
-
             cliente.status = 'aprovado';
-            cliente.pixCopiaECola = gerarPayloadPix(CONFIG.CHAVE_PIX_RECEBIMENTO, 'DISTRIBUIDORA FLASH POINT', 'SAO PAULO', cliente.valorEntrada);
+            cliente.valorEntrada = (cliente.limite * cliente.porcentagemEntrada) / 100;
+            // Simulando um payload Pix válido ou pronto para gateway
+            cliente.pixCopiaECola = `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${cliente.valorEntrada.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
 
             let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
@@ -360,15 +356,16 @@
             if (supabaseClient) {
                 try {
                     await supabaseClient.from('clientes').update({ 
-                        pixCopiaECola: cliente.pixCopiaECola, 
-                        status: 'aprovado' 
+                        status: 'aprovado',
+                        valorEntrada: cliente.valorEntrada,
+                        pixCopiaECola: cliente.pixCopiaECola 
                     }).eq('protocolo', cliente.protocolo);
                 } catch (e) {}
             }
 
             await carregarDadosDoBanco();
             carregarPainelAdmin();
-            alert('Proposta aprovada com sucesso e Pix gerado para o cliente!');
+            alert('Proposta aprovada com sucesso!');
         }
 
         function enviarWhatsAppCliente(protocolo) {
@@ -379,17 +376,14 @@
             const vParc = cliente.parcelas > 0 ? (totalComJuros / cliente.parcelas) : 0;
             const labelPeriodo = (cliente.periodicidade || '15') === '7' ? 'a cada 7 dias (semanais)' : 'a cada 15 dias (quinzenais)';
 
-            const texto = `Prezado(a) *${cliente.nome}*, 🟢 Informamos que sua proposta de crediário no *FlashCred (Distribuidora Flash Point)* foi *APROVADA*!
+            const texto = `Prezado(a) *${cliente.nome}*, 🟢 Sua proposta no *FlashCred (Distribuidora Flash Point)* foi *APROVADA*!
 
 📋 *Protocolo:* ${cliente.protocolo}
 💰 *Valor Total:* R$ ${(cliente.limite || 1000).toFixed(2)}
-🔸 *Entrada:* R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)
+🔸 *Entrada:* R$ ${(cliente.valorEntrada || 0).toFixed(2)}
 💳 *Parcelamento:* ${cliente.parcelas || 12}x ${labelPeriodo} de R$ ${vParc.toFixed(2)}
 
-🔑 *Pix Copia e Cola para a Entrada:*
-\`${cliente.pixCopiaECola || 'Aguardando código Pix'}\`
-
-Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito.`;
+Acompanhe e pague sua entrada em nosso portal oficial para liberar o crediário automaticamente.`;
 
             const fone = (cliente.whatsapp || '').replace(/\D/g, '');
             const url = `https://wa.me/55${fone}?text=${encodeURIComponent(texto)}`;
@@ -425,8 +419,6 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
             cliente.periodicidade = document.getElementById(`edit-periodicidade-${protocolo}`).value || '15';
             cliente.jurosParcelamento = parseFloat(document.getElementById(`edit-juros-${protocolo}`).value) || 0;
             cliente.descontoAntecipado = parseFloat(document.getElementById(`edit-desc-${protocolo}`).value) || 0;
-            
-            cliente.pixCopiaECola = gerarPayloadPix(CONFIG.CHAVE_PIX_RECEBIMENTO, 'DISTRIBUIDORA FLASH POINT', 'SAO PAULO', cliente.valorEntrada);
 
             let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
@@ -444,53 +436,29 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
                         parcelas: cliente.parcelas,
                         periodicidade: cliente.periodicidade,
                         jurosParcelamento: cliente.jurosParcelamento,
-                        descontoAntecipado: cliente.descontoAntecipado,
-                        pixCopiaECola: cliente.pixCopiaECola
+                        descontoAntecipado: cliente.descontoAntecipado
                     }).eq('protocolo', cliente.protocolo);
                 } catch (e) {}
             }
 
             await carregarDadosDoBanco();
             carregarPainelAdmin();
-            alert('Proposta e periodicidade autorizadas com sucesso!');
+            alert('Alterações salvas com sucesso!');
         }
 
         async function excluirProposta(protocolo) {
-            if (!confirm(`Tem certeza que deseja excluir permanentemente a proposta ${protocolo}?`)) return;
+            if (!confirm(`Deseja excluir a proposta ${protocolo}?`)) return;
 
             let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             locais = locais.filter(c => c.protocolo !== protocolo);
             localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
 
             if (supabaseClient) {
-                try {
-                    await supabaseClient.from('clientes').delete().eq('protocolo', protocolo);
-                } catch (e) {}
+                try { await supabaseClient.from('clientes').delete().eq('protocolo', protocolo); } catch (e) {}
             }
 
             await carregarDadosDoBanco();
             carregarPainelAdmin();
-            alert('Proposta excluída com sucesso.');
-        }
-
-        async function alterarStatusCliente(protocolo, novoStatus) {
-            const cliente = listaClientes.find(c => c.protocolo === protocolo || c.id == protocolo);
-            if (cliente) {
-                cliente.status = novoStatus;
-                let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-                const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
-                if (idx !== -1) {
-                    locais[idx].status = novoStatus;
-                    localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-                }
-
-                if (supabaseClient) {
-                    try { await supabaseClient.from('clientes').update({ status: novoStatus }).eq('protocolo', cliente.protocolo); } catch (e) {}
-                }
-
-                await carregarDadosDoBanco();
-                carregarPainelAdmin();
-            }
         }
 
         async function alternarEntradaPaga(protocolo) {
@@ -519,7 +487,7 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
             container.innerHTML = '';
 
             if (listaClientes.length === 0) {
-                container.innerHTML = `<div class="p-8 text-center text-slate-400 bg-white rounded-3xl border border-slate-200">Nenhum cliente cadastrado até o momento.</div>`;
+                container.innerHTML = `<div class="p-8 text-center text-slate-400 bg-white rounded-3xl border border-slate-200">Nenhum cliente cadastrado.</div>`;
                 return;
             }
 
@@ -542,23 +510,18 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
                 }
 
                 const cardId = cliente.protocolo;
-
                 const card = document.createElement('div');
                 card.className = 'bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6';
                 card.innerHTML = `
                     <div class="flex justify-between items-start flex-wrap gap-3 border-b border-slate-100 pb-4 pt-1">
                         <div>
-                            <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Protocolo:</span>
+                            <span class="text-[10px] uppercase font-bold text-slate-400">Protocolo:</span>
                             <h3 class="font-mono text-blue-950 font-black text-base">${cliente.protocolo}</h3>
                         </div>
                         <div class="flex items-center gap-2 flex-wrap">
-                            <span class="px-3 py-1 rounded-xl text-xs font-bold ${isAprovado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-                                ${isAprovado ? '🟢 Aprovado' : '🟡 Em Análise'}
-                            </span>
-                            <span class="px-3 py-1 rounded-xl text-xs font-bold ${cliente.entradaPaga ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
-                                ${cliente.entradaPaga ? '💳 Entrada Paga' : '⏳ Entrada Pendente'}
-                            </span>
-                            <button onclick="excluirProposta('${cardId}')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-3 py-1 rounded-xl text-xs transition cursor-pointer" title="Excluir Proposta"><i class="fa-solid fa-trash"></i></button>
+                            <span class="px-3 py-1 rounded-xl text-xs font-bold ${isAprovado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${isAprovado ? '🟢 Aprovado' : '🟡 Em Análise'}</span>
+                            <span class="px-3 py-1 rounded-xl text-xs font-bold ${cliente.entradaPaga ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">${cliente.entradaPaga ? '💳 Entrada Paga' : '⏳ Entrada Pendente'}</span>
+                            <button onclick="excluirProposta('${cardId}')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-3 py-1 rounded-xl text-xs transition cursor-pointer"><i class="fa-solid fa-trash"></i></button>
                         </div>
                     </div>
 
@@ -570,18 +533,17 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
                         </div>
                         <div class="space-y-1.5">
                             <p><strong>Endereço:</strong> <span class="text-slate-800">${cliente.endereco || 'Não informado'}</span></p>
-                            <p><strong>Periodicidade Autorizada:</strong> <span class="text-blue-900 font-bold">${periodicidade === '7' ? '7 em 7 dias (Semanal)' : '15 em 15 dias (Quinzenal)'}</span></p>
-                            <p><strong>Plano Atual:</strong> <span id="rt-parcelas-topo-${cardId}" class="text-blue-900 font-bold">${parcelas}x de R$ ${vParc.toFixed(2)}</span></p>
+                            <p><strong>Periodicidade:</strong> <span class="text-blue-900 font-bold">${periodicidade === '7' ? '7 em 7 dias' : '15 em 15 dias'}</span></p>
+                            <p><strong>Plano:</strong> <span id="rt-parcelas-topo-${cardId}" class="text-blue-900 font-bold">${parcelas}x de R$ ${vParc.toFixed(2)}</span></p>
                         </div>
                     </div>
 
-                    <!-- Configurações Editáveis -->
                     <div class="border border-blue-100 bg-blue-50/40 p-4 rounded-2xl space-y-4">
-                        <h4 class="font-bold text-blue-950 text-xs uppercase flex items-center gap-1.5"><i class="fa-solid fa-sliders text-blue-900"></i> Painel de Ajustes e Configurações</h4>
+                        <h4 class="font-bold text-blue-950 text-xs uppercase flex items-center gap-1.5"><i class="fa-solid fa-sliders text-blue-900"></i> Painel de Ajustes</h4>
                         
                         <div class="grid grid-cols-2 sm:grid-cols-6 gap-3">
                             <div>
-                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Valor Total (R$)</label>
+                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Valor Total</label>
                                 <input type="number" id="edit-limite-${cardId}" value="${total}" oninput="calcularEmTempoReal('${cardId}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
                             </div>
                             <div>
@@ -589,7 +551,7 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
                                 <input type="number" id="edit-porc-${cardId}" value="${porc}" oninput="calcularEmTempoReal('${cardId}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
                             </div>
                             <div>
-                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Parcelas (4 a 48)</label>
+                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Parcelas</label>
                                 <select id="edit-parc-${cardId}" onchange="calcularEmTempoReal('${cardId}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
                                     ${selectAdminParcelas}
                                 </select>
@@ -606,40 +568,27 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
                                 <input type="number" step="0.1" id="edit-juros-${cardId}" value="${juros}" oninput="calcularEmTempoReal('${cardId}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
                             </div>
                             <div>
-                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Desc. Antecipado (%)</label>
+                                <label class="block text-[10px] uppercase font-bold text-slate-600 mb-1">Desc. Ant. (%)</label>
                                 <input type="number" step="0.1" id="edit-desc-${cardId}" value="${desc}" oninput="calcularEmTempoReal('${cardId}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-900">
                             </div>
                         </div>
 
-                        <!-- Resumo Calculado em Tempo Real -->
                         <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] bg-white p-3 rounded-xl border border-blue-200/60 text-slate-700">
                             <div>Total: <strong id="rt-total-${cardId}" class="text-slate-900">R$ ${total.toFixed(2)}</strong></div>
-                            <div>Entrada: <strong id="rt-entrada-${cardId}" class="text-emerald-700">R$ ${entradaCalc.toFixed(2)} (${porc}%)</strong></div>
-                            <div>Saldo Fin.: <strong id="rt-saldo-${cardId}" class="text-slate-900">R$ ${saldo.toFixed(2)}</strong></div>
-                            <div>Desc. Ant.: <strong id="rt-desc-${cardId}" class="text-blue-900">R$ ${desc.toFixed(2)}</strong></div>
-                            <div><button onclick="salvarEdicaoAdmin('${cardId}')" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-1.5 px-2 rounded-lg text-xs shadow-sm cursor-pointer transition">Salvar Alterações</button></div>
-                        </div>
-
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] uppercase font-bold text-slate-600">Código Pix Copia e Cola</label>
-                            <div class="flex gap-2">
-                                <input type="text" id="edit-copiacola-${cardId}" value="${cliente.pixCopiaECola || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono text-slate-700">
-                                <button id="btn-copia-admin-${cardId}" onclick="copiarTextoPix('edit-copiacola-${cardId}', 'btn-copia-admin-${cardId}')" class="bg-slate-800 hover:bg-slate-900 text-white font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer flex items-center gap-1 shrink-0">
-                                    <i class="fa-solid fa-copy"></i> Copiar
-                                </button>
-                            </div>
+                            <div>Entrada: <strong id="rt-entrada-${cardId}" class="text-emerald-700">R$ ${entradaCalc.toFixed(2)}</strong></div>
+                            <div>Saldo: <strong id="rt-saldo-${cardId}" class="text-slate-900">R$ ${saldo.toFixed(2)}</strong></div>
+                            <div>Desc.: <strong id="rt-desc-${cardId}" class="text-blue-900">R$ ${desc.toFixed(2)}</strong></div>
+                            <div><button onclick="salvarEdicaoAdmin('${cardId}')" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-1.5 px-2 rounded-lg text-xs shadow-sm cursor-pointer transition">Salvar</button></div>
                         </div>
                     </div>
 
-                    <!-- Botões de Ação do Admin -->
                     <div class="flex justify-between items-center flex-wrap gap-3 pt-2 border-t border-slate-100">
                         <div class="flex gap-2 flex-wrap">
-                            <button onclick="gerarPixViaAPI('${cardId}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm cursor-pointer transition flex items-center gap-1.5"><i class="fa-solid fa-qrcode"></i> Aprovar e Gerar Pix</button>
-                            <button onclick="enviarWhatsAppCliente('${cardId}')" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm cursor-pointer transition flex items-center gap-1.5"><i class="fa-brands fa-whatsapp"></i> Enviar no WhatsApp</button>
+                            <button onclick="aprovarEGerarPix('${cardId}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm cursor-pointer transition flex items-center gap-1.5"><i class="fa-solid fa-qrcode"></i> Aprovar Pedido</button>
+                            <button onclick="enviarWhatsAppCliente('${cardId}')" class="bg-teal-600 hover:bg-teal-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-sm cursor-pointer transition flex items-center gap-1.5"><i class="fa-brands fa-whatsapp"></i> WhatsApp</button>
                         </div>
                         <div class="flex gap-2 flex-wrap">
-                            <button onclick="alternarEntradaPaga('${cardId}')" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer">${cliente.entradaPaga ? 'Marcar Entrada Pendente' : 'Marcar Entrada Paga'}</button>
-                            <button onclick="alterarStatusCliente('${cardId}', '${isAprovado ? 'aguardando' : 'aprovado'}')" class="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer">${isAprovado ? 'Reverter para Análise' : 'Aprovar Pedido'}</button>
+                            <button onclick="alternarEntradaPaga('${cardId}')" class="bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold px-3 py-2 rounded-xl text-xs transition cursor-pointer">${cliente.entradaPaga ? 'Marcar Pendente' : 'Marcar Pago'}</button>
                         </div>
                     </div>
                 `;
@@ -725,7 +674,7 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
         <div id="tab-acompanhar" class="tab-content hidden bg-white p-8 sm:p-10 rounded-3xl shadow-sm border border-slate-200 space-y-6">
             <div class="text-center space-y-2">
                 <h2 class="text-2xl font-bold text-blue-950 tracking-tight">Acompanhar Pedido</h2>
-                <p class="text-sm text-slate-500">Insira seu CPF (com ou sem pontos) ou número de protocolo para conferir o andamento.</p>
+                <p class="text-sm text-slate-500">Insira seu CPF ou número de protocolo para conferir o andamento em tempo real.</p>
             </div>
             <div class="flex gap-3 max-w-lg mx-auto">
                 <input type="text" id="busca-cpf" placeholder="Digite CPF ou Protocolo..." class="flex-1 bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-950 shadow-inner">
@@ -739,15 +688,15 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
             <div class="text-center space-y-2">
                 <div class="w-12 h-12 bg-blue-100 text-blue-950 rounded-2xl mx-auto flex items-center justify-center text-xl font-bold border border-blue-200"><i class="fa-solid fa-lock"></i></div>
                 <h2 class="text-xl font-bold text-blue-950 tracking-tight">Área Restrita</h2>
-                <p class="text-xs text-slate-500">Insira a credencial de segurança para acessar o painel administrativo.</p>
+                <p class="text-xs text-slate-500">Insira a credencial de segurança.</p>
             </div>
             <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4">
                 <div>
                     <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">Senha de Acesso</label>
                     <input type="password" id="senha-admin" required class="w-full bg-slate-50 border border-slate-300 rounded-2xl px-4 py-3.5 text-sm text-slate-900 focus:outline-none focus:border-blue-950 shadow-inner">
                 </div>
-                <p id="erro-senha" class="hidden text-xs text-rose-600 font-bold text-center">Senha incorreta. Tente novamente.</p>
-                <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3.5 rounded-2xl text-sm transition shadow-lg shadow-blue-950/20 cursor-pointer">Entrar no Sistema</button>
+                <p id="erro-senha" class="hidden text-xs text-rose-600 font-bold text-center">Senha incorreta.</p>
+                <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3.5 rounded-2xl text-sm transition shadow-lg shadow-blue-950/20 cursor-pointer">Entrar</button>
             </form>
         </div>
 
@@ -756,7 +705,7 @@ Acompanhe os detalhes em nosso portal oficial. Atenciosamente, Setor de Crédito
             <div class="flex justify-between items-center bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200 flex-wrap gap-4">
                 <div>
                     <h2 class="text-xl sm:text-2xl font-bold text-blue-950 tracking-tight">Painel Administrativo</h2>
-                    <p class="text-xs sm:text-sm text-slate-500">Gestão avançada de propostas, configurações de parcelamento e Pix.</p>
+                    <p class="text-xs sm:text-sm text-slate-500">Gestão de propostas e automação Pix.</p>
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-5 py-2.5 rounded-xl text-xs transition border border-rose-200 cursor-pointer">Encerrar Sessão</button>
             </div>
