@@ -180,7 +180,7 @@
                 periodicidade: '30',
                 jurosParcelamento: 2.5,
                 descontoAntecipado: 10,
-                status: 'analise', // Status inicial: em análise
+                status: 'analise',
                 entradaPaga: false,
                 pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${valorEntradaCalc.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
             };
@@ -300,7 +300,7 @@
 
             await carregarDadosDoBanco();
             renderizarPainelAdmin();
-            alert(novoStatus === 'aprovado' ? 'Proposta APROVADA! O cliente já pode selecionar a quantidade de parcelas e visualizar o Pix na aba Acompanhar.' : 'Proposta marcada como Reprovada.');
+            alert(novoStatus === 'aprovado' ? 'Proposta APROVADA!' : 'Proposta marcada como Reprovada.');
         }
 
         async function excluirPropostaAdmin(protocolo) {
@@ -334,7 +334,7 @@
                 texto = `Olá ${cliente.nome}! Sua proposta (${cliente.protocolo}) na Distribuidora Flash Point está em análise cadastral.`;
             } else if (tipoMensagem === 'aguardando_pagamento') {
                 const pixChave = cliente.pixCopiaECola || '';
-                texto = `Olá ${cliente.nome}! Sua proposta (${cliente.protocolo}) foi *aprovada*! Acesse o site na aba Acompanhar para selecionar o parcelamento, verificar os juros, desconto antecipado e efetuar o Pix de entrada de R$ ${(cliente.valorEntrada || 0).toFixed(2)}.\n\nPix Copia e Cola:\n${pixChave}`;
+                texto = `Olá ${cliente.nome}! Sua proposta (${cliente.protocolo}) foi *aprovada*! Acesse o site na aba Acompanhar para selecionar o parcelamento e efetuar o Pix de entrada de R$ ${(cliente.valorEntrada || 0).toFixed(2)}.\n\nPix Copia e Cola:\n${pixChave}`;
             } else if (tipoMensagem === 'aprovado') {
                 texto = `Parabéns ${cliente.nome}! Seu pagamento de entrada foi confirmado e seu crédito de R$ ${(cliente.limite || 0).toFixed(2)} foi totalmente liberado pela Distribuidora Flash Point!`;
             } else if (tipoMensagem === 'reprovado') {
@@ -432,7 +432,6 @@
                             </div>
                         </div>
 
-                        <!-- Botões de Aprovação, Reprovação e Ações Rápidas -->
                         <div class="flex flex-wrap gap-2 bg-white p-3 rounded-xl border border-slate-200">
                             <span class="text-[11px] font-bold text-slate-500 self-center mr-1">Decisão:</span>
                             <button onclick="alterarStatusAdmin('${c.protocolo}', 'aprovado')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold px-4 py-2 rounded-lg transition shadow-sm flex items-center gap-1">
@@ -451,7 +450,6 @@
                             </button>
                         </div>
 
-                        <!-- Campos de Dados Cadastrais -->
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                             <div>
                                 <label class="text-slate-500 font-bold block mb-1">Nome do Cliente</label>
@@ -478,7 +476,6 @@
                             </div>
                         </div>
 
-                        <!-- Edição de Valores e Juros com Recálculo em Tempo Real -->
                         <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
                             <div>
                                 <label class="text-slate-700 font-bold block mb-1">Valor Limite (R$)</label>
@@ -502,7 +499,6 @@
                             </div>
                         </div>
 
-                        <!-- Visor de Soma e Totais em Tempo Real -->
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-4 rounded-xl border border-slate-200 text-xs shadow-inner">
                             <div>
                                 <span class="text-slate-500 block">Valor Entrada Pix:</span>
@@ -606,7 +602,6 @@
             const elContainerCronograma = document.getElementById(`cronograma-container-${protocolo}`);
             if (elContainerCronograma) elContainerCronograma.innerHTML = htmlCronogramaCliente;
 
-            // Atualiza dados na sessão temporária do cliente
             cliente.parcelasSelecionadas = qtdSelecionada;
         }
 
@@ -645,10 +640,6 @@
                 supabaseClient.from('clientes').update({ entradaPaga: true }).eq('protocolo', protocolo).then(() => {});
             }
 
-            const mensagemZap = encodeURIComponent(`Olá! Acabei de efetuar o pagamento da entrada via Pix referente ao protocolo ${protocolo} (${nomeCliente}). Segue o comprovante para liberação.`);
-            const urlZap = `https://wa.me/${CONFIG.WHATSAPP_CONTATO}?text=${mensagemZap}`;
-            
-            window.open(urlZap, '_blank');
             consultarProposta();
         }
 
@@ -741,7 +732,6 @@
                 return;
             }
 
-            // SE AINDA ESTIVER EM ANÁLISE: MOSTRAR APENAS NOME, VALOR SOLICITADO E AGUARDANDO ANÁLISE (LIMPO E PROFISSIONAL)
             if (cliente.status === 'analise') {
                 resultado.innerHTML = `
                     <div class="p-8 bg-white border border-slate-200 rounded-3xl space-y-5 text-center shadow-lg">
@@ -784,7 +774,6 @@
                 return;
             }
 
-            // SE FOI APROVADO: AVISO SUTIL E PROFISSIONAL DE LIMITE DISPONÍVEL, SELEÇÃO DE PARCELAS, JUROS, DESCONTO ANTECIPADO E PIX
             const pixGerado = cliente.pixCopiaECola || `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${(cliente.valorEntrada || 150).toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
             const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pixGerado)}`;
             
@@ -799,34 +788,52 @@
             const totalComJuros = saldoDev * (1 + (jurosNum / 100));
             const valorPorParcela = qtdParcAtual > 0 ? (totalComJuros / qtdParcAtual) : 0;
             
-            const cronograma = gerandoCronogramaInicialCliente = gerarCronogramaParcelasPersonalizado(cliente, qtdParcAtual);
+            const cronograma = gerarCronogramaParcelasPersonalizado(cliente, qtdParcAtual);
             let htmlCronogramaCliente = '';
             cronograma.forEach(p => {
                 htmlCronogramaCliente += `<div class="flex justify-between items-center text-xs py-2 border-b border-slate-100"><span class="text-slate-600">Parcela ${p.numero} &bull; Vencimento: <strong>${p.vencimento}</strong></span><strong class="text-blue-950">R$ ${p.valor.toFixed(2)}</strong></div>`;
             });
 
             if (cliente.entradaPaga) {
+                const textoZapFinalizacao = encodeURIComponent(`Olá! Pix pago com sucesso, parcela paga com sucesso, ou entrada. Seguem as informações do meu plano (${qtdParcAtual}x de R$ ${valorPorParcela.toFixed(2)}) e meu protocolo ${cliente.protocolo}. Gostaria de finalizar a compra.`);
+                const urlZapFinal = `https://wa.me/${CONFIG.WHATSAPP_CONTATO}?text=${textoZapFinalizacao}`;
+
                 resultado.innerHTML = `
                     <div class="p-8 bg-emerald-50 border border-emerald-300 rounded-3xl space-y-6 text-center shadow-xl">
                         <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center mx-auto text-2xl shadow-md">
                             <i class="fa-solid fa-check"></i>
                         </div>
-                        <h3 class="text-2xl font-black text-emerald-900">Entrada Confirmada & Crédito Liberado!</h3>
+                        <h3 class="text-2xl font-black text-emerald-900">Pix pago com sucesso, parcela paga com sucesso, ou entrada!</h3>
                         
-                        <div class="p-6 bg-white rounded-2xl shadow-md border border-emerald-200 space-y-2 text-left text-xs">
-                            <p class="text-slate-600">Protocolo: <strong>${cliente.protocolo}</strong></p>
-                            <p class="text-slate-600">Valor Liberado: <strong class="text-emerald-700 text-sm">R$ ${lim.toFixed(2)}</strong></p>
-                            <p class="text-slate-600">Plano Escolhido: <strong>${qtdParcAtual}x de R$ ${valorPorParcela.toFixed(2)}</strong></p>
-                            <p class="text-emerald-700 font-bold">Desconto Antecipado: ${descontoNum}% aplicado</p>
+                        <div class="p-6 bg-white rounded-2xl shadow-md border border-emerald-200 space-y-3 text-left text-xs">
+                            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                                <span class="text-slate-500">Protocolo:</span>
+                                <strong class="text-slate-900">${cliente.protocolo}</strong>
+                            </div>
+                            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                                <span class="text-slate-500">Valor Liberado:</span>
+                                <strong class="text-emerald-700 text-sm">R$ ${lim.toFixed(2)}</strong>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-500">Plano Escolhido:</span>
+                                <strong class="text-blue-950">${qtdParcAtual}x de R$ ${valorPorParcela.toFixed(2)}</strong>
+                            </div>
+                        </div>
+
+                        <div class="border-t border-emerald-200 pt-4 space-y-2 text-left">
+                            <span class="text-xs font-bold text-emerald-900 block">Demonstrativo das Parcelas:</span>
+                            <div class="max-h-40 overflow-y-auto pr-1 space-y-1 bg-white p-3 rounded-xl border border-emerald-200">
+                                ${htmlCronogramaCliente}
+                            </div>
                         </div>
 
                         <div class="pt-2 flex flex-col gap-3">
-                            <button onclick="abrirContrato('${cliente.protocolo}')" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-lg flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-file-contract"></i> Visualizar e Imprimir Contrato
-                            </button>
-                            <a href="https://wa.me/${CONFIG.WHATSAPP_CONTATO}?text=${encodeURIComponent('Olá! Já efetuei o pagamento da minha entrada e gostaria de prosseguir.')}" target="_blank" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-lg flex items-center justify-center gap-2">
-                                <i class="fa-brands fa-whatsapp text-base"></i> Falar com Atendente no WhatsApp
+                            <a href="${urlZapFinal}" target="_blank" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 px-6 rounded-2xl text-xs transition shadow-xl flex items-center justify-center gap-2">
+                                <i class="fa-brands fa-whatsapp text-base"></i> Direcionar para o WhatsApp e Finalizar a Compra
                             </a>
+                            <button onclick="abrirContrato('${cliente.protocolo}')" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3.5 px-6 rounded-2xl text-xs transition shadow-lg flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-file-contract"></i> Imprimir Contrato de Crediário
+                            </button>
                         </div>
                     </div>
                 `;
@@ -841,7 +848,6 @@
                             <div><span class="bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full font-bold text-xs">🟢 Aprovado</span></div>
                         </div>
 
-                        <!-- Aviso sutil e profissional de limite disponível -->
                         <div class="p-6 bg-slate-900 text-white rounded-2xl shadow-lg flex flex-col sm:flex-row justify-between items-center gap-4">
                             <div class="space-y-1 text-center sm:text-left">
                                 <span class="text-[11px] uppercase tracking-wider font-bold text-slate-400 block">Crédito Disponível para Uso</span>
@@ -854,7 +860,6 @@
                             </div>
                         </div>
 
-                        <!-- Seletor de Parcelas e Detalhes de Juros / Desconto -->
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-200 text-xs">
                             <div class="space-y-2">
                                 <label class="text-slate-700 font-bold block">Selecione a Quantidade de Parcelas:</label>
@@ -881,7 +886,6 @@
                             </div>
                         </div>
 
-                        <!-- QR Code e Pix Copia e Cola -->
                         <div class="space-y-4 text-center pt-2 border-t border-slate-100">
                             <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wide">Efetue o Pix de Entrada para Liberar o Crediário</h4>
                             <div class="flex justify-center">
@@ -901,7 +905,7 @@
 
                         <div class="pt-2">
                             <button onclick="simularPagamentoPixEfetuado('${cliente.protocolo}', '${cliente.nome}')" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 px-6 rounded-2xl text-xs transition shadow-xl flex items-center justify-center gap-2">
-                                <i class="fa-brands fa-whatsapp text-base"></i> Já Paguei o Pix • Enviar Comprovante no WhatsApp
+                                <i class="fa-solid fa-circle-check text-base"></i> Simular Pagamento da Entrada Efetuado
                             </button>
                         </div>
 
@@ -1050,7 +1054,6 @@
                 <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-4 py-2 rounded-2xl text-xs transition border border-rose-200">Sair</button>
             </div>
             
-            <!-- Dashboard de Resumo Financeiro Geral -->
             <div id="dashboard-resumo-financeiro"></div>
 
             <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-6">
