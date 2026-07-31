@@ -158,6 +158,7 @@
                 descontoAntecipado: 0,
                 status: 'aguardando',
                 entradaPaga: false,
+                contratoAceito: false,
                 pixCopiaECola: '',
                 qrCodeBase64: ''
             };
@@ -213,6 +214,113 @@
 
             const isAprovado = (cliente.status === 'aprovado');
             let badgeStatus = isAprovado ? '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
+            
+            // VERIFICAÇÃO DO CONTRATO: Se aprovado e o cliente ainda não aceitou, exibe modal pop-up de aceite do contrato
+            if (isAprovado && !cliente.contratoAceito) {
+                renderizarModalContrato(cliente);
+                return;
+            }
+
+            renderizarDetalhesCliente(cliente, resultado, badgeStatus);
+        }
+
+        function renderizarModalContrato(cliente) {
+            const resultado = document.getElementById('resultado-busca');
+            const valorTotal = cliente.limite || 1000;
+            const valorEntrada = cliente.valorEntrada || (valorTotal * 0.10);
+            const valorRestante = valorTotal - valorEntrada;
+            const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
+            const parcelasAtuais = cliente.parcelas || 12;
+            const valorPorParcela = parcelasAtuais > 0 ? (valorComJuros / parcelasAtuais) : 0;
+
+            resultado.innerHTML = `
+                <div class="p-6 bg-white border-2 border-blue-900 rounded-2xl shadow-xl space-y-4 text-left">
+                    <div class="bg-blue-950 text-white p-4 rounded-xl text-center space-y-1">
+                        <h3 class="font-bold text-base flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-file-contract text-emerald-400"></i> Leia o contrato antes de assinar e pagar
+                        </h3>
+                        <p class="text-xs text-blue-200">Protocolo: ${cliente.protocolo} | Titular: ${cliente.nome}</p>
+                    </div>
+
+                    <div class="bg-slate-50 border border-slate-300 p-4 rounded-xl max-h-60 overflow-y-auto text-xs text-slate-700 space-y-3 leading-relaxed">
+                        <h4 class="font-bold text-slate-900 text-center uppercase border-b pb-2">CONTRATO DE COMPRA E VENDA PARCELADA COM GARANTIA DE ENTREGA</h4>
+                        
+                        <p><strong>CONTRATANTE (VENDEDOR):</strong><br>
+                        Distribuidora Flash Point / FlashCred<br>
+                        CNPJ: 35.560.220/0001-54<br>
+                        Site: https://flashcred-sistema.onrender.com</p>
+
+                        <p><strong>CONTRATADO (COMPRADOR):</strong><br>
+                        Nome: ${cliente.nome} | CPF: ${cliente.cpf}<br>
+                        Endereço: ${cliente.endereco} (CEP: ${cliente.cep})<br>
+                        WhatsApp: ${cliente.whatsapp}</p>
+
+                        <p><strong>CLÁUSULA 1 - OBJETO DO CONTRATO</strong><br>
+                        1.1 O VENDEDOR se compromete a vender e entregar ao COMPRADOR o(s) móvel(is) ou crédito aprovado no valor total de R$ ${valorTotal.toFixed(2)}, em perfeito estado, direto da fábrica.<br>
+                        1.2 GARANTIA DE ENTREGA: O VENDEDOR responsabiliza-se pela entrega no endereço informado em até 15 dias úteis após a confirmação da entrada.</p>
+
+                        <p><strong>CLÁUSULA 2 - CONDIÇÕES DE PAGAMENTO</strong><br>
+                        2.1 Entrada: R$ ${valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada || 10}% via Pix).<br>
+                        2.2 Saldo restante dividido em ${parcelasAtuais} parcelas mensais de R$ ${valorPorParcela.toFixed(2)}.<br>
+                        2.3 Pagamento exclusivo via Pix para a chave cadastrada do VENDEDOR.</p>
+
+                        <p><strong>CLÁUSULA 3 - OBRIGAÇÕES DO COMPRADOR</strong><br>
+                        3.1 O COMPRADOR compromete-se a pagar pontualmente as parcelas.<br>
+                        3.2 Não poderá vender, doar ou remover o móvel do endereço enquanto houver saldo devedor.</p>
+
+                        <p><strong>CLÁUSULA 4 - ATRASO E INADIMPLÊNCIA</strong><br>
+                        4.1 Multa de 2% e juros de mora de 1% ao mês em caso de atraso.<br>
+                        4.2 Vencimento antecipado e recolhimento do bem em caso de inadimplência superior a 30 dias.<br>
+                        4.3 Registro de débito em órgãos de proteção ao crédito (SPC/Serasa).</p>
+
+                        <p><strong>CLÁUSULA 5 - DISPOSIÇÕES GERAIS</strong><br>
+                        5.1 Foro eleito da Comarca de São Paulo/SP para dirimir quaisquer dúvidas.</p>
+                    </div>
+
+                    <div class="bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-start gap-3">
+                        <input type="checkbox" id="check-aceite-contrato" class="mt-1 w-4 h-4 text-blue-900 rounded cursor-pointer">
+                        <label for="check-aceite-contrato" class="text-xs text-amber-900 font-bold cursor-pointer select-none">
+                            Declaro que li, compreendi e concordo integralmente com todas as cláusulas deste Contrato de Compra e Venda Parcelada com Garantia de Entrega, antes de efetuar o pagamento da primeira parcela.
+                        </label>
+                    </div>
+
+                    <button onclick="confirmarAceiteContrato('${cliente.protocolo}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-xs uppercase tracking-wide cursor-pointer shadow flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-check-circle"><b>Estou de Acordo e Prosseguir para o Pagamento</b></i>
+                    </button>
+                </div>
+            `;
+        }
+
+        async function confirmarAceiteContrato(protocolo) {
+            const checkbox = document.getElementById('check-aceite-contrato');
+            if (!checkbox || !checkbox.checked) {
+                alert('Você precisa marcar a caixa de seleção confirmando que leu e está de acordo com o contrato para prosseguir.');
+                return;
+            }
+
+            const cliente = listaClientes.find(c => c.protocolo === protocolo);
+            if (!cliente) return;
+
+            cliente.contratoAceito = true;
+
+            if (supabaseClient) {
+                try {
+                    await supabaseClient.from('clientes').update({ contratoAceito: true }).eq('protocolo', protocolo);
+                } catch (e) {}
+            }
+
+            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === protocolo);
+            if (idx !== -1) {
+                locais[idx].contratoAceito = true;
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+            }
+
+            await carregarDadosDoBanco();
+            consultarProposta();
+        }
+
+        function renderizarDetalhesCliente(cliente, resultado, badgeStatus) {
             const qrImg = cliente.qrCodeBase64 ? `data:image/png;base64,${cliente.qrCodeBase64}` : `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cliente.pixCopiaECola || 'Pix Flash Point')}`;
             
             const valorTotal = cliente.limite || 1000;
@@ -234,7 +342,6 @@
                     <p class="text-xs text-slate-700">Confirmação de Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}">${cliente.entradaPaga ? '🟢 Confirmada' : '🟡 Pendente de Pagamento'}</strong></p>
                     <p class="text-xs text-slate-700">Valor Total do Crediário: <strong class="text-slate-900 font-bold">R$ ${valorTotal.toFixed(2)}</strong></p>
                     
-                    ${isAprovado ? `
                     <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3 shadow-inner">
                         <div class="flex justify-between items-center">
                             <span class="text-xs font-bold text-blue-950 uppercase">Plano de Pagamento Aprovado:</span>
@@ -262,9 +369,9 @@
                         <div class="text-[11px] text-slate-600 space-y-0.5 pt-1 border-t border-slate-100">
                             <p>Entrada Pix: <strong class="text-emerald-700 font-bold">R$ ${valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</strong></p>
                             <p>Desconto Antecipado para Quitação: <strong class="text-teal-700 font-bold">R$ ${(cliente.descontoAntecipado || 0).toFixed(2)}</strong></p>
+                            <p class="text-emerald-800 font-semibold pt-1"><i class="fa-solid fa-circle-check"></i> Contrato Lido e Aceito Digitalmente com Sucesso.</p>
                         </div>
                     </div>
-                    ` : ''}
 
                     <div class="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                         <h5 class="font-bold text-blue-950 text-xs uppercase flex items-center gap-1.5"><i class="fa-brands fa-pix text-emerald-600"></i> Pagamento Seguro via Pix</h5>
@@ -309,7 +416,6 @@
                 spanResumo.innerText = `${cliente.parcelas}x de R$ ${valorPorParcela.toFixed(2)}`;
             }
 
-            // Atualiza localmente
             let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const idx = locais.findIndex(c => c.protocolo === protocolo);
             if (idx !== -1) {
@@ -347,38 +453,42 @@
                 <head>
                     <title>Contrato de Crediário - ${cliente.protocolo}</title>
                     <style>
-                        body { font-family: Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
-                        h1 { font-size: 18px; color: #0f172a; text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; }
-                        .info { margin-bottom: 20px; font-size: 13px; }
-                        .box { background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 8px; margin: 15px 0; font-size: 13px; }
-                        .assinatura { margin-top: 60px; display: flex; justify-content: space-between; text-align: center; font-size: 12px; }
+                        body { font-family: Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.6; font-size: 13px; }
+                        h1 { font-size: 16px; color: #0f172a; text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 20px; }
+                        h3 { font-size: 14px; color: #1e293b; margin-top: 15px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
+                        .box { background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 8px; margin: 15px 0; }
+                        .assinatura { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; font-size: 12px; }
                         .linha { border-top: 1px solid #000; width: 250px; margin: 0 auto 5px auto; }
                     </style>
                 </head>
                 <body>
-                    <h1>DISTRIBUIDORA FLASH POINT - CONTRATO DE ABERTURA DE CREDIÁRIO FLASHCRED</h1>
-                    <div class="info">
-                        <p><strong>Protocolo:</strong> ${cliente.protocolo}</p>
-                        <p><strong>Cliente:</strong> ${cliente.nome} | <strong>CPF:</strong> ${cliente.cpf}</p>
-                        <p><strong>Endereço:</strong> ${cliente.endereco} (CEP: ${cliente.cep})</p>
-                        <p><strong>WhatsApp:</strong> ${cliente.whatsapp}</p>
-                    </div>
+                    <h1>CONTRATO DE COMPRA E VENDA PARCELADA COM GARANTIA DE ENTREGA</h1>
+                    <p><strong>CONTRATANTE (VENDEDOR):</strong> Distribuidora Flash Point / FlashCred | CNPJ: 35.560.220/0001-54</p>
+                    <p><strong>CONTRATADO (COMPRADOR):</strong> ${cliente.nome} | CPF: ${cliente.cpf} | Endereço: ${cliente.endereco} (CEP: ${cliente.cep}) | WhatsApp: ${cliente.whatsapp}</p>
+                    
                     <div class="box">
-                        <strong>Condições Financeiras Aprovadas:</strong>
-                        <ul>
-                            <li>Valor Total do Crediário: R$ ${valorTotal.toFixed(2)}</li>
-                            <li>Valor da Entrada (Pix): R$ ${valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</li>
-                            <li>Plano Parcelado: ${cliente.parcelas || 12}x mensais de R$ ${vParc.toFixed(2)}</li>
-                            <li>Status da Entrada: ${cliente.entradaPaga ? 'PAGO' : 'PENDENTE DE PAGAMENTO'}</li>
-                        </ul>
+                        <strong>CLÁUSULA 1 - OBJETO DO CONTRATO</strong>
+                        <p>1.1 O VENDEDOR compromete-se a vender e entregar ao COMPRADOR o móvel ou crédito aprovado no valor total de <strong>R$ ${valorTotal.toFixed(2)}</strong>, direto da fábrica.</p>
+                        <p>1.2 GARANTIA DE ENTREGA: Responsabilidade de entrega em até 15 dias úteis após confirmação da entrada.</p>
                     </div>
-                    <p style="font-size: 12px; text-align: justify;">
-                        Pelo presente instrumento particular, o CONTRATANTE acima qualificado aceita os termos do financiamento e abertura de crédito para aquisição de mercadorias junto à DISTRIBUIDORA FLASH POINT, comprometendo-se ao pagamento pontual da entrada e das parcelas pactuadas.
-                    </p>
+
+                    <div class="box">
+                        <strong>CLÁUSULA 2 - CONDIÇÕES DE PAGAMENTO</strong>
+                        <p>• Entrada: R$ ${valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada || 10}% via Pix).</p>
+                        <p>• Saldo restante em ${cliente.parcelas || 12} parcelas mensais de R$ ${vParc.toFixed(2)}.</p>
+                    </div>
+
+                    <div class="box">
+                        <strong>CLÁUSULA 3 E 4 - OBRIGAÇÕES E INADIMPLÊNCIA</strong>
+                        <p>O COMPRADOR compromete-se aos pagamentos pontuais. Em caso de atraso superior a 30 dias, incidirá multa de 2%, juros de 1% ao mês, vencimento antecipado do saldo e recolhimento do bem, além de registro em órgãos de proteção ao crédito (SPC/Serasa).</p>
+                    </div>
+
+                    <p><em>Contrato aceito digitalmente pelo titular em ambiente seguro FlashCred. Foro da Comarca de São Paulo/SP.</em></p>
+
                     <div class="assinatura">
                         <div>
                             <div class="linha"></div>
-                            <p>Distribuidora Flash Point<br>CNPJ: 00.000.000/0001-00</p>
+                            <p>Distribuidora Flash Point<br>CNPJ: 35.560.220/0001-54</p>
                         </div>
                         <div>
                             <div class="linha"></div>
@@ -510,7 +620,7 @@
 🔑 *Pix Copia e Cola para a Entrada:*
 \`${cliente.pixCopiaECola || 'Aguardando código Pix'}\`
 
-Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor de Crédito.`;
+Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente, Setor de Crédito.`;
 
             const fone = (cliente.whatsapp || '').replace(/\D/g, '');
             const url = `https://wa.me/55${fone}?text=${encodeURIComponent(texto)}`;
@@ -655,7 +765,7 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                                 <h3 class="font-bold text-slate-900 text-base">${cliente.nome}</h3>
                                 ${badgeStatus}
                             </div>
-                            <p class="text-xs text-slate-600 mt-1">WhatsApp: <strong>${cliente.whatsapp}</strong> | CPF: <strong>${cliente.cpf}</strong></p>
+                            <p class="text-xs text-slate-600 mt-1">WhatsApp: <strong>${cliente.whatsapp}</strong> | CPF: <strong>${cliente.cpf}</strong> | Contrato Aceito: <strong class="${cliente.contratoAceito ? 'text-emerald-700' : 'text-amber-700'}">${cliente.contratoAceito ? 'Sim' : 'Pendente'}</strong></p>
                         </div>
                         <div>${badgeEntrada}</div>
                     </div>
@@ -711,7 +821,7 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                 <div>
                     <h1 class="font-bold text-xl text-blue-950 tracking-tight">Distribuidora Flash Point</h1>
                     <p class="text-xs font-medium text-slate-600 flex items-center gap-1.5">
-                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> Sistema Oficial FlashCred | CNPJ: 00.000.000/0001-00
+                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> Sistema Oficial FlashCred | CNPJ: 35.560.220/0001-54
                     </p>
                 </div>
             </div>
@@ -747,7 +857,7 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                         </div>
                         <div class="bg-white border border-slate-200 p-3.5 rounded-xl flex items-start gap-3 shadow-2xs">
                             <i class="fa-solid fa-circle-check text-blue-900 text-base mt-0.5"></i>
-                            <div><strong class="text-slate-900 block mb-0.5">Condições Flexíveis:</strong> Entrada de 2% a 70% e até 48 vezes no Pix.</div>
+                            <div><strong class="text-slate-900 block mb-0.5">Condições Flexíveis:</strong> Entrada facilitada e até 48 vezes no Pix.</div>
                         </div>
                         <div class="bg-white border border-slate-200 p-3.5 rounded-xl flex items-start gap-3 shadow-2xs">
                             <i class="fa-solid fa-circle-check text-blue-900 text-base mt-0.5"></i>
@@ -774,7 +884,7 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
                         <div class="bg-white border border-slate-200 p-4 rounded-xl text-center space-y-1 shadow-2xs">
                             <i class="fa-solid fa-file-contract text-blue-900 text-lg mb-1"></i>
                             <h4 class="font-bold text-xs text-slate-900 uppercase">Contrato Digital</h4>
-                            <p class="text-[11px] text-slate-600">Documentação formalizada e transparente sem letras miúdas.</p>
+                            <p class="text-[11px] text-slate-600">Documentação formalizada e transparente com garantia de entrega.</p>
                         </div>
                     </div>
 
@@ -852,7 +962,7 @@ Acompanhe os detalhes e contrato em nosso portal oficial. Atenciosamente, Setor 
 
         <!-- RODAPÉ CORPORATIVO -->
         <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-[11px] text-slate-500 space-y-1">
-            <p><strong>Distribuidora Flash Point</strong> — CNPJ: 00.000.000/0001-00</p>
+            <p><strong>Distribuidora Flash Point</strong> — CNPJ: 35.560.220/0001-54</p>
             <p>Central de Atendimento ao Cliente: WhatsApp (11) 97329-4235 | Todos os direitos reservados.</p>
         </footer>
     </div>
