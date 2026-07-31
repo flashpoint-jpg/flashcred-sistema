@@ -34,7 +34,7 @@
             let dadosRemotos = [];
             if (supabaseClient) {
                 try {
-                    const { data, error } = await supabaseClient.from('clientes').select('*');
+                    const { data, error } = await supabaseClient.from('clientes').select('*').order('id', { ascending: false });
                     if (!error && data) {
                         dadosRemotos = data;
                     }
@@ -46,9 +46,9 @@
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const mapa = new Map();
             
-            [...locais, ...dadosRemotos].forEach(item => {
+            [...dadosRemotos, ...locais].forEach(item => {
                 const chave = item.protocolo || item.id;
-                if (chave) {
+                if (chave && !mapa.has(chave)) {
                     mapa.set(chave, item);
                 }
             });
@@ -61,22 +61,23 @@
             
             if (supabaseClient) {
                 canalRealtime = supabaseClient
-                    .channel('public:clientes')
-                    .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, payload => {
-                        carregarDadosDoBanco().then(() => {
-                            const inputBusca = document.getElementById('busca-cpf');
-                            if (inputBusca && inputBusca.value.trim() !== '') {
-                                consultarProposta(true);
-                            }
-                            if (adminLogado && typeof carregarPainelAdmin === 'function') {
-                                carregarPainelAdmin();
-                            }
-                        });
+                    .channel('public:clientes_realtime')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, async payload => {
+                        await carregarDadosDoBanco();
+                        const inputBusca = document.getElementById('busca-cpf');
+                        if (inputBusca && inputBusca.value.trim() !== '') {
+                            consultarProposta(true);
+                        }
+                        if (adminLogado) {
+                            renderizarPainelAdmin();
+                        }
                     })
                     .subscribe();
             }
 
-            const abaSalva = localStorage.getItem('flash_aba_ativa') || 'solicitar';
+            // Restaurar aba ativa ou usar hash da URL
+            const hashAtual = window.location.hash.replace('#', '');
+            const abaSalva = hashAtual || localStorage.getItem('flash_aba_ativa') || 'solicitar';
             
             if (abaSalva === 'painel' && !adminLogado) {
                 switchTab('solicitar', false);
@@ -84,8 +85,8 @@
                 switchTab(abaSalva, false);
             }
 
-            if (adminLogado && abaSalva === 'painel' && typeof carregarPainelAdmin === 'function') {
-                carregarPainelAdmin();
+            if (adminLogado && abaSalva === 'painel') {
+                renderizarPainelAdmin();
             }
         });
 
@@ -108,8 +109,8 @@
             if (abaAlvo) abaAlvo.classList.remove('hidden');
             atualizarBotoesNav(tabId);
 
-            if (tabId === 'painel' && adminLogado && typeof carregarPainelAdmin === 'function') {
-                carregarPainelAdmin();
+            if (tabId === 'painel' && adminLogado) {
+                renderizarPainelAdmin();
             }
         }
 
@@ -164,7 +165,7 @@
 
         async function enviarProposta(event) {
             event.preventDefault();
-            const valor = parseFloat(document.getElementById('valor').value) || 1000;
+            const valor = parseFloat(document.getElementById('valor').value) || 1500;
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
             const valorEntradaCalc = valor * 0.10;
 
@@ -196,7 +197,7 @@
                 try {
                     const { error } = await supabaseClient.from('clientes').insert([novaProposta]);
                     if (error) {
-                        console.warn('Aviso do Supabase ao inserir:', error.message);
+                        console.warn('Erro ao inserir no Supabase, mantido local:', error.message);
                     }
                 } catch (err) {
                     console.warn('Erro de conexão ao inserir no Supabase.');
@@ -204,6 +205,12 @@
             }
 
             await carregarDadosDoBanco();
+            
+            // Notificação visual imediata para o administrador se ele estiver na mesma sessão
+            if (adminLogado) {
+                renderizarPainelAdmin();
+            }
+
             alert('Solicitação enviada com sucesso! Seu protocolo é: ' + protocolo);
             document.getElementById('form-proposta').reset();
 
@@ -211,6 +218,117 @@
             const elBusca = document.getElementById('busca-cpf');
             if (elBusca) elBusca.value = protocolo;
             consultarProposta();
+        }
+
+        async function alterarStatusCliente(protocolo, novoStatus, entradaPaga) {
+            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === protocolo);
+            if (idx !== -1) {
+                locais[idx].status = novoStatus;
+                locais[idx].entradaPaga = entradaPaga;
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+            }
+
+            if (supabaseClient) {
+                try {
+                    await supabaseClient.from('clientes').update({ status: novoStatus, entradaPaga: entradaPaga }).eq('protocolo', protocolo);
+                } catch (e) {
+                    console.warn('Erro ao atualizar no Supabase');
+                }
+            }
+
+            await carregarDadosDoBanco();
+            renderizarPainelAdmin();
+            alert('Status atualizado com sucesso!');
+        }
+
+        async function excluirPropostaAdmin(protocolo) {
+            if (!confirm(`Tem certeza que deseja excluir a proposta ${protocolo}?`)) return;
+
+            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const filtrados = locais.filter(c => c.protocolo !== protocolo);
+            localStorage.setItem('flash_clientes_locais', JSON.stringify(filtrados));
+
+            if (supabaseClient) {
+                try {
+                    await supabaseClient.from('clientes').delete().eq('protocolo', protocolo);
+                } catch (e) {
+                    console.warn('Erro ao excluir no Supabase');
+                }
+            }
+
+            await carregarDadosDoBanco();
+            renderizarPainelAdmin();
+        }
+
+        function renderizarPainelAdmin() {
+            const container = document.getElementById('lista-propostas-admin');
+            if (!container) return;
+
+            if (listaClientes.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-500 text-xs">
+                        Nenhuma proposta registrada no momento.
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            listaClientes.forEach(c => {
+                const badgeStatus = c.entradaPaga 
+                    ? '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-[10px]">🟢 Entrada Paga / Liberado</span>' 
+                    : '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-[10px]">🟡 Aguardando Entrada Pix</span>';
+
+                html += `
+                    <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 shadow-sm">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200 pb-3">
+                            <div>
+                                <span class="text-[11px] font-bold text-blue-950 block">${c.protocolo}</span>
+                                <h4 class="font-black text-slate-900 text-base">${c.nome}</h4>
+                            </div>
+                            <div>${badgeStatus}</div>
+                        </div>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
+                            <div>
+                                <span class="text-slate-500 block">CPF</span>
+                                <strong class="text-slate-800">${c.cpf || 'Não informado'}</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-500 block">WhatsApp</span>
+                                <strong class="text-slate-800">${c.whatsapp || 'Não informado'}</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-500 block">Limite Solicitado</span>
+                                <strong class="text-blue-950 font-black">R$ ${(c.limite || 1500).toFixed(2)}</strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-500 block">Entrada Pix (10%)</span>
+                                <strong class="text-amber-700 font-black">R$ ${(c.valorEntrada || (c.limite * 0.1)).toFixed(2)}</strong>
+                            </div>
+                        </div>
+
+                        <div class="text-[11px] text-slate-600 bg-white p-3 rounded-xl border border-slate-200">
+                            <strong>Endereço:</strong> ${c.endereco || 'Não informado'} (CEP: ${c.cep || 'N/I'})
+                        </div>
+
+                        <div class="flex flex-wrap gap-2 pt-2">
+                            <button onclick="alterarStatusCliente('${c.protocolo}', 'aprovado', true)" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
+                                <i class="fa-solid fa-check"></i> Aprovar / Marcar Entrada Paga
+                            </button>
+                            <button onclick="alterarStatusCliente('${c.protocolo}', 'aguardando', false)" class="bg-amber-600 hover:bg-amber-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
+                                <i class="fa-solid fa-clock"></i> Voltar p/ Aguardando
+                            </button>
+                            <button onclick="excluirPropostaAdmin('${c.protocolo}')" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm ml-auto">
+                                <i class="fa-solid fa-trash"></i> Excluir
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
         }
 
         function gerarCronogramaParcelas(cliente) {
@@ -289,7 +407,7 @@
                     <p><strong>WhatsApp:</strong> ${cliente.whatsapp}</p>
                     
                     <h3>Condições Comerciais</h3>
-                    <p><strong>Valor Total do Crediário:</strong> R$ ${(cliente.limite || 1000).toFixed(2)}</p>
+                    <p><strong>Valor Total do Crediário:</strong> R$ ${(cliente.limite || 1500).toFixed(2)}</p>
                     <p><strong>Valor da Entrada Pix:</strong> R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</p>
                     <p><strong>Plano de Parcelamento:</strong> ${cliente.parcelas || 48}x de ${labelPeriodo}</p>
                     <p><strong>Valor Total Financiado com Juros:</strong> R$ ${totalComJuros.toFixed(2)}</p>
@@ -351,12 +469,12 @@
                 return;
             }
 
-            let badgeStatus = cliente.status === 'aprovado' ? '<span class="bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-4 py-1.5 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
+            let badgeStatus = cliente.entradaPaga ? '<span class="bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-4 py-1.5 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
             const pixGerado = cliente.pixCopiaECola || `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${(cliente.valorEntrada || (cliente.limite * 0.1)).toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
             const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pixGerado)}`;
             
             const parcelasAtuais = cliente.parcelas || 48;
-            const valorRestante = (cliente.limite || 1000) - (cliente.valorEntrada || 0);
+            const valorRestante = (cliente.limite || 1500) - (cliente.valorEntrada || 0);
             const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
             const valorPorParcela = parcelasAtuais > 0 ? (valorComJuros / parcelasAtuais) : 0;
             const labelPeriodo = 'mensais (a cada 30 dias)';
@@ -375,10 +493,9 @@
                         </div>
                         <h3 class="text-2xl font-black text-emerald-900">Entrada Confirmada & Crédito Liberado!</h3>
                         
-                        <!-- Janela com Efeito Piscando (Blink) para Valor Liberado -->
                         <div class="p-6 bg-emerald-600 text-white rounded-2xl shadow-lg border border-emerald-500 animate-pulse space-y-2">
                             <span class="text-xs uppercase tracking-widest font-black opacity-90 block">✨ Valor Liberado ✨</span>
-                            <div class="text-3xl font-black">R$ ${(cliente.limite || 1000).toFixed(2)}</div>
+                            <div class="text-3xl font-black">R$ ${(cliente.limite || 1500).toFixed(2)}</div>
                             <p class="text-xs font-semibold text-emerald-100">Valor liberado para utilização e envio dos móveis</p>
                         </div>
 
@@ -405,21 +522,20 @@
                             <div>${badgeStatus}</div>
                         </div>
 
-                        <!-- Janela com Efeito Piscando (Blink) para Valor a Ser Liberado / Aguardando Pix -->
                         <div class="p-6 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-2xl shadow-lg border border-amber-400 animate-pulse space-y-2 text-center">
-                            <span class="text-xs uppercase tracking-widest font-black opacity-95 block">⚠️ Proposta Liberada com Sucesso • Aguardo o Pagamento do Pix ⚠️</span>
-                            <div class="text-3xl font-black">R$ ${(cliente.limite || 1000).toFixed(2)}</div>
+                            <span class="text-xs uppercase tracking-widest font-black opacity-95 block">⚠️ Proposta Liberada com Sucesso • Aguarde o Pagamento do Pix ⚠️</span>
+                            <div class="text-3xl font-black">R$ ${(cliente.limite || 1500).toFixed(2)}</div>
                             <p class="text-xs font-semibold text-amber-100">Valor a ser creditado, a ser liberado, aguardando pagamento do pix</p>
                         </div>
 
                         <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs">
                             <div>
                                 <span class="text-slate-500 block mb-1">Valor Solicitado</span>
-                                <strong class="text-blue-950 text-base">R$ ${(cliente.limite || 1000).toFixed(2)}</strong>
+                                <strong class="text-blue-950 text-base">R$ ${(cliente.limite || 1500).toFixed(2)}</strong>
                             </div>
                             <div>
                                 <span class="text-slate-500 block mb-1">Entrada Mínima (10%)</span>
-                                <strong class="text-amber-700 text-base">R$ ${(cliente.valorEntrada || 100).toFixed(2)}</strong>
+                                <strong class="text-amber-700 text-base">R$ ${(cliente.valorEntrada || 150).toFixed(2)}</strong>
                             </div>
                         </div>
 
@@ -683,8 +799,18 @@
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-4 py-2 rounded-2xl text-xs transition border border-rose-200">Sair</button>
             </div>
-            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl text-center text-xs text-slate-500">
-                Painel administrativo sincronizado. Utilize a listagem padrão ou verifique o banco de dados Supabase.
+            
+            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-6">
+                <div class="flex justify-between items-center border-b border-slate-100 pb-4">
+                    <h3 class="font-bold text-blue-950 text-sm">Propostas Recebidas (Tempo Real)</h3>
+                    <button onclick="renderizarPainelAdmin()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-rotate"></i> Atualizar Lista
+                    </button>
+                </div>
+                
+                <div id="lista-propostas-admin" class="space-y-4">
+                    <!-- Preenchido dinamicamente -->
+                </div>
             </div>
         </section>
 
