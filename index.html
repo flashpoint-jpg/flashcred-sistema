@@ -211,26 +211,58 @@
                 return;
             }
 
-            let badgeStatus = cliente.status === 'aprovado' ? '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
+            const isAprovado = (cliente.status === 'aprovado');
+            let badgeStatus = isAprovado ? '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
             const qrImg = cliente.qrCodeBase64 ? `data:image/png;base64,${cliente.qrCodeBase64}` : `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(cliente.pixCopiaECola || 'Pix Flash Point')}`;
-            const valorRestante = (cliente.limite || 1000) - (cliente.valorEntrada || 0);
+            
+            const valorTotal = cliente.limite || 1000;
+            const valorEntrada = cliente.valorEntrada || (valorTotal * 0.10);
+            const valorRestante = valorTotal - valorEntrada;
             const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
-            const valorPorParcela = cliente.parcelas > 0 ? (valorComJuros / cliente.parcelas) : 0;
+            const parcelasAtuais = cliente.parcelas || 12;
+            const valorPorParcela = parcelasAtuais > 0 ? (valorComJuros / parcelasAtuais) : 0;
+            const pixCodigo = cliente.pixCopiaECola || 'Aguardando o sistema gerar o código Pix...';
 
             resultado.innerHTML = `
-                <div class="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-left shadow-sm">
-                    <h4 class="font-bold text-blue-950 text-base border-b pb-2 flex items-center gap-2"><i class="fa-solid fa-file-invoice-dollar text-blue-900"></i> Detalhes da Proposta</h4>
+                <div class="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-4 text-left shadow-sm">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <h4 class="font-bold text-blue-950 text-base flex items-center gap-2"><i class="fa-solid fa-file-invoice-dollar text-blue-900"></i> Detalhes da Proposta</h4>
+                        ${badgeStatus}
+                    </div>
                     <p class="text-xs text-slate-700">Titular: <strong class="text-slate-900 font-semibold">${cliente.nome}</strong></p>
                     <p class="text-xs text-slate-700">Protocolo de Atendimento: <strong class="text-blue-900 font-bold">${cliente.protocolo}</strong></p>
-                    <p class="text-xs text-slate-700">Status: ${badgeStatus}</p>
                     <p class="text-xs text-slate-700">Confirmação de Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}">${cliente.entradaPaga ? '🟢 Confirmada' : '🟡 Pendente de Pagamento'}</strong></p>
-                    <p class="text-xs text-slate-700">Valor Total do Crediário: <strong class="text-slate-900 font-bold">R$ ${(cliente.limite || 1000).toFixed(2)}</strong></p>
+                    <p class="text-xs text-slate-700">Valor Total do Crediário: <strong class="text-slate-900 font-bold">R$ ${valorTotal.toFixed(2)}</strong></p>
                     
-                    ${cliente.status === 'aprovado' ? `
-                    <div class="bg-white p-3.5 rounded-xl border border-slate-200 space-y-1 shadow-inner">
-                        <span class="block text-xs font-bold text-blue-950">Plano de Pagamento Aprovado:</span>
-                        <p class="text-xs text-emerald-700 font-bold">Entrada Pix: R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</p>
-                        <p class="text-xs text-slate-800 font-semibold">+ ${cliente.parcelas || 12}x mensais de R$ ${valorPorParcela.toFixed(2)}</p>
+                    ${isAprovado ? `
+                    <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-3 shadow-inner">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-bold text-blue-950 uppercase">Plano de Pagamento Aprovado:</span>
+                            <span class="text-xs bg-blue-50 text-blue-900 font-bold px-2 py-0.5 rounded border border-blue-200">Escolha o Parcelamento</span>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div>
+                                <label class="block text-[11px] font-bold uppercase text-slate-700 mb-1">Qtd Parcelas Mensais</label>
+                                <select id="cliente-select-parc" onchange="atualizarSimulacaoCliente('${cliente.protocolo}')" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold text-blue-950">
+                                    <option value="6" ${parcelasAtuais == 6 ? 'selected' : ''}>6x Mensais</option>
+                                    <option value="12" ${parcelasAtuais == 12 ? 'selected' : ''}>12x Mensais</option>
+                                    <option value="18" ${parcelasAtuais == 18 ? 'selected' : ''}>18x Mensais</option>
+                                    <option value="24" ${parcelasAtuais == 24 ? 'selected' : ''}>24x Mensais</option>
+                                    <option value="36" ${parcelasAtuais == 36 ? 'selected' : ''}>36x Mensais</option>
+                                    <option value="48" ${parcelasAtuais == 48 ? 'selected' : ''}>48x Mensais</option>
+                                </select>
+                            </div>
+                            <div class="bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg flex flex-col justify-center">
+                                <span class="text-[10px] text-emerald-800 font-bold uppercase">Valor da Parcela:</span>
+                                <span id="cliente-resumo-parc" class="text-sm font-extrabold text-emerald-900">${parcelasAtuais}x de R$ ${valorPorParcela.toFixed(2)}</span>
+                            </div>
+                        </div>
+
+                        <div class="text-[11px] text-slate-600 space-y-0.5 pt-1 border-t border-slate-100">
+                            <p>Entrada Pix: <strong class="text-emerald-700 font-bold">R$ ${valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</strong></p>
+                            <p>Desconto Antecipado para Quitação: <strong class="text-teal-700 font-bold">R$ ${(cliente.descontoAntecipado || 0).toFixed(2)}</strong></p>
+                        </div>
                     </div>
                     ` : ''}
 
@@ -239,10 +271,168 @@
                         <div class="flex justify-center p-2 bg-white rounded-xl border shadow-sm">
                             <img src="${qrImg}" alt="QR Code Pix" class="w-32 h-32">
                         </div>
-                        <input type="text" readonly value="${cliente.pixCopiaECola || 'Aguardando o sistema gerar o código Pix...'}" class="bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 w-full select-all">
+                        <div class="space-y-1">
+                            <label class="block text-[10px] font-bold uppercase text-slate-700">Código Pix Copia e Cola:</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="input-copia-pix-${cliente.protocolo}" readonly value="${pixCodigo}" class="bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 w-full select-all">
+                                <button onclick="copiarTextoPix('${cliente.protocolo}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1 cursor-pointer shrink-0 shadow-sm"><i class="fa-solid fa-copy"></i> Copiar</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BOTÕES DE DOCUMENTOS E IMPRESSÃO -->
+                    <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
+                        <button onclick="imprimirContratoCliente('${cliente.protocolo}')" class="bg-blue-950 hover:bg-blue-900 text-white font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"><i class="fa-solid fa-print"></i> Imprimir Contrato / PDF</button>
+                        <button onclick="baixarBoletoParcelas('${cliente.protocolo}')" class="bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"><i class="fa-solid fa-file-pdf"></i> Carnê de Carnês / PDF</button>
                     </div>
                 </div>
             `;
+        }
+
+        function atualizarSimulacaoCliente(protocolo) {
+            const cliente = listaClientes.find(c => c.protocolo === protocolo);
+            if (!cliente) return;
+
+            const selectParc = document.getElementById('cliente-select-parc');
+            if (selectParc) {
+                cliente.parcelas = parseInt(selectParc.value) || 12;
+            }
+
+            const valorTotal = cliente.limite || 1000;
+            const valorEntrada = cliente.valorEntrada || (valorTotal * 0.10);
+            const valorRestante = valorTotal - valorEntrada;
+            const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
+            const valorPorParcela = cliente.parcelas > 0 ? (valorComJuros / cliente.parcelas) : 0;
+
+            const spanResumo = document.getElementById('cliente-resumo-parc');
+            if (spanResumo) {
+                spanResumo.innerText = `${cliente.parcelas}x de R$ ${valorPorParcela.toFixed(2)}`;
+            }
+
+            // Atualiza localmente
+            let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === protocolo);
+            if (idx !== -1) {
+                locais[idx].parcelas = cliente.parcelas;
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+            }
+        }
+
+        function copiarTextoPix(protocolo) {
+            const inputEl = document.getElementById('input-copia-pix-' + protocolo);
+            if (inputEl) {
+                inputEl.select();
+                inputEl.setSelectionRange(0, 99999);
+                navigator.clipboard.writeText(inputEl.value).then(() => {
+                    alert('Código Pix Copia e Cola copiado para a área de transferência!');
+                }).catch(err => {
+                    alert('Erro ao copiar código Pix.');
+                });
+            }
+        }
+
+        function imprimirContratoCliente(protocolo) {
+            const cliente = listaClientes.find(c => c.protocolo === protocolo);
+            if (!cliente) return;
+
+            const valorTotal = cliente.limite || 1000;
+            const valorEntrada = cliente.valorEntrada || (valorTotal * 0.10);
+            const valorRestante = valorTotal - valorEntrada;
+            const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
+            const vParc = cliente.parcelas > 0 ? (valorComJuros / cliente.parcelas) : 0;
+
+            const janela = window.open('', '_blank');
+            janela.document.write(`
+                <html>
+                <head>
+                    <title>Contrato de Crediário - ${cliente.protocolo}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
+                        h1 { font-size: 18px; color: #0f172a; text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; }
+                        .info { margin-bottom: 20px; font-size: 13px; }
+                        .box { background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 8px; margin: 15px 0; font-size: 13px; }
+                        .assinatura { margin-top: 60px; display: flex; justify-content: space-between; text-align: center; font-size: 12px; }
+                        .linha { border-top: 1px solid #000; width: 250px; margin: 0 auto 5px auto; }
+                    </style>
+                </head>
+                <body>
+                    <h1>DISTRIBUIDORA FLASH POINT - CONTRATO DE ABERTURA DE CREDIÁRIO FLASHCRED</h1>
+                    <div class="info">
+                        <p><strong>Protocolo:</strong> ${cliente.protocolo}</p>
+                        <p><strong>Cliente:</strong> ${cliente.nome} | <strong>CPF:</strong> ${cliente.cpf}</p>
+                        <p><strong>Endereço:</strong> ${cliente.endereco} (CEP: ${cliente.cep})</p>
+                        <p><strong>WhatsApp:</strong> ${cliente.whatsapp}</p>
+                    </div>
+                    <div class="box">
+                        <strong>Condições Financeiras Aprovadas:</strong>
+                        <ul>
+                            <li>Valor Total do Crediário: R$ ${valorTotal.toFixed(2)}</li>
+                            <li>Valor da Entrada (Pix): R$ ${valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</li>
+                            <li>Plano Parcelado: ${cliente.parcelas || 12}x mensais de R$ ${vParc.toFixed(2)}</li>
+                            <li>Status da Entrada: ${cliente.entradaPaga ? 'PAGO' : 'PENDENTE DE PAGAMENTO'}</li>
+                        </ul>
+                    </div>
+                    <p style="font-size: 12px; text-align: justify;">
+                        Pelo presente instrumento particular, o CONTRATANTE acima qualificado aceita os termos do financiamento e abertura de crédito para aquisição de mercadorias junto à DISTRIBUIDORA FLASH POINT, comprometendo-se ao pagamento pontual da entrada e das parcelas pactuadas.
+                    </p>
+                    <div class="assinatura">
+                        <div>
+                            <div class="linha"></div>
+                            <p>Distribuidora Flash Point<br>CNPJ: 00.000.000/0001-00</p>
+                        </div>
+                        <div>
+                            <div class="linha"></div>
+                            <p>${cliente.nome}<br>CPF: ${cliente.cpf}</p>
+                        </div>
+                    </div>
+                    <script>window.print();<\/script>
+                </body>
+                </html>
+            `);
+            janela.document.close();
+        }
+
+        function baixarBoletoParcelas(protocolo) {
+            const cliente = listaClientes.find(c => c.protocolo === protocolo);
+            if (!cliente) return;
+
+            const valorTotal = cliente.limite || 1000;
+            const valorEntrada = cliente.valorEntrada || (valorTotal * 0.10);
+            const valorRestante = valorTotal - valorEntrada;
+            const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
+            const vParc = cliente.parcelas > 0 ? (valorComJuros / cliente.parcelas) : 0;
+
+            const janela = window.open('', '_blank');
+            let htmlParcelas = '';
+            for (let i = 1; i <= (cliente.parcelas || 12); i++) {
+                htmlParcelas += `
+                    <div style="border: 1px dashed #64748b; padding: 12px; margin-bottom: 10px; border-radius: 6px; font-size: 12px;">
+                        <strong>Carnê FlashCred - Parcela ${i}/${cliente.parcelas || 12}</strong><br>
+                        Protocolo: ${cliente.protocolo} | Titular: ${cliente.nome}<br>
+                        Vencimento: ${i}º Mês | Valor: <strong>R$ ${vParc.toFixed(2)}</strong><br>
+                        <span style="font-family: monospace; font-size: 10px; color: #475569;">Chave Pix Boleto: 00020126580014br.gov.bcb.pix...</span>
+                    </div>
+                `;
+            }
+
+            janela.document.write(`
+                <html>
+                <head>
+                    <title>Carnê de Parcelas - ${cliente.protocolo}</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; padding: 30px; color: #1e293b; }
+                        h1 { font-size: 16px; text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 8px; }
+                    </style>
+                </head>
+                <body>
+                    <h1>CARNÊ DE PAGAMENTO - DISTRIBUIDORA FLASH POINT</h1>
+                    <p style="font-size: 12px;">Titular: <strong>${cliente.nome}</strong> | Protocolo: <strong>${cliente.protocolo}</strong></p>
+                    ${htmlParcelas}
+                    <script>window.print();<\/script>
+                </body>
+                </html>
+            `);
+            janela.document.close();
         }
 
         async function gerarPixViaAPI(clienteId) {
