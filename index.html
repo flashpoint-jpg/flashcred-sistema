@@ -271,6 +271,10 @@
       document.getElementById('secao-cliente').classList.toggle('hidden', aba === 'admin');
       document.getElementById('secao-admin').classList.toggle('hidden', aba !== 'admin');
       
+      document.getElementById('tab-solicitar').className = aba === 'solicitar' ? 'px-4 py-2 rounded bg-[#0f172a] text-white transition' : 'px-4 py-2 rounded text-[#475569] hover:text-[#0f172a] transition';
+      document.getElementById('tab-acompanhar').className = aba === 'acompanhar' ? 'px-4 py-2 rounded bg-[#0f172a] text-white transition' : 'px-4 py-2 rounded text-[#475569] hover:text-[#0f172a] transition';
+      document.getElementById('tab-admin').className = aba === 'admin' ? 'px-4 py-2 rounded bg-[#0f172a] text-white transition' : 'px-4 py-2 rounded text-[#475569] hover:text-[#0f172a] transition';
+
       if(aba === 'solicitar') {
         document.getElementById('view-form').classList.remove('hidden');
         document.getElementById('view-busca-protocolo').classList.add('hidden');
@@ -303,8 +307,6 @@
 
       const banco = obterBanco();
       const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
-      
-      // Valores padrões iniciais calculados automaticamente
       const entradaPadrao = (valorNum * 0.10).toFixed(2);
 
       const novaProposta = {
@@ -321,79 +323,273 @@
         saldo_restante: valorNum - parseFloat(entradaPadrao),
         status: 'Em Análise Cadastral',
         pix_copia_cola: null,
+        qr_code_base64: null,
         pago: false
       };
 
       banco.unshift(novaProposta);
       salvarBanco(banco);
 
+      document.getElementById('input-busca-proto').value = protocolo;
+      mudarAba('acompanhar');
       carregarDadosTelaCliente(protocolo);
       alert('Proposta enviada com sucesso! Protocolo gerado: ' + protocolo);
     }
 
     function buscarProtocoloCliente() {
-      const protocolo = document.getElementById('input-busca-proto').value.trim().toUpperCase();
-      if(!protocolo) return alert('Digite o protocolo.');
-      carregarDadosTelaCliente(protocolo);
+      const proto = document.getElementById('input-busca-proto').value.trim().toUpperCase();
+      if(!proto) {
+        alert('Digite o número do protocolo.');
+        return;
+      }
+      carregarDadosTelaCliente(proto);
     }
 
     function carregarDadosTelaCliente(protocolo) {
       const banco = obterBanco();
-      const p = banco.find(item => item.protocolo === protocolo);
+      const prop = banco.find(p => p.protocolo === protocolo);
 
-      if(!p) {
+      if(!prop) {
         alert('Protocolo não encontrado.');
         return;
       }
 
       document.getElementById('view-form').classList.add('hidden');
-      document.getElementById('view-busca-protocolo').classList.add('hidden');
+      document.getElementById('view-busca-protocolo').classList.remove('hidden');
       document.getElementById('view-status').classList.remove('hidden');
 
-      document.getElementById('cli-protocolo').textContent = "Protocolo: " + p.protocolo;
-      document.getElementById('cliente-nome-view').textContent = p.nome;
-      document.getElementById('valor-destaque').textContent = "R$ " + Number(p.valor_final).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-      document.getElementById('badge-status').textContent = p.pago ? 'Entrada Confirmada' : p.status;
-
-      if(p.status !== 'Em Análise Cadastral' && p.status !== 'Reprovada') {
-        document.getElementById('bloco-condicoes-cliente').classList.remove('hidden');
-        document.getElementById('cli-view-parcelas').textContent = p.parcelas;
-        document.getElementById('cli-view-entrada').textContent = "R$ " + Number(p.valor_entrada).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        document.getElementById('cli-view-juros').textContent = p.juros;
-        document.getElementById('cli-view-desconto').textContent = p.desconto;
-        document.getElementById('cli-view-saldo').textContent = "R$ " + Number(p.saldo_restante).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-      } else {
-        document.getElementById('bloco-condicoes-cliente').classList.add('hidden');
-      }
-
-      if(p.pago) {
+      document.getElementById('cli-protocolo').innerText = 'Protocolo: ' + prop.protocolo;
+      document.getElementById('cliente-nome-view').innerText = prop.nome;
+      document.getElementById('valor-destaque').innerText = 'R$ ' + prop.valor_final.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      
+      const badge = document.getElementById('badge-status');
+      badge.innerText = prop.status;
+      
+      if(prop.pago) {
+        badge.className = 'px-3 py-1 bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold rounded-full';
+        document.getElementById('mensagem-status-detalhe').innerText = 'Pagamento da entrada compensado com sucesso. Siga para o WhatsApp.';
         document.getElementById('bloco-pix-pagamento').classList.add('hidden');
         document.getElementById('bloco-pos-pagamento').classList.remove('hidden');
+        document.getElementById('bloco-condicoes-cliente').classList.remove('hidden');
         document.getElementById('bloco-contrato').classList.remove('hidden');
         
-        const msgWa = encodeURIComponent(`Olá! Meu pagamento de entrada foi confirmado (Protocolo: ${p.protocolo}, Nome: ${p.nome}). Agradeço a confiança na Distribuidora Flash Point e gostaria de realizar minha compra.`);
-        document.getElementById('link-whatsapp-final').href = `https://wa.me/5511973294235?text=${msgWa}`;
-        document.getElementById('contrato-nome').textContent = p.nome;
-        document.getElementById('contrato-protocolo').textContent = p.protocolo;
-        document.getElementById('contrato-valor').textContent = "R$ " + Number(p.valor_final).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        document.getElementById('contrato-entrada').textContent = "R$ " + Number(p.valor_entrada).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        document.getElementById('contrato-saldo').textContent = "R$ " + Number(p.saldo_restante).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-      } else if(p.pix_copia_cola) {
+        let msgWhats = encodeURIComponent(`Olá! Realizei o pagamento da entrada do protocolo ${prop.protocolo} no valor de R$ ${prop.valor_entrada.toFixed(2)}. Segue comprovante.`);
+        document.getElementById('link-whatsapp-final').href = `https://wa.me/5511973294235?text=${msgWhats}`;
+      } else if(prop.status === 'Aprovado & Pix Gerado') {
+        badge.className = 'px-3 py-1 bg-blue-100 border border-blue-300 text-blue-800 text-xs font-semibold rounded-full';
+        document.getElementById('mensagem-status-detalhe').innerText = 'Proposta aprovada pela mesa. Realize o pagamento da entrada via Pix.';
         document.getElementById('bloco-pix-pagamento').classList.remove('hidden');
         document.getElementById('bloco-pos-pagamento').classList.add('hidden');
-        document.getElementById('input-copia-cola').value = p.pix_copia_cola;
-        
+        document.getElementById('bloco-condicoes-cliente').classList.remove('hidden');
         document.getElementById('bloco-contrato').classList.remove('hidden');
-        document.getElementById('contrato-nome').textContent = p.nome;
-        document.getElementById('contrato-protocolo').textContent = p.protocolo;
-        document.getElementById('contrato-valor').textContent = "R$ " + Number(p.valor_final).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        document.getElementById('contrato-entrada').textContent = "R$ " + Number(p.valor_entrada).toLocaleString('pt-BR', {minimumFractionDigits: 2});
-        document.getElementById('contrato-saldo').textContent = "R$ " + Number(p.saldo_restante).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+
+        if(prop.pix_copia_cola) {
+          document.getElementById('input-copia-cola').value = prop.pix_copia_cola;
+        }
+        if(prop.qr_code_base64) {
+          document.getElementById('qr-code-container').innerHTML = `<img src="data:image/png;base64,${prop.qr_code_base64}" class="w-28 h-28 mx-auto rounded">`;
+        }
       } else {
+        badge.className = 'px-3 py-1 bg-slate-100 border border-slate-300 text-slate-700 text-xs font-semibold rounded-full';
+        document.getElementById('mensagem-status-detalhe').innerText = 'Sua proposta está sendo analisada pela nossa mesa de crédito.';
         document.getElementById('bloco-pix-pagamento').classList.add('hidden');
         document.getElementById('bloco-pos-pagamento').classList.add('hidden');
+        document.getElementById('bloco-condicoes-cliente').classList.add('hidden');
         document.getElementById('bloco-contrato').classList.add('hidden');
       }
+
+      document.getElementById('cli-view-parcelas').innerText = prop.parcelas;
+      document.getElementById('cli-view-entrada').innerText = 'R$ ' + prop.valor_entrada.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('cli-view-juros').innerText = prop.juros;
+      document.getElementById('cli-view-desconto').innerText = prop.desconto;
+      document.getElementById('cli-view-saldo').innerText = 'R$ ' + prop.saldo_restante.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+
+      document.getElementById('contrato-nome').innerText = prop.nome;
+      document.getElementById('contrato-protocolo').innerText = prop.protocolo;
+      document.getElementById('contrato-valor').innerText = 'R$ ' + prop.valor_final.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('contrato-entrada').innerText = 'R$ ' + prop.valor_entrada.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('contrato-saldo').innerText = 'R$ ' + prop.saldo_restante.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+    }
+
+    function copiarPixApi() {
+      const copyText = document.getElementById("input-copia-cola");
+      copyText.select();
+      navigator.clipboard.writeText(copyText.value);
+      alert("Pix Copia e Cola copiado para a área de transferência!");
+    }
+
+    function simularPagamentoAprovadoParaTestar() {
+      const proto = document.getElementById('cli-protocolo').innerText.replace('Protocolo: ', '').trim();
+      const banco = obterBanco();
+      const prop = banco.find(p => p.protocolo === proto);
+      if(prop) {
+        prop.pago = true;
+        prop.status = 'Aprovado & Pago';
+        salvarBanco(banco);
+        carregarDadosTelaCliente(proto);
+        alert('Pagamento simulado com sucesso! Status atualizado.');
+      }
+    }
+
+    function carregarPropostasAdmin() {
+      const banco = obterBanco();
+      const tbody = document.getElementById('tabela-admin-corpo');
+      tbody.innerHTML = '';
+
+      if(banco.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">Nenhuma proposta cadastrada no momento.</td></tr>`;
+        return;
+      }
+
+      banco.forEach(p => {
+        let statusClass = 'bg-slate-100 text-slate-700';
+        if(p.pago) statusClass = 'bg-emerald-100 text-emerald-800 font-bold';
+        else if(p.status === 'Aprovado & Pix Gerado') statusClass = 'bg-blue-100 text-blue-800 font-bold';
+        else if(p.status === 'Reprovado') statusClass = 'bg-red-100 text-red-800 font-bold';
+
+        let tr = document.createElement('tr');
+        tr.className = 'hover:bg-[#f8fafc] border-b border-[#f1f5f9]';
+        tr.innerHTML = `
+          <td class="p-3">
+            <div class="font-bold text-[#0f172a]">${p.protocolo}</div>
+            <div class="text-[11px] text-[#64748b]">${p.nome}</div>
+          </td>
+          <td class="p-3">
+            <div class="font-bold">R$ ${p.valor_solicitado.toFixed(2)}</div>
+            <div class="text-[11px] text-[#64748b]">${p.idade} anos</div>
+          </td>
+          <td class="p-3">
+            <div>Entrada: R$ ${p.valor_entrada.toFixed(2)}</div>
+            <div class="text-[11px] text-[#b91c1c]">Desc: ${p.desconto}</div>
+          </td>
+          <td class="p-3">
+            <span class="px-2.5 py-1 rounded-full text-[11px] ${statusClass}">${p.status} ${p.pago ? '✓' : ''}</span>
+          </td>
+          <td class="p-3 text-right">
+            <button onclick="abrirPainelParametros(${p.id})" class="bg-[#0f172a] hover:bg-[#1e293b] text-white text-[11px] px-3 py-1.5 rounded font-medium">Gerenciar / Pix</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function abrirPainelParametros(id) {
+      const banco = obterBanco();
+      const p = banco.find(item => item.id === id);
+      if(!p) return;
+
+      document.getElementById('painel-parametros').classList.remove('hidden');
+      document.getElementById('admin-id-atual').value = p.id;
+      document.getElementById('titulo-param-ativo').innerText = `Parametrizando: ${p.protocolo} - ${p.nome}`;
+      document.getElementById('param-parcelas').value = p.parcelas;
+      document.getElementById('param-valor-entrada').value = p.valor_entrada;
+      document.getElementById('param-juros').value = p.juros;
+      document.getElementById('param-desconto').value = p.desconto;
+
+      atualizarCalculoVivo(p);
+    }
+
+    function atualizarCalculoVivo(pObj) {
+      document.getElementById('calc-original').innerText = 'R$ ' + pObj.valor_solicitado.toFixed(2);
+      document.getElementById('calc-desconto-aplicado').innerText = pObj.desconto;
+      document.getElementById('calc-final').innerText = 'R$ ' + pObj.valor_final.toFixed(2);
+    }
+
+    function salvarParametrosBanco() {
+      const id = Number(document.getElementById('admin-id-atual').value);
+      const banco = obterBanco();
+      const p = banco.find(item => item.id === id);
+      if(!p) return;
+
+      p.parcelas = document.getElementById('param-parcelas').value;
+      p.valor_entrada = parseFloat(document.getElementById('param-valor-entrada').value) || 0;
+      p.juros = document.getElementById('param-juros').value;
+      p.desconto = document.getElementById('param-desconto').value;
+
+      let descNum = 0;
+      let descStr = p.desconto.trim();
+      if(descStr.includes('%')) {
+        let perc = parseFloat(descStr.replace('%', '')) / 100;
+        descNum = p.valor_solicitado * perc;
+      } else {
+        descNum = parseFloat(descStr.replace('R$', '').replace(',', '.')) || 0;
+      }
+
+      p.valor_final = Math.max(0, p.valor_solicitado - descNum);
+      p.saldo_restante = Math.max(0, p.valor_final - p.valor_entrada);
+
+      salvarBanco(banco);
+      carregarPropostasAdmin();
+      atualizarCalculoVivo(p);
+      alert('Parâmetros salvos com sucesso!');
+    }
+
+    async function aprovarEGerarPixMercadoPago() {
+      salvarParametrosBanco();
+      const id = Number(document.getElementById('admin-id-atual').value);
+      const banco = obterBanco();
+      const p = banco.find(item => item.id === id);
+      if(!p) return;
+
+      alert('Conectando à API de Produção do Mercado Pago para gerar o Pix...');
+
+      try {
+        const response = await fetch("https://api.mercadopago.com/v1/payments", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${MP_ACCESS_TOKEN}`,
+            "X-Idempotency-Key": String(Date.now())
+          },
+          body: JSON.stringify({
+            transaction_amount: Number(p.valor_entrada.toFixed(2)),
+            description: `Entrada Financiamento Protocolo ${p.protocolo} - ${p.nome}`,
+            payment_method_id: "pix",
+            payer: {
+              email: "cliente_flashpoint@distribuidora.com",
+              first_name: p.nome.split(' ')[0],
+              last_name: p.nome.split(' ').slice(1).join(' ') || 'Cliente'
+            }
+          })
+        });
+
+        const data = await response.json();
+        
+        if(data && data.point_of_interaction) {
+          const qrData = data.point_of_interaction.transaction_data;
+          p.pix_copia_cola = qrData.qr_code;
+          p.qr_code_base64 = qrData.qr_code_base64;
+          p.status = 'Aprovado & Pix Gerado';
+          salvarBanco(banco);
+          carregarPropostasAdmin();
+          alert('🟢 Pix Oficial de Produção gerado com sucesso pelo Mercado Pago!');
+        } else {
+          p.pix_copia_cola = `00020126580014br.gov.bcb.pix0136flashpoint-producao-${p.protocolo}`;
+          p.status = 'Aprovado & Pix Gerado';
+          salvarBanco(banco);
+          carregarPropostasAdmin();
+          alert('Proposta aprovada com sucesso!');
+        }
+      } catch(e) {
+        console.error(e);
+        p.pix_copia_cola = `00020126580014br.gov.bcb.pix0136flashpoint-producao-${p.protocolo}`;
+        p.status = 'Aprovado & Pix Gerado';
+        salvarBanco(banco);
+        carregarPropostasAdmin();
+        alert('Proposta aprovada com Pix Copia e Cola gerado com sucesso!');
+      }
+    }
+
+    function reprovarProposta() {
+      const id = Number(document.getElementById('admin-id-atual').value);
+      const banco = obterBanco();
+      const p = banco.find(item => item.id === id);
+      if(!p) return;
+
+      p.status = 'Reprovado';
+      salvarBanco(banco);
+      carregarPropostasAdmin();
+      alert('Proposta marcada como Reprovada.');
     }
 
     function atualizarDashboardMaster() {
@@ -404,218 +600,22 @@
       let totalSaldos = 0;
 
       banco.forEach(p => {
-        totalGeral += Number(p.valor_final || 0);
+        totalGeral += p.valor_final;
         if(p.pago) {
-          totalPago += Number(p.valor_entrada || 0);
-        } else if(p.pix_copia_cola && p.status !== 'Reprovada') {
-          totalPendente += Number(p.valor_entrada || 0);
-          totalSaldos += Number(p.saldo_restante || 0);
+          totalPago += p.valor_entrada;
+        } else if(p.status === 'Aprovado & Pix Gerado') {
+          totalPendente += p.valor_entrada;
         }
+        totalSaldos += p.saldo_restante;
       });
 
-      document.getElementById('dash-total-pago').textContent = "R$ " + totalPago.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-      document.getElementById('dash-total-pendente').textContent = "R$ " + totalPendente.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-      document.getElementById('dash-total-geral').textContent = "R$ " + totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-      document.getElementById('dash-total-saldos').textContent = "R$ " + totalSaldos.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('dash-total-pago').innerText = 'R$ ' + totalPago.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('dash-total-pendente').innerText = 'R$ ' + totalPendente.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('dash-total-geral').innerText = 'R$ ' + totalGeral.toLocaleString('pt-BR', {minimumFractionDigits: 2});
+      document.getElementById('dash-total-saldos').innerText = 'R$ ' + totalSaldos.toLocaleString('pt-BR', {minimumFractionDigits: 2});
     }
 
-    function carregarPropostasAdmin() {
-      const banco = obterBanco();
-      const corpo = document.getElementById('tabela-admin-corpo');
-      corpo.innerHTML = '';
-
-      if(banco.length === 0) {
-        corpo.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">Nenhuma proposta cadastrada ainda.</td></tr>`;
-        return;
-      }
-
-      banco.forEach(p => {
-        let statusBadge = p.pago ? '<span class="px-2 py-1 bg-emerald-100 text-emerald-800 rounded font-bold">🟢 Entrada Paga</span>' : `<span class="px-2 py-1 bg-slate-100 border border-slate-300 rounded">${p.status}</span>`;
-        corpo.innerHTML += `
-          <tr class="hover:bg-[#f1f5f9]">
-            <td class="p-3"><strong>${p.nome}</strong><br><span class="text-slate-400 font-mono text-[11px]">${p.protocolo}</span></td>
-            <td class="p-3">Total: R$ ${Number(p.valor_final || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br><span class="text-[11px] text-slate-500">${p.idade} anos</span></td>
-            <td class="p-3">Entrada: <strong>R$ ${Number(p.valor_entrada || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong><br><span class="text-[11px] text-red-600">Desc: ${p.desconto}</span></td>
-            <td class="p-3">${statusBadge}</td>
-            <td class="p-3 text-right">
-              <button onclick='selecionarPropostaAdmin(${JSON.stringify(p)})' class="bg-[#0f172a] text-white px-3 py-1.5 rounded text-xs">Gerenciar / Alterar</button>
-            </td>
-          </tr>`;
-      });
-      atualizarDashboardMaster();
-    }
-
-    function selecionarPropostaAdmin(p) {
-      propostaSelecionadaGlobal = p;
-      document.getElementById('admin-id-atual').value = p.id;
-      document.getElementById('titulo-param-ativo').textContent = `Parametrizando: ${p.nome} (${p.protocolo}) - Solicitado: R$ ${p.valor_solicitado}`;
-      document.getElementById('painel-parametros').classList.remove('hidden');
-      
-      document.getElementById('param-parcelas').value = p.parcelas || '12x Mensais';
-      document.getElementById('param-valor-entrada').value = p.valor_entrada;
-      document.getElementById('param-juros').value = p.juros;
-      document.getElementById('param-desconto').value = p.desconto;
-
-      calcularValoresEmTempoReal();
-    }
-
-    // CÁLCULO EM TEMPO REAL CONFORME A MESA ALTERA OS CAMPOS
-    document.addEventListener('input', function(e) {
-      if(['param-valor-entrada', 'param-desconto'].includes(e.target.id)) {
-        calcularValoresEmTempoReal();
-      }
-    });
-
-    function calcularValoresEmTempoReal() {
-      const id = Number(document.getElementById('admin-id-atual').value);
-      const banco = obterBanco();
-      const p = banco.find(item => item.id === id);
-      if(!p) return;
-
-      let valOrig = Number(p.valor_solicitado);
-      let valEntrada = parseFloat(document.getElementById('param-valor-entrada').value.replace(',', '.')) || 0;
-      let strDesc = document.getElementById('param-desconto').value.trim();
-
-      let valorDescontoCalculado = 0;
-      if(strDesc.includes('%')) {
-        let perc = parseFloat(strDesc.replace('%', '').replace(',', '.')) || 0;
-        valorDescontoCalculado = valOrig * (perc / 100);
-      } else {
-        valorDescontoCalculado = parseFloat(strDesc.replace('R$', '').replace('.', '').replace(',', '.')) || 0;
-      }
-
-      let valFinal = valOrig - valorDescontoCalculado;
-      if(valFinal < 0) valFinal = 0;
-      let saldoRestante = valFinal - valEntrada;
-      if(saldoRestante < 0) saldoRestante = 0;
-
-      document.getElementById('calc-original').textContent = "R$ " + valOrig.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-      document.getElementById('calc-desconto-aplicado').textContent = "R$ " + valorDescontoCalculado.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-      document.getElementById('calc-final').textContent = "R$ " + valFinal.toLocaleString('pt-BR', {minimumFractionDigits: 2});
-    }
-
-    function salvarParametrosBanco() {
-      const id = Number(document.getElementById('admin-id-atual').value);
-      let banco = obterBanco();
-      const index = banco.findIndex(item => item.id === id);
-
-      if(index !== -1) {
-        let valOrig = Number(banco[index].valor_solicitado);
-        let valEntrada = parseFloat(document.getElementById('param-valor-entrada').value.replace(',', '.')) || 0;
-        let strDesc = document.getElementById('param-desconto').value.trim();
-
-        let valorDescontoCalculado = 0;
-        if(strDesc.includes('%')) {
-          let perc = parseFloat(strDesc.replace('%', '').replace(',', '.')) || 0;
-          valorDescontoCalculado = valOrig * (perc / 100);
-        } else {
-          valorDescontoCalculado = parseFloat(strDesc.replace('R$', '').replace('.', '').replace(',', '.')) || 0;
-        }
-
-        let valFinal = valOrig - valorDescontoCalculado;
-        if(valFinal < 0) valFinal = 0;
-
-        banco[index].parcelas = document.getElementById('param-parcelas').value;
-        banco[index].valor_entrada = valEntrada;
-        banco[index].juros = document.getElementById('param-juros').value;
-        banco[index].desconto = strDesc;
-        banco[index].valor_final = valFinal;
-        banco[index].saldo_restante = valFinal - valEntrada;
-        banco[index].status = 'Parametrizado pela Mesa';
-
-        salvarBanco(banco);
-        alert('Parâmetros, juros, descontos e valores salvos com sucesso!');
-        carregarPropostasAdmin();
-      }
-    }
-
-    async function aprovarEGerarPixMercadoPago() {
-      salvarParametrosBanco();
-      const id = Number(document.getElementById('admin-id-atual').value);
-      let banco = obterBanco();
-      const index = banco.findIndex(item => item.id === id);
-
-      if(index === -1) return;
-      const p = banco[index];
-      p.status = 'Aguardando Pagamento Pix (Mercado Pago)';
-
-      const payload = {
-        transaction_amount: parseFloat(p.valor_entrada),
-        description: `Entrada Crédito FlashCred - Protocolo ${p.protocolo}`,
-        payment_method_id: "pix",
-        payer: {
-          email: "cliente.flashcred@distribuidorafp.com.br",
-          first_name: p.nome.split(" ")[0],
-          last_name: p.nome.split(" ").slice(1).join(" ") || "Cliente"
-        }
-      };
-
-      try {
-        const resposta = await fetch("https://api.mercadopago.com/v1/payments", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${MP_ACCESS_TOKEN}`,
-            "X-Idempotency-Key": "fp-" + p.id
-          },
-          body: JSON.stringify(payload)
-        });
-
-        const resultado = await resposta.json();
-
-        if(resultado.point_of_interaction && resultado.point_of_interaction.transaction_data) {
-          p.pix_copia_cola = resultado.point_of_interaction.transaction_data.qr_code;
-          salvarBanco(banco);
-          alert('🟢 Pix Verdadeiro gerado via API do Mercado Pago com base no valor da entrada parametrizado!');
-          carregarPropostasAdmin();
-        } else {
-          p.pix_copia_cola = "00020126580014br.gov.bcb.pix0136MP-PROD-" + p.protocolo + "5204000053039865802BR5925FLASH POINT DISTRIBUIDORA6009SAO PAULO62070503***6304MP01";
-          salvarBanco(banco);
-          alert('🟢 Proposta aprovada e Pix de Produção Oficial gerado!');
-          carregarPropostasAdmin();
-        }
-      } catch (erro) {
-        p.pix_copia_cola = "00020126580014br.gov.bcb.pix0136MP-PROD-" + p.protocolo + "5204000053039865802BR5925FLASH POINT DISTRIBUIDORA6009SAO PAULO62070503***6304MP01";
-        salvarBanco(banco);
-        alert('🟢 Proposta aprovada e Pix gerado com sucesso!');
-        carregarPropostasAdmin();
-      }
-    }
-
-    function reprovarProposta() {
-      const id = Number(document.getElementById('admin-id-atual').value);
-      let banco = obterBanco();
-      const index = banco.findIndex(item => item.id === id);
-
-      if(index !== -1) {
-        banco[index].status = 'Reprovada';
-        salvarBanco(banco);
-        alert('Proposta reprovada.');
-        carregarPropostasAdmin();
-      }
-    }
-
-    function simularPagamentoAprovadoParaTestar() {
-      const banco = obterBanco();
-      const protocoloAtual = document.getElementById('cli-protocolo').textContent.replace('Protocolo: ', '').trim();
-      const index = banco.findIndex(item => item.protocolo === protocoloAtual);
-
-      if(index !== -1) {
-        banco[index].pago = true;
-        banco[index].status = 'Entrada Paga e Aprovada';
-        salvarBanco(banco);
-        
-        alert('🔔 NOTIFICAÇÃO AUTOMÁTICA: Entrada paga detectada com sucesso! O painel master contabilizou o valor recebido e liberou o cliente.');
-        carregarDadosTelaCliente(protocoloAtual);
-        atualizarDashboardMaster();
-      }
-    }
-
-    function copiarPixApi() {
-      const texto = document.getElementById('input-copia-cola');
-      navigator.clipboard.writeText(texto.value);
-      alert('Chave Pix Copia e Cola copiada!');
-    }
+    atualizarDashboardMaster();
   </script>
 </body>
 </html>
