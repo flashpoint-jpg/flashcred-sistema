@@ -12,7 +12,8 @@
         const CONFIG = {
             SUPABASE_URL: 'https://rgcclordmqmwuzrrfbd.supabase.co',
             SUPABASE_ANON_KEY: 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi',
-            CHAVE_PIX_RECEBIMENTO: '33552949852'
+            CHAVE_PIX_RECEBIMENTO: '33552949852',
+            WHATSAPP_CONTATO: '5511999999999' // Substitua pelo número real se necessário
         };
 
         let supabaseClient = null;
@@ -114,13 +115,13 @@
 
         function atualizarBotoesNav(tabId) {
             document.querySelectorAll('.tab-btn').forEach(el => {
-                el.classList.remove('bg-blue-950', 'text-white', 'shadow-md', 'border-blue-800');
+                el.classList.remove('bg-blue-950', 'text-white', 'shadow-lg', 'border-blue-800');
                 el.classList.add('text-slate-600', 'hover:bg-slate-100');
             });
             const btn = document.getElementById('btn-' + tabId);
             if (btn) {
                 btn.classList.remove('text-slate-600', 'hover:bg-slate-100');
-                btn.classList.add('bg-blue-950', 'text-white', 'shadow-md', 'border-blue-800');
+                btn.classList.add('bg-blue-950', 'text-white', 'shadow-lg', 'border-blue-800');
             }
         }
 
@@ -177,8 +178,8 @@
                 limite: valor,
                 valorEntrada: valorEntradaCalc,
                 porcentagemEntrada: 10,
-                parcelas: 12,
-                periodicidade: '15',
+                parcelas: 48,
+                periodicidade: '30',
                 jurosParcelamento: 0,
                 descontoAntecipado: 0,
                 autorizarExibicaoPlano: false,
@@ -213,8 +214,8 @@
         }
 
         function gerarCronogramaParcelas(cliente) {
-            const parcelas = cliente.parcelas || 12;
-            const periodicidade = parseInt(cliente.periodicidade || '15');
+            const parcelas = cliente.parcelas || 48;
+            const periodicidade = parseInt(cliente.periodicidade || '30');
             const totalComJuros = (cliente.limite - cliente.valorEntrada) * (1 + ((cliente.jurosParcelamento || 0) / 100));
             const valorParcela = parcelas > 0 ? (totalComJuros / parcelas) : 0;
             
@@ -267,7 +268,7 @@
             if (!cliente) return;
 
             const cronograma = gerarCronogramaParcelas(cliente);
-            const labelPeriodo = (cliente.periodicidade || '15') === '7' ? '7 em 7 dias (semanais)' : '15 em 15 dias (quinzenais)';
+            const labelPeriodo = 'mensais (a cada 30 dias)';
             const totalComJuros = (cliente.limite - cliente.valorEntrada) * (1 + ((cliente.jurosParcelamento || 0) / 100));
 
             let htmlTabelaContrato = '';
@@ -290,7 +291,7 @@
                     <h3>Condições Comerciais</h3>
                     <p><strong>Valor Total do Crediário:</strong> R$ ${(cliente.limite || 1000).toFixed(2)}</p>
                     <p><strong>Valor da Entrada Pix:</strong> R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</p>
-                    <p><strong>Plano de Parcelamento:</strong> ${cliente.parcelas || 12}x de ${labelPeriodo}</p>
+                    <p><strong>Plano de Parcelamento:</strong> ${cliente.parcelas || 48}x de ${labelPeriodo}</p>
                     <p><strong>Valor Total Financiado com Juros:</strong> R$ ${totalComJuros.toFixed(2)}</p>
 
                     <h3>Cronograma de Vencimentos</h3>
@@ -343,47 +344,46 @@
 
             if (!cliente) {
                 resultado.innerHTML = `
-                    <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl text-center">
+                    <div class="p-6 bg-rose-50 border border-rose-200 rounded-3xl text-center shadow-sm">
                         <h4 class="font-bold text-rose-900 text-sm">Nenhuma solicitação encontrada para: ${buscaInput}</h4>
                     </div>
                 `;
                 return;
             }
 
-            let badgeStatus = cliente.status === 'aprovado' ? '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
+            let badgeStatus = cliente.status === 'aprovado' ? '<span class="bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-4 py-1.5 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
             const pixGerado = cliente.pixCopiaECola || `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${(cliente.valorEntrada || (cliente.limite * 0.1)).toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
             const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pixGerado)}`;
             
-            const parcelasAtuais = cliente.parcelas || 12;
-            const periodicidadeAtual = cliente.periodicidade || '15';
+            const parcelasAtuais = cliente.parcelas || 48;
             const valorRestante = (cliente.limite || 1000) - (cliente.valorEntrada || 0);
             const valorComJuros = valorRestante * (1 + ((cliente.jurosParcelamento || 0) / 100));
             const valorPorParcela = parcelasAtuais > 0 ? (valorComJuros / parcelasAtuais) : 0;
-            const labelPeriodo = periodicidadeAtual === '7' ? 'semanais (a cada 7 dias)' : 'quinzenais (a cada 15 dias)';
+            const labelPeriodo = 'mensais (a cada 30 dias)';
             
             const cronograma = gerarCronogramaParcelas(cliente);
             let htmlCronogramaCliente = '';
             cronograma.forEach(p => {
-                htmlCronogramaCliente += `<div class="flex justify-between items-center text-xs py-1.5 border-b border-slate-100"><span class="text-slate-600">Parcela ${p.numero} (${p.vencimento})</span><strong class="text-blue-950">R$ ${p.valor.toFixed(2)}</strong></div>`;
+                htmlCronogramaCliente += `<div class="flex justify-between items-center text-xs py-2 border-b border-slate-100"><span class="text-slate-600">Parcela ${p.numero} (${p.vencimento})</span><strong class="text-blue-950">R$ ${p.valor.toFixed(2)}</strong></div>`;
             });
 
             if (cliente.entradaPaga) {
                 resultado.innerHTML = `
-                    <div class="p-6 bg-emerald-50 border border-emerald-300 rounded-2xl space-y-4 text-center shadow-md">
-                        <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center mx-auto text-2xl shadow-lg">
+                    <div class="p-8 bg-emerald-50 border border-emerald-300 rounded-3xl space-y-6 text-center shadow-xl">
+                        <div class="w-20 h-20 bg-emerald-600 text-white rounded-full flex items-center justify-center mx-auto text-3xl shadow-lg">
                             <i class="fa-solid fa-check"></i>
                         </div>
-                        <h3 class="text-xl font-black text-emerald-900">Entrada Confirmada & Crédito Liberado!</h3>
-                        <p class="text-xs text-emerald-800">Seu crediário e limite total foram liberados com sucesso.</p>
+                        <h3 class="text-2xl font-black text-emerald-900">Entrada Confirmada & Crédito Liberado!</h3>
+                        <p class="text-sm text-emerald-800">Seu crediário e limite total foram liberados com sucesso.</p>
                         
-                        <div class="bg-white p-4 rounded-xl border border-emerald-200 text-left space-y-2">
+                        <div class="bg-white p-6 rounded-2xl border border-emerald-200 text-left space-y-3 shadow-sm">
                             <p class="text-xs text-slate-700">Protocolo: <strong>${cliente.protocolo}</strong></p>
-                            <p class="text-xs text-slate-700">Limite Liberado: <strong class="text-emerald-700 font-bold text-sm">R$ ${(cliente.limite || 1000).toFixed(2)}</strong></p>
+                            <p class="text-xs text-slate-700">Limite Liberado: <strong class="text-emerald-700 font-bold text-base">R$ ${(cliente.limite || 1000).toFixed(2)}</strong></p>
                             <p class="text-xs text-slate-700">Plano Escolhido: <strong>${parcelasAtuais}x de R$ ${valorPorParcela.toFixed(2)} (${labelPeriodo})</strong></p>
                         </div>
 
-                        <div class="pt-2 flex flex-col gap-2">
-                            <button onclick="abrirContrato('${cliente.protocolo}')" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow flex items-center justify-center gap-2">
+                        <div class="pt-2 flex flex-col gap-3">
+                            <button onclick="abrirContrato('${cliente.protocolo}')" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-lg flex items-center justify-center gap-2 transform hover:-translate-y-0.5">
                                 <i class="fa-solid fa-file-contract"></i> Visualizar e Imprimir Contrato
                             </button>
                         </div>
@@ -391,52 +391,52 @@
                 `;
             } else {
                 resultado.innerHTML = `
-                    <div class="p-6 bg-white border border-slate-200 rounded-2xl space-y-4 shadow-sm">
-                        <div class="flex justify-between items-center border-b pb-3">
+                    <div class="p-8 bg-white border border-slate-200 rounded-3xl space-y-6 shadow-xl">
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-4">
                             <div>
                                 <span class="text-xs text-slate-500 font-medium">Protocolo: ${cliente.protocolo}</span>
-                                <h3 class="font-black text-slate-900 text-base">${cliente.nome}</h3>
+                                <h3 class="font-black text-slate-900 text-lg">${cliente.nome}</h3>
                             </div>
                             <div>${badgeStatus}</div>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs">
+                        <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs">
                             <div>
-                                <span class="text-slate-500 block">Valor Solicitado</span>
-                                <strong class="text-blue-950 text-sm">R$ ${(cliente.limite || 1000).toFixed(2)}</strong>
+                                <span class="text-slate-500 block mb-1">Valor Solicitado</span>
+                                <strong class="text-blue-950 text-base">R$ ${(cliente.limite || 1000).toFixed(2)}</strong>
                             </div>
                             <div>
-                                <span class="text-slate-500 block">Entrada Pix (10%)</span>
-                                <strong class="text-amber-700 text-sm">R$ ${(cliente.valorEntrada || 100).toFixed(2)}</strong>
+                                <span class="text-slate-500 block mb-1">Entrada Mínima (10%)</span>
+                                <strong class="text-amber-700 text-base">R$ ${(cliente.valorEntrada || 100).toFixed(2)}</strong>
                             </div>
                         </div>
 
-                        <div class="space-y-2 text-center pt-2">
+                        <div class="space-y-3 text-center pt-2">
                             <p class="text-xs font-bold text-slate-700">Realize o pagamento da entrada para liberar o crédito:</p>
                             <div class="flex justify-center">
-                                <img src="${qrImg}" alt="QR Code Pix" class="w-36 h-36 border p-1 rounded-lg bg-white shadow-sm">
+                                <img src="${qrImg}" alt="QR Code Pix" class="w-40 h-40 border-2 border-slate-100 p-2 rounded-2xl bg-white shadow-md">
                             </div>
                             
-                            <div class="space-y-1">
-                                <label class="text-[10px] text-slate-500 font-semibold block">Pix Copia e Cola:</label>
+                            <div class="space-y-1.5 text-left">
+                                <label class="text-[11px] text-slate-500 font-bold block">Pix Copia e Cola:</label>
                                 <div class="flex gap-2">
-                                    <input type="text" id="input-pix-cliente-${cliente.protocolo}" value="${pixGerado}" readonly class="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-600 select-all">
-                                    <button id="btn-copiar-cliente-${cliente.protocolo}" onclick="copiarTextoPix('input-pix-cliente-${cliente.protocolo}', 'btn-copiar-cliente-${cliente.protocolo}')" class="bg-blue-900 hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0">
+                                    <input type="text" id="input-pix-cliente-${cliente.protocolo}" value="${pixGerado}" readonly class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-xs text-slate-600 select-all focus:outline-none">
+                                    <button id="btn-copiar-cliente-${cliente.protocolo}" onclick="copiarTextoPix('input-pix-cliente-${cliente.protocolo}', 'btn-copiar-cliente-${cliente.protocolo}')" class="bg-blue-950 hover:bg-blue-900 text-white px-5 py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5 shrink-0 transform hover:-translate-y-0.5">
                                         <i class="fa-solid fa-copy"></i> Copiar
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="border-t pt-3 space-y-2">
+                        <div class="border-t border-slate-100 pt-4 space-y-2">
                             <span class="text-xs font-bold text-slate-700 block">Cronograma Estimado (${parcelasAtuais}x ${labelPeriodo}):</span>
-                            <div class="max-h-36 overflow-y-auto pr-1">
+                            <div class="max-h-40 overflow-y-auto pr-1">
                                 ${htmlCronogramaCliente}
                             </div>
                         </div>
 
                         <div class="pt-2">
-                            <button onclick="imprimirComprovante()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2">
+                            <button onclick="imprimirComprovante()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 px-4 rounded-2xl text-xs transition flex items-center justify-center gap-2">
                                 <i class="fa-solid fa-print"></i> Imprimir Comprovante de Solicitação
                             </button>
                         </div>
@@ -445,90 +445,196 @@
             }
         }
     </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
 </head>
-<body class="bg-slate-100 min-h-screen text-slate-800 flex flex-col">
+<body class="bg-slate-50 min-h-screen text-slate-800 flex flex-col selection:bg-blue-950 selection:text-white">
 
-    <!-- Navegação / Header -->
-    <header class="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-50">
-        <div class="max-w-4xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-blue-950 text-white rounded-xl flex items-center justify-center font-black shadow-md text-lg">
+    <!-- Navegação / Header com Aparência de Marca Grande -->
+    <header class="bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-sm sticky top-0 z-50 transition-all duration-300">
+        <div class="max-w-4xl mx-auto px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3.5">
+                <div class="w-12 h-12 bg-gradient-to-br from-blue-950 to-blue-900 text-white rounded-2xl flex items-center justify-center font-black shadow-lg text-lg transform hover:scale-105 transition-transform duration-300">
                     FP
                 </div>
                 <div>
-                    <h1 class="font-black text-blue-950 text-base leading-tight">Distribuidora Flash Point</h1>
-                    <p class="text-[11px] text-slate-500 font-medium">Sistema FlashCred • Crédito e Crediário</p>
+                    <h1 class="font-black text-blue-950 text-base leading-tight tracking-tight">Distribuidora Flash Point</h1>
+                    <p class="text-[11px] text-slate-500 font-semibold tracking-wide">FlashCred • Crédito Facilitado</p>
                 </div>
             </div>
 
-            <nav class="flex gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Solicitar</button>
-                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Acompanhar</button>
-                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Painel Admin</button>
+            <nav class="flex gap-2 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/60 shadow-inner">
+                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300">Solicitar</button>
+                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300">Acompanhar</button>
+                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300">Painel Admin</button>
             </nav>
         </div>
     </header>
 
     <!-- Conteúdo Principal -->
-    <main class="max-w-4xl mx-auto px-4 py-6 flex-grow w-full">
+    <main class="max-w-4xl mx-auto px-6 py-10 flex-grow w-full space-y-12">
 
-        <!-- ABA 1: SOLICITAR -->
-        <section id="tab-solicitar" class="tab-content space-y-6">
-            <div class="bg-gradient-to-r from-blue-950 to-blue-900 text-white p-6 rounded-2xl shadow-md space-y-2">
-                <h2 class="text-xl font-black">Solicite seu Crédito com Rapidez</h2>
-                <p class="text-xs text-blue-100 leading-relaxed">Preencha seus dados abaixo para iniciar sua análise de crediário junto à Distribuidora Flash Point. Liberação ágil mediante confirmação de entrada.</p>
+        <!-- ABA 1: SOLICITAR (Com o texto limpo, moderno e impactante) -->
+        <section id="tab-solicitar" class="tab-content space-y-10">
+            
+            <!-- Hero Section com Copys Impactantes -->
+            <div class="bg-gradient-to-br from-blue-950 via-blue-900 to-indigo-950 text-white p-8 sm:p-12 rounded-3xl shadow-2xl space-y-6 relative overflow-hidden">
+                <div class="absolute -right-10 -bottom-10 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                <div class="space-y-3 relative z-10">
+                    <span class="inline-block bg-blue-800/80 text-blue-200 border border-blue-700/50 text-[11px] font-bold px-3.5 py-1.5 rounded-full tracking-wide shadow-sm">
+                        FlashCred • Distribuidora Flash Point
+                    </span>
+                    <h2 class="text-2xl sm:text-4xl font-black tracking-tight leading-tight">
+                        Parcelar no Pix sem cartão? <br class="hidden sm:inline">Você chegou no lugar certo.
+                    </h2>
+                    <p class="text-sm sm:text-base text-blue-100 font-medium leading-relaxed max-w-2xl">
+                        Compre móveis novos direto da fábrica, tudo 100% online, sem burocracia e atendimento exclusivo pelo WhatsApp.
+                    </p>
+                </div>
             </div>
 
-            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- O que oferecemos -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6 transform hover:-translate-y-1 transition-all duration-300">
+                <h3 class="text-lg font-black text-blue-950 tracking-tight flex items-center gap-2">
+                    <i class="fa-solid fa-star text-amber-500"></i> O que oferecemos:
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                        <span class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">✓</span>
+                        <span class="text-xs font-bold text-slate-700">Até 48x parcelas no Pix</span>
+                    </div>
+                    <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                        <span class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">✓</span>
+                        <span class="text-xs font-bold text-slate-700">Entrada Mínima que cabe no seu bolso</span>
+                    </div>
+                    <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                        <span class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">✓</span>
+                        <span class="text-xs font-bold text-slate-700">Aprovamos mesmo com restrição no nome</span>
+                    </div>
+                    <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                        <span class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">✓</span>
+                        <span class="text-xs font-bold text-slate-700">Entrega Garantida na sua casa</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Como Funciona (3 Passos) -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
+                <h3 class="text-lg font-black text-blue-950 tracking-tight">Como funciona? É só seguir 3 passos:</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="p-6 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
+                        <div class="w-10 h-10 rounded-xl bg-blue-950 text-white flex items-center justify-center font-black text-sm shadow-md">1️⃣</div>
+                        <h4 class="font-bold text-blue-950 text-sm">Você escolhe</h4>
+                        <p class="text-xs text-slate-600 leading-relaxed">Escolha os móveis que deseja e fale diretamente com a gente pelo WhatsApp de forma rápida e sem enrolação.</p>
+                    </div>
+                    <div class="p-6 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
+                        <div class="w-10 h-10 rounded-xl bg-blue-950 text-white flex items-center justify-center font-black text-sm shadow-md">2️⃣</div>
+                        <h4 class="font-bold text-blue-950 text-sm">Condições combinadas</h4>
+                        <p class="text-xs text-slate-600 leading-relaxed">Definimos juntos a entrada ideal e a quantidade de parcelas que cabem perfeitamente no seu orçamento.</p>
+                    </div>
+                    <div class="p-6 rounded-2xl bg-slate-50 border border-slate-100 space-y-3">
+                        <div class="w-10 h-10 rounded-xl bg-blue-950 text-white flex items-center justify-center font-black text-sm shadow-md">3️⃣</div>
+                        <h4 class="font-bold text-blue-950 text-sm">Pronto!</h4>
+                        <p class="text-xs text-slate-600 leading-relaxed">Pague a entrada via Pix, fechamos o contrato com total segurança e você recebe tudo direto na sua porta.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Formulário de Solicitação Atualizado e Harmonioso -->
+            <div class="bg-white p-8 sm:p-10 rounded-3xl border border-slate-200/80 shadow-2xl shadow-slate-100 space-y-6">
+                <div class="space-y-1">
+                    <h3 class="text-xl font-black text-blue-950 tracking-tight">Preencha seus dados para iniciar</h3>
+                    <p class="text-xs text-slate-500">Análise rápida, sem burocracia e com total segurança.</p>
+                </div>
+
+                <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-5">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">Nome Completo</label>
-                            <input type="text" id="nome" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-blue-900">
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5">Nome Completo</label>
+                            <input type="text" id="nome" required placeholder="Digite seu nome completo" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">CPF</label>
-                            <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-blue-900">
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5">CPF</label>
+                            <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition">
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">WhatsApp / Telefone</label>
-                            <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-blue-900">
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5">WhatsApp / Telefone</label>
+                            <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition">
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1">CEP</label>
-                            <input type="text" id="cep" required placeholder="00000-000" onblur="consultarCEP(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-blue-900">
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5">CEP</label>
+                            <input type="text" id="cep" required placeholder="00000-000" onblur="consultarCEP(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition">
                         </div>
                     </div>
 
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Endereço Completo</label>
-                        <input type="text" id="endereco" required placeholder="Rua, Número, Bairro, Cidade/UF" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-blue-900">
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Endereço Completo</label>
+                        <input type="text" id="endereco" required placeholder="Rua, Número, Bairro, Cidade/UF" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition">
                     </div>
 
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Valor de Limite Desejado (R$)</label>
-                        <input type="number" id="valor" required min="200" max="10000" step="50" value="1000" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-blue-900">
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Valor de Limite Desejado (R$)</label>
+                        <input type="number" id="valor" required min="200" max="15000" step="50" value="1500" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition font-bold text-blue-950">
                     </div>
 
-                    <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3 px-4 rounded-xl text-xs transition shadow-md">
-                        Enviar Solicitação de Crédito
+                    <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-xl transform hover:-translate-y-0.5 tracking-wide">
+                        🚀 Enviar Solicitação de Crédito
                     </button>
                 </form>
             </div>
+
+            <!-- Vantagens / Sinônimo de Facilidade -->
+            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
+                <h3 class="text-lg font-black text-blue-950 tracking-tight">Sinônimo de facilidade para mobiliar seu lar:</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+                        <h4 class="font-bold text-blue-950 text-xs flex items-center gap-2">✅ Sem pegadinhas</h4>
+                        <p class="text-[11px] text-slate-600 leading-relaxed">Tudo explicado direitinho, sem letras miúdas e sem taxas escondidas.</p>
+                    </div>
+                    <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+                        <h4 class="font-bold text-blue-950 text-xs flex items-center gap-2">✅ Rápido e prático</h4>
+                        <p class="text-[11px] text-slate-600 leading-relaxed">Análise e condições definidas na hora, sem espera ou burocracia excessiva.</p>
+                    </div>
+                    <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+                        <h4 class="font-bold text-blue-950 text-xs flex items-center gap-2">✅ Totalmente seguro</h4>
+                        <p class="text-[11px] text-slate-600 leading-relaxed">Compra direta com a Distribuidora Flash Point, contrato válido e entrega garantida.</p>
+                    </div>
+                    <div class="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+                        <h4 class="font-bold text-blue-950 text-xs flex items-center gap-2">✅ Para todo mundo</h4>
+                        <p class="text-[11px] text-slate-600 leading-relaxed">Não tem cartão ou está com restrição no nome? Temos a solução ideal para você.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CTA Final / WhatsApp -->
+            <div class="bg-gradient-to-br from-emerald-950 via-emerald-950 to-blue-950 text-white p-8 rounded-3xl shadow-xl text-center space-y-4">
+                <h3 class="text-xl font-black">Quer começar agora?</h3>
+                <p class="text-xs text-emerald-100 max-w-xl mx-auto leading-relaxed">
+                    Atendimento exclusivo pelo WhatsApp • Móveis novos direto da fábrica • Entregamos em todo Brasil, com foco em São Paulo e ABC Paulista.
+                </p>
+                <div class="pt-2">
+                    <a href="https://wa.me/5511999999999?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20o%20FlashCred%20e%20fazer%20um%20orçamento" target="_blank" class="inline-flex items-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-2xl text-xs transition shadow-lg transform hover:-translate-y-0.5">
+                        <i class="fa-brands fa-whatsapp text-base"></i> Fale Conosco e Faça Seu Orçamento
+                    </a>
+                </div>
+            </div>
+
         </section>
 
         <!-- ABA 2: ACOMPANHAR -->
         <section id="tab-acompanhar" class="tab-content hidden space-y-6">
-            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h2 class="text-lg font-black text-blue-950">Acompanhar Status da Proposta</h2>
+            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-4">
+                <h2 class="text-xl font-black text-blue-950 tracking-tight">Acompanhar Status da Proposta</h2>
                 <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para verificar o andamento e efetuar o pagamento da entrada.</p>
 
-                <div class="flex gap-2">
-                    <input type="text" id="busca-cpf" placeholder="Digite seu CPF ou Protocolo (ex: FP-123456)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-blue-900">
-                    <button onclick="consultarProposta()" class="bg-blue-950 hover:bg-blue-900 text-white px-5 py-2 rounded-xl text-xs font-bold transition shrink-0">Consultar</button>
+                <div class="flex gap-3">
+                    <input type="text" id="busca-cpf" placeholder="Digite seu CPF ou Protocolo (ex: FP-123456)" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition">
+                    <button onclick="consultarProposta()" class="bg-blue-950 hover:bg-blue-900 text-white px-6 py-3 rounded-2xl text-xs font-bold transition shrink-0 shadow-md">Consultar</button>
                 </div>
             </div>
 
@@ -537,35 +643,35 @@
 
         <!-- ABA 3: LOGIN ADMIN -->
         <section id="tab-login-admin" class="tab-content hidden space-y-6">
-            <div class="max-w-md mx-auto bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <div class="text-center space-y-1">
-                    <div class="w-12 h-12 bg-blue-950 text-white rounded-full flex items-center justify-center mx-auto text-base font-black">
+            <div class="max-w-md mx-auto bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-5">
+                <div class="text-center space-y-2">
+                    <div class="w-14 h-14 bg-blue-950 text-white rounded-2xl flex items-center justify-center mx-auto text-lg font-black shadow-lg">
                         <i class="fa-solid fa-lock"></i>
                     </div>
-                    <h2 class="text-lg font-black text-blue-950">Acesso Restrito</h2>
+                    <h2 class="text-xl font-black text-blue-950 tracking-tight">Acesso Restrito</h2>
                     <p class="text-xs text-slate-500">Digite a senha administrativa para gerenciar o sistema.</p>
                 </div>
 
-                <form onsubmit="verificarSenhaAdmin(event)" class="space-y-3">
+                <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4">
                     <div>
-                        <input type="password" id="senha-admin" required placeholder="Senha de Acesso" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-center focus:outline-none focus:border-blue-900">
+                        <input type="password" id="senha-admin" required placeholder="Senha de Acesso" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-center focus:outline-none focus:border-blue-950 transition font-bold tracking-widest">
                     </div>
                     <p id="erro-senha" class="text-rose-600 text-[11px] font-bold text-center hidden">Senha incorreta!</p>
-                    <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition">Entrar no Painel</button>
+                    <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3.5 px-4 rounded-2xl text-xs transition shadow-md">Entrar no Painel</button>
                 </form>
             </div>
         </section>
 
         <!-- ABA 4: PAINEL ADMIN -->
         <section id="tab-painel" class="tab-content hidden space-y-6">
-            <div class="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+            <div class="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xl">
                 <div>
-                    <h2 class="font-black text-blue-950 text-base">Painel Administrativo</h2>
-                    <p class="text-xs text-slate-500">Gerencie propostas e liberações de crédito.</p>
+                    <h2 class="font-black text-blue-950 text-lg tracking-tight">Painel Administrativo</h2>
+                    <p class="text-xs text-slate-500">Gerencie propostas e liberações de crédito em tempo real.</p>
                 </div>
-                <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-3 py-1.5 rounded-xl text-xs transition border border-rose-200">Sair</button>
+                <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-4 py-2 rounded-2xl text-xs transition border border-rose-200">Sair</button>
             </div>
-            <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center text-xs text-slate-500">
+            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl text-center text-xs text-slate-500">
                 Painel administrativo sincronizado. Utilize a listagem padrão ou verifique o banco de dados Supabase.
             </div>
         </section>
@@ -573,7 +679,7 @@
     </main>
 
     <!-- Rodapé -->
-    <footer class="mt-auto py-6 border-t border-slate-200 bg-white text-center text-xs text-slate-500">
+    <footer class="mt-auto py-8 border-t border-slate-200 bg-white text-center text-xs text-slate-500">
         Distribuidora Flash Point &bull; Sistema FlashCred &copy; 2026
     </footer>
 
