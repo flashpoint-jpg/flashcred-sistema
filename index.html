@@ -75,7 +75,7 @@
                     .subscribe();
             }
 
-            // CORREÇÃO F5: Verifica qual aba estava ativa no localStorage antes do F5
+            // Restaura exatamente a aba em que o usuário estava (Evita voltar para o início)
             const abaSalva = localStorage.getItem('flash_aba_ativa') || 'solicitar';
             
             if (abaSalva === 'painel' && !adminLogado) {
@@ -186,15 +186,22 @@
                 pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${valorEntradaCalc.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
             };
 
-            if (supabaseClient) {
-                try {
-                    await supabaseClient.from('clientes').insert([novaProposta]);
-                } catch (err) {}
-            }
-
+            // Salva primeiro no localStorage para garantir redundância imediata
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             locais.unshift(novaProposta);
             localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+
+            // Tenta salvar no Supabase para sincronizar com o painel externo
+            if (supabaseClient) {
+                try {
+                    const { error } = await supabaseClient.from('clientes').insert([novaProposta]);
+                    if (error) {
+                        console.warn('Aviso do Supabase ao inserir:', error.message);
+                    }
+                } catch (err) {
+                    console.warn('Erro de conexão ao inserir no Supabase.');
+                }
+            }
 
             await carregarDadosDoBanco();
             alert('Solicitação enviada com sucesso! Seu protocolo é: ' + protocolo);
@@ -653,6 +660,10 @@ Acompanhe e pague sua entrada em nosso portal oficial.`;
             const container = document.getElementById('container-cards-admin');
             const containerFinanceiro = document.getElementById('resumo-financeiro-admin');
             if (!container) return;
+            
+            // Salva a posição exata da barra de rolagem (evita que a tela volte para cima ao atualizar)
+            const scrollPos = window.scrollY;
+
             container.innerHTML = '';
 
             let somaTotalGeral = 0;
@@ -823,6 +834,9 @@ Acompanhe e pague sua entrada em nosso portal oficial.`;
                 `;
                 container.appendChild(card);
             });
+
+            // Restaura a posição da tela exatamente onde o admin estava
+            window.scrollTo(0, scrollPos);
         }
     </script>
 </head>
