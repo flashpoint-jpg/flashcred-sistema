@@ -224,7 +224,6 @@
             const isAprovado = (cliente.status === 'aprovado');
             let badgeStatus = isAprovado ? '<span class="bg-emerald-100 text-emerald-800 px-3.5 py-1.5 rounded-full font-bold text-xs sm:text-sm">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-3.5 py-1.5 rounded-full font-bold text-xs sm:text-sm">🟡 Em Análise Cadastral</span>';
             
-            // Se estiver em análise, esconde completamente os valores de entrada e parcelas
             if (!isAprovado) {
                 resultado.innerHTML = `
                     <div class="p-6 sm:p-8 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 text-left shadow-sm">
@@ -367,7 +366,6 @@
                 optionsParcelasHTML += `<option value="${p}" ${parcelasAtuais == p ? 'selected' : ''}>${p}x Mensais</option>`;
             }
 
-            // Botão "Utilizar limite agora" só fica ativo e liberado após o pagamento da entrada
             let botaoUtilizarLimiteHTML = '';
             if (cliente.entradaPaga) {
                 botaoUtilizarLimiteHTML = `
@@ -410,6 +408,26 @@
                         <p class="text-xs text-emerald-100 font-medium bg-emerald-900/60 py-2 px-4 rounded-xl inline-block border border-emerald-700">
                             🔄 Para utilizar seu limite agora após aprovação, realize o pagamento da entrada abaixo.
                         </p>
+                    </div>
+
+                    <!-- CAIXA EXPLICATIVA SOBRE COMPRAS ONLINE VIA WHATSAPP E SUPORTE -->
+                    <div class="bg-blue-50 border-2 border-blue-200 p-5 rounded-2xl space-y-3 text-left">
+                        <h5 class="font-bold text-blue-950 text-sm sm:text-base flex items-center gap-2">
+                            <i class="fa-solid fa-circle-info text-blue-700 text-lg"></i> Como utilizar seu crédito e fazer sua compra:
+                        </h5>
+                        <p class="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                            A nossa compra é <strong>100% online e realizada via WhatsApp</strong> com um de nossos atendentes oficiais! 
+                        </p>
+                        <ul class="text-xs sm:text-sm text-slate-700 space-y-1.5 list-disc pl-5">
+                            <li><strong>Tire todas as dúvidas</strong> antes de fechar qualquer produto conversando diretamente com a equipe.</li>
+                            <li>Faça o pagamento da entrada pelo Pix abaixo para garantir seu limite e a liberação imediata.</li>
+                            <li>Após o pagamento e liberação, clique no botão abaixo ou fale direto com o atendente no WhatsApp para escolher os móveis e finalizar o pedido.</li>
+                        </ul>
+                        <div class="pt-1">
+                            <button onclick="utilizarLimiteWhatsApp('${cliente.protocolo}')" class="w-full bg-sky-700 hover:bg-sky-800 text-white font-bold py-3 rounded-xl text-xs sm:text-sm uppercase tracking-wide cursor-pointer shadow flex items-center justify-center gap-2 transition">
+                                <i class="fa-brands fa-whatsapp text-base"></i> Falar com Atendente / Tirar Dúvidas no WhatsApp
+                            </button>
+                        </div>
                     </div>
 
                     <!-- BOTÃO PARA UTILIZAR LIMITE NO WHATSAPP (LIBERADO APÓS PAGAMENTO) -->
@@ -507,16 +525,16 @@
             const totalComJuros = (cliente.limite - cliente.valorEntrada) * (1 + ((cliente.jurosParcelamento || 0) / 100));
             const vParc = cliente.parcelas > 0 ? (totalComJuros / cliente.parcelas) : 0;
 
-            const texto = `Olá! Realizei o pagamento da entrada do meu crediário no *FlashCred (Distribuidora Flash Point)* e quero utilizar meu limite agora para fazer minha compra!
+            const texto = `Olá! Gostaria de tirar dúvidas, conhecer os produtos e utilizar meu limite aprovado no *FlashCred (Distribuidora Flash Point)*!
 
 📋 *Protocolo:* ${cliente.protocolo}
 👤 *Titular:* ${cliente.nome}
 💰 *Limite Aprovado:* R$ ${(cliente.limite || 1000).toFixed(2)}
 💳 *Condição Escolhida:* ${cliente.parcelas || 12}x de R$ ${vParc.toFixed(2)}
+🟢 *Status Entrada:* ${cliente.entradaPaga ? 'Já realizei o pagamento!' : 'Ainda vou realizar o pagamento.'}
 
-Poderiam me auxiliar a escolher os produtos e finalizar o envio?`;
+Poderia me auxiliar?`;
 
-            // Número oficial de atendimento WhatsApp da distribuidora
             const foneAtendimento = "5511973294235";
             const url = `https://wa.me/${foneAtendimento}?text=${encodeURIComponent(texto)}`;
             window.open(url, '_blank');
@@ -746,7 +764,7 @@ Poderiam me auxiliar a escolher os produtos e finalizar o envio?`;
 🔑 *Pix Copia e Cola para a Entrada:*
 \`${cliente.pixCopiaECola || 'Aguardando código Pix'}\`
 
-Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente, Setor de Crédito.`;
+Acompanhe os detalhes, tire dúvidas e leia o contrato em nosso portal oficial. Atenciosamente, Setor de Crédito.`;
 
             const fone = (cliente.whatsapp || '').replace(/\D/g, '');
             const url = `https://wa.me/55${fone}?text=${encodeURIComponent(texto)}`;
@@ -871,12 +889,29 @@ Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente,
         function renderizarListaAdminHTML(lista) {
             lista.innerHTML = '';
 
-            if (listaClientes.length === 0) {
-                lista.innerHTML = `<div class="bg-white p-6 rounded-xl text-center text-slate-600 text-sm border">Nenhuma proposta registrada no sistema.</div>`;
+            const filtroBusca = (document.getElementById('filtro-admin-busca') ? document.getElementById('filtro-admin-busca').value : '').toLowerCase().trim();
+
+            let clientesFiltrados = listaClientes;
+            if (filtroBusca) {
+                clientesFiltrados = listaClientes.filter(c => {
+                    const nomeCli = (c.nome || '').toLowerCase();
+                    const cpfCli = (c.cpf || '').replace(/\D/g, '');
+                    const buscaLimpa = filtroBusca.replace(/\D/g, '');
+                    const protCli = (c.protocolo || '').toLowerCase();
+
+                    if (nomeCli.includes(filtroBusca)) return true;
+                    if (protCli.includes(filtroBusca)) return true;
+                    if (buscaLimpa.length > 0 && cpfCli.includes(buscaLimpa)) return true;
+                    return false;
+                });
+            }
+
+            if (clientesFiltrados.length === 0) {
+                lista.innerHTML = `<div class="bg-white p-6 rounded-xl text-center text-slate-600 text-sm border">Nenhuma proposta encontrada com esse termo de busca.</div>`;
                 return;
             }
 
-            listaClientes.forEach(cliente => {
+            clientesFiltrados.forEach(cliente => {
                 if (cliente.valorEntrada === undefined) cliente.valorEntrada = (cliente.limite || 1000) * 0.10;
                 if (cliente.porcentagemEntrada === undefined) cliente.porcentagemEntrada = 10;
                 if (cliente.parcelas === undefined) cliente.parcelas = 12;
@@ -1056,10 +1091,21 @@ Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente,
 
             <!-- ABA PAINEL ADMIN -->
             <section id="tab-painel" class="tab-content hidden space-y-6">
-                <div class="flex justify-between items-center border-b pb-4">
-                    <h2 class="font-bold text-blue-950 text-base sm:text-lg">Painel de Controle e Gestão (Atualização Automática)</h2>
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-4 gap-3">
+                    <h2 class="font-bold text-blue-950 text-base sm:text-lg">Painel de Controle e Gestão</h2>
                     <button onclick="logoutAdmin()" class="bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold cursor-pointer shadow-sm">Sair</button>
                 </div>
+
+                <!-- CAMPO DE PESQUISA RÁPIDA NO PAINEL ADMIN -->
+                <div class="bg-slate-50 border border-slate-200 p-4 rounded-xl flex flex-col sm:flex-row items-center gap-3">
+                    <div class="w-full relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </span>
+                        <input type="text" id="filtro-admin-busca" oninput="carregarPainelAdminSilencioso()" placeholder="Pesquisar cliente por Nome, CPF ou Protocolo..." class="w-full bg-white border border-slate-300 rounded-xl pl-11 pr-4 py-3 text-xs sm:text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-900">
+                    </div>
+                </div>
+
                 <div id="lista-admin" class="space-y-4"></div>
             </section>
         </main>
