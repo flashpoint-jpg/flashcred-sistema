@@ -180,7 +180,7 @@
                 periodicidade: '30',
                 jurosParcelamento: 0,
                 descontoAntecipado: 0,
-                status: 'aguardando',
+                status: 'analise', // Status inicial: em análise (não exibe nada para o cliente ainda)
                 entradaPaga: false,
                 pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${valorEntradaCalc.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
             };
@@ -239,7 +239,6 @@
             const parcelas = parseInt(document.getElementById(`edit-parcelas-${protocolo}`).value) || 48;
             const jurosParcelamento = parseFloat(document.getElementById(`edit-juros-${protocolo}`).value) || 0;
             const descontoAntecipado = parseFloat(document.getElementById(`edit-desconto-${protocolo}`).value) || 0;
-            const status = document.getElementById(`edit-status-${protocolo}`).value;
             const entradaPaga = document.getElementById(`edit-entradapaga-${protocolo}`).checked;
 
             const dadosAtualizados = {
@@ -254,7 +253,6 @@
                 parcelas,
                 jurosParcelamento,
                 descontoAntecipado,
-                status,
                 entradaPaga,
                 pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${valorEntrada.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
             };
@@ -279,18 +277,22 @@
             alert('Proposta atualizada e salva com sucesso!');
         }
 
-        async function alterarStatusAdmin(protocolo, novoStatus, statusEntradaPaga) {
+        async function alterarStatusAdmin(protocolo, novoStatus) {
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const idx = locais.findIndex(c => c.protocolo === protocolo);
             if (idx !== -1) {
                 locais[idx].status = novoStatus;
-                locais[idx].entradaPaga = statusEntradaPaga;
+                if (novoStatus === 'reprovado') {
+                    locais[idx].entradaPaga = false;
+                }
                 localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
             }
 
             if (supabaseClient) {
                 try {
-                    await supabaseClient.from('clientes').update({ status: novoStatus, entradaPaga: statusEntradaPaga }).eq('protocolo', protocolo);
+                    const updatePayload = { status: novoStatus };
+                    if (novoStatus === 'reprovado') updatePayload.entradaPaga = false;
+                    await supabaseClient.from('clientes').update(updatePayload).eq('protocolo', protocolo);
                 } catch (e) {
                     console.warn('Erro Supabase status.');
                 }
@@ -298,6 +300,7 @@
 
             await carregarDadosDoBanco();
             renderizarPainelAdmin();
+            alert(novoStatus === 'aprovado' ? 'Proposta APROVADA! Agora o cliente já pode visualizar o Pix e os detalhes na aba Acompanhar.' : 'Proposta marcada como Reprovada.');
         }
 
         async function excluirPropostaAdmin(protocolo) {
@@ -331,9 +334,11 @@
                 texto = `Olá ${cliente.nome}! Passando para informar que sua proposta de crédito (${cliente.protocolo}) na Distribuidora Flash Point está em *análise cadastral*. Em breve retornaremos com novidades!`;
             } else if (tipoMensagem === 'aguardando_pagamento') {
                 const pixChave = cliente.pixCopiaECola || '';
-                texto = `Olá ${cliente.nome}! Sua proposta (${cliente.protocolo}) foi aprovada para liberação! Para concluir, efetue o Pix da entrada no valor de R$ ${(cliente.valorEntrada || 0).toFixed(2)}.\n\nChave Pix / Copia e Cola:\n${pixChave}`;
+                texto = `Olá ${cliente.nome}! Sua proposta (${cliente.protocolo}) foi *aprovada*! Acesse o site na aba Acompanhar para ver seu Pix de entrada de R$ ${(cliente.valorEntrada || 0).toFixed(2)} e o cronograma de parcelas.\n\nPix Copia e Cola:\n${pixChave}`;
             } else if (tipoMensagem === 'aprovado') {
-                texto = `Parabéns ${cliente.nome}! Seu pagamento de entrada foi confirmado e seu crédito de R$ ${(cliente.limite || 0).toFixed(2)} foi totalmente *liberado* pela Distribuidora Flash Point! Já pode verificar seus móveis.`;
+                texto = `Parabéns ${cliente.nome}! Seu pagamento de entrada foi confirmado e seu crédito de R$ ${(cliente.limite || 0).toFixed(2)} foi totalmente *liberado* pela Distribuidora Flash Point!`;
+            } else if (tipoMensagem === 'reprovado') {
+                texto = `Olá ${cliente.nome}, infelizmente sua proposta (${cliente.protocolo}) não foi aprovada neste momento pela Distribuidora Flash Point. Agradecemos o interesse.`;
             }
 
             const url = `https://wa.me/${numeroZap}?text=${encodeURIComponent(texto)}`;
@@ -408,9 +413,12 @@
                 const valorParcUnit = qtdParc > 0 ? (totalComJuros / qtdParc) : 0;
                 const totalGeralReceber = valEntrada + totalComJuros;
 
-                const badgeStatus = c.entradaPaga 
-                    ? '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-[10px]">🟢 Entrada Paga / Liberado</span>' 
-                    : '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-[10px]">🟡 Aguardando Entrada Pix</span>';
+                let badgeStatus = '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-[10px]">🟡 Em Análise</span>';
+                if (c.status === 'aprovado') {
+                    badgeStatus = '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-[10px]">🟢 Aprovado</span>';
+                } else if (c.status === 'reprovado') {
+                    badgeStatus = '<span class="bg-rose-100 text-rose-800 px-3 py-1 rounded-full font-bold text-[10px]">🔴 Reprovado</span>';
+                }
 
                 html += `
                     <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-5 shadow-sm">
@@ -424,23 +432,22 @@
                             </div>
                         </div>
 
-                        <!-- Botões Rápidos de Ação -->
+                        <!-- Botões de Aprovação, Reprovação e Ações Rápidas -->
                         <div class="flex flex-wrap gap-2 bg-white p-3 rounded-xl border border-slate-200">
-                            <span class="text-[11px] font-bold text-slate-500 self-center mr-2">Ações Rápidas:</span>
-                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'aprovado', true)" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
-                                <i class="fa-solid fa-check"></i> Aprovar (Paga)
+                            <span class="text-[11px] font-bold text-slate-500 self-center mr-1">Decisão:</span>
+                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'aprovado')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold px-4 py-2 rounded-lg transition shadow-sm flex items-center gap-1">
+                                <i class="fa-solid fa-circle-check"></i> Aprovar Proposta
                             </button>
-                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'aguardando', false)" class="bg-amber-500 hover:bg-amber-400 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
-                                <i class="fa-solid fa-clock"></i> Marcar Analise
+                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'reprovado')" class="bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold px-4 py-2 rounded-lg transition shadow-sm flex items-center gap-1">
+                                <i class="fa-solid fa-circle-xmark"></i> Reprovar
                             </button>
-                            <button onclick="enviarMensagemWhatsAppCliente('${c.protocolo}', 'analise')" class="bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
-                                <i class="fa-brands fa-whatsapp"></i> Zap: Análise
-                            </button>
+                            <div class="w-full border-t border-slate-100 my-1"></div>
+                            <span class="text-[11px] font-bold text-slate-500 self-center mr-1">WhatsApp:</span>
                             <button onclick="enviarMensagemWhatsAppCliente('${c.protocolo}', 'aguardando_pagamento')" class="bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
-                                <i class="fa-brands fa-whatsapp"></i> Zap: Pix Entrada
+                                <i class="fa-brands fa-whatsapp"></i> Enviar Pix Aprovado
                             </button>
-                            <button onclick="enviarMensagemWhatsAppCliente('${c.protocolo}', 'aprovado')" class="bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
-                                <i class="fa-brands fa-whatsapp"></i> Zap: Aprovado
+                            <button onclick="enviarMensagemWhatsAppCliente('${c.protocolo}', 'reprovado')" class="bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
+                                <i class="fa-brands fa-whatsapp"></i> Avisar Reprovação
                             </button>
                         </div>
 
@@ -517,7 +524,7 @@
 
                         <div class="flex items-center gap-2 pt-1">
                             <input type="checkbox" id="edit-entradapaga-${c.protocolo}" ${c.entradaPaga ? 'checked' : ''} class="w-4 h-4 text-blue-950 rounded border-slate-300">
-                            <label for="edit-entradapaga-${c.protocolo}" class="text-xs font-bold text-slate-700">Marcar Entrada como Paga (Libera o Pix e o contrato para o cliente)</label>
+                            <label for="edit-entradapaga-${c.protocolo}" class="text-xs font-bold text-slate-700">Marcar Entrada como Paga (Libera o contrato definitivo)</label>
                         </div>
 
                         <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
@@ -601,12 +608,11 @@
             const idx = locais.findIndex(c => c.protocolo === protocolo);
             if (idx !== -1) {
                 locais[idx].entradaPaga = true;
-                locais[idx].status = 'aprovado';
                 localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
             }
 
             if (supabaseClient) {
-                supabaseClient.from('clientes').update({ entradaPaga: true, status: 'aprovado' }).eq('protocolo', protocolo).then(() => {});
+                supabaseClient.from('clientes').update({ entradaPaga: true }).eq('protocolo', protocolo).then(() => {});
             }
 
             const mensagemZap = encodeURIComponent(`Olá! Acabei de efetuar o pagamento da entrada via Pix referente ao protocolo ${protocolo} (${nomeCliente}). Segue o comprovante para liberação.`);
@@ -704,7 +710,38 @@
                 return;
             }
 
-            let badgeStatus = cliente.entradaPaga ? '<span class="bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full font-bold text-xs">🟢 Aprovado / Liberado</span>' : '<span class="bg-amber-100 text-amber-800 px-4 py-1.5 rounded-full font-bold text-xs">🟡 Em Análise / Aguardando Pix</span>';
+            // SE AINDA ESTIVER EM ANÁLISE OU REPROVADO, O CLIENTE NÃO VÊ OS DETALHES DE CRÉDITO / PIX
+            if (cliente.status === 'analise') {
+                resultado.innerHTML = `
+                    <div class="p-8 bg-amber-50 border border-amber-200 rounded-3xl space-y-4 text-center shadow-sm">
+                        <div class="w-16 h-16 bg-amber-500 text-white rounded-full flex items-center justify-center mx-auto text-2xl shadow-md">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                        <h3 class="text-xl font-black text-amber-900">Sua proposta está em análise!</h3>
+                        <p class="text-xs text-amber-800 leading-relaxed max-w-md mx-auto">
+                            Olá <strong>${cliente.nome}</strong>, recebemos sua solicitação (Protocolo: <strong>${cliente.protocolo}</strong>). Nossa equipe está analisando seus dados. Assim que for aprovada, o Pix de entrada e as parcelas aparecerão automaticamente aqui para você.
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            if (cliente.status === 'reprovado') {
+                resultado.innerHTML = `
+                    <div class="p-8 bg-rose-50 border border-rose-200 rounded-3xl space-y-4 text-center shadow-sm">
+                        <div class="w-16 h-16 bg-rose-600 text-white rounded-full flex items-center justify-center mx-auto text-2xl shadow-md">
+                            <i class="fa-solid fa-xmark"></i>
+                        </div>
+                        <h3 class="text-xl font-black text-rose-900">Proposta não aprovada</h3>
+                        <p class="text-xs text-rose-800 leading-relaxed max-w-md mx-auto">
+                            Olá <strong>${cliente.nome}</strong>, infelizmente sua solicitação (Protocolo: <strong>${cliente.protocolo}</strong>) não foi aprovada neste momento.
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            // SE FOI APROVADO, EXIBE TUDO DETALHADAMENTE
             const pixGerado = cliente.pixCopiaECola || `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${(cliente.valorEntrada || 150).toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
             const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pixGerado)}`;
             
@@ -718,7 +755,7 @@
             const cronograma = gerarCronogramaParcelas(cliente);
             let htmlCronogramaCliente = '';
             cronograma.forEach(p => {
-                htmlCronogramaCliente += `<div class="flex justify-between items-center text-xs py-2 border-b border-slate-100"><span class="text-slate-600">Parcela ${p.numero} (${p.vencimento})</span><strong class="text-blue-950">R$ ${p.valor.toFixed(2)}</strong></div>`;
+                htmlCronogramaCliente += `<div class="flex justify-between items-center text-xs py-2 border-b border-slate-100"><span class="text-slate-600">Parcela ${p.numero} &bull; Vencimento: <strong>${p.vencimento}</strong></span><strong class="text-blue-950">R$ ${p.valor.toFixed(2)}</strong></div>`;
             });
 
             if (cliente.entradaPaga) {
@@ -759,11 +796,11 @@
                                 <span class="text-xs text-slate-500 font-medium">Protocolo: ${cliente.protocolo}</span>
                                 <h3 class="font-black text-slate-900 text-lg">${cliente.nome}</h3>
                             </div>
-                            <div>${badgeStatus}</div>
+                            <div><span class="bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full font-bold text-xs">🟢 Aprovado</span></div>
                         </div>
 
                         <div class="p-6 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-2xl shadow-lg border border-amber-400 space-y-2 text-center">
-                            <span class="text-xs uppercase tracking-widest font-black opacity-95 block">⚠️ Proposta Liberada • Efetue o Pix de Entrada ⚠️</span>
+                            <span class="text-xs uppercase tracking-widest font-black opacity-95 block">⚠️ Proposta Aprovada • Efetue o Pix de Entrada ⚠️</span>
                             <div class="text-3xl font-black">R$ ${ent.toFixed(2)}</div>
                             <p class="text-xs font-semibold text-amber-100">Escaneie o QR Code abaixo ou utilize o Pix Copia e Cola</p>
                         </div>
@@ -802,8 +839,8 @@
                         </div>
 
                         <div class="border-t border-slate-100 pt-4 space-y-2">
-                            <span class="text-xs font-bold text-slate-700 block">Cronograma (${parcelasAtuais}x):</span>
-                            <div class="max-h-40 overflow-y-auto pr-1">
+                            <span class="text-xs font-bold text-slate-700 block">Cronograma Completo (${parcelasAtuais}x):</span>
+                            <div class="max-h-48 overflow-y-auto pr-1 space-y-1">
                                 ${htmlCronogramaCliente}
                             </div>
                         </div>
@@ -904,7 +941,7 @@
         <section id="tab-acompanhar" class="tab-content hidden space-y-6">
             <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-4">
                 <h2 class="text-xl font-black text-blue-950 tracking-tight">Acompanhar Status da Proposta</h2>
-                <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para ver o Pix de entrada e realizar o pagamento.</p>
+                <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para ver o andamento e o Pix de entrada (visível apenas após a aprovação).</p>
 
                 <div class="flex gap-3">
                     <input type="text" id="busca-cpf" placeholder="Digite seu CPF ou Protocolo (ex: FP-123456)" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950">
@@ -950,7 +987,7 @@
             <div id="dashboard-resumo-financeiro"></div>
 
             <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-6">
-                <div class="flex justify-between items-center border-b border-slate-100 pb-4">
+                <div class="flex justify-between items-0 border-b border-slate-100 pb-4">
                     <h3 class="font-bold text-blue-950 text-sm">Todas as Propostas</h3>
                     <button onclick="renderizarPainelAdmin()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5">
                         <i class="fa-solid fa-rotate"></i> Atualizar
