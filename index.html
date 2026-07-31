@@ -3,21 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distribuidora Flash Point - Sistema FlashCred & Financeiro</title>
+    <title>Distribuidora Flash Point - Sistema</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <style>
-        @keyframes pulseGreen {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.85; transform: scale(1.02); }
-        }
-        .animar-limite {
-            animation: pulseGreen 2s infinite ease-in-out;
-        }
-    </style>
-
     <script>
         const CONFIG = {
             SUPABASE_URL: 'https://rgcclordmqmwuzrrfbd.supabase.co',
@@ -37,11 +27,10 @@
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
         let intervaloAutoRefresh = null;
 
-        // Lista de Lançamentos Financeiros (Entradas, Saídas, A Receber)
         let listaLancamentos = JSON.parse(localStorage.getItem('flash_simples_lancamentos')) || [
             { id: 1, desc: 'Venda Entrada Pix', tipo: 'Entrada', valor: 1500.00 },
             { id: 2, desc: 'Conta de Energia', tipo: 'Saída', valor: 350.00 },
-            { id: 3, desc: 'Parcela 1 - Cliente Teste', tipo: 'A Receber', valor: 250.00 }
+            { id: 3, desc: 'Parcela 1 - Cliente', tipo: 'A Receber', valor: 250.00 }
         ];
 
         async function carregarDadosDoBanco() {
@@ -49,12 +38,8 @@
             if (supabaseClient) {
                 try {
                     const { data, error } = await supabaseClient.from('clientes').select('*');
-                    if (!error && data) {
-                        dadosRemotos = data;
-                    }
-                } catch (e) {
-                    console.warn('Erro ao buscar dados remotos.');
-                }
+                    if (!error && data) dadosRemotos = data;
+                } catch (e) {}
             }
 
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
@@ -70,7 +55,7 @@
         window.addEventListener('DOMContentLoaded', async () => {
             await carregarDadosDoBanco();
             
-            // Recupera a aba ativa para o F5 não resetar o usuário para a tela inicial
+            // Mantém a aba correta mesmo após dar F5 (evita sumir do admin)
             const abaSalva = localStorage.getItem('flash_aba_ativa');
             if (abaSalva) {
                 if (abaSalva === 'painel' && !adminLogado) {
@@ -84,9 +69,8 @@
 
             if (adminLogado) {
                 iniciarAutoRefreshAdmin();
+                atualizarTelaFinanceira();
             }
-
-            atualizarTelaFinanceira();
         });
 
         function iniciarAutoRefreshAdmin() {
@@ -95,10 +79,7 @@
                 const painelVisivel = document.getElementById('tab-painel') && !document.getElementById('tab-painel').classList.contains('hidden');
                 if (adminLogado && painelVisivel) {
                     await carregarDadosDoBanco();
-                    // Se estiver no painel admin, atualiza silenciosamente sem piscar a tela
-                    if (typeof renderizarTabelaAdminSilencioso === 'function') {
-                        renderizarTabelaAdminSilencioso();
-                    }
+                    renderizarTabelaAdminSilencioso();
                 }
             }, 5000);
         }
@@ -129,13 +110,13 @@
 
         function atualizarBotoesNav(tabId) {
             document.querySelectorAll('.tab-btn').forEach(el => {
-                el.classList.remove('bg-blue-950', 'text-white', 'shadow-md', 'border-blue-800');
-                el.classList.add('text-slate-700', 'hover:bg-slate-200');
+                el.classList.remove('bg-blue-900', 'text-white', 'shadow-md');
+                el.classList.add('text-slate-600', 'hover:bg-slate-100');
             });
             const btn = document.getElementById('btn-' + tabId);
             if (btn) {
-                btn.classList.remove('text-slate-700', 'hover:bg-slate-200');
-                btn.classList.add('bg-blue-950', 'text-white', 'shadow-md', 'border-blue-800');
+                btn.classList.remove('text-slate-600', 'hover:bg-slate-100');
+                btn.classList.add('bg-blue-900', 'text-white', 'shadow-md');
             }
         }
 
@@ -160,7 +141,7 @@
             switchTab('solicitar');
         }
 
-        // --- SISTEMA FINANCEIRO SIMPLES ---
+        // --- SISTEMA FINANCEIRO DENTRO DO ADMIN ---
         function atualizarTelaFinanceira() {
             const corpo = document.getElementById('tabela-financeiro-corpo');
             if (!corpo) return;
@@ -172,7 +153,7 @@
             let qtdParcelas = 0;
 
             if (listaLancamentos.length === 0) {
-                corpo.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-400 text-xs">Nenhum lançamento registrado.</td></tr>`;
+                corpo.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-slate-400 text-xs">Nenhum lançamento.</td></tr>`;
             }
 
             listaLancamentos.forEach((item) => {
@@ -183,36 +164,28 @@
                     qtdParcelas++;
                 }
 
-                let badgeClass = 'bg-slate-100 text-slate-700';
-                if (item.tipo === 'Entrada') badgeClass = 'bg-emerald-100 text-emerald-800 font-bold';
-                if (item.tipo === 'Saída') badgeClass = 'bg-rose-100 text-rose-800 font-bold';
-                if (item.tipo === 'A Receber') badgeClass = 'bg-amber-100 text-amber-800 font-bold';
+                let badge = 'bg-slate-100 text-slate-700';
+                if (item.tipo === 'Entrada') badge = 'bg-emerald-100 text-emerald-800 font-bold';
+                if (item.tipo === 'Saída') badge = 'bg-rose-100 text-rose-800 font-bold';
+                if (item.tipo === 'A Receber') badge = 'bg-amber-100 text-amber-800 font-bold';
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td class="p-3 font-medium text-slate-900">${item.desc}</td>
-                    <td class="p-3"><span class="px-2.5 py-1 rounded-full text-xs ${badgeClass}">${item.tipo}</span></td>
-                    <td class="p-3 text-right font-bold text-slate-900">R$ ${item.valor.toFixed(2)}</td>
-                    <td class="p-3 text-center">
-                        <button onclick="removerLancamento(${item.id})" class="text-slate-400 hover:text-rose-600 transition cursor-pointer">
-                            <i class="fa-solid fa-trash-can"></i>
-                        </button>
-                    </td>
+                    <td class="p-2.5 text-slate-900">${item.desc}</td>
+                    <td class="p-2.5"><span class="px-2 py-0.5 rounded text-xs ${badge}">${item.tipo}</span></td>
+                    <td class="p-2.5 text-right font-bold">R$ ${item.valor.toFixed(2)}</td>
+                    <td class="p-2.5 text-center"><button onclick="removerLancamento(${item.id})" class="text-rose-500 hover:text-rose-700"><i class="fa-solid fa-trash"></i></button></td>
                 `;
                 corpo.appendChild(tr);
             });
 
-            const saldoCaixa = totalEntradas - totalSaidas;
-
-            document.getElementById('res-entradas').innerText = `R$ ${totalEntradas.toFixed(2)}`;
-            document.getElementById('res-saidas').innerText = `R$ ${totalSaidas.toFixed(2)}`;
-            document.getElementById('res-receber').innerText = `R$ ${totalReceber.toFixed(2)}`;
-            document.getElementById('res-parcelas').innerText = qtdParcelas;
-            
-            const cardSaldo = document.getElementById('res-saldo');
-            if (cardSaldo) {
-                cardSaldo.innerText = `R$ ${saldoCaixa.toFixed(2)}`;
-                cardSaldo.className = saldoCaixa >= 0 ? "text-lg sm:text-xl font-bold text-emerald-400" : "text-lg sm:text-xl font-bold text-rose-400";
+            const saldo = totalEntradas - totalSaidas;
+            if (document.getElementById('res-entradas')) document.getElementById('res-entradas').innerText = `R$ ${totalEntradas.toFixed(2)}`;
+            if (document.getElementById('res-saidas')) document.getElementById('res-saidas').innerText = `R$ ${totalSaidas.toFixed(2)}`;
+            if (document.getElementById('res-receber')) document.getElementById('res-receber').innerText = `R$ ${totalReceber.toFixed(2)}`;
+            if (document.getElementById('res-saldo')) {
+                document.getElementById('res-saldo').innerText = `R$ ${saldo.toFixed(2)}`;
+                document.getElementById('res-saldo').className = saldo >= 0 ? "text-lg font-bold text-emerald-600" : "text-lg font-bold text-rose-600";
             }
 
             localStorage.setItem('flash_simples_lancamentos', JSON.stringify(listaLancamentos));
@@ -226,14 +199,7 @@
 
             if (!desc || isNaN(valor)) return;
 
-            const novo = {
-                id: Date.now(),
-                desc: desc,
-                tipo: tipo,
-                valor: valor
-            };
-
-            listaLancamentos.unshift(novo);
+            listaLancamentos.unshift({ id: Date.now(), desc, tipo, valor });
             document.getElementById('form-fin-lancamento').reset();
             atualizarTelaFinanceira();
         }
@@ -243,7 +209,7 @@
             atualizarTelaFinanceira();
         }
 
-        // Funções Originais do seu Sistema (mantidas intactas)
+        // Funções Originais do Sistema
         async function consultarCEP(cep) {
             const cepLimpo = cep.replace(/\D/g, '');
             if (cepLimpo.length === 8) {
@@ -253,9 +219,7 @@
                     if (!data.erro) {
                         document.getElementById('endereco').value = `${data.logradouro}, Bairro: ${data.bairro} - ${data.localidade}/${data.uf}`;
                     }
-                } catch (e) {
-                    console.error('Erro ao buscar CEP');
-                }
+                } catch (e) {}
             }
         }
 
@@ -272,19 +236,11 @@
                 cep: document.getElementById('cep').value,
                 endereco: document.getElementById('endereco').value,
                 limite: valor,
-                valorEntrada: valor * 0.10,
-                porcentagemEntrada: 10,
-                parcelas: 12,
-                frequencia: '30',
-                status: 'aguardando',
-                entradaPaga: false,
-                contratoAceito: false
+                status: 'aguardando'
             };
 
             if (supabaseClient) {
-                try {
-                    await supabaseClient.from('clientes').insert([novaProposta]);
-                } catch (err) {}
+                try { await supabaseClient.from('clientes').insert([novaProposta]); } catch (err) {}
             }
 
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
@@ -299,8 +255,34 @@
             document.getElementById('busca-cpf').value = protocolo;
         }
 
+        async function consultarProposta() {
+            const termo = document.getElementById('busca-cpf').value.trim();
+            const resultado = document.getElementById('resultado-busca');
+            if (!termo) return;
+
+            await carregarDadosDoBanco();
+            const cliente = listaClientes.find(c => c.cpf === termo || c.protocolo === termo);
+
+            resultado.classList.remove('hidden');
+            if (!cliente) {
+                resultado.innerHTML = `<div class="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-sm">Nenhum pedido encontrado.</div>`;
+                return;
+            }
+
+            const aprovado = cliente.status === 'aprovado';
+            resultado.innerHTML = `
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-sm">
+                    <p><strong>Protocolo:</strong> ${cliente.protocolo}</p>
+                    <p><strong>Cliente:</strong> ${cliente.nome}</p>
+                    <p><strong>Limite Desejado:</strong> R$ ${(cliente.limite || 1000).toFixed(2)}</p>
+                    <p><strong>Status:</strong> <span class="px-2 py-1 rounded text-xs font-bold ${aprovado ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${aprovado ? 'Aprovado' : 'Em Análise'}</span></p>
+                </div>
+            `;
+        }
+
         function carregarPainelAdmin() {
             renderizarTabelaAdminSilencioso();
+            atualizarTelaFinanceira();
         }
 
         function renderizarTabelaAdminSilencioso() {
@@ -309,26 +291,23 @@
             corpoAdmin.innerHTML = '';
 
             if (listaClientes.length === 0) {
-                corpoAdmin.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-400">Nenhum cliente cadastrado.</td></tr>`;
+                corpoAdmin.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">Nenhum cliente.</td></tr>`;
                 return;
             }
 
             listaClientes.forEach(cliente => {
                 const isAprovado = cliente.status === 'aprovado';
-                const badge = isAprovado ? '<span class="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full text-xs font-bold">Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full text-xs font-bold">Em Análise</span>';
+                const badge = isAprovado ? '<span class="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-xs font-bold">Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs font-bold">Em Análise</span>';
                 
                 const tr = document.createElement('tr');
-                tr.className = 'border-b border-slate-100 hover:bg-slate-50';
+                tr.className = 'border-b border-slate-100 hover:bg-slate-50 text-sm';
                 tr.innerHTML = `
                     <td class="p-3 font-bold text-blue-950">${cliente.protocolo || '-'}</td>
-                    <td class="p-3">
-                        <div class="font-semibold text-slate-900">${cliente.nome || '-'}</div>
-                        <div class="text-xs text-slate-500">${cliente.whatsapp || ''}</div>
-                    </td>
-                    <td class="p-3 text-slate-700">R$ ${(cliente.limite || 1000).toFixed(2)}</td>
+                    <td class="p-3"><div>${cliente.nome || '-'}</div><div class="text-xs text-slate-500">${cliente.whatsapp || ''}</div></td>
+                    <td class="p-3">R$ ${(cliente.limite || 1000).toFixed(2)}</td>
                     <td class="p-3 text-center">${badge}</td>
                     <td class="p-3 text-center">
-                        <button onclick="mudarStatusAdmin('${cliente.protocolo}', '${isAprovado ? 'aguardando' : 'aprovado'}')" class="px-3 py-1.5 rounded-lg text-xs font-bold ${isAprovado ? 'bg-amber-100 text-amber-800' : 'bg-emerald-600 text-white'} cursor-pointer">
+                        <button onclick="mudarStatusAdmin('${cliente.protocolo}', '${isAprovado ? 'aguardando' : 'aprovado'})" class="px-3 py-1 rounded text-xs font-bold ${isAprovado ? 'bg-amber-100 text-amber-800' : 'bg-emerald-600 text-white'} cursor-pointer">
                             ${isAprovado ? 'Reverter' : 'Aprovar'}
                         </button>
                     </td>
@@ -342,9 +321,7 @@
             if (cliente) {
                 cliente.status = novoStatus;
                 if (supabaseClient) {
-                    try {
-                        await supabaseClient.from('clientes').update({ status: novoStatus }).eq('protocolo', protocolo);
-                    } catch (e) {}
+                    try { await supabaseClient.from('clientes').update({ status: novoStatus }).eq('protocolo', protocolo); } catch (e) {}
                 }
                 const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
                 const idx = locais.findIndex(c => c.protocolo === protocolo);
@@ -360,26 +337,25 @@
 </head>
 <body class="bg-slate-100 font-sans min-h-screen text-slate-800">
 
-    <!-- Navegação Principal -->
+    <!-- Navbar Original -->
     <nav class="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
             <div class="flex items-center gap-2">
                 <i class="fa-solid fa-bolt text-blue-900 text-xl"></i>
-                <span class="font-bold text-blue-950 text-base sm:text-lg">Distribuidora Flash Point</span>
+                <span class="font-bold text-blue-950 text-lg">Distribuidora Flash Point</span>
             </div>
-            <div class="flex flex-wrap gap-2">
-                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer">Solicitar Crédito</button>
-                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer">Acompanhar Pedido</button>
-                <button id="btn-financeiro" onclick="switchTab('financeiro')" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer">Caixa & Financeiro</button>
-                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition cursor-pointer">Painel Admin</button>
+            <div class="flex gap-2">
+                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer">Solicitar Crédito</button>
+                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer">Acompanhar Pedido</button>
+                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2 rounded-xl text-sm font-bold transition cursor-pointer">Painel Admin</button>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto p-4 sm:p-8">
+    <main class="max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
 
         <!-- ABA 1: SOLICITAR -->
-        <div id="tab-solicitar" class="tab-content max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+        <div id="tab-solicitar" class="tab-content bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
             <div class="text-center space-y-1">
                 <h2 class="text-xl sm:text-2xl font-bold text-blue-950">Solicitação de Crédito / Crediário</h2>
                 <p class="text-xs sm:text-sm text-slate-500">Preencha seus dados para análise rápida</p>
@@ -413,116 +389,24 @@
                     <label class="block text-xs font-bold text-slate-700 mb-1">Valor Desejado (R$)</label>
                     <input type="number" id="valor" value="1000" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
                 </div>
-                <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3.5 rounded-xl text-sm transition cursor-pointer">Enviar Solicitação</button>
+                <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3 rounded-xl text-sm transition cursor-pointer">Enviar Solicitação</button>
             </form>
         </div>
 
         <!-- ABA 2: ACOMPANHAR -->
-        <div id="tab-acompanhar" class="tab-content hidden max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+        <div id="tab-acompanhar" class="tab-content hidden bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
             <div class="text-center space-y-1">
                 <h2 class="text-xl sm:text-2xl font-bold text-blue-950">Acompanhar Pedido</h2>
                 <p class="text-xs sm:text-sm text-slate-500">Digite seu CPF ou Protocolo para verificar</p>
             </div>
             <div class="flex gap-2">
-                <input type="text" id="busca-cpf" placeholder="CPF ou Protocolo (Ex: FP-123456)" class="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
+                <input type="text" id="busca-cpf" placeholder="CPF ou Protocolo" class="flex-1 border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
                 <button onclick="consultarProposta()" class="bg-blue-950 hover:bg-blue-900 text-white font-bold px-5 py-2 rounded-xl text-sm transition cursor-pointer">Consultar</button>
             </div>
             <div id="resultado-busca" class="hidden"></div>
         </div>
 
-        <!-- ABA 3: CAIXA & FINANCEIRO (Simples, Entradas, Saídas, A Receber) -->
-        <div id="tab-financeiro" class="tab-content hidden space-y-6">
-            <div class="bg-blue-950 text-white p-6 rounded-2xl shadow flex flex-col sm:flex-row justify-between items-center gap-4">
-                <div>
-                    <h2 class="text-xl sm:text-2xl font-bold flex items-center gap-2">
-                        <i class="fa-solid fa-wallet text-emerald-400"></i> Caixa & Financeiro
-                    </h2>
-                    <p class="text-xs sm:text-sm text-blue-200 mt-1">Controle de Entradas, Saídas, Parcelas e Saldo</p>
-                </div>
-                <div class="bg-blue-900 px-4 py-2 rounded-xl text-center border border-blue-800">
-                    <span class="text-xs text-blue-300 block">Saldo em Caixa</span>
-                    <span id="res-saldo" class="text-lg sm:text-xl font-bold text-emerald-400">R$ 0,00</span>
-                </div>
-            </div>
-
-            <!-- Cards Resumo -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
-                    <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-arrow-trend-up"></i></div>
-                    <div>
-                        <span class="text-xs text-slate-500 font-semibold uppercase">Total Entrou</span>
-                        <h3 id="res-entradas" class="text-lg sm:text-xl font-bold text-slate-800">R$ 0,00</h3>
-                    </div>
-                </div>
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
-                    <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-arrow-trend-down"></i></div>
-                    <div>
-                        <span class="text-xs text-slate-500 font-semibold uppercase">Total Saiu</span>
-                        <h3 id="res-saidas" class="text-lg sm:text-xl font-bold text-slate-800">R$ 0,00</h3>
-                    </div>
-                </div>
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
-                    <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-hand-holding-dollar"></i></div>
-                    <div>
-                        <span class="text-xs text-slate-500 font-semibold uppercase">A Receber</span>
-                        <h3 id="res-receber" class="text-lg sm:text-xl font-bold text-slate-800">R$ 0,00</h3>
-                    </div>
-                </div>
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4">
-                    <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center text-xl font-bold"><i class="fa-solid fa-file-invoice"></i></div>
-                    <div>
-                        <span class="text-xs text-slate-500 font-semibold uppercase">Parcelas Pendentes</span>
-                        <h3 id="res-parcelas" class="text-lg sm:text-xl font-bold text-slate-800">0</h3>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Adicionar Movimentação -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-                <h3 class="text-base font-bold text-blue-950"><i class="fa-solid fa-plus-circle text-blue-900"></i> Adicionar Lançamento ou Parcela</h3>
-                <form id="form-fin-lancamento" onsubmit="adicionarLancamentoSimples(event)" class="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                    <div class="sm:col-span-2">
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Descrição</label>
-                        <input type="text" id="fin-desc" placeholder="Ex: Parcela 1 - João" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Tipo</label>
-                        <select id="fin-tipo" class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
-                            <option value="Entrada">Entrada (Recebido)</option>
-                            <option value="Saída">Saída (Pago)</option>
-                            <option value="A Receber">A Receber (Parcela)</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1">Valor (R$)</label>
-                        <input type="number" step="0.01" id="fin-valor" placeholder="0,00" required class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-900">
-                    </div>
-                    <div class="flex items-end">
-                        <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-2 px-4 rounded-xl text-sm transition cursor-pointer">Adicionar</button>
-                    </div>
-                </form>
-            </div>
-
-            <!-- Tabela de Lançamentos -->
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-                <h3 class="text-base font-bold text-blue-950"><i class="fa-solid fa-list text-blue-900"></i> Histórico do Caixa</h3>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="border-b border-slate-200 text-xs text-slate-500 uppercase bg-slate-50">
-                                <th class="p-3">Descrição</th>
-                                <th class="p-3">Tipo</th>
-                                <th class="p-3 text-right">Valor</th>
-                                <th class="p-3 text-center">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabela-financeiro-corpo" class="text-sm text-slate-700 divide-y divide-slate-100"></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- ABA 4: PAINEL ADMIN & LOGIN -->
+        <!-- LOGIN ADMIN -->
         <div id="tab-login-admin" class="tab-content hidden max-w-md mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
             <div class="text-center space-y-1">
                 <h2 class="text-xl font-bold text-blue-950">Acesso Restrito - Admin</h2>
@@ -538,16 +422,62 @@
             </form>
         </div>
 
+        <!-- PAINEL ADMIN (Com Caixa e Financeiro Embutido) -->
         <div id="tab-painel" class="tab-content hidden space-y-6">
             <div class="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                 <div>
                     <h2 class="text-xl font-bold text-blue-950">Painel Administrativo</h2>
-                    <p class="text-xs text-slate-500">Atualização automática em tempo real ativada</p>
+                    <p class="text-xs text-slate-500">Gerenciamento de clientes e caixa em tempo real</p>
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-4 py-2 rounded-xl text-xs transition cursor-pointer">Sair</button>
             </div>
+
+            <!-- Caixa & Financeiro dentro do Admin -->
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                <div class="flex justify-between items-center flex-wrap gap-2">
+                    <h3 class="text-base font-bold text-blue-950"><i class="fa-solid fa-wallet text-emerald-600"></i> Caixa & Financeiro</h3>
+                    <div class="bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        <span class="text-xs text-slate-500">Saldo em Caixa: </span>
+                        <span id="res-saldo" class="text-base font-bold text-emerald-600">R$ 0,00</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <span class="text-xs text-slate-500 block">Entradas</span>
+                        <span id="res-entradas" class="text-sm font-bold text-emerald-700">R$ 0,00</span>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <span class="text-xs text-slate-500 block">Saídas</span>
+                        <span id="res-saidas" class="text-sm font-bold text-rose-700">R$ 0,00</span>
+                    </div>
+                    <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <span class="text-xs text-slate-500 block">A Receber (Parcelas)</span>
+                        <span id="res-receber" class="text-sm font-bold text-amber-700">R$ 0,00</span>
+                    </div>
+                </div>
+
+                <form id="form-fin-lancamento" onsubmit="adicionarLancamentoSimples(event)" class="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-2">
+                    <input type="text" id="fin-desc" placeholder="Descrição (Ex: Parcela 1)" required class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-900">
+                    <select id="fin-tipo" class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-900">
+                        <option value="Entrada">Entrada</option>
+                        <option value="Saída">Saída</option>
+                        <option value="A Receber">A Receber</option>
+                    </select>
+                    <input type="number" step="0.01" id="fin-valor" placeholder="Valor R$" required class="border border-slate-300 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-900">
+                    <button type="submit" class="bg-blue-950 hover:bg-blue-900 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition cursor-pointer">Adicionar</button>
+                </form>
+
+                <div class="overflow-x-auto max-h-48 overflow-y-auto">
+                    <table class="w-full text-left border-collapse">
+                        <tbody id="tabela-financeiro-corpo" class="text-xs text-slate-700 divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tabela de Clientes -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="p-4 border-b border-slate-200 font-bold text-sm text-blue-950">Solicitações de Clientes</div>
+                <div class="p-4 border-b border-slate-200 font-bold text-sm text-blue-950">Solicitações de Clientes (Atualização Automática)</div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
