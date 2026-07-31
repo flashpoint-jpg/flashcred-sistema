@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distribuidora Flash Point - Sistema FlashCred com Pré-Aprovação Inteligente</title>
+    <title>Distribuidora Flash Point - Sistema FlashCred com Pré-Aprovação e Análise Manual</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -30,12 +30,12 @@
         let listaClientes = [];
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
 
-        // Configurações padrão do Motor de Pré-Aprovação (Controladas no Painel Admin)
-        let configPreAprovacao = JSON.parse(localStorage.getItem('flash_config_preaprovacao') || JSON.stringify({
+        // Configurações do Motor de Pré-Aprovação e do Sistema Manual
+        let configSistema = JSON.parse(localStorage.getItem('flash_config_sistema') || JSON.stringify({
+            modoOperacao: 'ambos', // 'pre_aprovacao', 'manual', 'ambos'
             ativo: true,
             limiteMaximoAutomatico: 3000,
             porcentagemEntradaPadrao: 10,
-            exigirCpfValido: true,
             mensagemAutomaticaNoturna: "Pré-aprovação gerada pelo motor inteligente 24h. Sujeito à conferência final."
         }));
 
@@ -173,45 +173,27 @@
             }
         }
 
-        function calcularScoreEScoreAutomatico(valorSolicitado) {
-            if (!configPreAprovacao.ativo) {
-                return { preAprovado: false, score: 50, mensagem: "Análise manual ativada pelo administrador." };
-            }
-
-            // Motor de pontuação inteligente simulado
-            let scoreCalculado = Math.floor(720 + Math.random() * 230); // Score alto entre 720 e 950 para conversão fluida
-            let limiteMax = configPreAprovacao.limiteMaximoAutomatico || 3000;
-
-            if (valorSolicitado <= limiteMax) {
-                return {
-                    preAprovado: true,
-                    score: scoreCalculado,
-                    mensagem: "Crédito pré-aprovado instantaneamente pelo sistema 24h!"
-                };
-            } else {
-                return {
-                    preAprovado: true, // Ainda pré-aprova, mas ajusta para o teto ou exige entrada maior
-                    score: scoreCalculado,
-                    mensagem: "Pré-aprovação liberada com ajuste de limite máximo permitido."
-                };
-            }
-        }
-
         async function enviarProposta(event) {
             event.preventDefault();
+            const tipoSolicitacao = document.getElementById('tipo-solicitacao').value; // 'pre_aprovacao' ou 'manual'
             let valor = parseFloat(document.getElementById('valor').value) || 1500;
-            
-            // Se passar do limite automático configurado, ajusta para o teto configurado
-            if (valor > configPreAprovacao.limiteMaximoAutomatico) {
-                valor = configPreAprovacao.limiteMaximoAutomatico;
-            }
-
             const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
-            const percentualEntrada = configPreAprovacao.porcentagemEntradaPadrao || 10;
+            
+            const percentualEntrada = configSistema.porcentagemEntradaPadrao || 10;
             const valorEntradaCalc = valor * (percentualEntrada / 100);
 
-            // Executa motor de pré-aprovação inteligente
-            const resultadoAnalise = calcularScoreEScoreAutomatico(valor);
+            let statusInicial = 'aguardando';
+            let obsAnalise = 'Enviado para análise manual da equipe.';
+            let scoreVal = 700;
+
+            if (tiposolicitacao === 'pre_aprovacao' && configSistema.ativo) {
+                if (valor > configSistema.limiteMaximoAutomatico) {
+                    valor = configSistema.limiteMaximoAutomatico;
+                }
+                statusInicial = 'pre_aprovado';
+                scoreVal = Math.floor(750 + Math.random() * 200);
+                obsAnalise = configSistema.mensagemAutomaticaNoturna || 'Pré-aprovado automaticamente pelo motor 24h.';
+            }
 
             const novaProposta = {
                 protocolo: protocolo,
@@ -227,10 +209,11 @@
                 periodicidade: '30',
                 jurosParcelamento: 0,
                 descontoAntecipado: 0,
-                status: resultadoAnalise.preAprovado ? 'pre_aprovado' : 'aguardando',
+                status: statusInicial,
+                tipoFluxo: tiposolicitacao, // 'pre_aprovacao' ou 'manual'
                 entradaPaga: false,
-                scoreCliente: resultadoAnalise.score,
-                observacaoAnalise: resultadoAnalise.mensagem,
+                scoreCliente: scoreVal,
+                observacaoAnalise: obsAnalise,
                 pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${valorEntradaCalc.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
             };
 
@@ -255,7 +238,12 @@
                 renderizarPainelAdmin();
             }
 
-            alert('Parabéns! Sua pré-análise foi concluída. Protocolo: ' + protocolo);
+            if (tiposolicitacao === 'pre_aprovacao') {
+                alert('Parabéns! Sua pré-análise foi concluída. Protocolo: ' + protocolo);
+            } else {
+                alert('Proposta enviada para análise manual! Protocolo: ' + protocolo);
+            }
+            
             document.getElementById('form-proposta').reset();
 
             switchTab('acompanhar');
@@ -286,6 +274,41 @@
             alert('Status atualizado com sucesso!');
         }
 
+        async function atualizarDadosEdicaoAdmin(event, protocolo) {
+            event.preventDefault();
+            const novoLimite = parseFloat(document.getElementById(`edit-limite-${protocolo}`).value) || 1500;
+            const novaEntrada = parseFloat(document.getElementById(`edit-entrada-${protocolo}`).value) || (novoLimite * 0.1);
+            const novoStatus = document.getElementById(`edit-status-${protocolo}`).value;
+            const entradaPagaCheck = document.getElementById(`edit-paga-${protocolo}`).checked;
+
+            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
+            const idx = locais.findIndex(c => c.protocolo === protocolo);
+            if (idx !== -1) {
+                locais[idx].limite = novoLimite;
+                locais[idx].valorEntrada = novaEntrada;
+                locais[idx].status = novoStatus;
+                locais[idx].entradaPaga = entradaPagaCheck;
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
+            }
+
+            if (supabaseClient) {
+                try {
+                    await supabaseClient.from('clientes').update({
+                        limite: novoLimite,
+                        valorEntrada: novaEntrada,
+                        status: novoStatus,
+                        entradaPaga: entradaPagaCheck
+                    }).eq('protocolo', protocolo);
+                } catch (e) {
+                    console.warn('Erro ao atualizar dados no Supabase');
+                }
+            }
+
+            await carregarDadosDoBanco();
+            renderizarPainelAdmin();
+            alert('Proposta atualizada com sucesso!');
+        }
+
         async function excluirPropostaAdmin(protocolo) {
             if (!confirm(`Tem certeza que deseja excluir a proposta ${protocolo}?`)) return;
 
@@ -307,28 +330,49 @@
 
         function salvarConfiguracoesAdmin(event) {
             event.preventDefault();
-            configPreAprovacao = {
+            configSistema = {
+                modoOperacao: document.getElementById('config-modo').value,
                 ativo: document.getElementById('config-ativo').checked,
                 limiteMaximoAutomatico: parseFloat(document.getElementById('config-limite-max').value) || 3000,
                 porcentagemEntradaPadrao: parseFloat(document.getElementById('config-entrada-padrao').value) || 10,
-                exigirCpfValido: true,
                 mensagemAutomaticaNoturna: document.getElementById('config-msg-noturna').value
             };
 
-            localStorage.setItem('flash_config_preaprovacao', JSON.stringify(configPreAprovacao));
-            alert('Configurações do Motor de Pré-Aprovação salvas com sucesso!');
+            localStorage.setItem('flash_config_sistema', JSON.stringify(configSistema));
+            atualizarVisibilidadeFormularioCliente();
+            alert('Configurações do sistema salvas com sucesso!');
         }
 
         function carregarConfiguracoesAdminNaTela() {
+            const elModo = document.getElementById('config-modo');
             const elAtivo = document.getElementById('config-ativo');
             const elLimite = document.getElementById('config-limite-max');
             const elEntrada = document.getElementById('config-entrada-padrao');
             const elMsg = document.getElementById('config-msg-noturna');
 
-            if (elAtivo) elAtivo.checked = configPreAprovacao.ativo;
-            if (elLimite) elLimite.value = configPreAprovacao.limiteMaximoAutomatico;
-            if (elEntrada) elEntrada.value = configPreAprovacao.porcentagemEntradaPadrao;
-            if (elMsg) elMsg.value = configPreAprovacao.mensagemAutomaticaNoturna;
+            if (elModo) elModo.value = configSistema.modoOperacao || 'ambos';
+            if (elAtivo) elAtivo.checked = configSistema.ativo;
+            if (elLimite) elLimite.value = configSistema.limiteMaximoAutomatico;
+            if (elEntrada) elEntrada.value = configSistema.porcentagemEntradaPadrao;
+            if (elMsg) elMsg.value = configSistema.mensagemAutomaticaNoturna;
+
+            atualizarVisibilidadeFormularioCliente();
+        }
+
+        function atualizarVisibilidadeFormularioCliente() {
+            const grupoSelect = document.getElementById('grupo-tipo-solicitacao');
+            const selectEl = document.getElementById('tipo-solicitacao');
+            if (!grupoSelect || !selectEl) return;
+
+            if (configSistema.modoOperacao === 'ambos') {
+                grupoSelect.classList.remove('hidden');
+            } else if (configSistema.modoOperacao === 'pre_aprovacao') {
+                grupoSelect.classList.add('hidden');
+                selectEl.value = 'pre_aprovacao';
+            } else {
+                grupoSelect.classList.add('hidden');
+                selectEl.value = 'manual';
+            }
         }
 
         function renderizarPainelAdmin() {
@@ -350,16 +394,20 @@
                 if (c.entradaPaga) {
                     badgeStatus = '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-[10px]">🟢 Entrada Paga / Liberado</span>';
                 } else if (c.status === 'pre_aprovado') {
-                    badgeStatus = '<span class="bg-blue-100 text-blue-900 px-3 py-1 rounded-full font-bold text-[10px]">⚡ Pré-Aprovado (Aguardando Pix)</span>';
+                    badgeStatus = '<span class="bg-blue-100 text-blue-900 px-3 py-1 rounded-full font-bold text-[10px]">⚡ Pré-Aprovado</span>';
+                } else if (c.status === 'recusado') {
+                    badgeStatus = '<span class="bg-rose-100 text-rose-800 px-3 py-1 rounded-full font-bold text-[10px]">🔴 Recusado</span>';
                 } else {
                     badgeStatus = '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-[10px]">🟡 Aguardando Análise</span>';
                 }
+
+                const tipoStr = c.tipoFluxo === 'pre_aprovacao' ? 'Pré-Aprovação Automática' : 'Análise Manual';
 
                 html += `
                     <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 shadow-sm">
                         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200 pb-3">
                             <div>
-                                <span class="text-[11px] font-bold text-blue-950 block">${c.protocolo}</span>
+                                <span class="text-[11px] font-bold text-blue-950 block">${c.protocolo} • <span class="text-indigo-600">${tipoStr}</span></span>
                                 <h4 class="font-black text-slate-900 text-base">${c.nome}</h4>
                             </div>
                             <div>${badgeStatus}</div>
@@ -375,28 +423,57 @@
                                 <strong class="text-slate-800">${c.whatsapp || 'Não informado'}</strong>
                             </div>
                             <div>
-                                <span class="text-slate-500 block">Score Simulado</span>
-                                <strong class="text-indigo-600 font-black">${c.scoreCliente || 750} pts</strong>
+                                <span class="text-slate-500 block">Score</span>
+                                <strong class="text-indigo-600 font-black">${c.scoreCliente || 700} pts</strong>
                             </div>
                             <div>
-                                <span class="text-slate-500 block">Entrada Pix (${c.porcentagemEntrada || 10}%)</span>
+                                <span class="text-slate-500 block">Entrada Pix</span>
                                 <strong class="text-amber-700 font-black">R$ ${(c.valorEntrada || (c.limite * 0.1)).toFixed(2)}</strong>
                             </div>
                         </div>
 
-                        <div class="text-[11px] text-slate-600 bg-white p-3 rounded-xl border border-slate-200">
-                            <strong>Endereço:</strong> ${c.endereco || 'Não informado'} (CEP: ${c.cep || 'N/I'}) <br>
-                            <span class="text-blue-900 font-semibold">Motor 24h:</span> ${c.observacaoAnalise || 'Pré-aprovado automaticamente'}
-                        </div>
+                        <!-- Painel de Edição Completa (Valor, Porcentagem, Status, Aprovar, Recusar) -->
+                        <form onsubmit="atualizarDadosEdicaoAdmin(event, '${c.protocolo}')" class="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+                            <h5 class="text-[11px] font-bold text-blue-950 uppercase tracking-wide">Editar Proposta / Valores</h5>
+                            <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 font-bold mb-1">Valor Limite (R$)</label>
+                                    <input type="number" id="edit-limite-${c.protocolo}" value="${c.limite || 1500}" step="50" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-blue-950">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 font-bold mb-1">Valor Entrada (R$)</label>
+                                    <input type="number" id="edit-entrada-${c.protocolo}" value="${c.valorEntrada || (c.limite * 0.1)}" step="10" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-amber-700">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 font-bold mb-1">Status</label>
+                                    <select id="edit-status-${c.protocolo}" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-800">
+                                        <option value="aguardando" ${c.status === 'aguardando' ? 'selected' : ''}>Aguardando</option>
+                                        <option value="pre_aprovado" ${c.status === 'pre_aprovado' ? 'selected' : ''}>Pré-Aprovado</option>
+                                        <option value="aprovado" ${c.status === 'aprovado' ? 'selected' : ''}>Aprovado</option>
+                                        <option value="recusado" ${c.status === 'recusado' ? 'selected' : ''}>Recusado</option>
+                                    </select>
+                                </div>
+                                <div class="flex flex-col justify-end">
+                                    <label class="flex items-center gap-2 text-[11px] font-bold text-slate-700 mb-2">
+                                        <input type="checkbox" id="edit-paga-${c.protocolo}" ${c.entradaPaga ? 'checked' : ''} class="w-3.5 h-3.5 text-emerald-600 rounded"> Entrada Paga?
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="flex justify-end gap-2 pt-1">
+                                <button type="submit" class="bg-blue-950 hover:bg-blue-900 text-white font-bold px-4 py-2 rounded-lg text-xs transition shadow-sm">
+                                    Salvar Alterações
+                                </button>
+                            </div>
+                        </form>
 
-                        <div class="flex flex-wrap gap-2 pt-2">
-                            <button onclick="alterarStatusCliente('${c.protocolo}', 'aprovado', true)" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
-                                <i class="fa-solid fa-check"></i> Aprovar / Marcar Entrada Paga
+                        <div class="flex flex-wrap gap-2 pt-1">
+                            <button onclick="alterarStatusCliente('${c.protocolo}', 'aprovado', true)" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition shadow-sm flex items-center gap-1">
+                                <i class="fa-solid fa-check"></i> Aprovar / Pix Pago
                             </button>
-                            <button onclick="alterarStatusCliente('${c.protocolo}', 'pre_aprovado', false)" class="bg-blue-900 hover:bg-blue-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
-                                <i class="fa-solid fa-bolt"></i> Deixar Pré-Aprovado
+                            <button onclick="alterarStatusCliente('${c.protocolo}', 'recusado', false)" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition shadow-sm flex items-center gap-1">
+                                <i class="fa-solid fa-xmark"></i> Recusar
                             </button>
-                            <button onclick="excluirPropostaAdmin('${c.protocolo}')" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm ml-auto">
+                            <button onclick="excluirPropostaAdmin('${c.protocolo}')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition shadow-sm ml-auto">
                                 <i class="fa-solid fa-trash"></i> Excluir
                             </button>
                         </div>
@@ -475,7 +552,7 @@
                 <html>
                 <head><title>Contrato de Crediário - ${cliente.protocolo}</title></head>
                 <body style="font-family: Arial, sans-serif; padding: 40px; color: #333; line-height: 1.5;">
-                    <h2 style="text-align: center; color: #0f172a;">DISTRIBUIDORA FLASH POINT - CONTRATO DE CREDIÁRIO 24H</h2>
+                    <h2 style="text-align: center; color: #0f172a;">DISTRIBUIDORA FLASH POINT - CONTRATO DE CREDIÁRIO</h2>
                     <hr style="border: 1px solid #ccc; margin-bottom: 20px;">
                     <p><strong>Protocolo:</strong> ${cliente.protocolo}</p>
                     <p><strong>Cliente:</strong> ${cliente.nome} | <strong>CPF:</strong> ${cliente.cpf}</p>
@@ -498,7 +575,7 @@
                         </tbody>
                     </table>
 
-                    <p style="font-size: 12px; color: #666; margin-top: 50px;">O contratante declara estar de acordo com todas as cláusulas, score simulado de aprovação e datas de vencimento descritas neste instrumento particular de abertura de crédito.</p>
+                    <p style="font-size: 12px; color: #666; margin-top: 50px;">O contratante declara estar de acordo com todas as cláusulas e datas de vencimento descritas neste instrumento particular de abertura de crédito.</p>
                     
                     <div style="margin-top: 80px; display: flex; justify-content: space-between;">
                         <div style="text-align: center; width: 45%; border-top: 1px solid #000; padding-top: 10px;">Assinatura da Distribuidora Flash Point</div>
@@ -548,8 +625,12 @@
             let badgeStatus = '';
             if (cliente.entradaPaga) {
                 badgeStatus = '<span class="bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full font-bold text-xs">🟢 Aprovado & Liberado</span>';
+            } else if (cliente.status === 'pre_aprovado') {
+                badgeStatus = '<span class="bg-blue-100 text-blue-900 px-4 py-1.5 rounded-full font-bold text-xs">⚡ Pré-Aprovado (Aguardando Pix)</span>';
+            } else if (cliente.status === 'recusado') {
+                badgeStatus = '<span class="bg-rose-100 text-rose-800 px-4 py-1.5 rounded-full font-bold text-xs">🔴 Proposta Recusada</span>';
             } else {
-                badgeStatus = '<span class="bg-blue-100 text-blue-900 px-4 py-1.5 rounded-full font-bold text-xs">⚡ Pré-Aprovado 24h (Aguardando Pix)</span>';
+                badgeStatus = '<span class="bg-amber-100 text-amber-800 px-4 py-1.5 rounded-full font-bold text-xs">🟡 Aguardando Análise Humana</span>';
             }
 
             const pixGerado = cliente.pixCopiaECola || `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${(cliente.valorEntrada || (cliente.limite * 0.1)).toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
@@ -575,7 +656,7 @@
                         </div>
                         <h3 class="text-2xl font-black text-emerald-900">Entrada Confirmada & Crédito Liberado!</h3>
                         
-                        <div class="p-6 bg-emerald-600 text-white rounded-2xl shadow-lg border border-emerald-500 animate-pulse space-y-2">
+                        <div class="p-6 bg-emerald-600 text-white rounded-2xl shadow-lg border border-emerald-500 space-y-2">
                             <span class="text-xs uppercase tracking-widest font-black opacity-90 block">✨ Valor Liberado ✨</span>
                             <div class="text-3xl font-black">R$ ${(cliente.limite || 1500).toFixed(2)}</div>
                             <p class="text-xs font-semibold text-emerald-100">Pronto para entrega e utilização</p>
@@ -593,6 +674,33 @@
                         </div>
                     </div>
                 `;
+            } else if (cliente.status === 'recusado') {
+                resultado.innerHTML = `
+                    <div class="p-8 bg-rose-50 border border-rose-200 rounded-3xl space-y-4 text-center shadow-xl">
+                        <div class="w-16 h-16 bg-rose-600 text-white rounded-full flex items-center justify-center mx-auto text-2xl shadow-lg">
+                            <i class="fa-solid fa-xmark"></i>
+                        </div>
+                        <h3 class="text-xl font-black text-rose-900">Proposta Recusada</h3>
+                        <p class="text-xs text-slate-600">Infelizmente sua solicitação de protocolo <strong>${cliente.protocolo}</strong> não foi aprovada neste momento.</p>
+                    </div>
+                `;
+            } else if (cliente.status === 'aguardando') {
+                resultado.innerHTML = `
+                    <div class="p-8 bg-white border border-slate-200 rounded-3xl space-y-6 shadow-xl">
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-4">
+                            <div>
+                                <span class="text-xs text-slate-500 font-medium">Protocolo: ${cliente.protocolo}</span>
+                                <h3 class="font-black text-slate-900 text-lg">${cliente.nome}</h3>
+                            </div>
+                            <div>${badgeStatus}</div>
+                        </div>
+
+                        <div class="p-6 bg-amber-50 border border-amber-200 rounded-2xl text-center space-y-2">
+                            <span class="text-xs font-bold text-amber-900 uppercase tracking-widest block">🟡 ANÁLISE MANUAL EM ANDAMENTO 🟡</span>
+                            <p class="text-xs text-slate-700">Sua proposta foi enviada para análise da nossa equipe. Fique atento ao WhatsApp (${cliente.whatsapp}) para receber o retorno e o Pix da entrada assim que aprovado!</p>
+                        </div>
+                    </div>
+                `;
             } else {
                 resultado.innerHTML = `
                     <div class="p-8 bg-white border border-slate-200 rounded-3xl space-y-6 shadow-xl">
@@ -604,10 +712,10 @@
                             <div>${badgeStatus}</div>
                         </div>
 
-                        <div class="p-6 bg-gradient-to-r from-blue-900 to-indigo-950 text-white rounded-2xl shadow-lg border border-blue-800 animate-pulse space-y-2 text-center">
+                        <div class="p-6 bg-gradient-to-r from-blue-900 to-indigo-950 text-white rounded-2xl shadow-lg border border-blue-800 space-y-2 text-center">
                             <span class="text-xs uppercase tracking-widest font-black opacity-95 block">⚡ CRÉDITO PRÉ-APROVADO COM SUCESSO ⚡</span>
                             <div class="text-3xl font-black">R$ ${(cliente.limite || 1500).toFixed(2)}</div>
-                            <p class="text-xs font-semibold text-blue-200">Score Simulado: ${cliente.scoreCliente || 780} pts • Pague a entrada para efetivar a liberação noturna</p>
+                            <p class="text-xs font-semibold text-blue-200">Pague a entrada para efetivar a liberação</p>
                         </div>
 
                         <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs">
@@ -622,7 +730,7 @@
                         </div>
 
                         <div class="space-y-3 text-center pt-2">
-                            <p class="text-xs font-bold text-slate-700">Pague a entrada para garantir sua reserva e liberação 24h:</p>
+                            <p class="text-xs font-bold text-slate-700">Pague a entrada para garantir sua reserva:</p>
                             <div class="flex justify-center">
                                 <img src="${qrImg}" alt="QR Code Pix" class="w-40 h-40 border-2 border-slate-100 p-2 rounded-2xl bg-white shadow-md">
                             </div>
@@ -631,7 +739,7 @@
                                 <label class="text-[11px] text-slate-500 font-bold block">Pix Copia e Cola:</label>
                                 <div class="flex gap-2">
                                     <input type="text" id="input-pix-cliente-${cliente.protocolo}" value="${pixGerado}" readonly class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-xs text-slate-600 select-all focus:outline-none">
-                                    <button id="btn-copiar-cliente-${cliente.protocolo}" onclick="copiarTextoPix('input-pix-cliente-${cliente.protocolo}', 'btn-copiar-cliente-${cliente.protocolo}')" class="bg-blue-950 hover:bg-blue-900 text-white px-5 py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5 shrink-0 transform hover:-translate-y-0.5">
+                                    <button id="btn-copiar-cliente-${cliente.protocolo}" onclick="copiarTextoPix('input-pix-cliente-${cliente.protocolo}', 'btn-copiar-cliente-${cliente.protocolo}')" class="bg-blue-950 hover:bg-blue-900 text-white px-5 py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5 shrink-0">
                                         <i class="fa-solid fa-copy"></i> Copiar
                                     </button>
                                 </div>
@@ -647,7 +755,7 @@
 
                         <div class="pt-2">
                             <button onclick="imprimirComprovante()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 px-4 rounded-2xl text-xs transition flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-print"></i> Imprimir Comprovante de Pré-Aprovação
+                                <i class="fa-solid fa-print"></i> Imprimir Comprovante
                             </button>
                         </div>
                     </div>
@@ -671,7 +779,7 @@
                 </div>
                 <div>
                     <h1 class="font-black text-blue-950 text-base leading-tight tracking-tight">Distribuidora Flash Point</h1>
-                    <p class="text-[11px] text-slate-500 font-semibold tracking-wide">FlashCred • Pré-Aprovação 24h</p>
+                    <p class="text-[11px] text-slate-500 font-semibold tracking-wide">FlashCred • Crediário Rápido</p>
                 </div>
             </div>
 
@@ -689,55 +797,40 @@
         <!-- ABA 1: SOLICITAR -->
         <section id="tab-solicitar" class="tab-content space-y-10">
             
-            <!-- Hero Section com Destaque para Pré-Aprovação 24h -->
+            <!-- Hero Section -->
             <div class="bg-gradient-to-br from-blue-950 via-blue-900 to-indigo-950 text-white p-8 sm:p-12 rounded-3xl shadow-2xl space-y-6 relative overflow-hidden">
                 <div class="absolute -right-10 -bottom-10 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
                 <div class="space-y-3 relative z-10">
                     <span class="inline-block bg-blue-800/80 text-blue-200 border border-blue-700/50 text-[11px] font-bold px-3.5 py-1.5 rounded-full tracking-wide shadow-sm">
-                        ⚡ Sistema de Pré-Análise Instantânea 24h
+                        ⚡ Sistema de Crédito Inteligente 24h
                     </span>
                     <h2 class="text-2xl sm:text-4xl font-black tracking-tight leading-tight">
-                        Descubra seu limite na hora. <br class="hidden sm:inline">Mesmo de madrugada!
+                        Faça sua simulação e escolha <br class="hidden sm:inline">a melhor forma de análise.
                     </h2>
                     <p class="text-sm sm:text-base text-blue-100 font-medium leading-relaxed max-w-2xl">
-                        Nosso motor inteligente analisa seus dados instantaneamente. Saia com crédito pré-aprovado na tela e garanta seus móveis sem espera.
+                        Escolha entre pré-aprovação instantânea na tela ou envio direto para análise manual da nossa equipe.
                     </p>
-                </div>
-            </div>
-
-            <!-- Vantagens do Motor 24h -->
-            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-6">
-                <h3 class="text-lg font-black text-blue-950 tracking-tight flex items-center gap-2">
-                    <i class="fa-solid fa-bolt text-amber-500"></i> Por que nosso sistema é perfeito para você?
-                </h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                        <span class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">✓</span>
-                        <span class="text-xs font-bold text-slate-700">Pré-aprovado em segundos na tela</span>
-                    </div>
-                    <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                        <span class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">✓</span>
-                        <span class="text-xs font-bold text-slate-700">Funciona 24 horas por dia</span>
-                    </div>
-                    <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                        <span class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">✓</span>
-                        <span class="text-xs font-bold text-slate-700">Entrada facilitada com Pix Copia e Cola</span>
-                    </div>
-                    <div class="flex items-center gap-3.5 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                        <span class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-sm shrink-0">✓</span>
-                        <span class="text-xs font-bold text-slate-700">Validação segura direto com a distribuidora</span>
-                    </div>
                 </div>
             </div>
 
             <!-- Formulário de Solicitação -->
             <div class="bg-white p-8 sm:p-10 rounded-3xl border border-slate-200/80 shadow-2xl shadow-slate-100 space-y-6">
                 <div class="space-y-1">
-                    <h3 class="text-xl font-black text-blue-950 tracking-tight">Faça sua Pré-Análise Gratuita</h3>
-                    <p class="text-xs text-slate-500">Preencha os campos abaixo para consultar seu score e limite pré-aprovado na hora.</p>
+                    <h3 class="text-xl font-black text-blue-950 tracking-tight">Formulário de Solicitação de Crediário</h3>
+                    <p class="text-xs text-slate-500">Preencha seus dados para iniciar o processo de análise.</p>
                 </div>
 
                 <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-5">
+                    
+                    <!-- Opção de Escolha de Fluxo (Caso ativado no Admin) -->
+                    <div id="grupo-tipo-solicitacao" class="space-y-1.5">
+                        <label class="block text-xs font-bold text-slate-700">Tipo de Análise Desejada</label>
+                        <select id="tipo-solicitacao" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-bold text-blue-950 focus:outline-none focus:border-blue-950 transition">
+                            <option value="pre_aprovacao">⚡ Pré-Aprovação Instantânea (Resultado na hora com Pix)</option>
+                            <option value="manual">📋 Análise Manual pela Equipe (Aguardar retorno)</option>
+                        </select>
+                    </div>
+
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1.5">Nome Completo</label>
@@ -771,7 +864,7 @@
                     </div>
 
                     <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-xl transform hover:-translate-y-0.5 tracking-wide flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-bolt"></i> Obter Pré-Aprovação Instantânea
+                        <i class="fa-solid fa-paper-plane"></i> Enviar Solicitação de Crédito
                     </button>
                 </form>
             </div>
@@ -783,7 +876,7 @@
                     Nossa equipe no WhatsApp está pronta para tirar dúvidas sobre móveis e prazos.
                 </p>
                 <div class="pt-2">
-                    <a href="https://wa.me/5511973294235?text=Olá!%20Fiz%20minha%20pré-aprovação%20no%20FlashCred%20e%20quero%20falar%20com%20atendimento" target="_blank" class="inline-flex items-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-2xl text-xs transition shadow-lg transform hover:-translate-y-0.5">
+                    <a href="https://wa.me/5511973294235?text=Olá!%20Fiz%20minha%20solicitação%20no%20FlashCred%20e%20quero%20falar%20com%20atendimento" target="_blank" class="inline-flex items-center gap-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-8 rounded-2xl text-xs transition shadow-lg transform hover:-translate-y-0.5">
                         <i class="fa-brands fa-whatsapp text-base"></i> Falar no WhatsApp Oficial
                     </a>
                 </div>
@@ -794,8 +887,8 @@
         <!-- ABA 2: ACOMPANHAR -->
         <section id="tab-acompanhar" class="tab-content hidden space-y-6">
             <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl shadow-slate-100 space-y-4">
-                <h2 class="text-xl font-black text-blue-950 tracking-tight">Consultar Pré-Aprovação</h2>
-                <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para ver o seu resultado gerado pelo motor 24h.</p>
+                <h2 class="text-xl font-black text-blue-950 tracking-tight">Acompanhar Solicitação</h2>
+                <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para ver o status atualizado.</p>
 
                 <div class="flex gap-3">
                     <input type="text" id="busca-cpf" placeholder="Digite seu CPF ou Protocolo (ex: FP-123456)" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 transition">
@@ -814,7 +907,7 @@
                         <i class="fa-solid fa-lock"></i>
                     </div>
                     <h2 class="text-xl font-black text-blue-950 tracking-tight">Acesso Restrito</h2>
-                    <p class="text-xs text-slate-500">Digite a senha administrativa para gerenciar propostas e configurações.</p>
+                    <p class="text-xs text-slate-500">Digite a senha administrativa para gerenciar propostas.</p>
                 </div>
 
                 <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4">
@@ -831,31 +924,30 @@
         <section id="tab-painel" class="tab-content hidden space-y-8">
             <div class="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xl">
                 <div>
-                    <h2 class="font-black text-blue-950 text-lg tracking-tight">Painel Administrativo & Motor 24h</h2>
-                    <p class="text-xs text-slate-500">Controle total das propostas e das regras de pré-aprovação automática.</p>
+                    <h2 class="font-black text-blue-950 text-lg tracking-tight">Painel Administrativo FlashCred</h2>
+                    <p class="text-xs text-slate-500">Gerencie propostas manuais, pré-aprovações e edite valores e porcentagens.</p>
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-4 py-2 rounded-2xl text-xs transition border border-rose-200">Sair</button>
             </div>
             
-            <!-- Configurações do Motor de Pré-Aprovação -->
+            <!-- Configurações do Sistema -->
             <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-6">
                 <div class="border-b border-slate-100 pb-4">
                     <h3 class="font-bold text-blue-950 text-sm flex items-center gap-2">
-                        <i class="fa-solid fa-gears text-blue-900"></i> Configurações do Motor de Pré-Aprovação 24h
+                        <i class="fa-solid fa-gears text-blue-900"></i> Configurações do Sistema e Pré-Aprovação
                     </h3>
-                    <p class="text-xs text-slate-500 mt-0.5">Defina como o sistema deve avaliar automaticamente os clientes que chegam quando você estiver offline.</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Defina como o formulário se comporta e quais regras de limite automático deseja aplicar.</p>
                 </div>
 
                 <form onsubmit="salvarConfiguracoesAdmin(event)" class="space-y-4">
-                    <div class="flex items-center gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                        <input type="checkbox" id="config-ativo" class="w-4 h-4 text-blue-950 rounded">
-                        <label for="config-ativo" class="text-xs font-bold text-slate-800">Ativar Motor de Pré-Aprovação Automática 24h na Tela</label>
-                    </div>
-
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5">Limite Máximo para Pré-Aprovação (R$)</label>
-                            <input type="number" id="config-limite-max" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-blue-950">
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5">Modo de Operação do Formulário</label>
+                            <select id="config-modo" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-blue-950">
+                                <option value="ambos">Ambos (Cliente escolhe Pré-Aprovação ou Manual)</option>
+                                <option value="pre_aprovacao">Apenas Pré-Aprovação Automática 24h</option>
+                                <option value="manual">Apenas Análise Manual</option>
+                            </select>
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-700 mb-1.5">Porcentagem de Entrada Padrão (%)</label>
@@ -863,13 +955,24 @@
                         </div>
                     </div>
 
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5">Limite Máximo Automático (R$)</label>
+                            <input type="number" id="config-limite-max" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-blue-950">
+                        </div>
+                        <div class="flex items-center pt-6">
+                            <input type="checkbox" id="config-ativo" class="w-4 h-4 text-blue-950 rounded mr-2">
+                            <label for="config-ativo" class="text-xs font-bold text-slate-800">Ativar Motor de Pré-Aprovação 24h</label>
+                        </div>
+                    </div>
+
                     <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Mensagem Personalizada da Pré-Análise</label>
+                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Mensagem Automática</label>
                         <input type="text" id="config-msg-noturna" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-700">
                     </div>
 
                     <button type="submit" class="bg-blue-950 hover:bg-blue-900 text-white font-bold px-6 py-3 rounded-xl text-xs transition shadow-md">
-                        Salvar Configurações do Motor
+                        Salvar Configurações
                     </button>
                 </form>
             </div>
@@ -877,9 +980,9 @@
             <!-- Lista de Propostas -->
             <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-6">
                 <div class="flex justify-between items-center border-b border-slate-100 pb-4">
-                    <h3 class="font-bold text-blue-950 text-sm">Propostas Recebidas (Tempo Real)</h3>
+                    <h3 class="font-bold text-blue-950 text-sm">Gerenciamento de Propostas (Manual e Pré-Aprovadas)</h3>
                     <button onclick="renderizarPainelAdmin()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-rotate"></i> Atualizar Lista
+                        <i class="fa-solid fa-rotate"></i> Atualizar
                     </button>
                 </div>
                 
