@@ -8,6 +8,16 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
+    <style>
+        @keyframes pulseGreen {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.85; transform: scale(1.02); }
+        }
+        .animar-limite {
+            animation: pulseGreen 2s infinite ease-in-out;
+        }
+    </style>
+
     <script>
         const CONFIG = {
             SUPABASE_URL: 'https://rgcclordmqmwuzrrfbd.supabase.co',
@@ -25,6 +35,7 @@
 
         let listaClientes = [];
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
+        let intervaloAutoRefresh = null;
 
         async function carregarDadosDoBanco() {
             let dadosRemotos = [];
@@ -53,14 +64,26 @@
             await carregarDadosDoBanco();
             if (adminLogado) {
                 carregarPainelAdmin();
+                iniciarAutoRefreshAdmin();
             }
         });
+
+        function iniciarAutoRefreshAdmin() {
+            if (intervaloAutoRefresh) clearInterval(intervaloAutoRefresh);
+            intervaloAutoRefresh = setInterval(async () => {
+                if (adminLogado && !document.getElementById('tab-painel').classList.contains('hidden')) {
+                    await carregarDadosDoBanco();
+                    carregarPainelAdminSilencioso();
+                }
+            }, 5000);
+        }
 
         function switchTab(tabId) {
             if (tabId === 'painel' && !adminLogado) {
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
                 document.getElementById('tab-login-admin').classList.remove('hidden');
                 atualizarBotoesNav('painel');
+                if (intervaloAutoRefresh) clearInterval(intervaloAutoRefresh);
                 return;
             }
 
@@ -70,17 +93,20 @@
 
             if (tabId === 'painel' && adminLogado) {
                 carregarPainelAdmin();
+                iniciarAutoRefreshAdmin();
+            } else {
+                if (intervaloAutoRefresh) clearInterval(intervaloAutoRefresh);
             }
         }
 
         function atualizarBotoesNav(tabId) {
             document.querySelectorAll('.tab-btn').forEach(el => {
                 el.classList.remove('bg-blue-950', 'text-white', 'shadow-md', 'border-blue-800');
-                el.classList.add('text-slate-600', 'hover:bg-slate-100');
+                el.classList.add('text-slate-700', 'hover:bg-slate-200');
             });
             const btn = document.getElementById('btn-' + tabId);
             if (btn) {
-                btn.classList.remove('text-slate-600', 'hover:bg-slate-100');
+                btn.classList.remove('text-slate-700', 'hover:bg-slate-200');
                 btn.classList.add('bg-blue-950', 'text-white', 'shadow-md', 'border-blue-800');
             }
         }
@@ -102,6 +128,7 @@
         function logoutAdmin() {
             adminLogado = false;
             localStorage.removeItem('flash_admin_logado');
+            if (intervaloAutoRefresh) clearInterval(intervaloAutoRefresh);
             switchTab('solicitar');
         }
 
@@ -187,16 +214,40 @@
 
             if (!cliente) {
                 resultado.innerHTML = `
-                    <div class="p-4 bg-rose-50 border border-rose-200 rounded-xl text-center">
-                        <h4 class="font-bold text-rose-900 text-sm">Nenhuma solicitação encontrada para: ${buscaInput}</h4>
+                    <div class="p-6 bg-rose-50 border border-rose-200 rounded-xl text-center">
+                        <h4 class="font-bold text-rose-900 text-sm sm:text-base">Nenhuma solicitação encontrada para: ${buscaInput}</h4>
                     </div>
                 `;
                 return;
             }
 
             const isAprovado = (cliente.status === 'aprovado');
-            let badgeStatus = isAprovado ? '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-xs">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-xs">🟡 Em Análise Cadastral</span>';
+            let badgeStatus = isAprovado ? '<span class="bg-emerald-100 text-emerald-800 px-3.5 py-1.5 rounded-full font-bold text-xs sm:text-sm">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 px-3.5 py-1.5 rounded-full font-bold text-xs sm:text-sm">🟡 Em Análise Cadastral</span>';
             
+            // Se estiver em análise, esconde completamente os valores de entrada e parcelas
+            if (!isAprovado) {
+                resultado.innerHTML = `
+                    <div class="p-6 sm:p-8 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 text-left shadow-sm">
+                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-200 pb-4">
+                            <div>
+                                <h4 class="font-bold text-blue-950 text-base sm:text-lg flex items-center gap-2">
+                                    <i class="fa-solid fa-file-invoice-dollar text-blue-900"></i> Status do Protocolo
+                                </h4>
+                                <p class="text-xs sm:text-sm text-slate-700 mt-1">Titular: <strong class="text-slate-900 font-semibold">${cliente.nome}</strong></p>
+                                <p class="text-xs sm:text-sm text-slate-700">Protocolo: <strong class="text-blue-900 font-bold">${cliente.protocolo}</strong></p>
+                            </div>
+                            <div>${badgeStatus}</div>
+                        </div>
+                        <div class="bg-amber-50 border border-amber-200 p-5 rounded-2xl text-center space-y-2">
+                            <i class="fa-solid fa-clock text-amber-600 text-2xl"></i>
+                            <h5 class="font-bold text-amber-900 text-sm sm:text-base">Sua proposta está em análise!</h5>
+                            <p class="text-xs sm:text-sm text-amber-800 leading-relaxed">Assim que nossa equipe aprovar o seu cadastro, seu limite liberado e as opções de crédito aparecerão automaticamente aqui.</p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
             if (isAprovado && !cliente.contratoAceito) {
                 renderizarModalContrato(cliente);
                 return;
@@ -215,21 +266,20 @@
             const valorPorParcela = parcelasAtuais > 0 ? (valorComJuros / parcelasAtuais) : 0;
 
             resultado.innerHTML = `
-                <div class="p-6 bg-white border-2 border-blue-900 rounded-2xl shadow-xl space-y-4 text-left">
-                    <div class="bg-blue-950 text-white p-4 rounded-xl text-center space-y-1">
-                        <h3 class="font-bold text-base flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-file-contract text-emerald-400"></i> Leia o contrato antes de assinar e pagar
+                <div class="p-6 sm:p-8 bg-white border-2 border-blue-900 rounded-2xl shadow-xl space-y-5 text-left">
+                    <div class="bg-blue-950 text-white p-5 rounded-xl text-center space-y-1">
+                        <h3 class="font-bold text-sm sm:text-base flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-file-contract text-emerald-400 text-lg"></i> Leia o contrato antes de assinar e pagar
                         </h3>
-                        <p class="text-xs text-blue-200">Protocolo: ${cliente.protocolo} | Titular: ${cliente.nome}</p>
+                        <p class="text-xs sm:text-sm text-blue-200">Protocolo: ${cliente.protocolo} | Titular: ${cliente.nome}</p>
                     </div>
 
-                    <div class="bg-slate-50 border border-slate-300 p-4 rounded-xl max-h-60 overflow-y-auto text-xs text-slate-700 space-y-3 leading-relaxed">
+                    <div class="bg-slate-50 border border-slate-300 p-5 rounded-xl max-h-60 overflow-y-auto text-xs sm:text-sm text-slate-800 space-y-3 leading-relaxed">
                         <h4 class="font-bold text-slate-900 text-center uppercase border-b pb-2">CONTRATO DE COMPRA E VENDA PARCELADA COM GARANTIA DE ENTREGA</h4>
                         
                         <p><strong>CONTRATANTE (VENDEDOR):</strong><br>
                         Distribuidora Flash Point / FlashCred<br>
-                        CNPJ: 35.560.220/0001-54<br>
-                        Site: https://flashcred-sistema.onrender.com</p>
+                        CNPJ: 35.560.220/0001-54</p>
 
                         <p><strong>CONTRATADO (COMPRADOR):</strong><br>
                         Nome: ${cliente.nome} | CPF: ${cliente.cpf}<br>
@@ -258,14 +308,14 @@
                         5.1 Foro eleito da Comarca de São Paulo/SP para dirimir quaisquer dúvidas.</p>
                     </div>
 
-                    <div class="bg-amber-50 border border-amber-200 p-3.5 rounded-xl flex items-start gap-3">
-                        <input type="checkbox" id="check-aceite-contrato" class="mt-1 w-4 h-4 text-blue-900 rounded cursor-pointer">
-                        <label for="check-aceite-contrato" class="text-xs text-amber-900 font-bold cursor-pointer select-none">
+                    <div class="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
+                        <input type="checkbox" id="check-aceite-contrato" class="mt-1 w-5 h-5 text-blue-900 rounded cursor-pointer">
+                        <label for="check-aceite-contrato" class="text-xs sm:text-sm text-amber-950 font-bold cursor-pointer select-none">
                             Declaro que li, compreendi e concordo integralmente com todas as cláusulas deste Contrato de Compra e Venda Parcelada com Garantia de Entrega, antes de efetuar o pagamento da primeira parcela.
                         </label>
                     </div>
 
-                    <button onclick="confirmarAceiteContrato('${cliente.protocolo}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl text-xs uppercase tracking-wide cursor-pointer shadow flex items-center justify-center gap-2">
+                    <button onclick="confirmarAceiteContrato('${cliente.protocolo}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-xl text-xs sm:text-sm uppercase tracking-wide cursor-pointer shadow flex items-center justify-center gap-2">
                         <i class="fa-solid fa-check-circle"></i> Estou de Acordo e Prosseguir para o Pagamento
                     </button>
                 </div>
@@ -312,79 +362,108 @@
             const valorPorParcela = parcelasAtuais > 0 ? (valorComJuros / parcelasAtuais) : 0;
             const pixCodigo = cliente.pixCopiaECola || 'Aguardando o sistema gerar o código Pix...';
 
+            let optionsParcelasHTML = '';
+            for (let p = 4; p <= 48; p++) {
+                optionsParcelasHTML += `<option value="${p}" ${parcelasAtuais == p ? 'selected' : ''}>${p}x Mensais</option>`;
+            }
+
+            // Botão "Utilizar limite agora" só fica ativo e liberado após o pagamento da entrada
+            let botaoUtilizarLimiteHTML = '';
+            if (cliente.entradaPaga) {
+                botaoUtilizarLimiteHTML = `
+                    <button onclick="utilizarLimiteWhatsApp('${cliente.protocolo}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-4 rounded-xl text-xs sm:text-sm uppercase tracking-wide cursor-pointer shadow-lg flex items-center justify-center gap-2 transition animate-bounce">
+                        <i class="fa-brands fa-whatsapp text-lg"></i> Utilizar Limite Agora (Falar no WhatsApp)
+                    </button>
+                `;
+            } else {
+                botaoUtilizarLimiteHTML = `
+                    <div class="w-full bg-slate-200 text-slate-500 font-bold py-3.5 px-4 rounded-xl text-xs sm:text-sm text-center flex items-center justify-center gap-2 cursor-not-allowed">
+                        <i class="fa-solid fa-lock"></i> O botão "Utilizar Limite Agora" será liberado após o pagamento da entrada.
+                    </div>
+                `;
+            }
+
             resultado.innerHTML = `
-                <div class="p-6 sm:p-8 bg-slate-50 border border-slate-200 rounded-2xl space-y-5 text-left shadow-sm">
+                <div class="p-6 sm:p-8 bg-slate-50 border border-slate-200 rounded-2xl space-y-6 text-left shadow-sm">
                     
                     <!-- CABEÇALHO DO RESULTADO -->
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-200 pb-4">
                         <div>
                             <h4 class="font-bold text-blue-950 text-base sm:text-lg flex items-center gap-2">
-                                <i class="fa-solid fa-file-invoice-dollar text-blue-900"></i> Detalhes da Proposta
+                                <i class="fa-solid fa-file-invoice-dollar text-blue-900"></i> Detalhes da Proposta Aprovada
                             </h4>
-                            <p class="text-xs text-slate-600 mt-1">Titular: <strong class="text-slate-900 font-semibold">${cliente.nome}</strong></p>
-                            <p class="text-xs text-slate-600">Protocolo: <strong class="text-blue-900 font-bold">${cliente.protocolo}</strong></p>
+                            <p class="text-xs sm:text-sm text-slate-700 mt-1">Titular: <strong class="text-slate-900 font-semibold">${cliente.nome}</strong></p>
+                            <p class="text-xs sm:text-sm text-slate-700">Protocolo: <strong class="text-blue-900 font-bold">${cliente.protocolo}</strong></p>
                         </div>
                         <div class="self-start sm:self-center">
                             ${badgeStatus}
                         </div>
                     </div>
 
-                    <!-- CAIXA DE SIMULAÇÃO E ESCOLHA DE PARCELAS COM MAIS ESPAÇO -->
-                    <div class="bg-white p-5 rounded-2xl border border-slate-200 space-y-4 shadow-sm">
-                        
-                        <!-- TÍTULO ORGANIZADO -->
+                    <!-- CAIXA COM LIMITE VERDE ANIMADO E VALOR CREDITADO -->
+                    <div class="bg-gradient-to-br from-emerald-950 to-emerald-900 text-white p-6 rounded-2xl border-2 border-emerald-400 shadow-xl space-y-3 text-center animar-limite">
+                        <span class="bg-emerald-500 text-emerald-950 font-extrabold text-xs px-4 py-1.5 rounded-full uppercase tracking-widest inline-block">Parabéns! Crédito Aprovado</span>
+                        <h3 class="text-xs sm:text-sm text-emerald-200 uppercase font-semibold">Valor Creditado Após o Pagamento da Entrada</h3>
+                        <div class="text-2xl sm:text-4xl font-black text-emerald-300 tracking-tight">
+                            R$ <span id="contador-animado">${valorTotal.toFixed(2)}</span>
+                        </div>
+                        <p class="text-xs text-emerald-100 font-medium bg-emerald-900/60 py-2 px-4 rounded-xl inline-block border border-emerald-700">
+                            🔄 Para utilizar seu limite agora após aprovação, realize o pagamento da entrada abaixo.
+                        </p>
+                    </div>
+
+                    <!-- BOTÃO PARA UTILIZAR LIMITE NO WHATSAPP (LIBERADO APÓS PAGAMENTO) -->
+                    <div class="space-y-2">
+                        ${botaoUtilizarLimiteHTML}
+                    </div>
+
+                    <!-- CAIXA DE SIMULAÇÃO E ESCOLHA DE PARCELAS -->
+                    <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 space-y-4 shadow-sm">
                         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-100">
                             <div>
-                                <span class="text-xs font-extrabold text-blue-950 uppercase tracking-wide block">Plano de Pagamento Aprovado</span>
-                                <span class="text-[11px] text-slate-500">Confira abaixo os valores detalhados</span>
+                                <span class="text-xs sm:text-sm font-extrabold text-blue-950 uppercase tracking-wide block">Plano de Pagamento Liberado</span>
+                                <span class="text-xs text-slate-600">Ajuste o parcelamento do saldo restante se desejar</span>
                             </div>
-                            <span class="text-xs bg-blue-50 text-blue-900 font-bold px-3 py-1 rounded-full border border-blue-200">Escolha o Parcelamento</span>
+                            <span class="text-xs bg-blue-50 text-blue-900 font-bold px-3.5 py-1.5 rounded-full border border-blue-200">Escolha o Parcelamento</span>
                         </div>
                         
-                        <!-- SELETOR E VALOR DA PARCELA -->
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                             <div>
-                                <label class="block text-xs font-bold uppercase text-slate-700 mb-1.5">Qtd Parcelas Mensais</label>
-                                <select id="cliente-select-parc" onchange="atualizarSimulacaoCliente('${cliente.protocolo}')" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-bold text-blue-950 focus:ring-2 focus:ring-blue-900 outline-none">
-                                    <option value="6" ${parcelasAtuais == 6 ? 'selected' : ''}>6x Mensais</option>
-                                    <option value="12" ${parcelasAtuais == 12 ? 'selected' : ''}>12x Mensais</option>
-                                    <option value="18" ${parcelasAtuais == 18 ? 'selected' : ''}>18x Mensais</option>
-                                    <option value="24" ${parcelasAtuais == 24 ? 'selected' : ''}>24x Mensais</option>
-                                    <option value="36" ${parcelasAtuais == 36 ? 'selected' : ''}>36x Mensais</option>
-                                    <option value="48" ${parcelasAtuais == 48 ? 'selected' : ''}>48x Mensais</option>
+                                <label class="block text-xs sm:text-sm font-bold uppercase text-slate-700 mb-2">Qtd Parcelas Mensais (4 a 48x)</label>
+                                <select id="cliente-select-parc" onchange="atualizarSimulacaoCliente('${cliente.protocolo}')" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm font-bold text-blue-950 focus:ring-2 focus:ring-blue-900 outline-none">
+                                    ${optionsParcelasHTML}
                                 </select>
                             </div>
-                            <div class="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl flex flex-col justify-center">
-                                <span class="text-[11px] text-emerald-800 font-bold uppercase tracking-wider">Valor da Parcela:</span>
-                                <span id="cliente-resumo-parc" class="text-base sm:text-lg font-extrabold text-emerald-950">${parcelasAtuais}x de R$ ${valorPorParcela.toFixed(2)}</span>
+                            <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex flex-col justify-center">
+                                <span class="text-xs text-emerald-800 font-bold uppercase tracking-wider">Valor da Parcela:</span>
+                                <span id="cliente-resumo-parc" class="text-lg sm:text-xl font-extrabold text-emerald-950 mt-1">${parcelasAtuais}x de R$ ${valorPorParcela.toFixed(2)}</span>
                             </div>
                         </div>
 
-                        <!-- RESUMO ADICIONAL -->
-                        <div class="text-xs text-slate-700 space-y-1.5 pt-2 border-t border-slate-100">
+                        <div class="text-xs sm:text-sm text-slate-700 space-y-2 pt-3 border-t border-slate-100">
                             <p>Status da Entrada: <strong class="${cliente.entradaPaga ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}">${cliente.entradaPaga ? '🟢 Confirmada' : '🟡 Pendente de Pagamento'}</strong></p>
                             <p>Valor Total do Crediário: <strong class="text-slate-900 font-bold">R$ ${valorTotal.toFixed(2)}</strong></p>
                             <p>Entrada Pix: <strong class="text-emerald-700 font-bold">R$ ${valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</strong></p>
                             <p>Desconto Antecipado para Quitação: <strong class="text-teal-700 font-bold">R$ ${(cliente.descontoAntecipado || 0).toFixed(2)}</strong></p>
-                            <p class="text-emerald-800 font-semibold pt-1 flex items-center gap-1.5">
+                            <p class="text-emerald-800 font-semibold pt-1.5 flex items-center gap-2">
                                 <i class="fa-solid fa-circle-check text-emerald-600"></i> Contrato Lido e Aceito Digitalmente com Sucesso.
                             </p>
                         </div>
                     </div>
 
                     <!-- ÁREA DE PAGAMENTO PIX -->
-                    <div class="pt-2 space-y-4 bg-white p-5 rounded-2xl border border-blue-100 shadow-sm">
-                        <h5 class="font-bold text-blue-950 text-xs sm:text-sm uppercase flex items-center gap-2">
-                            <i class="fa-brands fa-pix text-emerald-600 text-base"></i> Pagamento Seguro via Pix (Entrada)
+                    <div class="pt-2 space-y-4 bg-white p-5 sm:p-6 rounded-2xl border border-blue-100 shadow-sm">
+                        <h5 class="font-bold text-blue-950 text-sm sm:text-base uppercase flex items-center gap-2">
+                            <i class="fa-brands fa-pix text-emerald-600 text-lg"></i> Pagamento Seguro via Pix (Entrada)
                         </h5>
-                        <div class="flex justify-center p-3 bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
-                            <img src="${qrImg}" alt="QR Code Pix" class="w-36 h-36 sm:w-40 sm:h-40">
+                        <div class="flex justify-center p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
+                            <img src="${qrImg}" alt="QR Code Pix" class="w-40 h-40 sm:w-48 sm:h-48">
                         </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-xs font-bold uppercase text-slate-700">Código Pix Copia e Cola:</label>
+                        <div class="space-y-2">
+                            <label class="block text-xs sm:text-sm font-bold uppercase text-slate-700">Código Pix Copia e Cola:</label>
                             <div class="flex gap-2">
-                                <input type="text" id="input-copia-pix-${cliente.protocolo}" readonly value="${pixCodigo}" class="bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-700 w-full select-all">
-                                <button onclick="copiarTextoPix('${cliente.protocolo}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shrink-0 shadow transition">
+                                <input type="text" id="input-copia-pix-${cliente.protocolo}" readonly value="${pixCodigo}" class="bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm font-mono text-slate-800 w-full select-all">
+                                <button onclick="copiarTextoPix('${cliente.protocolo}')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl text-xs sm:text-sm flex items-center gap-2 cursor-pointer shrink-0 shadow transition">
                                     <i class="fa-solid fa-copy"></i> Copiar
                                 </button>
                             </div>
@@ -393,15 +472,54 @@
 
                     <!-- BOTÕES DE DOCUMENTOS E IMPRESSÃO -->
                     <div class="flex flex-wrap gap-3 pt-3 border-t border-slate-200">
-                        <button onclick="imprimirContratoCliente('${cliente.protocolo}')" class="flex-1 bg-blue-950 hover:bg-blue-900 text-white font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition">
+                        <button onclick="imprimirContratoCliente('${cliente.protocolo}')" class="flex-1 bg-blue-950 hover:bg-blue-900 text-white font-bold px-5 py-3.5 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer shadow transition">
                             <i class="fa-solid fa-print"></i> Imprimir Contrato / PDF
                         </button>
-                        <button onclick="baixarBoletoParcelas('${cliente.protocolo}')" class="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-3 rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer shadow transition">
+                        <button onclick="baixarBoletoParcelas('${cliente.protocolo}')" class="flex-1 bg-slate-800 hover:bg-slate-900 text-white font-bold px-5 py-3.5 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer shadow transition">
                             <i class="fa-solid fa-file-pdf"></i> Carnê de Parcelas / PDF
                         </button>
                     </div>
                 </div>
             `;
+            
+            animarContadorValor(valorTotal);
+        }
+
+        function animarContadorValor(valorFinal) {
+            const spanContador = document.getElementById('contador-animado');
+            if (!spanContador) return;
+            let atual = 0;
+            const incremento = valorFinal / 30;
+            const timer = setInterval(() => {
+                atual += incremento;
+                if (atual >= valorFinal) {
+                    atual = valorFinal;
+                    clearInterval(timer);
+                }
+                spanContador.innerText = atual.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }, 30);
+        }
+
+        function utilizarLimiteWhatsApp(protocolo) {
+            const cliente = listaClientes.find(c => c.protocolo === protocolo);
+            if (!cliente) return;
+
+            const totalComJuros = (cliente.limite - cliente.valorEntrada) * (1 + ((cliente.jurosParcelamento || 0) / 100));
+            const vParc = cliente.parcelas > 0 ? (totalComJuros / cliente.parcelas) : 0;
+
+            const texto = `Olá! Realizei o pagamento da entrada do meu crediário no *FlashCred (Distribuidora Flash Point)* e quero utilizar meu limite agora para fazer minha compra!
+
+📋 *Protocolo:* ${cliente.protocolo}
+👤 *Titular:* ${cliente.nome}
+💰 *Limite Aprovado:* R$ ${(cliente.limite || 1000).toFixed(2)}
+💳 *Condição Escolhida:* ${cliente.parcelas || 12}x de R$ ${vParc.toFixed(2)}
+
+Poderiam me auxiliar a escolher os produtos e finalizar o envio?`;
+
+            // Número oficial de atendimento WhatsApp da distribuidora
+            const foneAtendimento = "5511973294235";
+            const url = `https://wa.me/${foneAtendimento}?text=${encodeURIComponent(texto)}`;
+            window.open(url, '_blank');
         }
 
         function atualizarSimulacaoCliente(protocolo) {
@@ -461,11 +579,11 @@
                 <head>
                     <title>Contrato de Crediário - ${cliente.protocolo}</title>
                     <style>
-                        body { font-family: Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.6; font-size: 13px; }
-                        h1 { font-size: 16px; color: #0f172a; text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 20px; }
-                        h3 { font-size: 14px; color: #1e293b; margin-top: 15px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
+                        body { font-family: Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.6; font-size: 14px; }
+                        h1 { font-size: 18px; color: #0f172a; text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 20px; }
+                        h3 { font-size: 15px; color: #1e293b; margin-top: 15px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
                         .box { background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px; border-radius: 8px; margin: 15px 0; }
-                        .assinatura { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; font-size: 12px; }
+                        .assinatura { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; font-size: 13px; }
                         .linha { border-top: 1px solid #000; width: 250px; margin: 0 auto 5px auto; }
                     </style>
                 </head>
@@ -524,11 +642,11 @@
             let htmlParcelas = '';
             for (let i = 1; i <= (cliente.parcelas || 12); i++) {
                 htmlParcelas += `
-                    <div style="border: 1px dashed #64748b; padding: 12px; margin-bottom: 10px; border-radius: 6px; font-size: 12px;">
+                    <div style="border: 1px dashed #64748b; padding: 12px; margin-bottom: 12px; border-radius: 6px; font-size: 13px;">
                         <strong>Carnê FlashCred - Parcela ${i}/${cliente.parcelas || 12}</strong><br>
                         Protocolo: ${cliente.protocolo} | Titular: ${cliente.nome}<br>
                         Vencimento: ${i}º Mês | Valor: <strong>R$ ${vParc.toFixed(2)}</strong><br>
-                        <span style="font-family: monospace; font-size: 10px; color: #475569;">Chave Pix Boleto: 00020126580014br.gov.bcb.pix...</span>
+                        <span style="font-family: monospace; font-size: 11px; color: #475569;">Chave Pix Boleto: 00020126580014br.gov.bcb.pix...</span>
                     </div>
                 `;
             }
@@ -544,7 +662,7 @@
                 </head>
                 <body>
                     <h1>CARNÊ DE PAGAMENTO - DISTRIBUIDORA FLASH POINT</h1>
-                    <p style="font-size: 12px;">Titular: <strong>${cliente.nome}</strong> | Protocolo: <strong>${cliente.protocolo}</strong></p>
+                    <p style="font-size: 13px;">Titular: <strong>${cliente.nome}</strong> | Protocolo: <strong>${cliente.protocolo}</strong></p>
                     ${htmlParcelas}
                     <script>window.print();<\/script>
                 </body>
@@ -737,15 +855,24 @@ Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente,
             }
         }
 
+        function carregarPainelAdminSilencioso() {
+            const lista = document.getElementById('lista-admin');
+            if (!lista) return;
+            renderizarListaAdminHTML(lista);
+        }
+
         async function carregarPainelAdmin() {
             if (!adminLogado) return;
             await carregarDadosDoBanco();
-
             const lista = document.getElementById('lista-admin');
+            renderizarListaAdminHTML(lista);
+        }
+
+        function renderizarListaAdminHTML(lista) {
             lista.innerHTML = '';
 
             if (listaClientes.length === 0) {
-                lista.innerHTML = `<div class="bg-white p-6 rounded-xl text-center text-slate-500 text-sm border">Nenhuma proposta registrada no sistema.</div>`;
+                lista.innerHTML = `<div class="bg-white p-6 rounded-xl text-center text-slate-600 text-sm border">Nenhuma proposta registrada no sistema.</div>`;
                 return;
             }
 
@@ -758,58 +885,58 @@ Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente,
 
                 const uniqueKey = cliente.protocolo || cliente.id;
                 const badgeStatus = cliente.status === 'aprovado' ? '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">🟢 Aprovado</span>' : '<span class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full">🟡 Em Análise</span>';
-                const badgeEntrada = cliente.entradaPaga ? '<span class="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full">🟢 Pago</span>' : '<span class="bg-amber-100 text-amber-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full">🟡 Pendente</span>';
+                const badgeEntrada = cliente.entradaPaga ? '<span class="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full">🟢 Pago</span>' : '<span class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1 rounded-full">🟡 Pendente</span>';
 
                 const totalComJuros = (cliente.limite - cliente.valorEntrada) * (1 + (cliente.jurosParcelamento / 100));
                 const vParc = cliente.parcelas > 0 ? (totalComJuros / cliente.parcelas) : 0;
 
                 const card = document.createElement('div');
-                card.className = "bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4 text-left text-slate-900";
+                card.className = "bg-white border border-slate-200 p-6 sm:p-7 rounded-2xl shadow-sm space-y-4 text-left text-slate-900";
                 card.innerHTML = `
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b pb-3">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-3.5">
                         <div>
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span class="bg-blue-950 text-white text-xs font-bold px-3 py-1 rounded-md">${cliente.protocolo}</span>
-                                <h3 class="font-bold text-slate-900 text-base">${cliente.nome}</h3>
+                            <div class="flex items-center gap-2.5 flex-wrap">
+                                <span class="bg-blue-950 text-white text-xs sm:text-sm font-bold px-3 py-1 rounded-md">${cliente.protocolo}</span>
+                                <h3 class="font-bold text-slate-900 text-base sm:text-lg">${cliente.nome}</h3>
                                 ${badgeStatus}
                             </div>
-                            <p class="text-xs text-slate-600 mt-1">WhatsApp: <strong>${cliente.whatsapp}</strong> | CPF: <strong>${cliente.cpf}</strong> | Contrato Aceito: <strong class="${cliente.contratoAceito ? 'text-emerald-700' : 'text-amber-700'}">${cliente.contratoAceito ? 'Sim' : 'Pendente'}</strong></p>
+                            <p class="text-xs sm:text-sm text-slate-700 mt-1">WhatsApp: <strong>${cliente.whatsapp}</strong> | CPF: <strong>${cliente.cpf}</strong> | Contrato Aceito: <strong class="${cliente.contratoAceito ? 'text-emerald-700' : 'text-amber-700'}">${cliente.contratoAceito ? 'Sim' : 'Pendente'}</strong></p>
                         </div>
                         <div>${badgeEntrada}</div>
                     </div>
 
-                    <div class="bg-slate-900 text-white p-4 rounded-xl space-y-2">
-                        <div class="flex justify-between items-center text-xs border-b border-slate-700 pb-2">
+                    <div class="bg-slate-900 text-white p-5 rounded-xl space-y-3">
+                        <div class="flex justify-between items-center text-xs sm:text-sm border-b border-slate-700 pb-2.5">
                             <span class="font-bold text-emerald-400 uppercase">Condições do Crediário</span>
-                            <span id="rt-parcelas-topo-${uniqueKey}" class="text-emerald-400 font-bold text-sm">${cliente.parcelas}x de R$ ${vParc.toFixed(2)}</span>
+                            <span id="rt-parcelas-topo-${uniqueKey}" class="text-emerald-400 font-bold text-base">${cliente.parcelas}x de R$ ${vParc.toFixed(2)}</span>
                         </div>
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-[11px] pt-1">
-                            <div><span class="text-slate-400 block text-[10px]">Total</span><span id="rt-total-${uniqueKey}" class="font-bold text-white text-sm">R$ ${(cliente.limite || 1000).toFixed(2)}</span></div>
-                            <div><span class="text-slate-400 block text-[10px]">Entrada</span><span id="rt-entrada-${uniqueKey}" class="font-bold text-emerald-400 text-sm">R$ ${cliente.valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada}%)</span></div>
-                            <div><span class="text-slate-400 block text-[10px]">Saldo</span><span id="rt-saldo-${uniqueKey}" class="font-bold text-white text-sm">R$ ${totalComJuros.toFixed(2)}</span></div>
-                            <div><span class="text-slate-400 block text-[10px]">Desc. Quitação</span><span id="rt-desc-${uniqueKey}" class="font-bold text-teal-300 text-sm">R$ ${cliente.descontoAntecipado.toFixed(2)}</span></div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-xs pt-1">
+                            <div><span class="text-slate-400 block text-xs">Total</span><span id="rt-total-${uniqueKey}" class="font-bold text-white text-base">R$ ${(cliente.limite || 1000).toFixed(2)}</span></div>
+                            <div><span class="text-slate-400 block text-xs">Entrada</span><span id="rt-entrada-${uniqueKey}" class="font-bold text-emerald-400 text-base">R$ ${cliente.valorEntrada.toFixed(2)} (${cliente.porcentagemEntrada}%)</span></div>
+                            <div><span class="text-slate-400 block text-xs">Saldo</span><span id="rt-saldo-${uniqueKey}" class="font-bold text-white text-base">R$ ${totalComJuros.toFixed(2)}</span></div>
+                            <div><span class="text-slate-400 block text-xs">Desc. Quitação</span><span id="rt-desc-${uniqueKey}" class="font-bold text-teal-300 text-base">R$ ${cliente.descontoAntecipado.toFixed(2)}</span></div>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 md:grid-cols-6 gap-2 bg-slate-50 p-3 rounded-xl border">
-                        <div><label class="block text-[10px] font-bold uppercase text-slate-600">Valor Total</label><input type="number" id="edit-limite-${uniqueKey}" value="${cliente.limite}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold"></div>
-                        <div><label class="block text-[10px] font-bold uppercase text-slate-600">% Entrada</label><input type="number" id="edit-porc-${uniqueKey}" value="${cliente.porcentagemEntrada}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold"></div>
-                        <div><label class="block text-[10px] font-bold uppercase text-slate-600">Parcelas</label><input type="number" id="edit-parc-${uniqueKey}" value="${cliente.parcelas}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold"></div>
-                        <div><label class="block text-[10px] font-bold uppercase text-slate-600">Juros (%)</label><input type="number" id="edit-juros-${uniqueKey}" value="${cliente.jurosParcelamento}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold"></div>
-                        <div><label class="block text-[10px] font-bold uppercase text-slate-600">Desc. Quitação</label><input type="number" id="edit-desc-${uniqueKey}" value="${cliente.descontoAntecipado}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded px-2 py-1 text-xs font-bold"></div>
-                        <div class="flex items-end"><button onclick="salvarEdicaoAdmin('${uniqueKey}')" class="w-full bg-blue-950 text-white font-bold py-1.5 px-2 rounded text-[11px] cursor-pointer hover:bg-blue-900">Salvar</button></div>
+                    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border">
+                        <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1">Valor Total</label><input type="number" id="edit-limite-${uniqueKey}" value="${cliente.limite}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded-lg px-3 py-2 text-xs sm:text-sm font-bold"></div>
+                        <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1">% Entrada</label><input type="number" id="edit-porc-${uniqueKey}" value="${cliente.porcentagemEntrada}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded-lg px-3 py-2 text-xs sm:text-sm font-bold"></div>
+                        <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1">Parcelas</label><input type="number" id="edit-parc-${uniqueKey}" value="${cliente.parcelas}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded-lg px-3 py-2 text-xs sm:text-sm font-bold"></div>
+                        <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1">Juros (%)</label><input type="number" id="edit-juros-${uniqueKey}" value="${cliente.jurosParcelamento}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded-lg px-3 py-2 text-xs sm:text-sm font-bold"></div>
+                        <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1">Desc. Quitação</label><input type="number" id="edit-desc-${uniqueKey}" value="${cliente.descontoAntecipado}" oninput="calcularEmTempoReal('${uniqueKey}')" class="w-full bg-white border rounded-lg px-3 py-2 text-xs sm:text-sm font-bold"></div>
+                        <div class="flex items-end"><button onclick="salvarEdicaoAdmin('${uniqueKey}')" class="w-full bg-blue-950 text-white font-bold py-2.5 px-3 rounded-lg text-xs sm:text-sm cursor-pointer hover:bg-blue-900 shadow">Salvar</button></div>
                     </div>
 
-                    <div><label class="block text-[10px] font-bold uppercase text-slate-700 mb-1">Chave Pix Copia e Cola:</label><input type="text" id="edit-copiacola-${uniqueKey}" value="${cliente.pixCopiaECola || ''}" placeholder="Cole o código Pix..." class="w-full bg-slate-50 border rounded-lg px-3 py-1.5 text-xs font-mono"></div>
+                    <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1.5">Chave Pix Copia e Cola:</label><input type="text" id="edit-copiacola-${uniqueKey}" value="${cliente.pixCopiaECola || ''}" placeholder="Cole o código Pix..." class="w-full bg-slate-50 border rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono"></div>
 
-                    <div class="flex flex-wrap gap-2 pt-2 items-center justify-between border-t border-slate-100">
-                        <div class="flex flex-wrap gap-2">
-                            <button onclick="gerarPixViaAPI('${uniqueKey}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"><i class="fa-brands fa-pix"></i> Aprovar & Gerar Pix</button>
-                            <button onclick="enviarWhatsAppCliente('${uniqueKey}')" class="bg-teal-700 hover:bg-teal-800 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"><i class="fa-brands fa-whatsapp"></i> WhatsApp</button>
-                            <button onclick="alterarStatusCliente('${uniqueKey}', 'reprovado')" class="bg-rose-50 text-rose-700 px-3 py-2 rounded-lg text-xs font-bold cursor-pointer border border-rose-200">Reprovar</button>
-                            <button onclick="alternarEntradaPaga('${uniqueKey}')" class="bg-amber-50 text-amber-800 px-3 py-2 rounded-lg text-xs font-bold cursor-pointer border border-amber-200">Alternar Entrada</button>
+                    <div class="flex flex-wrap gap-2.5 pt-2 items-center justify-between border-t border-slate-100">
+                        <div class="flex flex-wrap gap-2.5">
+                            <button onclick="gerarPixViaAPI('${uniqueKey}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer shadow"><i class="fa-brands fa-pix"></i> Aprovar & Gerar Pix</button>
+                            <button onclick="enviarWhatsAppCliente('${uniqueKey}')" class="bg-teal-700 hover:bg-teal-800 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer shadow"><i class="fa-brands fa-whatsapp"></i> WhatsApp</button>
+                            <button onclick="alterarStatusCliente('${uniqueKey}', 'reprovado')" class="bg-rose-50 text-rose-700 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold cursor-pointer border border-rose-200 shadow-sm">Reprovar</button>
+                            <button onclick="alternarEntradaPaga('${uniqueKey}')" class="bg-amber-50 text-amber-800 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold cursor-pointer border border-amber-200 shadow-sm">Alternar Entrada</button>
                         </div>
-                        <button onclick="excluirPropostaAdmin('${uniqueKey}')" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"><i class="fa-solid fa-trash"></i> Excluir</button>
+                        <button onclick="excluirPropostaAdmin('${uniqueKey}')" class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer shadow"><i class="fa-solid fa-trash"></i> Excluir</button>
                     </div>
                 `;
                 lista.appendChild(card);
@@ -827,17 +954,17 @@ Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente,
                     <i class="fa-solid fa-building-columns"></i>
                 </div>
                 <div>
-                    <h1 class="font-bold text-xl text-blue-950 tracking-tight">Distribuidora Flash Point</h1>
-                    <p class="text-xs font-medium text-slate-600 flex items-center gap-1.5">
-                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span> Sistema Oficial FlashCred | CNPJ: 35.560.220/0001-54
+                    <h1 class="font-bold text-xl sm:text-2xl text-blue-950 tracking-tight">Distribuidora Flash Point</h1>
+                    <p class="text-xs sm:text-sm font-medium text-slate-600 flex items-center gap-1.5 mt-0.5">
+                        <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Sistema Oficial FlashCred | CNPJ: 35.560.220/0001-54
                     </p>
                 </div>
             </div>
             
-            <nav class="flex bg-slate-100 p-1.5 rounded-xl gap-1 border border-slate-200">
-                <button onclick="switchTab('solicitar')" id="btn-solicitar" class="tab-btn bg-blue-950 text-white px-4 py-2 rounded-lg text-xs font-bold shadow-sm transition cursor-pointer">Solicitar Crediário</button>
-                <button onclick="switchTab('acompanhar')" id="btn-acompanhar" class="tab-btn text-slate-600 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer hover:bg-slate-200">Acompanhar</button>
-                <button onclick="switchTab('painel')" id="btn-painel" class="tab-btn text-slate-600 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer hover:bg-slate-200">Painel Admin</button>
+            <nav class="flex bg-slate-100 p-1.5 rounded-xl gap-1.5 border border-slate-200">
+                <button onclick="switchTab('solicitar')" id="btn-solicitar" class="tab-btn bg-blue-950 text-white px-4 py-2.5 rounded-lg text-xs sm:text-sm font-bold shadow-sm transition cursor-pointer">Solicitar</button>
+                <button onclick="switchTab('acompanhar')" id="btn-acompanhar" class="tab-btn text-slate-700 px-4 py-2.5 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer hover:bg-slate-200">Acompanhar</button>
+                <button onclick="switchTab('painel')" id="btn-painel" class="tab-btn text-slate-700 px-4 py-2.5 rounded-lg text-xs sm:text-sm font-bold transition cursor-pointer hover:bg-slate-200">Painel Admin</button>
             </nav>
         </header>
 
@@ -845,73 +972,71 @@ Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente,
             <!-- ABA SOLICITAR -->
             <section id="tab-solicitar" class="tab-content space-y-6">
                 
-                <!-- DESTAQUES VISUAIS MODERNOS (PIX PARCELADO, LIMITE NA HORA, MÓVEIS) -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div class="bg-gradient-to-br from-blue-950 to-blue-900 text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between space-y-2 border border-blue-800">
+                    <div class="bg-gradient-to-br from-blue-950 to-blue-900 text-white p-6 rounded-2xl shadow-sm flex flex-col justify-between space-y-3 border border-blue-800">
                         <div class="flex items-center justify-between">
-                            <span class="bg-emerald-500 text-slate-950 font-extrabold text-[10px] px-2.5 py-0.5 rounded-full uppercase">Destaque</span>
+                            <span class="bg-emerald-500 text-slate-950 font-extrabold text-[11px] px-3 py-1 rounded-full uppercase">Destaque</span>
                             <i class="fa-brands fa-pix text-emerald-400 text-2xl"></i>
                         </div>
                         <div>
-                            <h3 class="font-extrabold text-base tracking-wide">Pix Parcelado</h3>
-                            <p class="text-xs text-blue-200 mt-1">Pague sua entrada no Pix e parcele o restante com total facilidade.</p>
+                            <h3 class="font-extrabold text-base sm:text-lg tracking-wide">Pix Parcelado</h3>
+                            <p class="text-xs sm:text-sm text-blue-200 mt-1">Pague sua entrada no Pix e parcele o restante com total facilidade.</p>
                         </div>
                     </div>
 
-                    <div class="bg-gradient-to-br from-emerald-900 to-teal-950 text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between space-y-2 border border-emerald-800">
+                    <div class="bg-gradient-to-br from-emerald-900 to-teal-950 text-white p-6 rounded-2xl shadow-sm flex flex-col justify-between space-y-3 border border-emerald-800">
                         <div class="flex items-center justify-between">
-                            <span class="bg-amber-400 text-slate-950 font-extrabold text-[10px] px-2.5 py-0.5 rounded-full uppercase">Agilidade</span>
-                            <i class="fa-solid fa-bolt text-amber-300 text-xl"></i>
+                            <span class="bg-amber-400 text-slate-950 font-extrabold text-[11px] px-3 py-1 rounded-full uppercase">Agilidade</span>
+                            <i class="fa-solid fa-bolt text-amber-300 text-2xl"></i>
                         </div>
                         <div>
-                            <h3 class="font-extrabold text-base tracking-wide">Limite Liberado na Hora</h3>
-                            <p class="text-xs text-emerald-100 mt-1">Análise rápida de crédito sem burocracia e direto pelo celular.</p>
+                            <h3 class="font-extrabold text-base sm:text-lg tracking-wide">Limite Liberado na Hora</h3>
+                            <p class="text-xs sm:text-sm text-emerald-100 mt-1">Análise rápida de crédito sem burocracia e direto pelo celular.</p>
                         </div>
                     </div>
 
-                    <div class="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-sm flex flex-col justify-between space-y-2 border border-slate-700">
+                    <div class="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-2xl shadow-sm flex flex-col justify-between space-y-3 border border-slate-700">
                         <div class="flex items-center justify-between">
-                            <span class="bg-blue-600 text-white font-extrabold text-[10px] px-2.5 py-0.5 rounded-full uppercase">Sem Cartão</span>
-                            <i class="fa-solid fa-couch text-blue-400 text-xl"></i>
+                            <span class="bg-blue-600 text-white font-extrabold text-[11px] px-3 py-1 rounded-full uppercase">Sem Cartão</span>
+                            <i class="fa-solid fa-couch text-blue-400 text-2xl"></i>
                         </div>
                         <div>
-                            <h3 class="font-extrabold text-base tracking-wide">Compre Móveis Fácil</h3>
-                            <p class="text-xs text-slate-300 mt-1">Móveis novos direto de fábrica sem precisar de cartão de crédito.</p>
+                            <h3 class="font-extrabold text-base sm:text-lg tracking-wide">Compre Móveis Fácil</h3>
+                            <p class="text-xs sm:text-sm text-slate-300 mt-1">Móveis novos direto de fábrica sem precisar de cartão de crédito.</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- FORMULÁRIO DIRETO E LIVRE -->
                 <div id="meu-formulario" class="bg-white border border-slate-200 p-6 md:p-8 rounded-2xl shadow-sm">
                     <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4 text-left">
-                        <div class="border-b pb-3 mb-4 flex items-center justify-between">
-                            <h2 class="font-bold text-blue-950 text-base flex items-center gap-2">
+                        <div class="border-b pb-4 mb-4 flex items-center justify-between">
+                            <h2 class="font-bold text-blue-950 text-base sm:text-lg flex items-center gap-2">
                                 <i class="fa-solid fa-user-shield text-blue-900"></i> Preencha seus Dados para Solicitar Crediário
                             </h2>
-                            <span class="text-xs text-emerald-700 font-bold hidden sm:inline-block"><i class="fa-solid fa-circle-check"></i> Cadastro Livre</span>
+                            <span class="text-xs sm:text-sm text-emerald-700 font-bold hidden sm:inline-block"><i class="fa-solid fa-circle-check"></i> Cadastro Livre</span>
                         </div>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1">Nome Completo</label><input type="text" id="nome" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-900 outline-none"></div>
-                            <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1">CPF</label><input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-900 outline-none"></div>
-                            <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1">WhatsApp</label><input type="text" id="whatsapp" required placeholder="(11) 90000-0000" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-900 outline-none"></div>
-                            <div><label class="block text-xs font-bold uppercase text-slate-700 mb-1">CEP</label><input type="text" id="cep" required placeholder="00000-000" oninput="consultarCEP(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-900 outline-none"></div>
-                            <div class="md:col-span-2"><label class="block text-xs font-bold uppercase text-slate-700 mb-1">Endereço Completo</label><input type="text" id="endereco" required class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-900 outline-none"></div>
-                            <div class="md:col-span-2"><label class="block text-xs font-bold uppercase text-slate-700 mb-1">Valor Total Negociado (R$)</label><input type="number" id="valor" required placeholder="Ex: 2500" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-xs font-bold text-blue-950 focus:ring-2 focus:ring-blue-900 outline-none"></div>
+                            <div><label class="block text-xs sm:text-sm font-bold uppercase text-slate-700 mb-1.5">Nome Completo</label><input type="text" id="nome" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm focus:ring-2 focus:ring-blue-900 outline-none"></div>
+                            <div><label class="block text-xs sm:text-sm font-bold uppercase text-slate-700 mb-1.5">CPF</label><input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm focus:ring-2 focus:ring-blue-900 outline-none"></div>
+                            <div><label class="block text-xs sm:text-sm font-bold uppercase text-slate-700 mb-1.5">WhatsApp</label><input type="text" id="whatsapp" required placeholder="(11) 90000-0000" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm focus:ring-2 focus:ring-blue-900 outline-none"></div>
+                            <div><label class="block text-xs sm:text-sm font-bold uppercase text-slate-700 mb-1.5">CEP</label><input type="text" id="cep" required placeholder="00000-000" oninput="consultarCEP(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm focus:ring-2 focus:ring-blue-900 outline-none"></div>
+                            <div class="md:col-span-2"><label class="block text-xs sm:text-sm font-bold uppercase text-slate-700 mb-1.5">Endereço Completo</label><input type="text" id="endereco" required class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm focus:ring-2 focus:ring-blue-900 outline-none"></div>
+                            <div class="md:col-span-2"><label class="block text-xs sm:text-sm font-bold uppercase text-slate-700 mb-1.5">Valor Total Negociado (R$)</label><input type="number" id="valor" required placeholder="Ex: 2500" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm font-bold text-blue-950 focus:ring-2 focus:ring-blue-900 outline-none"></div>
                         </div>
-                        <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3.5 rounded-xl text-xs uppercase tracking-wider cursor-pointer shadow transition mt-2">Enviar Solicitação para Análise</button>
+                        <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 rounded-xl text-xs sm:text-sm uppercase tracking-wider cursor-pointer shadow transition mt-3">Enviar Solicitação para Análise</button>
                     </form>
                 </div>
             </section>
 
             <!-- ABA ACOMPANHAR -->
             <section id="tab-acompanhar" class="tab-content hidden space-y-6 text-center">
-                <div class="max-w-md mx-auto space-y-4 bg-slate-50 border border-slate-200 p-6 rounded-2xl shadow-sm">
-                    <h2 class="font-bold text-blue-950 text-base">Consulta de Protocolo</h2>
-                    <p class="text-xs text-slate-600">Insira seu CPF ou Protocolo para verificar o andamento e chave Pix.</p>
-                    <div class="flex gap-2">
-                        <input type="text" id="busca-cpf" placeholder="CPF ou Protocolo (ex: FP-123456)" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs">
-                        <button onclick="consultarProposta()" class="bg-blue-950 hover:bg-blue-900 text-white px-4 py-2 rounded-lg text-xs font-bold cursor-pointer">Consultar</button>
+                <div class="max-w-md mx-auto space-y-4 bg-slate-50 border border-slate-200 p-6 sm:p-8 rounded-2xl shadow-sm">
+                    <h2 class="font-bold text-blue-950 text-base sm:text-lg">Consulta de Protocolo</h2>
+                    <p class="text-xs sm:text-sm text-slate-600">Insira seu CPF ou Protocolo para verificar o andamento e liberação.</p>
+                    <div class="flex gap-2.5">
+                        <input type="text" id="busca-cpf" placeholder="CPF ou Protocolo (ex: FP-123456)" class="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm">
+                        <button onclick="consultarProposta()" class="bg-blue-950 hover:bg-blue-900 text-white px-5 py-3 rounded-xl text-xs sm:text-sm font-bold cursor-pointer shrink-0">Consultar</button>
                     </div>
                     <div id="resultado-busca" class="hidden mt-4"></div>
                 </div>
@@ -919,12 +1044,12 @@ Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente,
 
             <!-- ABA LOGIN ADMIN -->
             <section id="tab-login-admin" class="tab-content hidden space-y-6 max-w-sm mx-auto text-center py-6">
-                <div class="bg-slate-50 border border-slate-200 p-6 rounded-2xl space-y-4 shadow-sm">
-                    <h2 class="font-bold text-blue-950 text-sm">Área Restrita - Administrativo</h2>
-                    <form onsubmit="verificarSenhaAdmin(event)" class="space-y-3">
-                        <input type="password" id="senha-admin" required placeholder="Senha de Acesso" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-center font-bold">
-                        <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-2 rounded-lg text-xs cursor-pointer">Entrar no Sistema</button>
-                        <span id="erro-senha" class="hidden text-xs text-rose-600 font-bold block">Senha inválida.</span>
+                <div class="bg-slate-50 border border-slate-200 p-6 sm:p-8 rounded-2xl space-y-4 shadow-sm">
+                    <h2 class="font-bold text-blue-950 text-sm sm:text-base">Área Restrita - Administrativo</h2>
+                    <form onsubmit="verificarSenhaAdmin(event)" class="space-y-3.5">
+                        <input type="password" id="senha-admin" required placeholder="Senha de Acesso" class="w-full bg-white border border-slate-300 rounded-xl px-4 py-3 text-xs sm:text-sm text-center font-bold">
+                        <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3 rounded-xl text-xs sm:text-sm cursor-pointer shadow">Entrar no Sistema</button>
+                        <span id="erro-senha" class="hidden text-xs sm:text-sm text-rose-600 font-bold block">Senha inválida.</span>
                     </form>
                 </div>
             </section>
@@ -932,15 +1057,14 @@ Acompanhe os detalhes e leia o contrato em nosso portal oficial. Atenciosamente,
             <!-- ABA PAINEL ADMIN -->
             <section id="tab-painel" class="tab-content hidden space-y-6">
                 <div class="flex justify-between items-center border-b pb-4">
-                    <h2 class="font-bold text-blue-950 text-base">Painel de Controle e Gestão de Propostas</h2>
-                    <button onclick="logoutAdmin()" class="bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer">Sair</button>
+                    <h2 class="font-bold text-blue-950 text-base sm:text-lg">Painel de Controle e Gestão (Atualização Automática)</h2>
+                    <button onclick="logoutAdmin()" class="bg-rose-50 text-rose-700 border border-rose-200 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold cursor-pointer shadow-sm">Sair</button>
                 </div>
                 <div id="lista-admin" class="space-y-4"></div>
             </section>
         </main>
 
-        <!-- RODAPÉ CORPORATIVO -->
-        <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-[11px] text-slate-500 space-y-1">
+        <footer class="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-500 space-y-1">
             <p><strong>Distribuidora Flash Point</strong> — CNPJ: 35.560.220/0001-54</p>
             <p>Central de Atendimento ao Cliente: WhatsApp (11) 97329-4235 | Todos os direitos reservados.</p>
         </footer>
