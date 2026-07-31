@@ -58,14 +58,12 @@
         window.addEventListener('DOMContentLoaded', async () => {
             await carregarDadosDoBanco();
             
-            // Ativar Realtime para atualizar a tela automaticamente quando o status mudar no Supabase
             if (supabaseClient) {
                 canalRealtime = supabaseClient
                     .channel('public:clientes')
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, payload => {
                         console.log('Mudança detectada no banco em tempo real:', payload);
                         carregarDadosDoBanco().then(() => {
-                            // Se o usuário estiver na tela de acompanhamento, atualiza a busca automaticamente
                             const inputBusca = document.getElementById('busca-cpf');
                             if (inputBusca && inputBusca.value.trim() !== '') {
                                 consultarProposta();
@@ -182,6 +180,7 @@
                 periodicidade: '15',
                 jurosParcelamento: 0,
                 descontoAntecipado: 0,
+                autorizarExibicaoPlano: false,
                 status: 'aguardando',
                 entradaPaga: false,
                 pixCopiaECola: 'Aguardando aprovação e geração de Pix automático...'
@@ -277,7 +276,6 @@
             const valorPorParcela = parcelasAtuais > 0 ? (valorComJuros / parcelasAtuais) : 0;
             const labelPeriodo = periodicidadeAtual === '7' ? 'semanais (a cada 7 dias)' : 'quinzenais (a cada 15 dias)';
 
-            // Se o pagamento já foi confirmado automaticamente
             if (cliente.entradaPaga) {
                 resultado.innerHTML = `
                     <div class="p-6 bg-emerald-50 border border-emerald-300 rounded-2xl space-y-4 text-center shadow-md animate-pulse">
@@ -289,7 +287,9 @@
                         
                         <div class="bg-white p-4 rounded-xl border border-emerald-200 text-left space-y-2">
                             <p class="text-xs text-slate-700">Protocolo: <strong>${cliente.protocolo}</strong></p>
+                            ${cliente.autorizarExibicaoPlano ? `
                             <p class="text-xs text-slate-700">Plano Liberado: <strong class="text-blue-950">${parcelasAtuais}x ${labelPeriodo} de R$ ${valorPorParcela.toFixed(2)}</strong></p>
+                            ` : `<p class="text-xs text-slate-500 italic">Detalhes do plano em processamento pela administração.</p>`}
                         </div>
                     </div>
                 `;
@@ -305,18 +305,18 @@
                     <p class="text-xs text-slate-700">Confirmação de Entrada: <strong class="text-amber-700 font-bold">🟡 Aguardando Pagamento Pix</strong></p>
                     <p class="text-xs text-slate-700">Valor Total do Crediário: <strong class="text-slate-900 font-bold">R$ ${(cliente.limite || 1000).toFixed(2)}</strong></p>
                     
-                    ${cliente.status === 'aprovado' ? `
+                    ${cliente.status === 'aprovado' && cliente.autorizarExibicaoPlano ? `
                     <div class="bg-white p-4 rounded-xl border border-slate-200 space-y-2 shadow-inner">
                         <p class="text-xs text-emerald-700 font-bold">Entrada Pix: R$ ${(cliente.valorEntrada || 0).toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</p>
                         <p class="text-xs text-slate-800 font-semibold">Plano Autorizado: <strong class="text-blue-950 text-sm">${parcelasAtuais}x ${labelPeriodo} de R$ ${valorPorParcela.toFixed(2)}</strong></p>
                     </div>
                     ` : `
                     <div class="bg-amber-50/60 p-3 rounded-xl border border-amber-200 text-amber-900 text-xs font-medium">
-                        ⏳ O plano detalhado e o Pix aparecerão aqui assim que sua proposta for aprovada.
+                        ⏳ O plano detalhado e o Pix aparecerão aqui assim que sua proposta for aprovada e autorizada.
                     </div>
                     `}
 
-                    ${cliente.status === 'aprovado' ? `
+                    ${cliente.status === 'aprovado' && cliente.autorizarExibicaoPlano ? `
                     <div class="mt-4 pt-4 border-t border-slate-200 space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                         <h5 class="font-bold text-blue-950 text-xs uppercase flex items-center gap-1.5"><i class="fa-brands fa-pix text-emerald-600"></i> Pagamento via Pix (Atualização Automática)</h5>
                         <div class="flex justify-center p-2 bg-white rounded-xl border shadow-sm">
@@ -341,7 +341,6 @@
 
             cliente.status = 'aprovado';
             cliente.valorEntrada = (cliente.limite * cliente.porcentagemEntrada) / 100;
-            // Simulando um payload Pix válido ou pronto para gateway
             cliente.pixCopiaECola = `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${cliente.valorEntrada.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
 
             let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
@@ -365,7 +364,6 @@
 
             await carregarDadosDoBanco();
             carregarPainelAdmin();
-            alert('Proposta aprovada com sucesso!');
         }
 
         function enviarWhatsAppCliente(protocolo) {
@@ -419,6 +417,7 @@ Acompanhe e pague sua entrada em nosso portal oficial para liberar o crediário 
             cliente.periodicidade = document.getElementById(`edit-periodicidade-${protocolo}`).value || '15';
             cliente.jurosParcelamento = parseFloat(document.getElementById(`edit-juros-${protocolo}`).value) || 0;
             cliente.descontoAntecipado = parseFloat(document.getElementById(`edit-desc-${protocolo}`).value) || 0;
+            cliente.autorizarExibicaoPlano = document.getElementById(`edit-autorizar-${protocolo}`).checked;
 
             let locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const idx = locais.findIndex(c => c.protocolo === cliente.protocolo);
@@ -436,14 +435,14 @@ Acompanhe e pague sua entrada em nosso portal oficial para liberar o crediário 
                         parcelas: cliente.parcelas,
                         periodicidade: cliente.periodicidade,
                         jurosParcelamento: cliente.jurosParcelamento,
-                        descontoAntecipado: cliente.descontoAntecipado
+                        descontoAntecipado: cliente.descontoAntecipado,
+                        autorizarExibicaoPlano: cliente.autorizarExibicaoPlano
                     }).eq('protocolo', cliente.protocolo);
                 } catch (e) {}
             }
 
             await carregarDadosDoBanco();
             carregarPainelAdmin();
-            alert('Alterações salvas com sucesso!');
         }
 
         async function excluirProposta(protocolo) {
@@ -483,8 +482,46 @@ Acompanhe e pague sua entrada em nosso portal oficial para liberar o crediário 
 
         function carregarPainelAdmin() {
             const container = document.getElementById('container-cards-admin');
+            const containerFinanceiro = document.getElementById('resumo-financeiro-admin');
             if (!container) return;
             container.innerHTML = '';
+
+            // Cálculo dos totais do painel financeiro automático
+            let somaTotalGeral = 0;
+            let somaEntradasRecebidas = 0;
+            let somaSaldoFinanciado = 0;
+
+            listaClientes.forEach(cli => {
+                const lim = cli.limite || 1000;
+                const ent = cli.valorEntrada || (lim * (cli.porcentagemEntrada || 10) / 100);
+                const jur = cli.jurosParcelamento || 0;
+                const sal = (lim - ent) * (1 + (jur / 100));
+
+                somaTotalGeral += lim;
+                if (cli.entradaPaga) {
+                    somaEntradasRecebidas += ent;
+                }
+                somaSaldoFinanciado += sal;
+            });
+
+            if (containerFinanceiro) {
+                containerFinanceiro.innerHTML = `
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-blue-950 text-white p-5 rounded-3xl shadow-sm border border-blue-900 space-y-1">
+                            <span class="text-[10px] uppercase font-bold tracking-wider text-blue-300">Total Geral Cadastrado</span>
+                            <div class="text-2xl font-black">R$ ${somaTotalGeral.toFixed(2)}</div>
+                        </div>
+                        <div class="bg-emerald-700 text-white p-5 rounded-3xl shadow-sm border border-emerald-600 space-y-1">
+                            <span class="text-[10px] uppercase font-bold tracking-wider text-emerald-200">Entradas Recebidas (Pagas)</span>
+                            <div class="text-2xl font-black">R$ ${somaEntradasRecebidas.toFixed(2)}</div>
+                        </div>
+                        <div class="bg-white text-slate-900 p-5 rounded-3xl shadow-sm border border-slate-200 space-y-1">
+                            <span class="text-[10px] uppercase font-bold tracking-wider text-slate-500">Saldo a Receber / Financiado</span>
+                            <div class="text-2xl font-black text-blue-950">R$ ${somaSaldoFinanciado.toFixed(2)}</div>
+                        </div>
+                    </div>
+                `;
+            }
 
             if (listaClientes.length === 0) {
                 container.innerHTML = `<div class="p-8 text-center text-slate-400 bg-white rounded-3xl border border-slate-200">Nenhum cliente cadastrado.</div>`;
@@ -499,6 +536,7 @@ Acompanhe e pague sua entrada em nosso portal oficial para liberar o crediário 
                 const periodicidade = cliente.periodicidade || '15';
                 const juros = cliente.jurosParcelamento || 0;
                 const desc = cliente.descontoAntecipado || 0;
+                const autorizarExibicao = cliente.autorizarExibicaoPlano === true;
 
                 const saldo = (total - entradaCalc) * (1 + (juros / 100));
                 const vParc = parcelas > 0 ? (saldo / parcelas) : 0;
@@ -573,11 +611,17 @@ Acompanhe e pague sua entrada em nosso portal oficial para liberar o crediário 
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] bg-white p-3 rounded-xl border border-blue-200/60 text-slate-700">
-                            <div>Total: <strong id="rt-total-${cardId}" class="text-slate-900">R$ ${total.toFixed(2)}</strong></div>
-                            <div>Entrada: <strong id="rt-entrada-${cardId}" class="text-emerald-700">R$ ${entradaCalc.toFixed(2)}</strong></div>
-                            <div>Saldo: <strong id="rt-saldo-${cardId}" class="text-slate-900">R$ ${saldo.toFixed(2)}</strong></div>
-                            <div>Desc.: <strong id="rt-desc-${cardId}" class="text-blue-900">R$ ${desc.toFixed(2)}</strong></div>
+                        <!-- Opção de autorizar exibição da periodicidade e plano para o cliente -->
+                        <div class="flex items-center gap-2 pt-2">
+                            <input type="checkbox" id="edit-autorizar-${cardId}" ${autorizarExibicao ? 'checked' : ''} class="w-4 h-4 text-blue-950 rounded border-slate-300 focus:ring-blue-950 cursor-pointer">
+                            <label for="edit-autorizar-${cardId}" class="text-xs font-bold text-slate-800 cursor-pointer">Autorizar e exibir periodicidade e plano para o cliente acompanhar no portal</label>
+                        </div>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px] bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-slate-800">
+                            <div>Total: <strong id="rt-total-${cardId}" class="text-emerald-900 font-black">R$ ${total.toFixed(2)}</strong></div>
+                            <div>Entrada: <strong id="rt-entrada-${cardId}" class="text-emerald-700 font-black">R$ ${entradaCalc.toFixed(2)}</strong></div>
+                            <div>Saldo: <strong id="rt-saldo-${cardId}" class="text-emerald-900 font-black">R$ ${saldo.toFixed(2)}</strong></div>
+                            <div>Desc.: <strong id="rt-desc-${cardId}" class="text-emerald-900 font-black">R$ ${desc.toFixed(2)}</strong></div>
                             <div><button onclick="salvarEdicaoAdmin('${cardId}')" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-1.5 px-2 rounded-lg text-xs shadow-sm cursor-pointer transition">Salvar</button></div>
                         </div>
                     </div>
@@ -705,10 +749,13 @@ Acompanhe e pague sua entrada em nosso portal oficial para liberar o crediário 
             <div class="flex justify-between items-center bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200 flex-wrap gap-4">
                 <div>
                     <h2 class="text-xl sm:text-2xl font-bold text-blue-950 tracking-tight">Painel Administrativo</h2>
-                    <p class="text-xs sm:text-sm text-slate-500">Gestão de propostas e automação Pix.</p>
+                    <p class="text-xs sm:text-sm text-slate-500">Gestão de propostas, financeiro e automação Pix.</p>
                 </div>
                 <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-5 py-2.5 rounded-xl text-xs transition border border-rose-200 cursor-pointer">Encerrar Sessão</button>
             </div>
+
+            <!-- Resumo Financeiro Automático -->
+            <div id="resumo-financeiro-admin"></div>
 
             <div class="space-y-4">
                 <h3 class="text-lg font-bold text-blue-950 px-2 flex items-center gap-2"><i class="fa-solid fa-users text-blue-900"></i> Solicitações Cadastradas</h3>
