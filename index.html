@@ -5,18 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Distribuidora Flash Point - Sistema FlashCred Produção</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0047AB',
-                        primaryDark: '#002B66'
-                    }
-                }
-            }
-        }
-    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -26,7 +14,6 @@
             SUPABASE_URL: 'https://rgcclordmqjmwuzrrfbd.supabase.co',
             SUPABASE_ANON_KEY: 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi',
             MERCADO_PAGO_TOKEN: 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471',
-            CHAVE_PIX_FIXA: '33552949852',
             WHATSAPP_CONTATO: '5511973294235'
         };
 
@@ -41,14 +28,15 @@
 
         let listaClientes = [];
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
-        let propostaEmEdicao = null;
 
         async function carregarDadosDoBanco() {
             let dadosRemotos = [];
             if (supabaseClient) {
                 try {
                     const { data, error } = await supabaseClient.from('clientes').select('*').order('id', { ascending: false });
-                    if (!error && data) dadosRemotos = data;
+                    if (!error && data) {
+                        dadosRemotos = data;
+                    }
                 } catch (e) {
                     console.warn('Erro ao buscar dados remotos.');
                 }
@@ -59,7 +47,9 @@
             
             [...dadosRemotos, ...locais].forEach(item => {
                 const chave = item.protocolo || item.id;
-                if (chave && !mapa.has(chave)) mapa.set(chave, item);
+                if (chave && !mapa.has(chave)) {
+                    mapa.set(chave, item);
+                }
             });
 
             listaClientes = Array.from(mapa.values());
@@ -74,8 +64,12 @@
                     .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, async () => {
                         await carregarDadosDoBanco();
                         const inputBusca = document.getElementById('busca-cpf');
-                        if (inputBusca && inputBusca.value.trim() !== '') consultarProposta(true);
-                        if (adminLogado) renderizarPainelAdmin();
+                        if (inputBusca && inputBusca.value.trim() !== '') {
+                            consultarProposta(true);
+                        }
+                        if (adminLogado) {
+                            renderizarPainelAdmin();
+                        }
                     })
                     .subscribe();
             }
@@ -83,15 +77,22 @@
             const hashAtual = window.location.hash.replace('#', '');
             const abaSalva = hashAtual || localStorage.getItem('flash_aba_ativa') || 'solicitar';
             
-            if (abaSalva === 'painel' && !adminLogado) switchTab('solicitar', false);
-            else switchTab(abaSalva, false);
+            if (abaSalva === 'painel' && !adminLogado) {
+                switchTab('solicitar', false);
+            } else {
+                switchTab(abaSalva, false);
+            }
 
-            if (adminLogado && abaSalva === 'painel') renderizarPainelAdmin();
+            if (adminLogado && abaSalva === 'painel') {
+                renderizarPainelAdmin();
+            }
         });
 
         function switchTab(tabId, atualizarUrl = true) {
             localStorage.setItem('flash_aba_ativa', tabId);
-            if (atualizarUrl) window.location.hash = tabId;
+            if (atualizarUrl) {
+                window.location.hash = tabId;
+            }
 
             if (tabId === 'painel' && !adminLogado) {
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
@@ -106,7 +107,9 @@
             if (abaAlvo) abaAlvo.classList.remove('hidden');
             atualizarBotoesNav(tabId);
 
-            if (tabId === 'painel' && adminLogado) renderizarPainelAdmin();
+            if (tabId === 'painel' && adminLogado) {
+                renderizarPainelAdmin();
+            }
         }
 
         function atualizarBotoesNav(tabId) {
@@ -148,8 +151,9 @@
                     const response = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
                     const data = await response.json();
                     if (!data.erro) {
+                        const logradouro = data.logradouro ? data.logradouro + ', ' : '';
                         const elEnd = document.getElementById('endereco');
-                        if (elEnd) elEnd.value = `${data.logradouro || ''}, Bairro: ${data.bairro || ''} - ${data.localidade}/${data.uf}`;
+                        if (elEnd) elEnd.value = `${logradouro}Bairro: ${data.bairro || ''} - ${data.localidade}/${data.uf}`;
                     }
                 } catch (e) {
                     console.error('Erro ao buscar CEP');
@@ -173,11 +177,7 @@
                         payer: {
                             email: cpf.replace(/\D/g, '') + '@flashcred.com',
                             first_name: nome.split(' ')[0],
-                            last_name: nome.split(' ').slice(1).join(' ') || 'Cliente',
-                            identification: {
-                                type: "CPF",
-                                number: cpf.replace(/\D/g, '')
-                            }
+                            last_name: nome.split(' ').slice(1).join(' ') || 'Cliente'
                         }
                     })
                 });
@@ -190,13 +190,9 @@
                     };
                 }
             } catch (e) {
-                console.warn('Erro ao gerar Pix via Mercado Pago, usando fallback seguro');
+                console.error('Erro ao gerar Pix real:', e);
             }
-            
-            return {
-                copiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_FIXA}0225Pagamento ${protocolo}5204000053039865802BR5925Distribuidora Flash Point6008SAO PAULO62070503***6400${(valorEntrada * 100).toFixed(0).padStart(10,'0')}`,
-                idTransacao: 'manual-' + protocolo
-            };
+            return null;
         }
 
         async function enviarProposta(event) {
@@ -246,6 +242,7 @@
 
             alert('Solicitação enviada com sucesso! Seu protocolo é: ' + protocolo);
             document.getElementById('form-proposta').reset();
+
             switchTab('acompanhar');
             const elBusca = document.getElementById('busca-cpf');
             if (elBusca) elBusca.value = protocolo;
@@ -359,100 +356,32 @@
             }
         }
 
-        function abrirEditarProposta(protocolo) {
-            const cliente = listaClientes.find(c => c.protocolo === protocolo);
-            if (!cliente) return;
-            propostaEmEdicao = cliente;
-
-            const modalAntigo = document.getElementById('modal-edicao');
-            if (modalAntigo) modalAntigo.remove();
-
-            const modalHtml = `
-                <div id="modal-edicao" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-                    <div class="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 shadow-2xl">
-                        <h3 class="text-lg font-bold text-blue-950">Editar Proposta - ${cliente.protocolo}</h3>
-                        <div class="space-y-3 text-xs">
-                            <div>
-                                <label class="block font-bold text-slate-700 mb-1">Valor Total do Crédito (R$)</label>
-                                <input type="number" step="0.01" id="edt-limite" value="${cliente.limite || 1500}" class="w-full p-3 bg-slate-50 border rounded-xl font-bold">
-                            </div>
-                            <div>
-                                <label class="block font-bold text-slate-700 mb-1">Porcentagem da Entrada (%)</label>
-                                <input type="number" step="0.1" id="edt-porc" value="${cliente.porcentagemEntrada || 10}" class="w-full p-3 bg-slate-50 border rounded-xl">
-                            </div>
-                            <div>
-                                <label class="block font-bold text-slate-700 mb-1">Quantidade de Parcelas</label>
-                                <input type="number" id="edt-parcelas" value="${cliente.parcelas || 48}" class="w-full p-3 bg-slate-50 border rounded-xl">
-                            </div>
-                            <div>
-                                <label class="block font-bold text-slate-700 mb-1">Taxa de Juros (% a.m.)</label>
-                                <input type="number" step="0.1" id="edt-juros" value="${cliente.jurosParcelamento || 2.5}" class="w-full p-3 bg-slate-50 border rounded-xl">
-                            </div>
-                            <div>
-                                <label class="block font-bold text-slate-700 mb-1">Status da Proposta</label>
-                                <select id="edt-status" class="w-full p-3 bg-slate-50 border rounded-xl font-bold">
-                                    <option value="analise" ${cliente.status === 'analise' ? 'selected' : ''}>Em Análise Cadastral</option>
-                                    <option value="aprovado" ${cliente.status === 'aprovado' ? 'selected' : ''}>Aprovado / Aguardando Entrada</option>
-                                    <option value="liberado" ${cliente.status === 'liberado' ? 'selected' : ''}>Crédito Liberado</option>
-                                    <option value="reprovado" ${cliente.status === 'reprovado' ? 'selected' : ''}>Reprovado</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="flex gap-2 pt-2">
-                            <button onclick="salvarEdicaoProposta()" class="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700">Salvar Alterações</button>
-                            <button onclick="document.getElementById('modal-edicao').remove()" class="w-full py-3 bg-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-300">Cancelar</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-        }
-
-        async function salvarEdicaoProposta() {
-            if (!propostaEmEdicao) return;
-
-            propostaEmEdicao.limite = parseFloat(document.getElementById('edt-limite').value) || propostaEmEdicao.limite;
-            propostaEmEdicao.porcentagemEntrada = parseFloat(document.getElementById('edt-porc').value) || propostaEmEdicao.porcentagemEntrada;
-            propostaEmEdicao.valorEntrada = propostaEmEdicao.limite * (propostaEmEdicao.porcentagemEntrada / 100);
-            propostaEmEdicao.parcelas = parseInt(document.getElementById('edt-parcelas').value) || propostaEmEdicao.parcelas;
-            propostaEmEdicao.jurosParcelamento = parseFloat(document.getElementById('edt-juros').value) || propostaEmEdicao.jurosParcelamento;
-            propostaEmEdicao.status = document.getElementById('edt-status').value;
-
-            if ((propostaEmEdicao.status === 'aprovado' || propostaEmEdicao.status === 'liberado') && (!propostaEmEdicao.pixCopiaECola || propostaEmEdicao.pixCopiaECola.includes('Erro'))) {
-                const dadosPix = await criarPagamentoPixMercadoPago(propostaEmEdicao.valorEntrada, propostaEmEdicao.protocolo, propostaEmEdicao.nome, propostaEmEdicao.cpf);
-                if (dadosPix) {
-                    propostaEmEdicao.pixCopiaECola = dadosPix.copiaECola;
-                    propostaEmEdicao.id_transacao_pix = String(dadosPix.idTransacao);
-                }
-            }
-
+        async function alterarStatusAdmin(protocolo, novoStatus) {
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-            const indexLocais = locais.findIndex(c => c.protocolo === propostaEmEdicao.protocolo);
-            if (indexLocais >= 0) {
-                locais[indexLocais] = propostaEmEdicao;
-            } else {
-                locais.unshift(propostaEmEdicao);
+            const idx = locais.findIndex(c => c.protocolo === protocolo);
+            if (idx !== -1) {
+                locais[idx].status = novoStatus;
+                if (novoStatus === 'reprovado') locais[idx].entradaPaga = false;
+                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
             }
-            localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
 
             if (supabaseClient) {
                 try {
-                    await supabaseClient.from('clientes').upsert([propostaEmEdicao], { onConflict: 'protocolo' });
+                    const updatePayload = { status: novoStatus };
+                    if (novoStatus === 'reprovado') updatePayload.entradaPaga = false;
+                    await supabaseClient.from('clientes').update(updatePayload).eq('protocolo', protocolo);
                 } catch (e) {
-                    console.warn('Erro ao atualizar no Supabase:', e);
+                    console.warn('Erro Supabase status.');
                 }
             }
 
             await carregarDadosDoBanco();
             renderizarPainelAdmin();
-
-            const modal = document.getElementById('modal-edicao');
-            if (modal) modal.remove();
-            alert('Proposta atualizada e salva com sucesso!');
+            alert('Status alterado com sucesso!');
         }
 
-        async function excluirProposta(protocolo) {
-            if (!confirm(`Tem certeza que deseja excluir a proposta ${protocolo}?`)) return;
+        async function excluirPropostaAdmin(protocolo) {
+            if (!confirm(`Tem certeza que deseja excluir permanentemente a proposta ${protocolo}?`)) return;
 
             const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
             const filtrados = locais.filter(c => c.protocolo !== protocolo);
@@ -462,7 +391,7 @@
                 try {
                     await supabaseClient.from('clientes').delete().eq('protocolo', protocolo);
                 } catch (e) {
-                    console.warn('Erro ao excluir do Supabase:', e);
+                    console.warn('Erro ao excluir no Supabase');
                 }
             }
 
@@ -493,11 +422,15 @@
                         <td class="p-4 font-black text-emerald-700">R$ ${limite.toFixed(2)}</td>
                         <td class="p-4 font-bold text-blue-900">R$ ${entrada.toFixed(2)}</td>
                         <td class="p-4">
-                            <span class="px-3 py-1 rounded-full text-[10px] font-black uppercase ${c.status === 'aprovado' ? 'bg-blue-100 text-blue-800' : c.status === 'liberado' ? 'bg-emerald-100 text-emerald-800' : c.status === 'reprovado' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}">${c.status || 'analise'}</span>
+                            <select onchange="alterarStatusAdmin('${c.protocolo}', this.value)" class="p-1.5 rounded-lg text-xs font-bold border ${c.status === 'aprovado' ? 'bg-blue-50 text-blue-800 border-blue-200' : c.status === 'liberado' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : c.status === 'reprovado' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-amber-50 text-amber-800 border-amber-200'}">
+                                <option value="analise" ${c.status === 'analise' ? 'selected' : ''}>Em Análise</option>
+                                <option value="aprovado" ${c.status === 'aprovado' ? 'selected' : ''}>Aprovado (Pix Entrada)</option>
+                                <option value="liberado" ${c.status === 'liberado' ? 'selected' : ''}>Liberado</option>
+                                <option value="reprovado" ${c.status === 'reprovado' ? 'selected' : ''}>Reprovado</option>
+                            </select>
                         </td>
-                        <td class="p-4 flex gap-2">
-                            <button onclick="abrirEditarProposta('${c.protocolo}')" class="px-3 py-1.5 bg-blue-900 text-white font-bold rounded-lg hover:bg-blue-800"><i class="fa-solid fa-pen"></i> Editar</button>
-                            <button onclick="excluirProposta('${c.protocolo}')" class="px-3 py-1.5 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200"><i class="fa-solid fa-trash"></i></button>
+                        <td class="p-4">
+                            <button onclick="excluirPropostaAdmin('${c.protocolo}')" class="px-3 py-1.5 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200"><i class="fa-solid fa-trash"></i> Excluir</button>
                         </td>
                     </tr>
                 `;
@@ -596,7 +529,7 @@
             <div class="flex justify-between items-center bg-white p-6 rounded-2xl shadow border">
                 <div>
                     <h2 class="text-xl font-black text-blue-950">Painel de Controle Admin</h2>
-                    <p class="text-xs text-slate-500">Gerencie todas as propostas e altere os valores ou status abaixo.</p>
+                    <p class="text-xs text-slate-500">Gerencie todas as propostas e altere os status diretamente abaixo.</p>
                 </div>
                 <button onclick="logoutAdmin()" class="px-4 py-2 bg-red-100 text-red-700 font-bold text-xs rounded-xl hover:bg-red-200">Sair do Painel</button>
             </div>
