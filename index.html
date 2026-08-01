@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Distribuidora Flash Point - Sistema FlashCred Completo</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <script>
@@ -17,17 +16,6 @@
             CIDADE_RECEBEDOR: 'SAO PAULO',
             WHATSAPP_CONTATO: '5511973294235'
         };
-
-        let supabaseClient = null;
-        try {
-            if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_ANON_KEY) {
-                supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
-                    auth: { persistSession: false }
-                });
-            }
-        } catch (e) {
-            console.warn('Supabase offline.');
-        }
 
         let listaClientes = [];
         let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
@@ -84,10 +72,15 @@
         }
 
         async function carregarDadosDoBanco() {
-            if (!supabaseClient) return;
             try {
-                const { data, error } = await supabaseClient.from('propostas').select('*').order('id', { ascending: false });
-                if (!error && data) {
+                const response = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/propostas?select=*&order=id.desc`, {
+                    headers: {
+                        'apikey': CONFIG.SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${CONFIG.SUPABASE_ANON_KEY}`
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
                     listaClientes = data;
                 }
             } catch (e) {
@@ -97,16 +90,6 @@
 
         window.addEventListener('DOMContentLoaded', async () => {
             await carregarDadosDoBanco();
-            
-            if (supabaseClient) {
-                supabaseClient
-                    .channel('public:propostas_realtime')
-                    .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas' }, async () => {
-                        await carregarDadosDoBanco();
-                        if (adminLogado) renderizarPainelAdmin();
-                    })
-                    .subscribe();
-            }
 
             const hashAtual = window.location.hash.replace('#', '');
             const abaSalva = hashAtual || 'solicitar';
@@ -214,17 +197,26 @@
                 pixCopiaECola: pixGerado
             };
 
-            if (supabaseClient) {
-                try {
-                    const { error } = await supabaseClient.from('propostas').insert([novaProposta]);
-                    if (error) {
-                        alert('Erro no Supabase: ' + error.message);
-                        return;
-                    }
-                } catch (err) {
-                    alert('Erro de conexão: ' + err.message);
+            try {
+                const response = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/propostas`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': CONFIG.SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${CONFIG.SUPABASE_ANON_KEY}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=minimal'
+                    },
+                    body: JSON.stringify(novaProposta)
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    alert('Erro ao salvar no banco: ' + errText);
                     return;
                 }
+            } catch (err) {
+                alert('Erro de conexão: ' + err.message);
+                return;
             }
 
             await carregarDadosDoBanco();
@@ -290,12 +282,24 @@
         }
 
         async function alterarStatusAdmin(id, novoStatus) {
-            if (supabaseClient) {
-                const { error } = await supabaseClient.from('propostas').update({ status: novoStatus }).eq('id', id);
-                if (error) {
-                    alert('Erro ao atualizar: ' + error.message);
+            try {
+                const response = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/propostas?id=eq.${id}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'apikey': CONFIG.SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${CONFIG.SUPABASE_ANON_KEY}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=minimal'
+                    },
+                    body: JSON.stringify({ status: novoStatus })
+                });
+                if (!response.ok) {
+                    alert('Erro ao atualizar status.');
                     return;
                 }
+            } catch (e) {
+                alert('Erro de conexão.');
+                return;
             }
             await carregarDadosDoBanco();
             renderizarPainelAdmin();
@@ -303,12 +307,24 @@
         }
 
         async function marcarPagoAdmin(id) {
-            if (supabaseClient) {
-                const { error } = await supabaseClient.from('propostas').update({ entradaPaga: true, status: 'aprovado' }).eq('id', id);
-                if (error) {
-                    alert('Erro ao confirmar pagamento: ' + error.message);
+            try {
+                const response = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/propostas?id=eq.${id}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'apikey': CONFIG.SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${CONFIG.SUPABASE_ANON_KEY}`,
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=minimal'
+                    },
+                    body: JSON.stringify({ entradaPaga: true, status: 'aprovado' })
+                });
+                if (!response.ok) {
+                    alert('Erro ao confirmar pagamento.');
                     return;
                 }
+            } catch (e) {
+                alert('Erro de conexão.');
+                return;
             }
             await carregarDadosDoBanco();
             renderizarPainelAdmin();
@@ -317,8 +333,16 @@
 
         async function excluirPropostaAdmin(id) {
             if (!confirm('Deseja excluir esta proposta?')) return;
-            if (supabaseClient) {
-                await supabaseClient.from('propostas').delete().eq('id', id);
+            try {
+                await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/propostas?id=eq.${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'apikey': CONFIG.SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${CONFIG.SUPABASE_ANON_KEY}`
+                    }
+                });
+            } catch (e) {
+                console.error(e);
             }
             await carregarDadosDoBanco();
             renderizarPainelAdmin();
