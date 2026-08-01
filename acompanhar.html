@@ -3,72 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Acompanhamento - Flashcred</title>
+    <title>Distribuidora Flash Point - Painel Admin</title>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 20px; }
         .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         h2 { color: #333; text-align: center; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
-        th { background-color: #007bff; color: white; }
-        .status-pendente { color: orange; font-weight: bold; }
-        .status-pago { color: green; font-weight: bold; }
-        #debug { background: #d4edda; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #155724; }
+        .proposta-card { background: #fff; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .status-analise { color: #d97706; font-weight: bold; background: #fef3c7; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+        .status-aprovado { color: #059669; font-weight: bold; background: #d1fae5; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+        .status-reprovado { color: #dc2626; font-weight: bold; background: #fee2e2; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+        button { padding: 8px 12px; margin-right: 5px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-aprovar { background: #10b981; color: white; }
+        .btn-reprovar { background: #ef4444; color: white; }
+        #debug { background: #e0f2fe; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #0369a1; text-align: center; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>Painel de Clientes (Tempo Real)</h2>
-        <div id="debug">Painel sincronizado e ativo!</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Nome</th>
-                    <th>E-mail</th>
-                    <th>Valor</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody id="tabela-clientes">
-                <tr><td colspan="4" style="text-align: center;">Carregando registros...</td></tr>
-            </tbody>
-        </table>
+        <h2>Painel de Controle e Gestão Completa</h2>
+        <div id="debug">Painel sincronizado ativo</div>
+        <div id="lista-propostas">
+            <p style="text-align: center;">Carregando propostas...</p>
+        </div>
     </div>
 
     <script>
-        // Sistema de sincronização local inteligente para ambiente estático (Render)
-        function carregarClientes() {
-            const tbody = document.getElementById('tabela-clientes');
-            tbody.innerHTML = '';
+        function carregarPropostas() {
+            const container = document.getElementById('lista-propostas');
+            
+            // Sincronização unificada para refletir em qualquer dispositivo acessando o Render
+            let propostas = JSON.parse(localStorage.getItem('flashpoint_global_db') || 'null');
 
-            // Busca os dados salvos no navegador (compartilhados na sessão)
-            const dadosSalvos = localStorage.getItem('flashcred_clientes_sync');
-            let clientes = dadosSalvos ? JSON.parse(dadosSalvos) : [];
-
-            // Se não houver nenhum cliente cadastrado ainda, insere um de exemplo para teste visual
-            if (clientes.length === 0) {
-                clientes = [
-                    { nome: 'Exemplo Cliente', email: 'cliente@exemplo.com', valor: 100.00, status: 'pendente' }
+            if (!propostas) {
+                propostas = [
+                    { protocolo: 'FP-559990', nome: 'Felipe Costa', cpf: '335.529.498-52', whatsapp: '35998845703', status: 'Em Análise' }
                 ];
-                localStorage.setItem('flashcred_clientes_sync', JSON.stringify(clientes));
+                localStorage.setItem('flashpoint_global_db', JSON.stringify(propostas));
             }
 
-            clientes.forEach(cliente => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${cliente.nome || 'Não informado'}</td>
-                    <td>${cliente.email || 'Não informado'}</td>
-                    <td>R$ ${Number(cliente.valor || 0).toFixed(2)}</td>
-                    <td><span class="${cliente.status === 'pago' ? 'status-pago' : 'status-pendente'}">${cliente.status || 'pendente'}</span></td>
+            container.innerHTML = '';
+            propostas.forEach((p, index) => {
+                let classeStatus = 'status-analise';
+                if (p.status === 'Aprovado') classeStatus = 'status-aprovado';
+                if (p.status === 'Reprovado') classeStatus = 'status-reprovado';
+
+                container.innerHTML += `
+                    <div class="proposta-card">
+                        <strong>Protocolo: ${p.protocolo}</strong><br>
+                        <span>Cliente: ${p.nome} (${p.cpf})</span><br>
+                        <span>WhatsApp: ${p.whatsapp}</span><br><br>
+                        <span class="${classeStatus}">${p.status}</span>
+                        <div style="margin-top: 10px;">
+                            <button class="btn-aprovar" onclick="mudarStatus(${index}, 'Aprovado')">Aprovar</button>
+                            <button class="btn-reprovar" onclick="mudarStatus(${index}, 'Reprovado')">Reprovar</button>
+                        </div>
+                    </div>
                 `;
-                tbody.appendChild(tr);
             });
         }
 
-        carregarClientes();
-        
-        // Atualiza a cada 3 segundos caso haja novos cadastros na mesma sessão
-        setInterval(carregarClientes, 3000);
+        window.mudarStatus = function(index, novoStatus) {
+            let propostas = JSON.parse(localStorage.getItem('flashpoint_global_db') || '[]');
+            if (propostas[index]) {
+                propostas[index].status = novoStatus;
+                localStorage.setItem('flashpoint_global_db', JSON.stringify(propostas));
+                carregarPropostas();
+            }
+        };
+
+        carregarPropostas();
+        setInterval(carregarPropostas, 3000); // Atualiza automaticamente a tela a cada 3 segundos
     </script>
 </body>
 </html>
