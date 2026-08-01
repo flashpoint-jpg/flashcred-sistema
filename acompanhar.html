@@ -19,7 +19,7 @@
 <body>
     <div class="container">
         <h2>Painel de Clientes (Tempo Real)</h2>
-        <div id="debug">Sincronizando com a nuvem...</div>
+        <div id="debug">Conectando à nuvem...</div>
         <table>
             <thead>
                 <tr>
@@ -30,7 +30,7 @@
                 </tr>
             </thead>
             <tbody id="tabela-clientes">
-                <tr><td colspan="4" style="text-align: center;">Carregando registros...</td></tr>
+                <tr><td colspan="4" style="text-align: center;">Buscando dados...</td></tr>
             </tbody>
         </table>
     </div>
@@ -43,40 +43,28 @@
 
         async function carregarClientes() {
             try {
-                // Requisição direta otimizada via Fetch nativo com modo no-cors/cors seguro
-                const response = await fetch(SUPABASE_URL, {
-                    method: 'GET',
-                    headers: {
-                        'apikey': SUPABASE_PUBLISHABLE_KEY,
-                        'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-                        'Accept': 'application/json'
-                    },
-                    cache: 'no-store'
-                });
+                // Utilizando um proxy de contorno CORS altamente estável para navegadores web
+                const targetUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(SUPABASE_URL);
 
-                if (!response.ok) {
-                    throw new Error(`Erro HTTP: ${response.status}`);
-                }
+                const response = await fetch(targetUrl);
+                if (!response.ok) throw new Error('Falha na resposta do servidor');
 
                 const data = await response.json();
-                renderizarTabela(data);
-                debugDiv.innerText = `Sincronizado com sucesso! Total na nuvem: ${data.length} cliente(s)`;
-                debugDiv.style.background = '#d4edda';
-                debugDiv.style.color = '#155724';
+                
+                if (Array.isArray(data)) {
+                    renderizarTabela(data);
+                    debugDiv.innerText = `Conectado com sucesso! Total na nuvem: ${data.length} cliente(s)`;
+                    debugDiv.style.background = '#d4edda';
+                    debugDiv.style.color = '#155724';
+                } else {
+                    throw new Error('Formato inválido retornado');
+                }
 
             } catch (err) {
                 console.error(err);
-                debugDiv.innerText = 'Aviso de rede: Usando dados locais temporários devido a restrição da operadora/rede.';
+                debugDiv.innerText = 'Modo offline ativado (Verifique a conexão de rede)';
                 debugDiv.style.background = '#fff3cd';
                 debugDiv.style.color = '#856404';
-
-                // Mantém os dados visuais salvos no navegador para não quebrar a tela
-                const dadosSalvos = localStorage.getItem('clientes_flashcred');
-                if (dadosSalvos) {
-                    renderizarTabela(JSON.parse(dadosSalvos));
-                } else {
-                    renderizarTabela([]);
-                }
             }
         }
 
@@ -85,12 +73,9 @@
             tbody.innerHTML = '';
 
             if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado ainda.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado na nuvem ainda.</td></tr>';
                 return;
             }
-
-            // Salva cache local para redundância entre dispositivos na mesma sessão
-            localStorage.setItem('clientes_flashcred', JSON.stringify(data));
 
             data.forEach(cliente => {
                 const tr = document.createElement('tr');
@@ -104,10 +89,7 @@
             });
         }
 
-        // Carrega ao iniciar
         carregarClientes();
-
-        // Atualiza automaticamente a cada 5 segundos para sincronizar o celular e o computador em tempo real
         setInterval(carregarClientes, 5000);
     </script>
 </body>
