@@ -12,13 +12,9 @@
         nav { background: white; padding: 12px 20px; border-bottom: 1px solid #eee; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .nav-conteudo { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         
-        /* LOGOTIPO EXATO QUE VOCÊ QUER */
-        .logo { display: flex; flex-direction: column; align-items: flex-start; }
-        .logo-simbolo { font-size: 42px; font-weight: 900; line-height: 1; margin-bottom: 2px; }
-        .fc-azul { color: #0A2463; }
-        .fc-verde { color: #32BCAD; }
-        .logo-nome { font-size: 36px; font-weight: 800; color: #0A2463; line-height: 1; }
-        .logo-slogan { font-size: 16px; color: #32BCAD; font-weight: 500; margin-top: 3px; }
+        /* LOGOTIPO BASEADO NA IMAGEM OFICIAL */
+        .logo-container { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+        .logo-img { height: 50px; width: auto; object-fit: contain; }
 
         .nav-links { display: flex; gap: 25px; }
         .nav-links a { color: #333; text-decoration: none; font-weight: 500; }
@@ -40,8 +36,8 @@
         .vantagem:last-child { border: none; }
         .vantagem span { color: #32BCAD; font-weight: bold; }
 
-        input { width: 100%; padding: 11px; margin: 5px 0 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 15px; }
-        input:focus { outline: none; border-color: #32BCAD; }
+        input { width: 100%; padding: 11px; margin: 5px 0 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 15px; transition: border-color 0.2s; }
+        input:focus { outline: none; border-color: #32BCAD; box-shadow: 0 0 0 3px rgba(50, 188, 173, 0.15); }
         .erro { color: #DC2626; font-size: 13px; margin: -8px 0 10px; display: none; }
         button { width: 100%; padding: 12px; background: #0A2463; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; transition: 0.2s; }
         button:hover { background: #071A47; }
@@ -53,14 +49,10 @@
 
 <nav>
     <div class="nav-conteudo">
-        <!-- LOGOTIPO SEMPRE APARECE, SEM DEPENDER DE IMAGEM -->
-        <div class="logo">
-            <div class="logo-simbolo">
-                <span class="fc-azul">⚡</span><span class="fc-verde">C</span>
-            </div>
-            <div class="logo-nome">FlashCred</div>
-            <div class="logo-slogan">Limite no Pix</div>
-        </div>
+        <!-- LOGOTIPO COM IMAGEM OFICIAL -->
+        <a href="#" class="logo-container">
+            <img src="49563.png" alt="FlashCred - Limite no Pix" class="logo-img">
+        </a>
 
         <div class="nav-links">
             <a href="painel.html">Painel de Controle</a>
@@ -107,12 +99,13 @@
 
                 <label>CEP</label>
                 <input type="text" id="cep" maxlength="9" placeholder="00000-000" required>
+                <div class="erro" id="erro-cep">CEP não encontrado</div>
 
                 <label>Endereço Completo</label>
-                <input type="text" id="endereco" placeholder="Rua, número, bairro" required>
+                <input type="text" id="endereco" placeholder="Rua, número, bairro, cidade - UF" required>
 
                 <label>WhatsApp / Telefone</label>
-                <input type="tel" id="telefone" maxlength="16" placeholder="(00) 00000-0000" required>
+                <input type="tel" id="telefone" maxlength="15" placeholder="(00) 00000-0000" required>
 
                 <label>Valor Desejado (R$)</label>
                 <input type="number" id="valor" min="100" step="0.01" required>
@@ -151,14 +144,44 @@ function validarIdade(data) {
     return idade >= 18;
 }
 
+// Máscaras de entrada
 document.getElementById('cpf').addEventListener('input', e => {
-    e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    let v = e.target.value.replace(/\D/g,'');
+    if (v.length > 11) v = v.slice(0, 11);
+    e.target.value = v.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
 });
+
+// Busca de CEP Automática via ViaCEP
 document.getElementById('cep').addEventListener('input', e => {
-    e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{5})(\d{3})/, '$1-$2');
+    let v = e.target.value.replace(/\D/g,'');
+    if (v.length > 8) v = v.slice(0, 8);
+    e.target.value = v.replace(/(\d{5})(\d{3})/, '$1-$2');
+
+    if(v.length === 8) {
+        fetch(`https://viacep.com.br/ws/${v}/json/`)
+            .then(res => res.json())
+            .then(data => {
+                if(!data.erro) {
+                    document.getElementById('endereco').value = `${data.logradouro} - Bairro: ${data.bairro} - ${data.localidade}/${data.uf}`;
+                    document.getElementById('erro-cep').style.display = 'none';
+                } else {
+                    document.getElementById('erro-cep').style.display = 'block';
+                }
+            })
+            .catch(() => {
+                document.getElementById('erro-cep').style.display = 'block';
+            });
+    }
 });
+
 document.getElementById('telefone').addEventListener('input', e => {
-    e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    let v = e.target.value.replace(/\D/g,'');
+    if (v.length > 11) v = v.slice(0, 11);
+    if (v.length > 10) {
+        e.target.value = v.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    } else {
+        e.target.value = v.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+    }
 });
 
 document.getElementById('formulario').addEventListener('submit', e => {
