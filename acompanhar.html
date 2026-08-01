@@ -14,7 +14,7 @@
         .status-pendente { color: orange; font-weight: bold; }
         .status-pago { color: green; font-weight: bold; }
     </style>
-    <!-- Importa a biblioteca do Supabase -->
+    <!-- Importa a biblioteca do Supabase v2 -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -36,51 +36,57 @@
     </div>
 
     <script>
-        // Configuração do Supabase no Frontend com a nova chave Publishable
+        // Configuração segura para o navegador
         const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        const { createClient } = window.supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
         async function carregarClientes() {
-            const { data, error } = await supabaseClient
-                .from('clientes')
-                .select('*')
-                .order('id', { ascending: false });
+            try {
+                const { data, error } = await supabaseClient
+                    .from('clientes')
+                    .select('*')
+                    .order('id', { ascending: false });
 
-            const tbody = document.getElementById('tabela-clientes');
-            tbody.innerHTML = '';
+                const tbody = document.getElementById('tabela-clientes');
+                tbody.innerHTML = '';
 
-            if (error) {
-                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar: ${error.message}</td></tr>`;
-                return;
+                if (error) {
+                    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro no banco: ${error.message}</td></tr>`;
+                    return;
+                }
+
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado ainda.</td></tr>';
+                    return;
+                }
+
+                data.forEach(cliente => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${cliente.nome || 'Não informado'}</td>
+                        <td>${cliente.email || 'Não informado'}</td>
+                        <td>R$ ${Number(cliente.valor || 0).toFixed(2)}</td>
+                        <td><span class="${cliente.status === 'pago' ? 'status-pago' : 'status-pendente'}">${cliente.status || 'pendente'}</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                const tbody = document.getElementById('tabela-clientes');
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro de conexão: ${err.message}</td></tr>`;
             }
-
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado ainda.</td></tr>';
-                return;
-            }
-
-            data.forEach(cliente => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${cliente.nome || 'Não informado'}</td>
-                    <td>${cliente.email || 'Não informado'}</td>
-                    <td>R$ ${Number(cliente.valor || 0).toFixed(2)}</td>
-                    <td><span class="${cliente.status === 'pago' ? 'status-pago' : 'status-pendente'}">${cliente.status || 'pendente'}</span></td>
-                `;
-                tbody.appendChild(tr);
-            });
         }
 
         // Carrega os dados assim que a página abre
         carregarClientes();
 
-        // Ouve atualizações em tempo real de qualquer dispositivo
+        // Ouve atualizações em tempo real
         supabaseClient
             .channel('public:clientes')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, payload => {
-                console.log('Mudança detectada no banco!', payload);
-                carregarClientes(); // Atualiza a tabela na hora
+                carregarClientes();
             })
             .subscribe();
     </script>
