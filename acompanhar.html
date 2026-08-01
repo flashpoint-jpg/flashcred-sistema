@@ -13,13 +13,13 @@
         th { background-color: #007bff; color: white; }
         .status-pendente { color: orange; font-weight: bold; }
         .status-pago { color: green; font-weight: bold; }
-        #debug { background: #eef2f7; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #333; }
+        #debug { background: #fff3cd; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #856404; border: 1px solid #ffeeba; }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Painel de Clientes (Tempo Real)</h2>
-        <div id="debug">Conectando ao Supabase...</div>
+        <div id="debug">Inicializando painel...</div>
         <table>
             <thead>
                 <tr>
@@ -30,35 +30,40 @@
                 </tr>
             </thead>
             <tbody id="tabela-clientes">
-                <tr><td colspan="4" style="text-align: center;">Buscando dados...</td></tr>
+                <tr><td colspan="4" style="text-align: center;">Aguardando dados...</td></tr>
             </tbody>
         </table>
     </div>
 
     <script>
         const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co';
-        // Chave Publishable atual do seu painel Supabase:
         const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
         
         const debugDiv = document.getElementById('debug');
 
         async function carregarClientes() {
             try {
-                debugDiv.innerText = 'Buscando registros da tabela clientes...';
+                debugDiv.innerText = 'Enviando requisição HTTP para o Supabase...';
 
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/clientes?select=*&order=id.desc`, {
+                    method: 'GET',
                     headers: {
                         'apikey': SUPABASE_PUBLISHABLE_KEY,
-                        'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`
+                        'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+                        'Content-Type': 'application/json'
                     }
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
+                    const errorText = await response.text();
+                    throw new Error(`Status ${response.status}: ${errorText || response.statusText}`);
                 }
 
                 const data = await response.json();
-                debugDiv.innerText = `Conexão estabelecida com sucesso! (${data.length} registros encontrados)`;
+                debugDiv.innerText = `Sucesso! Total de registros carregados: ${data.length}`;
+                debugDiv.style.background = '#d4edda';
+                debugDiv.style.color = '#155724';
+                debugDiv.style.borderColor = '#c3e6cb';
 
                 const tbody = document.getElementById('tabela-clientes');
                 tbody.innerHTML = '';
@@ -80,9 +85,8 @@
                 });
 
             } catch (err) {
-                debugDiv.innerText = 'Erro na conexão: ' + err.message;
-                const tbody = document.getElementById('tabela-clientes');
-                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro: ${err.message}</td></tr>`;
+                console.error(err);
+                debugDiv.innerText = 'Falha na requisição: ' + err.message + ' (Dica: Verifique se o RLS está desativado na tabela clientes ou se há bloqueio de rede).';
             }
         }
 
