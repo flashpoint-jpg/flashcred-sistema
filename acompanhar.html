@@ -21,58 +21,91 @@
 <body>
     <div class="container">
         <h2>Painel de Controle e Gestão Completa</h2>
-        <div id="debug">Painel sincronizado ativo</div>
+        <div id="debug">Conectando ao banco de dados oficial...</div>
         <div id="lista-propostas">
-            <p style="text-align: center;">Carregando propostas...</p>
+            <p style="text-align: center;">Carregando propostas da nuvem...</p>
         </div>
     </div>
 
+    <!-- Importando o cliente oficial do Supabase para navegador -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        function carregarPropostas() {
-            const container = document.getElementById('lista-propostas');
-            
-            // Sincronização unificada para refletir em qualquer dispositivo acessando o Render
-            let propostas = JSON.parse(localStorage.getItem('flashpoint_global_db') || 'null');
+        const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+        
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const debugDiv = document.getElementById('debug');
 
-            if (!propostas) {
-                propostas = [
-                    { protocolo: 'FP-559990', nome: 'Felipe Costa', cpf: '335.529.498-52', whatsapp: '35998845703', status: 'Em Análise' }
-                ];
-                localStorage.setItem('flashpoint_global_db', JSON.stringify(propostas));
-            }
+        async function carregarPropostasNuvem() {
+            try {
+                debugDiv.innerText = 'Buscando dados no Supabase...';
+                
+                // Busca direto da tabela de clientes ou propostas do seu Supabase
+                const { data, error } = await supabaseClient
+                    .from('clientes')
+                    .select('*')
+                    .order('id', { ascending: false });
 
-            container.innerHTML = '';
-            propostas.forEach((p, index) => {
-                let classeStatus = 'status-analise';
-                if (p.status === 'Aprovado') classeStatus = 'status-aprovado';
-                if (p.status === 'Reprovado') classeStatus = 'status-reprovado';
+                if (error) throw error;
 
-                container.innerHTML += `
-                    <div class="proposta-card">
-                        <strong>Protocolo: ${p.protocolo}</strong><br>
-                        <span>Cliente: ${p.nome} (${p.cpf})</span><br>
-                        <span>WhatsApp: ${p.whatsapp}</span><br><br>
-                        <span class="${classeStatus}">${p.status}</span>
-                        <div style="margin-top: 10px;">
-                            <button class="btn-aprovar" onclick="mudarStatus(${index}, 'Aprovado')">Aprovar</button>
-                            <button class="btn-reprovar" onclick="mudarStatus(${index}, 'Reprovado')">Reprovar</button>
+                debugDiv.innerText = `Sincronizado com sucesso! Total: ${data.length} registro(s)`;
+                debugDiv.style.background = '#d4edda';
+                debugDiv.style.color = '#155724';
+
+                const container = document.getElementById('lista-propostas');
+                container.innerHTML = '';
+
+                if (!data || data.length === 0) {
+                    container.innerHTML = '<p style="text-align: center;">Nenhuma proposta registrada no momento.</p>';
+                    return;
+                }
+
+                data.forEach((p) => {
+                    let statusTexto = p.status || 'Em Análise';
+                    let classeStatus = 'status-analise';
+                    if (statusTexto === 'pago' || statusTexto === 'Aprovado') classeStatus = 'status-aprovado';
+                    if (statusTexto === 'Reprovado') classeStatus = 'status-reprovado';
+
+                    container.innerHTML += `
+                        <div class="proposta-card">
+                            <strong>Protocolo: FP-${p.id || '559990'}</strong><br>
+                            <span>Cliente: ${p.nome || 'Não informado'} (${p.email || 'Sem email'})</span><br>
+                            <span>Valor: R$ ${Number(p.valor || 0).toFixed(2)}</span><br><br>
+                            <span class="${classeStatus}">${statusTexto}</span>
+                            <div style="margin-top: 10px;">
+                                <button class="btn-aprovar" onclick="atualizarStatusBanco(${p.id}, 'Aprovado')">Aprovar</button>
+                                <button class="btn-reprovar" onclick="atualizarStatusBanco(${p.id}, 'Reprovado')">Reprovar</button>
+                            </div>
                         </div>
-                    </div>
-                `;
-            });
+                    `;
+                });
+
+            } catch (err) {
+                console.error(err);
+                debugDiv.innerText = 'Erro ao conectar na nuvem: ' + err.message;
+                debugDiv.style.background = '#f8d7da';
+                debugDiv.style.color = '#721c24';
+            }
         }
 
-        window.mudarStatus = function(index, novoStatus) {
-            let propostas = JSON.parse(localStorage.getItem('flashpoint_global_db') || '[]');
-            if (propostas[index]) {
-                propostas[index].status = novoStatus;
-                localStorage.setItem('flashpoint_global_db', JSON.stringify(propostas));
-                carregarPropostas();
+        window.atualizarStatusBanco = async function(id, novoStatus) {
+            try {
+                const { error } = await supabaseClient
+                    .from('clientes')
+                    .update({ status: novoStatus })
+                    .eq('id', id);
+
+                if (error) throw error;
+                alert('Status atualizado na nuvem com sucesso!');
+                carregarPropostasNuvem();
+            } catch (err) {
+                alert('Erro ao atualizar: ' + err.message);
             }
         };
 
-        carregarPropostas();
-        setInterval(carregarPropostas, 3000); // Atualiza automaticamente a tela a cada 3 segundos
+        carregarPropostasNuvem();
+        // Atualiza automaticamente a cada 5 segundos para refletir alterações feitas no celular ou PC
+        setInterval(carregarPropostasNuvem, 5000);
     </script>
 </body>
 </html>
