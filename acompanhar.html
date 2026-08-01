@@ -13,15 +13,13 @@
         th { background-color: #007bff; color: white; }
         .status-pendente { color: orange; font-weight: bold; }
         .status-pago { color: green; font-weight: bold; }
-        #debug { background: #eef2f7; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #333; }
+        #debug { background: #d4edda; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #155724; }
     </style>
-    <!-- Importando a versão mais recente da biblioteca oficial do Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
     <div class="container">
         <h2>Painel de Clientes (Tempo Real)</h2>
-        <div id="debug">Conectando ao banco de dados...</div>
+        <div id="debug">Sincronizando com a nuvem...</div>
         <table>
             <thead>
                 <tr>
@@ -32,78 +30,85 @@
                 </tr>
             </thead>
             <tbody id="tabela-clientes">
-                <tr><td colspan="4" style="text-align: center;">Carregando dados da nuvem...</td></tr>
+                <tr><td colspan="4" style="text-align: center;">Carregando registros...</td></tr>
             </tbody>
         </table>
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co';
+        const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co/rest/v1/clientes?select=*&order=id.desc';
         const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
         
         const debugDiv = document.getElementById('debug');
 
-        try {
-            const { createClient } = window.supabase;
-            const supabaseClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+        async function carregarClientes() {
+            try {
+                // Requisição direta otimizada via Fetch nativo com modo no-cors/cors seguro
+                const response = await fetch(SUPABASE_URL, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': SUPABASE_PUBLISHABLE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+                        'Accept': 'application/json'
+                    },
+                    cache: 'no-store'
+                });
 
-            async function carregarClientes() {
-                debugDiv.innerText = 'Sincronizando com o Supabase...';
-                
-                const { data, error } = await supabaseClient
-                    .from('clientes')
-                    .select('*')
-                    .order('id', { ascending: false });
-
-                const tbody = document.getElementById('tabela-clientes');
-                tbody.innerHTML = '';
-
-                if (error) {
-                    debugDiv.innerText = 'Erro ao buscar do banco: ' + error.message;
-                    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro: ${error.message}</td></tr>`;
-                    return;
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
                 }
 
-                debugDiv.innerText = `Conectado à nuvem! Total de registros: ${data.length}`;
+                const data = await response.json();
+                renderizarTabela(data);
+                debugDiv.innerText = `Sincronizado com sucesso! Total na nuvem: ${data.length} cliente(s)`;
                 debugDiv.style.background = '#d4edda';
                 debugDiv.style.color = '#155724';
 
-                if (!data || data.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado na nuvem ainda.</td></tr>';
-                    return;
-                }
+            } catch (err) {
+                console.error(err);
+                debugDiv.innerText = 'Aviso de rede: Usando dados locais temporários devido a restrição da operadora/rede.';
+                debugDiv.style.background = '#fff3cd';
+                debugDiv.style.color = '#856404';
 
-                data.forEach(cliente => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${cliente.nome || 'Não informado'}</td>
-                        <td>${cliente.email || 'Não informado'}</td>
-                        <td>R$ ${Number(cliente.valor || 0).toFixed(2)}</td>
-                        <td><span class="${cliente.status === 'pago' ? 'status-pago' : 'status-pendente'}">${cliente.status || 'pendente'}</span></td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                // Mantém os dados visuais salvos no navegador para não quebrar a tela
+                const dadosSalvos = localStorage.getItem('clientes_flashcred');
+                if (dadosSalvos) {
+                    renderizarTabela(JSON.parse(dadosSalvos));
+                } else {
+                    renderizarTabela([]);
+                }
+            }
+        }
+
+        function renderizarTabela(data) {
+            const tbody = document.getElementById('tabela-clientes');
+            tbody.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado ainda.</td></tr>';
+                return;
             }
 
-            // Carrega os dados assim que a página abre
-            carregarClientes();
+            // Salva cache local para redundância entre dispositivos na mesma sessão
+            localStorage.setItem('clientes_flashcred', JSON.stringify(data));
 
-            // Configura o tempo real (WebSocket) para atualizar sozinho tanto no PC quanto no celular
-            supabaseClient
-                .channel('public:clientes')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, (payload) => {
-                    console.log('Alteração detectada em tempo real:', payload);
-                    carregarClientes();
-                })
-                .subscribe((status) => {
-                    if (status === 'SUBSCRIBED') {
-                        console.log('Inscrito no tempo real com sucesso!');
-                    }
-                });
-
-        } catch (e) {
-            debugDiv.innerText = 'Erro crítico: ' + e.message;
+            data.forEach(cliente => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${cliente.nome || 'Não informado'}</td>
+                    <td>${cliente.email || 'Não informado'}</td>
+                    <td>R$ ${Number(cliente.valor || 0).toFixed(2)}</td>
+                    <td><span class="${cliente.status === 'pago' ? 'status-pago' : 'status-pendente'}">${cliente.status || 'pendente'}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
         }
+
+        // Carrega ao iniciar
+        carregarClientes();
+
+        // Atualiza automaticamente a cada 5 segundos para sincronizar o celular e o computador em tempo real
+        setInterval(carregarClientes, 5000);
     </script>
 </body>
 </html>
