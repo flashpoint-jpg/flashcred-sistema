@@ -3,102 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distribuidora Flash Point - Pix Parcelado</title>
+    <title>Painel de Acompanhamento - Flashcred</title>
     <style>
-        :root {
-            --primary: #10B981;
-            --primary-dark: #059669;
-            --bg-color: #F8FAFC;
-            --card-bg: #FFFFFF;
-            --text-main: #1E293B;
-            --text-muted: #64748B;
-            --border-color: #E2E8F0;
-            --danger: #EF4444;
-            --warning: #F59E0B;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
-        body { background-color: var(--bg-color); color: var(--text-main); padding: 20px; }
-        .container { max-width: 950px; margin: 0 auto; }
-        .card { background: var(--card-bg); border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid var(--border-color); }
-        .nav-top { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
-        .nav-top a { padding: 8px 16px; background: #E2E8F0; color: var(--text-main); text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 0.9rem; }
-        .nav-top a.active { background: var(--primary); color: white; }
-        .btn { background: var(--primary); color: white; border: none; padding: 10px 20px; font-weight: 600; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; }
-        .btn:hover { background: var(--primary-dark); }
-        .form-group { margin-bottom: 16px; }
-        label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; }
-        input, select { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem; background: #F8FAFC; }
-        input:focus, select:focus { outline: none; border-color: var(--primary); background: #FFF; }
-        .badge-fabrica { background: #EFF6FF; border: 1px solid #BFDBFE; padding: 12px; border-radius: 8px; color: #1E40AF; font-size: 0.85rem; margin-bottom: 16px; line-height: 1.4; }
-        .badge-entrada { background: #FFFBEB; border: 1px solid #FDE68A; padding: 12px; border-radius: 8px; color: #92400E; font-size: 0.85rem; margin-bottom: 16px; font-weight: 600; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 10px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
-        th { background: #F8FAFC; color: var(--text-muted); }
-        .semaforo { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
-        .semaforo.amarelo { background: #F59E0B; animation: piscar 1.2s infinite ease-in-out; }
-        .semaforo.verde { background: #10B981; }
-        .semaforo.vermelho { background: #EF4444; }
-        @keyframes piscar { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-        .btn-group { display: flex; flex-wrap: wrap; gap: 5px; }
-        .btn-sm { padding: 6px 10px; font-size: 0.75rem; border-radius: 4px; }
-        .btn-warning { background: var(--warning); color: white; }
-        .btn-danger { background: var(--danger); color: white; }
-        .btn-manual { background: #3B82F6; color: white; }
-        .btn-whats { background: #25D366; color: white; text-decoration: none; }
+        body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h2 { color: #333; text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background-color: #007bff; color: white; }
+        .status-pendente { color: orange; font-weight: bold; }
+        .status-pago { color: green; font-weight: bold; }
     </style>
+    <!-- Importa a biblioteca do Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-
-<div class="container">
-    <div class="nav-top">
-        <a href="#solicitar" class="active">Solicitar Pix</a>
-        <a href="#acompanhar">Acompanhar Pedido</a>
-        <a href="#painel">Painel Admin</a>
+    <div class="container">
+        <h2>Painel de Clientes (Tempo Real)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>Valor</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="tabela-clientes">
+                <tr><td colspan="4" style="text-align: center;">Carregando clientes...</td></tr>
+            </tbody>
+        </table>
     </div>
 
-    <!-- TELA 1: FORMULÁRIO -->
-    <div class="card" id="tela-solicitar">
-        <h1 style="font-size: 1.4rem; margin-bottom: 4px;">DISTRIBUIDORA FLASH POINT</h1>
-        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px;">Compre seus móveis no Pix Parcelado • Atendimento 100% Online Direto da Fábrica</p>
+    <script>
+        // Configuração do Supabase no Frontend
+        const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJnY2Nsb3JkbWptd3V6cnJmYmQiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTczNzg2MDgxNywiZXhwIjoyMDUzNDM2ODE3fQ.sua_chave_completa_aqui';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        <div class="badge-fabrica">
-            📦 <strong>Atendimento 100% Online:</strong> Sem lojas físicas ou parceiros intermediários. Acompanhe pelo nosso Catálogo Digital, Facebook e Instagram.
-        </div>
+        async function carregarClientes() {
+            const { data, error } = await supabaseClient
+                .from('clientes')
+                .select('*')
+                .order('id', { ascending: false });
 
-        <div class="badge-entrada">
-            ℹ️ <strong>Condição Flexível:</strong> Não exigimos entrada fixa. O percentual varia de <strong>10% a 75%</strong> conforme análise da proposta.
-        </div>
+            const tbody = document.getElementById('tabela-clientes');
+            tbody.innerHTML = '';
 
-        <form onsubmit="alert('Simulação: Proposta enviada com sucesso!'); return false;">
-            <div class="form-group">
-                <label>NOME COMPLETO</label>
-                <input type="text" required placeholder="Digite seu nome completo">
-            </div>
-            <div class="form-group">
-                <label>CPF (VALIDAÇÃO AUTOMÁTICA - BLOQUEIA DUPLICADOS)</label>
-                <input type="text" required placeholder="000.000.000-00">
-            </div>
-            <div class="form-group">
-                <label>WHATSAPP</label>
-                <input type="text" required placeholder="(11) 00000-0000">
-            </div>
-            <div class="form-group">
-                <label>VALOR DESEJADO PARA COMPRA (R$)</label>
-                <input type="number" step="0.01" required placeholder="1902.00">
-            </div>
-            <div class="form-group">
-                <label>QUANTIDADE DE PARCELAS NO PIX</label>
-                <select>
-                    <option value="6">6x</option>
-                    <option value="10">10x</option>
-                    <option value="12" selected>12x</option>
-                    <option value="18">18x</option>
-                </select>
-            </div>
-            <button type="submit" class="btn" style="width: 100%; justify-content: center;">Enviar Solicitação</button>
-        </form>
-    </div>
-</div>
+            if (error) {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar: ${error.message}</td></tr>`;
+                return;
+            }
 
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado ainda.</td></tr>';
+                return;
+            }
+
+            data.forEach(cliente => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${cliente.nome || 'Não informado'}</td>
+                    <td>${cliente.email || 'Não informado'}</td>
+                    <td>R$ ${Number(cliente.valor || 0).toFixed(2)}</td>
+                    <td><span class="${cliente.status === 'pago' ? 'status-pago' : 'status-pendente'}">${cliente.status || 'pendente'}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Carrega os dados assim que a página abre
+        carregarClientes();
+
+        // Ouve atualizações em tempo real de qualquer dispositivo
+        supabaseClient
+            .channel('public:clientes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, payload => {
+                console.log('Mudança detectada no banco!', payload);
+                carregarClientes(); // Atualiza a tabela na hora
+            })
+            .subscribe();
+    </script>
 </body>
 </html>
