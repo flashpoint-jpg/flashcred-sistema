@@ -13,13 +13,13 @@
         th { background-color: #007bff; color: white; }
         .status-pendente { color: orange; font-weight: bold; }
         .status-pago { color: green; font-weight: bold; }
-        #debug { background: #d4edda; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #155724; }
+        #debug { background: #eef2f7; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #333; }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Painel de Clientes (Tempo Real)</h2>
-        <div id="debug">Conectando à nuvem...</div>
+        <div id="debug">Carregando painel...</div>
         <table>
             <thead>
                 <tr>
@@ -36,57 +36,58 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co/rest/v1/clientes?select=*&order=id.desc';
+        const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co';
         const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
         
         const debugDiv = document.getElementById('debug');
 
         async function carregarClientes() {
             try {
-                // Utilizando um proxy de contorno CORS altamente estável para navegadores web
-                const targetUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(SUPABASE_URL);
+                debugDiv.innerText = 'Conectando ao banco de dados...';
 
-                const response = await fetch(targetUrl);
-                if (!response.ok) throw new Error('Falha na resposta do servidor');
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/clientes?select=*&order=id.desc`, {
+                    method: 'GET',
+                    headers: {
+                        'apikey': SUPABASE_PUBLISHABLE_KEY,
+                        'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status}`);
+                }
 
                 const data = await response.json();
-                
-                if (Array.isArray(data)) {
-                    renderizarTabela(data);
-                    debugDiv.innerText = `Conectado com sucesso! Total na nuvem: ${data.length} cliente(s)`;
-                    debugDiv.style.background = '#d4edda';
-                    debugDiv.style.color = '#155724';
-                } else {
-                    throw new Error('Formato inválido retornado');
+                debugDiv.innerText = `Conexão estabelecida! Total de registros: ${data.length}`;
+                debugDiv.style.background = '#d4edda';
+                debugDiv.style.color = '#155724';
+
+                const tbody = document.getElementById('tabela-clientes');
+                tbody.innerHTML = '';
+
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado ainda.</td></tr>';
+                    return;
                 }
+
+                data.forEach(cliente => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${cliente.nome || 'Não informado'}</td>
+                        <td>${cliente.email || 'Não informado'}</td>
+                        <td>R$ ${Number(cliente.valor || 0).toFixed(2)}</td>
+                        <td><span class="${cliente.status === 'pago' ? 'status-pago' : 'status-pendente'}">${cliente.status || 'pendente'}</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
 
             } catch (err) {
                 console.error(err);
-                debugDiv.innerText = 'Modo offline ativado (Verifique a conexão de rede)';
-                debugDiv.style.background = '#fff3cd';
-                debugDiv.style.color = '#856404';
+                debugDiv.innerText = 'Erro ao carregar: ' + err.message;
+                debugDiv.style.background = '#f8d7da';
+                debugDiv.style.color = '#721c24';
             }
-        }
-
-        function renderizarTabela(data) {
-            const tbody = document.getElementById('tabela-clientes');
-            tbody.innerHTML = '';
-
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado na nuvem ainda.</td></tr>';
-                return;
-            }
-
-            data.forEach(cliente => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${cliente.nome || 'Não informado'}</td>
-                    <td>${cliente.email || 'Não informado'}</td>
-                    <td>R$ ${Number(cliente.valor || 0).toFixed(2)}</td>
-                    <td><span class="${cliente.status === 'pago' ? 'status-pago' : 'status-pendente'}">${cliente.status || 'pendente'}</span></td>
-                `;
-                tbody.appendChild(tr);
-            });
         }
 
         carregarClientes();
