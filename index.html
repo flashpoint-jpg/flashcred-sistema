@@ -3,1076 +3,145 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distribuidora Flash Point - Sistema FlashCred Completo</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Distribuidora Flash Point - Sistema</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h2 { color: #333; text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .proposta-card { background: #fff; border: 1px solid #ddd; padding: 15px; margin-bottom: 15px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .status-analise { color: #d97706; font-weight: bold; background: #fef3c7; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+        .status-aprovado { color: #059669; font-weight: bold; background: #d1fae5; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+        .status-reprovado { color: #dc2626; font-weight: bold; background: #fee2e2; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+        .btn-aprovar { background: #10b981; color: white; padding: 6px 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 5px; width: auto; }
+        .btn-reprovar { background: #ef4444; color: white; padding: 6px 10px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: auto; }
+        #debug { background: #e0f2fe; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #0369a1; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <!-- Formulário de Cadastro -->
+    <div class="container">
+        <h2>Novo Cadastro</h2>
+        <form id="form-cadastro">
+            <div class="form-group">
+                <label>Nome do Cliente:</label>
+                <input type="text" id="nome" required placeholder="Digite o nome completo">
+            </div>
+            <div class="form-group">
+                <label>E-mail:</label>
+                <input type="email" id="email" required placeholder="Digite o e-mail">
+            </div>
+            <div class="form-group">
+                <label>Valor (R$):</label>
+                <input type="number" step="0.01" id="valor" required placeholder="0.00">
+            </div>
+            <button type="submit">Cadastrar na Nuvem</button>
+        </form>
+    </div>
+
+    <!-- Painel de Visualização e Gestão -->
+    <div class="container">
+        <h2>Painel de Gestão (Tempo Real)</h2>
+        <div id="debug">Conectando ao banco de dados...</div>
+        <div id="lista-propostas">
+            <p style="text-align: center;">Carregando dados...</p>
+        </div>
+    </div>
+
+    <!-- Importando o Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
     <script>
-        const CONFIG = {
-            SUPABASE_URL: 'https://rgcclordmqmwuzrrfbd.supabase.co',
-            SUPABASE_ANON_KEY: 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi',
-            CHAVE_PIX_RECEBIMENTO: '33552949852',
-            WHATSAPP_CONTATO: '5511973294235'
-        };
+        const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const debugDiv = document.getElementById('debug');
 
-        let supabaseClient = null;
-        try {
-            if (CONFIG.SUPABASE_URL && CONFIG.SUPABASE_URL !== 'SUA_URL_DO_SUPABASE_AQUI') {
-                supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
-            }
-        } catch (e) {
-            console.warn('Supabase local/offline fallback ativado.');
-        }
+        // Enviar Cadastro para o Supabase
+        document.getElementById('form-cadastro').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const nome = document.getElementById('nome').value;
+            const email = document.getElementById('email').value;
+            const valor = document.getElementById('valor').value;
 
-        let listaClientes = [];
-        let adminLogado = localStorage.getItem('flash_admin_logado') === 'true';
+            try {
+                const { error } = await supabaseClient
+                    .from('clientes')
+                    .insert([{ nome: nome, email: email, valor: valor, status: 'Em Análise' }]);
 
-        async function carregarDadosDoBanco() {
-            let dadosRemotos = [];
-            if (supabaseClient) {
-                try {
-                    const { data, error } = await supabaseClient.from('clientes').select('*').order('id', { ascending: false });
-                    if (!error && data) {
-                        dadosRemotos = data;
-                    }
-                } catch (e) {
-                    console.warn('Erro ao buscar dados remotos.');
-                }
-            }
+                if (error) throw error;
 
-            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-            const mapa = new Map();
-            
-            [...dadosRemotos, ...locais].forEach(item => {
-                const chave = item.protocolo || item.id;
-                if (chave && !mapa.has(chave)) {
-                    mapa.set(chave, item);
-                }
-            });
-
-            listaClientes = Array.from(mapa.values());
-        }
-
-        window.addEventListener('DOMContentLoaded', async () => {
-            await carregarDadosDoBanco();
-            
-            if (supabaseClient) {
-                supabaseClient
-                    .channel('public:clientes_realtime')
-                    .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, async () => {
-                        await carregarDadosDoBanco();
-                        const inputBusca = document.getElementById('busca-cpf');
-                        if (inputBusca && inputBusca.value.trim() !== '') {
-                            consultarProposta(true);
-                        }
-                        if (adminLogado) {
-                            renderizarPainelAdmin();
-                        }
-                    })
-                    .subscribe();
-            }
-
-            const hashAtual = window.location.hash.replace('#', '');
-            const abaSalva = hashAtual || localStorage.getItem('flash_aba_ativa') || 'solicitar';
-            
-            if (abaSalva === 'painel' && !adminLogado) {
-                switchTab('solicitar', false);
-            } else {
-                switchTab(abaSalva, false);
-            }
-
-            if (adminLogado && abaSalva === 'painel') {
-                renderizarPainelAdmin();
+                alert('Cadastrado com sucesso na nuvem!');
+                document.getElementById('form-cadastro').reset();
+                carregarDados();
+            } catch (err) {
+                alert('Erro ao cadastrar: ' + err.message);
             }
         });
 
-        function switchTab(tabId, atualizarUrl = true) {
-            localStorage.setItem('flash_aba_ativa', tabId);
-            if (atualizarUrl) {
-                window.location.hash = tabId;
-            }
+        // Carregar Dados da Nuvem
+        async function carregarDados() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('clientes')
+                    .select('*')
+                    .order('id', { ascending: false });
 
-            if (tabId === 'painel' && !adminLogado) {
-                document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-                const elLogin = document.getElementById('tab-login-admin');
-                if (elLogin) elLogin.classList.remove('hidden');
-                atualizarBotoesNav('painel');
-                return;
-            }
+                if (error) throw error;
 
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            const abaAlvo = document.getElementById('tab-' + tabId);
-            if (abaAlvo) abaAlvo.classList.remove('hidden');
-            atualizarBotoesNav(tabId);
+                debugDiv.innerText = `Sincronizado! Total: ${data.length} registro(s)`;
+                const container = document.getElementById('lista-propostas');
+                container.innerHTML = '';
 
-            if (tabId === 'painel' && adminLogado) {
-                renderizarPainelAdmin();
-            }
-        }
-
-        function atualizarBotoesNav(tabId) {
-            document.querySelectorAll('.tab-btn').forEach(el => {
-                el.classList.remove('bg-blue-950', 'text-white', 'shadow-lg', 'border-blue-800');
-                el.classList.add('text-slate-600', 'hover:bg-slate-100');
-            });
-            const btn = document.getElementById('btn-' + tabId);
-            if (btn) {
-                btn.classList.remove('text-slate-600', 'hover:bg-slate-100');
-                btn.classList.add('bg-blue-950', 'text-white', 'shadow-lg', 'border-blue-800');
-            }
-        }
-
-        function verificarSenhaAdmin(event) {
-            event.preventDefault();
-            const senha = document.getElementById('senha-admin').value;
-            if (senha === 'flash@2026') {
-                adminLogado = true;
-                localStorage.setItem('flash_admin_logado', 'true');
-                document.getElementById('senha-admin').value = '';
-                document.getElementById('erro-senha').classList.add('hidden');
-                switchTab('painel');
-            } else {
-                document.getElementById('erro-senha').classList.remove('hidden');
-            }
-        }
-
-        function logoutAdmin() {
-            adminLogado = false;
-            localStorage.removeItem('flash_admin_logado');
-            switchTab('solicitar');
-        }
-
-        async function consultarCEP(cep) {
-            const cepLimpo = cep.replace(/\D/g, '');
-            if (cepLimpo.length === 8) {
-                try {
-                    const response = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
-                    const data = await response.json();
-                    if (!data.erro) {
-                        const logradouro = data.logradouro ? data.logradouro + ', ' : '';
-                        const elEnd = document.getElementById('endereco');
-                        if (elEnd) elEnd.value = `${logradouro}Bairro: ${data.bairro || ''} - ${data.localidade}/${data.uf}`;
-                    }
-                } catch (e) {
-                    console.error('Erro ao buscar CEP');
-                }
-            }
-        }
-
-        async function enviarProposta(event) {
-            event.preventDefault();
-            const valor = parseFloat(document.getElementById('valor').value) || 1500;
-            const protocolo = 'FP-' + Math.floor(100000 + Math.random() * 900000);
-            const valorEntradaCalc = valor * 0.10;
-
-            const novaProposta = {
-                protocolo: protocolo,
-                nome: document.getElementById('nome').value,
-                cpf: document.getElementById('cpf').value,
-                whatsapp: document.getElementById('whatsapp').value,
-                cep: document.getElementById('cep').value,
-                endereco: document.getElementById('endereco').value,
-                limite: valor,
-                valorEntrada: valorEntradaCalc,
-                porcentagemEntrada: 10,
-                parcelas: 48,
-                periodicidade: '30',
-                jurosParcelamento: 2.5,
-                descontoAntecipado: 10,
-                status: 'analise',
-                entradaPaga: false,
-                pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${valorEntradaCalc.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
-            };
-
-            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-            locais.unshift(novaProposta);
-            localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-
-            if (supabaseClient) {
-                try {
-                    await supabaseClient.from('clientes').insert([novaProposta]);
-                } catch (err) {
-                    console.error('Erro Supabase:', err);
-                }
-            }
-
-            await carregarDadosDoBanco();
-            if (adminLogado) renderizarPainelAdmin();
-
-            alert('Solicitação enviada com sucesso! Seu protocolo é: ' + protocolo);
-            document.getElementById('form-proposta').reset();
-
-            switchTab('acompanhar');
-            const elBusca = document.getElementById('busca-cpf');
-            if (elBusca) elBusca.value = protocolo;
-            consultarProposta();
-        }
-
-        function calcularValoresAdmin(protocolo) {
-            const limite = parseFloat(document.getElementById(`edit-limite-${protocolo}`).value) || 0;
-            const porcentagemEntrada = parseFloat(document.getElementById(`edit-porcentagem-${protocolo}`).value) || 0;
-            const qtdParcelas = parseInt(document.getElementById(`edit-parcelas-${protocolo}`).value) || 48;
-            const juros = parseFloat(document.getElementById(`edit-juros-${protocolo}`).value) || 0;
-
-            const valorEntrada = limite * (porcentagemEntrada / 100);
-            const saldoDevedor = limite - valorEntrada;
-            const totalComJuros = saldoDevedor * (1 + (juros / 100));
-            const valorParcela = qtdParcelas > 0 ? (totalComJuros / qtdParcelas) : 0;
-            const totalGeralReceber = valorEntrada + totalComJuros;
-
-            document.getElementById(`res-entrada-${protocolo}`).innerText = `R$ ${valorEntrada.toFixed(2)}`;
-            document.getElementById(`res-valparc-${protocolo}`).innerText = `R$ ${valorParcela.toFixed(2)}`;
-            document.getElementById(`res-totaljuros-${protocolo}`).innerText = `R$ ${totalComJuros.toFixed(2)}`;
-            document.getElementById(`res-totalgeral-${protocolo}`).innerText = `R$ ${totalGeralReceber.toFixed(2)}`;
-        }
-
-        async function salvarEdicaoAdmin(protocolo) {
-            const nome = document.getElementById(`edit-nome-${protocolo}`).value;
-            const cpf = document.getElementById(`edit-cpf-${protocolo}`).value;
-            const whatsapp = document.getElementById(`edit-whatsapp-${protocolo}`).value;
-            const endereco = document.getElementById(`edit-endereco-${protocolo}`).value;
-            const cep = document.getElementById(`edit-cep-${protocolo}`).value;
-            const limite = parseFloat(document.getElementById(`edit-limite-${protocolo}`).value) || 0;
-            const porcentagemEntrada = parseFloat(document.getElementById(`edit-porcentagem-${protocolo}`).value) || 10;
-            const valorEntrada = limite * (porcentagemEntrada / 100);
-            const parcelas = parseInt(document.getElementById(`edit-parcelas-${protocolo}`).value) || 48;
-            const jurosParcelamento = parseFloat(document.getElementById(`edit-juros-${protocolo}`).value) || 0;
-            const descontoAntecipado = parseFloat(document.getElementById(`edit-desconto-${protocolo}`).value) || 0;
-            const entradaPaga = document.getElementById(`edit-entradapaga-${protocolo}`).checked;
-
-            const dadosAtualizados = {
-                nome,
-                cpf,
-                whatsapp,
-                endereco,
-                cep,
-                limite,
-                porcentagemEntrada,
-                valorEntrada,
-                parcelas,
-                jurosParcelamento,
-                descontoAntecipado,
-                entradaPaga,
-                pixCopiaECola: `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${valorEntrada.toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`
-            };
-
-            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-            const idx = locais.findIndex(c => c.protocolo === protocolo);
-            if (idx !== -1) {
-                locais[idx] = { ...locais[idx], ...dadosAtualizados };
-                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-            }
-
-            if (supabaseClient) {
-                try {
-                    await supabaseClient.from('clientes').update(dadosAtualizados).eq('protocolo', protocolo);
-                } catch (e) {
-                    console.warn('Erro Supabase update.');
-                }
-            }
-
-            await carregarDadosDoBanco();
-            renderizarPainelAdmin();
-            alert('Proposta atualizada e salva com sucesso!');
-        }
-
-        async function alterarStatusAdmin(protocolo, novoStatus) {
-            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-            const idx = locais.findIndex(c => c.protocolo === protocolo);
-            if (idx !== -1) {
-                locais[idx].status = novoStatus;
-                if (novoStatus === 'reprovado') {
-                    locais[idx].entradaPaga = false;
-                }
-                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-            }
-
-            if (supabaseClient) {
-                try {
-                    const updatePayload = { status: novoStatus };
-                    if (novoStatus === 'reprovado') updatePayload.entradaPaga = false;
-                    await supabaseClient.from('clientes').update(updatePayload).eq('protocolo', protocolo);
-                } catch (e) {
-                    console.warn('Erro Supabase status.');
-                }
-            }
-
-            await carregarDadosDoBanco();
-            renderizarPainelAdmin();
-            alert(novoStatus === 'aprovado' ? 'Proposta APROVADA!' : 'Proposta marcada como Reprovada.');
-        }
-
-        async function excluirPropostaAdmin(protocolo) {
-            if (!confirm(`Tem certeza que deseja excluir permanentemente a proposta ${protocolo}?`)) return;
-
-            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-            const filtrados = locais.filter(c => c.protocolo !== protocolo);
-            localStorage.setItem('flash_clientes_locais', JSON.stringify(filtrados));
-
-            if (supabaseClient) {
-                try {
-                    await supabaseClient.from('clientes').delete().eq('protocolo', protocolo);
-                } catch (e) {
-                    console.warn('Erro ao excluir no Supabase');
-                }
-            }
-
-            await carregarDadosDoBanco();
-            renderizarPainelAdmin();
-        }
-
-        function enviarMensagemWhatsAppCliente(protocolo, tipoMensagem) {
-            const cliente = listaClientes.find(c => c.protocolo === protocolo);
-            if (!cliente) return;
-
-            let texto = '';
-            const telefoneLimpo = cliente.whatsapp.replace(/\D/g, '');
-            const numeroZap = telefoneLimpo.startsWith('55') ? telefoneLimpo : '55' + telefoneLimpo;
-
-            if (tipoMensagem === 'analise') {
-                texto = `Olá ${cliente.nome}! Sua proposta (${cliente.protocolo}) na Distribuidora Flash Point está em análise cadastral.`;
-            } else if (tipoMensagem === 'aguardando_pagamento') {
-                const pixChave = cliente.pixCopiaECola || '';
-                texto = `Olá ${cliente.nome}! Sua proposta (${cliente.protocolo}) foi *aprovada*! Acesse o site na aba Acompanhar para selecionar o parcelamento e efetuar o Pix de entrada de R$ ${(cliente.valorEntrada || 0).toFixed(2)}.\n\nPix Copia e Cola:\n${pixChave}`;
-            } else if (tipoMensagem === 'aprovado') {
-                texto = `Parabéns ${cliente.nome}! Seu pagamento de entrada foi confirmado e seu crédito de R$ ${(cliente.limite || 0).toFixed(2)} foi totalmente liberado pela Distribuidora Flash Point!`;
-            } else if (tipoMensagem === 'reprovado') {
-                texto = `Olá ${cliente.nome}, infelizmente sua proposta (${cliente.protocolo}) não foi aprovada neste momento pela Distribuidora Flash Point.`;
-            }
-
-            const url = `https://wa.me/${numeroZap}?text=${encodeURIComponent(texto)}`;
-            window.open(url, '_blank');
-        }
-
-        function renderizarPainelAdmin() {
-            const container = document.getElementById('lista-propostas-admin');
-            const dashResumo = document.getElementById('dashboard-resumo-financeiro');
-            if (!container) return;
-
-            if (listaClientes.length === 0) {
-                container.innerHTML = `
-                    <div class="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-500 text-xs">
-                        Nenhuma proposta registrada no momento.
-                    </div>
-                `;
-                if (dashResumo) dashResumo.innerHTML = '';
-                return;
-            }
-
-            let totalSolicitadoGeral = 0;
-            let totalEntradasPagasRecebidas = 0;
-            let totalAReceberParcelado = 0;
-
-            listaClientes.forEach(c => {
-                const lim = c.limite || 0;
-                const ent = c.valorEntrada || (lim * 0.1);
-                const jur = c.jurosParcelamento || 0;
-                
-                totalSolicitadoGeral += lim;
-                if (c.entradaPaga) {
-                    totalEntradasPagasRecebidas += ent;
-                    const saldoDev = (lim - ent) * (1 + (jur / 100));
-                    totalAReceberParcelado += saldoDev;
-                }
-            });
-
-            if (dashResumo) {
-                dashResumo.innerHTML = `
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                        <div class="p-5 bg-blue-950 text-white rounded-2xl shadow-md space-y-1">
-                            <span class="text-[11px] font-bold opacity-80 uppercase tracking-wider">Entradas Pix Confirmadas</span>
-                            <div class="text-2xl font-black">R$ ${totalEntradasPagasRecebidas.toFixed(2)}</div>
-                            <p class="text-[10px] text-blue-200">Dinheiro já recebido na conta</p>
-                        </div>
-                        <div class="p-5 bg-indigo-900 text-white rounded-2xl shadow-md space-y-1">
-                            <span class="text-[11px] font-bold opacity-80 uppercase tracking-wider">Total a Receber (Parcelas)</span>
-                            <div class="text-2xl font-black">R$ ${totalAReceberParcelado.toFixed(2)}</div>
-                            <p class="text-[10px] text-indigo-200">Saldo futuro dos contratos ativos</p>
-                        </div>
-                        <div class="p-5 bg-slate-900 text-white rounded-2xl shadow-md space-y-1">
-                            <span class="text-[11px] font-bold opacity-80 uppercase tracking-wider">Volume Total Solicitado</span>
-                            <div class="text-2xl font-black">R$ ${totalSolicitadoGeral.toFixed(2)}</div>
-                            <p class="text-[10px] text-slate-400">${listaClientes.length} proposta(s) cadastrada(s)</p>
-                        </div>
-                    </div>
-                `;
-            }
-
-            let html = '';
-            listaClientes.forEach(c => {
-                const lim = c.limite || 1500;
-                const percEntrada = c.porcentagemEntrada || 10;
-                const valEntrada = c.valorEntrada || (lim * (percEntrada / 100));
-                const qtdParc = c.parcelas || 48;
-                const juros = c.jurosParcelamento || 0;
-                const descAnt = c.descontoAntecipado || 0;
-                
-                const saldoDev = lim - valEntrada;
-                const totalComJuros = saldoDev * (1 + (juros / 100));
-                const valorParcUnit = qtdParc > 0 ? (totalComJuros / qtdParc) : 0;
-                const totalGeralReceber = valEntrada + totalComJuros;
-
-                let badgeStatus = '<span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold text-[10px]">🟡 Em Análise</span>';
-                if (c.status === 'aprovado') {
-                    badgeStatus = '<span class="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full font-bold text-[10px]">🟢 Aprovado</span>';
-                } else if (c.status === 'reprovado') {
-                    badgeStatus = '<span class="bg-rose-100 text-rose-800 px-3 py-1 rounded-full font-bold text-[10px]">🔴 Reprovado</span>';
+                if (!data || data.length === 0) {
+                    container.innerHTML = '<p style="text-align: center;">Nenhum registro encontrado.</p>';
+                    return;
                 }
 
-                html += `
-                    <div class="p-6 bg-slate-50 border border-slate-200 rounded-2xl space-y-5 shadow-sm">
-                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200 pb-3">
-                            <div>
-                                <span class="text-[11px] font-bold text-blue-950 block">Protocolo: ${c.protocolo}</span>
-                                <h4 class="font-black text-slate-900 text-base">Painel de Edição e Ações</h4>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                ${badgeStatus}
+                data.forEach((p) => {
+                    let statusTexto = p.status || 'Em Análise';
+                    let classeStatus = 'status-analise';
+                    if (statusTexto === 'Aprovado' || statusTexto === 'pago') classeStatus = 'status-aprovado';
+                    if (statusTexto === 'Reprovado') classeStatus = 'status-reprovado';
+
+                    container.innerHTML += `
+                        <div class="proposta-card">
+                            <strong>Nome: ${p.nome}</strong><br>
+                            <span>E-mail: ${p.email}</span><br>
+                            <span>Valor: R$ ${Number(p.valor || 0).toFixed(2)}</span><br><br>
+                            <span class="${classeStatus}">${statusTexto}</span>
+                            <div style="margin-top: 10px;">
+                                <button class="btn-aprovar" onclick="mudarStatus(${p.id}, 'Aprovado')">Aprovar</button>
+                                <button class="btn-reprovar" onclick="mudarStatus(${p.id}, 'Reprovado')">Reprovar</button>
                             </div>
                         </div>
-
-                        <div class="flex flex-wrap gap-2 bg-white p-3 rounded-xl border border-slate-200">
-                            <span class="text-[11px] font-bold text-slate-500 self-center mr-1">Decisão:</span>
-                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'aprovado')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold px-4 py-2 rounded-lg transition shadow-sm flex items-center gap-1">
-                                <i class="fa-solid fa-circle-check"></i> Aprovar Proposta
-                            </button>
-                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'reprovado')" class="bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold px-4 py-2 rounded-lg transition shadow-sm flex items-center gap-1">
-                                <i class="fa-solid fa-circle-xmark"></i> Reprovar
-                            </button>
-                            <div class="w-full border-t border-slate-100 my-1"></div>
-                            <span class="text-[11px] font-bold text-slate-500 self-center mr-1">WhatsApp:</span>
-                            <button onclick="enviarMensagemWhatsAppCliente('${c.protocolo}', 'aguardando_pagamento')" class="bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
-                                <i class="fa-brands fa-whatsapp"></i> Enviar Pix Aprovado
-                            </button>
-                            <button onclick="enviarMensagemWhatsAppCliente('${c.protocolo}', 'reprovado')" class="bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shadow-sm">
-                                <i class="fa-brands fa-whatsapp"></i> Avisar Reprovação
-                            </button>
-                        </div>
-
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-                            <div>
-                                <label class="text-slate-500 font-bold block mb-1">Nome do Cliente</label>
-                                <input type="text" id="edit-nome-${c.protocolo}" value="${c.nome || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
-                            </div>
-                            <div>
-                                <label class="text-slate-500 font-bold block mb-1">CPF</label>
-                                <input type="text" id="edit-cpf-${c.protocolo}" value="${c.cpf || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
-                            </div>
-                            <div>
-                                <label class="text-slate-500 font-bold block mb-1">WhatsApp</label>
-                                <input type="text" id="edit-whatsapp-${c.protocolo}" value="${c.whatsapp || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                            <div>
-                                <label class="text-slate-500 font-bold block mb-1">Endereço Completo</label>
-                                <input type="text" id="edit-endereco-${c.protocolo}" value="${c.endereco || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
-                            </div>
-                            <div>
-                                <label class="text-slate-500 font-bold block mb-1">CEP</label>
-                                <input type="text" id="edit-cep-${c.protocolo}" value="${c.cep || ''}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
-                            <div>
-                                <label class="text-slate-700 font-bold block mb-1">Valor Limite (R$)</label>
-                                <input type="number" step="50" id="edit-limite-${c.protocolo}" value="${lim}" oninput="calcularValoresAdmin('${c.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-blue-950">
-                            </div>
-                            <div>
-                                <label class="text-slate-700 font-bold block mb-1">% Entrada</label>
-                                <input type="number" step="1" id="edit-porcentagem-${c.protocolo}" value="${percEntrada}" oninput="calcularValoresAdmin('${c.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-amber-700">
-                            </div>
-                            <div>
-                                <label class="text-slate-700 font-bold block mb-1">Qtd Parcelas Padrão</label>
-                                <input type="number" id="edit-parcelas-${c.protocolo}" value="${qtdParc}" oninput="calcularValoresAdmin('${c.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
-                            </div>
-                            <div>
-                                <label class="text-slate-700 font-bold block mb-1">Juros Parc. (%)</label>
-                                <input type="number" step="0.5" id="edit-juros-${c.protocolo}" value="${juros}" oninput="calcularValoresAdmin('${c.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800">
-                            </div>
-                            <div>
-                                <label class="text-slate-700 font-bold block mb-1">Desc. Antecipado (%)</label>
-                                <input type="number" step="0.5" id="edit-desconto-${c.protocolo}" value="${descAnt}" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-emerald-700">
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-4 rounded-xl border border-slate-200 text-xs shadow-inner">
-                            <div>
-                                <span class="text-slate-500 block">Valor Entrada Pix:</span>
-                                <strong id="res-entrada-${c.protocolo}" class="text-amber-600 text-sm">R$ ${valEntrada.toFixed(2)}</strong>
-                            </div>
-                            <div>
-                                <span class="text-slate-500 block">Valor por Parcela:</span>
-                                <strong id="res-valparc-${c.protocolo}" class="text-blue-950 text-sm">R$ ${valorParcUnit.toFixed(2)}</strong>
-                            </div>
-                            <div>
-                                <span class="text-slate-500 block">Total c/ Juros:</span>
-                                <strong id="res-totaljuros-${c.protocolo}" class="text-slate-900 text-sm">R$ ${totalComJuros.toFixed(2)}</strong>
-                            </div>
-                            <div>
-                                <span class="text-slate-500 block">Total Geral Contrato:</span>
-                                <strong id="res-totalgeral-${c.protocolo}" class="text-emerald-700 text-sm">R$ ${totalGeralReceber.toFixed(2)}</strong>
-                            </div>
-                        </div>
-
-                        <div class="flex items-center gap-2 pt-1">
-                            <input type="checkbox" id="edit-entradapaga-${c.protocolo}" ${c.entradaPaga ? 'checked' : ''} class="w-4 h-4 text-blue-950 rounded border-slate-300">
-                            <label for="edit-entradapaga-${c.protocolo}" class="text-xs font-bold text-slate-700">Marcar Entrada como Paga (Libera o contrato definitivo)</label>
-                        </div>
-
-                        <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
-                            <button onclick="salvarEdicaoAdmin('${c.protocolo}')" class="bg-blue-950 hover:bg-blue-900 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
-                                <i class="fa-solid fa-floppy-disk"></i> Salvar Alterações
-                            </button>
-                            <button onclick="abrirContrato('${c.protocolo}')" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm flex items-center gap-1.5">
-                                <i class="fa-solid fa-print"></i> Imprimir Contrato
-                            </button>
-                            <button onclick="copiarTextoPixAdmin('${c.protocolo}')" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-4 py-2.5 rounded-xl text-xs transition flex items-center gap-1.5">
-                                <i class="fa-solid fa-copy"></i> Copiar Pix
-                            </button>
-                            <button onclick="excluirPropostaAdmin('${c.protocolo}')" class="bg-rose-600 hover:bg-rose-500 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm ml-auto">
-                                <i class="fa-solid fa-trash"></i> Excluir
-                            </button>
-                        </div>
-                    </div>
-                `;
-            });
-
-            container.innerHTML = html;
-        }
-
-        function copiarTextoPixAdmin(protocolo) {
-            const cliente = listaClientes.find(c => c.protocolo === protocolo);
-            if (!cliente || !cliente.pixCopiaECola) return;
-
-            navigator.clipboard.writeText(cliente.pixCopiaECola).then(() => {
-                alert(`Código Pix Copia e Cola do protocolo ${protocolo} copiado com sucesso!`);
-            });
-        }
-
-        function gerarCronogramaParcelasPersonalizado(cliente, qtdParcelasDesejada) {
-            const parcelas = parseInt(qtdParcelasDesejada) || 48;
-            const periodicidade = parseInt(cliente.periodicidade || '30');
-            const lim = cliente.limite || 1500;
-            const ent = cliente.valorEntrada || (lim * 0.1);
-            const totalComJuros = (lim - ent) * (1 + ((cliente.jurosParcelamento || 0) / 100));
-            const valorParcela = parcelas > 0 ? (totalComJuros / parcelas) : 0;
-            
-            let cronograma = [];
-            let dataBase = new Date();
-            
-            for (let i = 1; i <= parcelas; i++) {
-                dataBase.setDate(dataBase.getDate() + periodicidade);
-                const dataFormatada = dataBase.toLocaleDateString('pt-BR');
-                cronograma.push({
-                    numero: i,
-                    vencimento: dataFormatada,
-                    valor: valorParcela
+                    `;
                 });
-            }
-            return cronograma;
-        }
-
-        function atualizarCalculoParcelasCliente(protocolo) {
-            const selectEl = document.getElementById(`select-parcelas-${protocolo}`);
-            if (!selectEl) return;
-            const qtdSelecionada = parseInt(selectEl.value);
-
-            const cliente = listaClientes.find(c => c.protocolo === protocolo);
-            if (!cliente) return;
-
-            const lim = cliente.limite || 1500;
-            const ent = cliente.valorEntrada || (lim * 0.1);
-            const juros = cliente.jurosParcelamento || 0;
-            const totalComJuros = (lim - ent) * (1 + (juros / 100));
-            const valorPorParc = qtdSelecionada > 0 ? (totalComJuros / qtdSelecionada) : 0;
-
-            const elValorParc = document.getElementById(`res-cliente-valparc-${protocolo}`);
-            if (elValorParc) elValorParc.innerText = `R$ ${valorPorParc.toFixed(2)}`;
-
-            const cronograma = gerarCronogramaParcelasPersonalizado(cliente, qtdSelecionada);
-            let htmlCronogramaCliente = '';
-            cronograma.forEach(p => {
-                htmlCronogramaCliente += `<div class="flex justify-between items-center text-xs py-2 border-b border-slate-100"><span class="text-slate-600">Parcela ${p.numero} &bull; Vencimento: <strong>${p.vencimento}</strong></span><strong class="text-blue-950">R$ ${p.valor.toFixed(2)}</strong></div>`;
-            });
-
-            const elContainerCronograma = document.getElementById(`cronograma-container-${protocolo}`);
-            if (elContainerCronograma) elContainerCronograma.innerHTML = htmlCronogramaCliente;
-
-            cliente.parcelasSelecionadas = qtdSelecionada;
-        }
-
-        function copiarTextoPix(idElementoInput, idBotao) {
-            const inputEl = document.getElementById(idElementoInput);
-            if (!inputEl || !inputEl.value) {
-                alert('Nenhum código Pix disponível para copiar.');
-                return;
-            }
-
-            navigator.clipboard.writeText(inputEl.value).then(() => {
-                const btn = document.getElementById(idBotao);
-                if (btn) {
-                    const textoOriginal = btn.innerHTML;
-                    btn.innerHTML = `<i class="fa-solid fa-check"></i> Copiado!`;
-                    btn.classList.remove('bg-blue-900', 'bg-slate-800', 'hover:bg-blue-800');
-                    btn.classList.add('bg-emerald-600', 'text-white');
-                    setTimeout(() => {
-                        btn.innerHTML = textoOriginal;
-                        btn.classList.remove('bg-emerald-600');
-                        btn.classList.add('bg-blue-950', 'text-white');
-                    }, 2000);
-                }
-            });
-        }
-
-        function simularPagamentoPixEfetuado(protocolo, nomeCliente) {
-            const locais = JSON.parse(localStorage.getItem('flash_clientes_locais') || '[]');
-            const idx = locais.findIndex(c => c.protocolo === protocolo);
-            if (idx !== -1) {
-                locais[idx].entradaPaga = true;
-                localStorage.setItem('flash_clientes_locais', JSON.stringify(locais));
-            }
-
-            if (supabaseClient) {
-                supabaseClient.from('clientes').update({ entradaPaga: true }).eq('protocolo', protocolo).then(() => {});
-            }
-
-            consultarProposta();
-        }
-
-        function abrirContrato(protocolo) {
-            const cliente = listaClientes.find(c => c.protocolo === protocolo);
-            if (!cliente) return;
-
-            const qtdParc = cliente.parcelasSelecionadas || cliente.parcelas || 48;
-            const cronograma = gerarCronogramaParcelasPersonalizado(cliente, qtdParc);
-            const lim = cliente.limite || 1500;
-            const ent = cliente.valorEntrada || (lim * 0.1);
-            const totalComJuros = (lim - ent) * (1 + ((cliente.jurosParcelamento || 0) / 100));
-
-            let htmlTabelaContrato = '';
-            cronograma.forEach(p => {
-                htmlTabelaContrato += `<tr><td style="border: 1px solid #ddd; padding: 6px;">Parcela ${p.numero}</td><td style="border: 1px solid #ddd; padding: 6px;">${p.vencimento}</td><td style="border: 1px solid #ddd; padding: 6px;">R$ ${p.valor.toFixed(2)}</td></tr>`;
-            });
-
-            const janela = window.open('', '_blank');
-            janela.document.write(`
-                <html>
-                <head><title>Contrato de Crediário - ${cliente.protocolo}</title></head>
-                <body style="font-family: Arial, sans-serif; padding: 40px; color: #333; line-height: 1.5;">
-                    <h2 style="text-align: center; color: #0f172a;">DISTRIBUIDORA FLASH POINT - CONTRATO DE CREDIÁRIO</h2>
-                    <hr style="border: 1px solid #ccc; margin-bottom: 20px;">
-                    <p><strong>Protocolo:</strong> ${cliente.protocolo}</p>
-                    <p><strong>Cliente:</strong> ${cliente.nome} | <strong>CPF:</strong> ${cliente.cpf}</p>
-                    <p><strong>Endereço:</strong> ${cliente.endereco || 'Não informado'}</p>
-                    <p><strong>WhatsApp:</strong> ${cliente.whatsapp}</p>
-                    
-                    <h3>Condições Comerciais</h3>
-                    <p><strong>Valor Total do Crediário:</strong> R$ ${lim.toFixed(2)}</p>
-                    <p><strong>Valor da Entrada Pix:</strong> R$ ${ent.toFixed(2)} (${cliente.porcentagemEntrada || 10}%)</p>
-                    <p><strong>Plano de Parcelamento Escolhido:</strong> ${qtdParc}x mensais</p>
-                    <p><strong>Desconto para Pagamento Antecipado:</strong> ${cliente.descontoAntecipado || 10}%</p>
-                    <p><strong>Valor Total Financiado com Juros:</strong> R$ ${totalComJuros.toFixed(2)}</p>
-
-                    <h3>Cronograma de Vencimentos</h3>
-                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; margin-bottom: 30px;">
-                        <thead>
-                            <tr style="background: #f1f5f9;"><th style="border: 1px solid #ddd; padding: 8px;">Parcela</th><th style="border: 1px solid #ddd; padding: 8px;">Vencimento</th><th style="border: 1px solid #ddd; padding: 8px;">Valor</th></tr>
-                        </thead>
-                        <tbody>
-                            ${htmlTabelaContrato}
-                        </tbody>
-                    </table>
-
-                    <p style="font-size: 12px; color: #666; margin-top: 50px;">O contratante declara estar de acordo com todas as cláusulas e datas de vencimento descritas neste instrumento particular de abertura de crédito.</p>
-                    
-                    <div style="margin-top: 80px; display: flex; justify-content: space-between;">
-                        <div style="text-align: center; width: 45%; border-top: 1px solid #000; padding-top: 10px;">Assinatura da Distribuidora Flash Point</div>
-                        <div style="text-align: center; width: 45%; border-top: 1px solid #000; padding-top: 10px;">Assinatura do Cliente</div>
-                    </div>
-                </body>
-                </html>
-            `);
-            janela.document.close();
-            janela.print();
-        }
-
-        async function consultarProposta(isRealtimeUpdate = false) {
-            const buscaInput = document.getElementById('busca-cpf').value.trim();
-            const resultado = document.getElementById('resultado-busca');
-            if (!buscaInput) {
-                if (!isRealtimeUpdate) alert('Digite seu CPF ou Protocolo.');
-                return;
-            }
-
-            await carregarDadosDoBanco();
-            const termoLimpo = buscaInput.toLowerCase();
-            const termoDigitos = buscaInput.replace(/\D/g, '');
-
-            const cliente = listaClientes.find(c => {
-                const proto = (c.protocolo || '').toLowerCase();
-                const cpfOriginal = (c.cpf || '').toLowerCase();
-                const cpfDigitos = cpfOriginal.replace(/\D/g, '');
-                const nome = (c.nome || '').toLowerCase();
-
-                return proto === termoLimpo || (termoDigitos.length >= 5 && cpfDigitos === termoDigitos) || (termoLimpo.length >= 3 && nome.includes(termoLimpo));
-            });
-
-            resultado.classList.remove('hidden');
-
-            if (!cliente) {
-                resultado.innerHTML = `
-                    <div class="p-6 bg-rose-50 border border-rose-200 rounded-3xl text-center shadow-sm">
-                        <h4 class="font-bold text-rose-900 text-sm">Nenhuma solicitação encontrada para: ${buscaInput}</h4>
-                    </div>
-                `;
-                return;
-            }
-
-            if (cliente.status === 'analise') {
-                resultado.innerHTML = `
-                    <div class="p-8 bg-white border border-slate-200 rounded-3xl space-y-5 text-center shadow-lg">
-                        <div class="w-12 h-12 bg-slate-100 text-blue-950 rounded-2xl flex items-center justify-center mx-auto text-xl shadow-inner">
-                            <i class="fa-solid fa-spinner animate-spin"></i>
-                        </div>
-                        <div class="space-y-1">
-                            <span class="text-[11px] font-bold text-slate-400 tracking-wider uppercase">Protocolo: ${cliente.protocolo}</span>
-                            <h3 class="text-lg font-black text-slate-900">${cliente.nome}</h3>
-                        </div>
-
-                        <div class="grid grid-cols-1 gap-3 max-w-sm mx-auto bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs text-left">
-                            <div class="flex justify-between items-center py-1 border-b border-slate-200/60">
-                                <span class="text-slate-500 font-medium">Valor Solicitado:</span>
-                                <strong class="text-slate-900 font-bold">R$ ${(cliente.limite || 1500).toFixed(2)}</strong>
-                            </div>
-                            <div class="flex justify-between items-center py-1">
-                                <span class="text-slate-500 font-medium">Status da Proposta:</span>
-                                <span class="bg-amber-100 text-amber-800 px-3 py-0.5 rounded-full font-bold text-[10px]">Aguardando Análise</span>
-                            </div>
-                        </div>
-
-                        <p class="text-[11px] text-slate-500 leading-relaxed max-w-sm mx-auto">
-                            Sua solicitação está em análise pela nossa equipe. Assim que aprovada, os detalhes de liberação e parcelas aparecerão automaticamente aqui.
-                        </p>
-                    </div>
-                `;
-                return;
-            }
-
-            if (cliente.status === 'reprovado') {
-                resultado.innerHTML = `
-                    <div class="p-8 bg-rose-50 border border-rose-200 rounded-3xl space-y-4 text-center shadow-sm">
-                        <h3 class="text-lg font-black text-rose-900">Proposta não aprovada</h3>
-                        <p class="text-xs text-rose-800 leading-relaxed max-w-md mx-auto">
-                            Olá <strong>${cliente.nome}</strong>, infelizmente sua solicitação (Protocolo: <strong>${cliente.protocolo}</strong>) não foi aprovada neste momento.
-                        </p>
-                    </div>
-                `;
-                return;
-            }
-
-            const pixGerado = cliente.pixCopiaECola || `00020126580014br.gov.bcb.pix0136${CONFIG.CHAVE_PIX_RECEBIMENTO}520400005303986540${(cliente.valorEntrada || 150).toFixed(2)}5802BR5925DISTRIBUIDORA FLASH POINT6009SAO PAULO62070503***6304`;
-            const qrImg = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(pixGerado)}`;
-            
-            const lim = cliente.limite || 1500;
-            const ent = cliente.valorEntrada || (lim * 0.1);
-            const jurosNum = cliente.jurosParcelamento || 2.5;
-            const descontoNum = cliente.descontoAntecipado || 10;
-            const qtdParcPadrao = cliente.parcelas || 48;
-            
-            const qtdParcAtual = cliente.parcelasSelecionadas || qtdParcPadrao;
-            const saldoDev = lim - ent;
-            const totalComJuros = saldoDev * (1 + (jurosNum / 100));
-            const valorPorParcela = qtdParcAtual > 0 ? (totalComJuros / qtdParcAtual) : 0;
-            
-            const cronograma = gerarCronogramaParcelasPersonalizado(cliente, qtdParcAtual);
-            let htmlCronogramaCliente = '';
-            cronograma.forEach(p => {
-                htmlCronogramaCliente += `<div class="flex justify-between items-center text-xs py-2 border-b border-slate-100"><span class="text-slate-600">Parcela ${p.numero} &bull; Vencimento: <strong>${p.vencimento}</strong></span><strong class="text-blue-950">R$ ${p.valor.toFixed(2)}</strong></div>`;
-            });
-
-            if (cliente.entradaPaga) {
-                const textoZapFinalizacao = encodeURIComponent(`Olá! Pix pago com sucesso, parcela paga com sucesso, ou entrada. Seguem as informações do meu plano (${qtdParcAtual}x de R$ ${valorPorParcela.toFixed(2)}) e meu protocolo ${cliente.protocolo}. Gostaria de finalizar a compra.`);
-                const urlZapFinal = `https://wa.me/${CONFIG.WHATSAPP_CONTATO}?text=${textoZapFinalizacao}`;
-
-                resultado.innerHTML = `
-                    <div class="p-8 bg-emerald-50 border border-emerald-300 rounded-3xl space-y-6 text-center shadow-xl">
-                        <div class="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center mx-auto text-2xl shadow-md">
-                            <i class="fa-solid fa-check"></i>
-                        </div>
-                        <h3 class="text-2xl font-black text-emerald-900">Pix pago com sucesso, parcela paga com sucesso, ou entrada!</h3>
-                        
-                        <div class="p-6 bg-white rounded-2xl shadow-md border border-emerald-200 space-y-3 text-left text-xs">
-                            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
-                                <span class="text-slate-500">Protocolo:</span>
-                                <strong class="text-slate-900">${cliente.protocolo}</strong>
-                            </div>
-                            <div class="flex justify-between items-center border-b border-slate-100 pb-2">
-                                <span class="text-slate-500">Valor Liberado:</span>
-                                <strong class="text-emerald-700 text-sm">R$ ${lim.toFixed(2)}</strong>
-                            </div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-slate-500">Plano Escolhido:</span>
-                                <strong class="text-blue-950">${qtdParcAtual}x de R$ ${valorPorParcela.toFixed(2)}</strong>
-                            </div>
-                        </div>
-
-                        <div class="border-t border-emerald-200 pt-4 space-y-2 text-left">
-                            <span class="text-xs font-bold text-emerald-900 block">Demonstrativo das Parcelas:</span>
-                            <div class="max-h-40 overflow-y-auto pr-1 space-y-1 bg-white p-3 rounded-xl border border-emerald-200">
-                                ${htmlCronogramaCliente}
-                            </div>
-                        </div>
-
-                        <div class="pt-2 flex flex-col gap-3">
-                            <a href="${urlZapFinal}" target="_blank" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 px-6 rounded-2xl text-xs transition shadow-xl flex items-center justify-center gap-2">
-                                <i class="fa-brands fa-whatsapp text-base"></i> Direcionar para o WhatsApp e Finalizar a Compra
-                            </a>
-                            <button onclick="abrirContrato('${cliente.protocolo}')" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3.5 px-6 rounded-2xl text-xs transition shadow-lg flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-file-contract"></i> Imprimir Contrato de Crediário
-                            </button>
-                        </div>
-                    </div>
-                `;
-            } else {
-                resultado.innerHTML = `
-                    <div class="p-8 bg-white border border-slate-200 rounded-3xl space-y-6 shadow-xl">
-                        <div class="flex justify-between items-center border-b border-slate-100 pb-4">
-                            <div>
-                                <span class="text-xs text-slate-400 font-medium">Protocolo: ${cliente.protocolo}</span>
-                                <h3 class="font-black text-slate-900 text-lg">${cliente.nome}</h3>
-                            </div>
-                            <div><span class="bg-emerald-100 text-emerald-800 px-4 py-1.5 rounded-full font-bold text-xs">🟢 Aprovado</span></div>
-                        </div>
-
-                        <div class="p-6 bg-slate-900 text-white rounded-2xl shadow-lg flex flex-col sm:flex-row justify-between items-center gap-4">
-                            <div class="space-y-1 text-center sm:text-left">
-                                <span class="text-[11px] uppercase tracking-wider font-bold text-slate-400 block">Crédito Disponível para Uso</span>
-                                <div class="text-3xl font-black text-white">R$ ${lim.toFixed(2)}</div>
-                                <p class="text-[11px] text-slate-300">Selecione o plano de parcelamento ideal abaixo</p>
-                            </div>
-                            <div class="bg-white/10 px-4 py-3 rounded-xl border border-white/10 text-center">
-                                <span class="text-[10px] uppercase font-bold text-slate-300 block">Entrada Mínima Pix</span>
-                                <span class="text-lg font-bold text-amber-400">R$ ${ent.toFixed(2)}</span>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-5 rounded-2xl border border-slate-200 text-xs">
-                            <div class="space-y-2">
-                                <label class="text-slate-700 font-bold block">Selecione a Quantidade de Parcelas:</label>
-                                <select id="select-parcelas-${cliente.protocolo}" onchange="atualizarCalculoParcelasCliente('${cliente.protocolo}')" class="w-full bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-bold text-blue-950 focus:outline-none">
-                                    <option value="12" ${qtdParcAtual === 12 ? 'selected' : ''}>12x Mensais</option>
-                                    <option value="24" ${qtdParcAtual === 24 ? 'selected' : ''}>24x Mensais</option>
-                                    <option value="36" ${qtdParcAtual === 36 ? 'selected' : ''}>36x Mensais</option>
-                                    <option value="48" ${qtdParcAtual === 48 ? 'selected' : ''}>48x Mensais</option>
-                                </select>
-                            </div>
-                            <div class="space-y-2 flex flex-col justify-center">
-                                <div class="flex justify-between">
-                                    <span class="text-slate-500">Valor por Parcela:</span>
-                                    <strong id="res-cliente-valparc-${cliente.protocolo}" class="text-blue-950 font-bold text-sm">R$ ${valorPorParcela.toFixed(2)}</strong>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-slate-500">Taxa de Juros:</span>
-                                    <strong class="text-slate-800">${jurosNum}% a.m.</strong>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-slate-500">Pagamento Antecipado:</span>
-                                    <strong class="text-emerald-700 font-bold">${descontoNum}% de Desconto</strong>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="space-y-4 text-center pt-2 border-t border-slate-100">
-                            <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wide">Efetue o Pix de Entrada para Liberar o Crediário</h4>
-                            <div class="flex justify-center">
-                                <img src="${qrImg}" alt="QR Code Pix" class="w-40 h-40 border-2 border-slate-100 p-2 rounded-2xl bg-white shadow-md">
-                            </div>
-                            
-                            <div class="space-y-1.5 text-left">
-                                <label class="text-[11px] text-slate-500 font-bold block">Pix Copia e Cola:</label>
-                                <div class="flex gap-2">
-                                    <input type="text" id="input-pix-cliente-${cliente.protocolo}" value="${pixGerado}" readonly class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-xs text-slate-600 select-all">
-                                    <button id="btn-copiar-cliente-${cliente.protocolo}" onclick="copiarTextoPix('input-pix-cliente-${cliente.protocolo}', 'btn-copiar-cliente-${cliente.protocolo}')" class="bg-blue-950 hover:bg-blue-900 text-white px-5 py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center gap-1.5 shrink-0">
-                                        <i class="fa-solid fa-copy"></i> Copiar
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="pt-2">
-                            <button onclick="simularPagamentoPixEfetuado('${cliente.protocolo}', '${cliente.nome}')" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-4 px-6 rounded-2xl text-xs transition shadow-xl flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-circle-check text-base"></i> Simular Pagamento da Entrada Efetuado
-                            </button>
-                        </div>
-
-                        <div class="border-t border-slate-100 pt-4 space-y-2">
-                            <span class="text-xs font-bold text-slate-700 block">Cronograma de Vencimentos:</span>
-                            <div id="cronograma-container-${cliente.protocolo}" class="max-h-48 overflow-y-auto pr-1 space-y-1">
-                                ${htmlCronogramaCliente}
-                            </div>
-                        </div>
-                    </div>
-                `;
+            } catch (err) {
+                debugDiv.innerText = 'Erro ao sincronizar: ' + err.message;
             }
         }
+
+        window.mudarStatus = async function(id, novoStatus) {
+            try {
+                const { error } = await supabaseClient
+                    .from('clientes')
+                    .update({ status: novoStatus })
+                    .eq('id', id);
+
+                if (error) throw error;
+                carregarDados();
+            } catch (err) {
+                alert('Erro ao atualizar: ' + err.message);
+            }
+        };
+
+        carregarDados();
+        setInterval(carregarDados, 4000); // Atualiza automaticamente o celular e o PC a cada 4 segundos
     </script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-    </style>
-</head>
-<body class="bg-slate-50 min-h-screen text-slate-800 flex flex-col selection:bg-blue-950 selection:text-white">
-
-    <header class="bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-sm sticky top-0 z-50">
-        <div class="max-w-4xl mx-auto px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div class="flex items-center gap-3.5">
-                <div class="w-12 h-12 bg-gradient-to-br from-blue-950 to-blue-900 text-white rounded-2xl flex items-center justify-center font-black shadow-lg text-lg">
-                    FP
-                </div>
-                <div>
-                    <h1 class="font-black text-blue-950 text-base leading-tight tracking-tight">Distribuidora Flash Point</h1>
-                    <p class="text-[11px] text-slate-500 font-semibold tracking-wide">FlashCred • Crédito e Crediário</p>
-                </div>
-            </div>
-
-            <nav class="flex gap-2 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/60 shadow-inner">
-                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300">Solicitar</button>
-                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300">Acompanhar</button>
-                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300">Painel Admin</button>
-            </nav>
-        </div>
-    </header>
-
-    <main class="max-w-4xl mx-auto px-6 py-10 flex-grow w-full space-y-12">
-
-        <!-- ABA SOLICITAR -->
-        <section id="tab-solicitar" class="tab-content space-y-10">
-            <div class="bg-gradient-to-br from-blue-950 via-blue-900 to-indigo-950 text-white p-8 sm:p-12 rounded-3xl shadow-2xl space-y-6 relative overflow-hidden">
-                <div class="space-y-3 relative z-10">
-                    <span class="inline-block bg-blue-800/80 text-blue-200 border border-blue-700/50 text-[11px] font-bold px-3.5 py-1.5 rounded-full">
-                        FlashCred • Distribuidora Flash Point
-                    </span>
-                    <h2 class="text-2xl sm:text-4xl font-black tracking-tight leading-tight">
-                        Parcelar no Pix sem cartão? <br class="hidden sm:inline">Você chegou no lugar certo.
-                    </h2>
-                    <p class="text-sm sm:text-base text-blue-100 font-medium leading-relaxed max-w-2xl">
-                        Compre móveis novos direto da fábrica, tudo 100% online, sem burocracia.
-                    </p>
-                </div>
-            </div>
-
-            <div class="bg-white p-8 sm:p-10 rounded-3xl border border-slate-200/80 shadow-2xl space-y-6">
-                <h3 class="text-xl font-black text-blue-950 tracking-tight">Preencha seus dados para iniciar</h3>
-                
-                <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-5">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5">Nome Completo</label>
-                            <input type="text" id="nome" required placeholder="Digite seu nome completo" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5">CPF</label>
-                            <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950">
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5">WhatsApp / Telefone</label>
-                            <input type="text" id="whatsapp" required placeholder="(00) 00000-0000" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5">CEP</label>
-                            <input type="text" id="cep" required placeholder="00000-000" onblur="consultarCEP(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950">
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Endereço Completo</label>
-                        <input type="text" id="endereco" required placeholder="Rua, Número, Bairro, Cidade/UF" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950">
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5">Valor de Limite Desejado (R$)</label>
-                        <input type="number" id="valor" required min="200" max="15000" step="50" value="1500" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950 font-bold text-blue-950">
-                    </div>
-
-                    <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-4 px-6 rounded-2xl text-xs transition shadow-xl">
-                        🚀 Enviar Solicitação de Crédito
-                    </button>
-                </form>
-            </div>
-        </section>
-
-        <!-- ABA ACOMPANHAR -->
-        <section id="tab-acompanhar" class="tab-content hidden space-y-6">
-            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-4">
-                <h2 class="text-xl font-black text-blue-950 tracking-tight">Acompanhar Status da Proposta</h2>
-                <p class="text-xs text-slate-500">Digite seu CPF ou número de protocolo para ver o andamento e o Pix de entrada (visível apenas após a aprovação).</p>
-
-                <div class="flex gap-3">
-                    <input type="text" id="busca-cpf" placeholder="Digite seu CPF ou Protocolo (ex: FP-123456)" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs focus:outline-none focus:border-blue-950">
-                    <button onclick="consultarProposta()" class="bg-blue-950 hover:bg-blue-900 text-white px-6 py-3 rounded-2xl text-xs font-bold transition shrink-0 shadow-md">Consultar</button>
-                </div>
-            </div>
-
-            <div id="resultado-busca" class="hidden"></div>
-        </section>
-
-        <!-- ABA LOGIN ADMIN -->
-        <section id="tab-login-admin" class="tab-content hidden space-y-6">
-            <div class="max-w-md mx-auto bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-5">
-                <div class="text-center space-y-2">
-                    <div class="w-14 h-14 bg-blue-950 text-white rounded-2xl flex items-center justify-center mx-auto text-lg font-black shadow-lg">
-                        <i class="fa-solid fa-lock"></i>
-                    </div>
-                    <h2 class="text-xl font-black text-blue-950 tracking-tight">Painel Administrativo</h2>
-                    <p class="text-xs text-slate-500">Digite a senha para gerenciar propostas e finanças.</p>
-                </div>
-
-                <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4">
-                    <div>
-                        <input type="password" id="senha-admin" required placeholder="Senha de Acesso" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs text-center focus:outline-none font-bold tracking-widest">
-                    </div>
-                    <p id="erro-senha" class="text-rose-600 text-[11px] font-bold text-center hidden">Senha incorreta!</p>
-                    <button type="submit" class="w-full bg-blue-950 hover:bg-blue-900 text-white font-bold py-3.5 px-4 rounded-2xl text-xs transition shadow-md">Entrar no Painel</button>
-                </form>
-            </div>
-        </section>
-
-        <!-- ABA PAINEL ADMIN -->
-        <section id="tab-painel" class="tab-content hidden space-y-6">
-            <div class="flex justify-between items-center bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xl">
-                <div>
-                    <h2 class="font-black text-blue-950 text-lg tracking-tight">Painel de Controle e Gestão Completa</h2>
-                    <p class="text-xs text-slate-500">Controle financeiro em tempo real e edições detalhadas.</p>
-                </div>
-                <button onclick="logoutAdmin()" class="bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-4 py-2 rounded-2xl text-xs transition border border-rose-200">Sair</button>
-            </div>
-            
-            <div id="dashboard-resumo-financeiro"></div>
-
-            <div class="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-6">
-                <div class="flex justify-between items-0 border-b border-slate-100 pb-4">
-                    <h3 class="font-bold text-blue-950 text-sm">Todas as Propostas</h3>
-                    <button onclick="renderizarPainelAdmin()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3.5 py-2 rounded-xl transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-rotate"></i> Atualizar
-                    </button>
-                </div>
-                
-                <div id="lista-propostas-admin" class="space-y-6"></div>
-            </div>
-        </section>
-
-    </main>
-
-    <footer class="mt-auto py-8 border-t border-slate-200 bg-white text-center text-xs text-slate-500">
-        Distribuidora Flash Point &bull; Sistema FlashCred &copy; 2026
-    </footer>
-
 </body>
 </html>
