@@ -13,14 +13,14 @@
         th { background-color: #007bff; color: white; }
         .status-pendente { color: orange; font-weight: bold; }
         .status-pago { color: green; font-weight: bold; }
-        #debug { background: #eee; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; word-break: break-all; }
+        #debug { background: #eef2f7; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #333; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
     <div class="container">
         <h2>Painel de Clientes (Tempo Real)</h2>
-        <div id="debug">Iniciando diagnóstico...</div>
+        <div id="debug">Carregando painel...</div>
         <table>
             <thead>
                 <tr>
@@ -31,7 +31,7 @@
                 </tr>
             </thead>
             <tbody id="tabela-clientes">
-                <tr><td colspan="4" style="text-align: center;">Carregando...</td></tr>
+                <tr><td colspan="4" style="text-align: center;">Buscando dados...</td></tr>
             </tbody>
         </table>
     </div>
@@ -47,21 +47,23 @@
             const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
             async function carregarClientes() {
-                debugDiv.innerText = 'Conectando ao Supabase...';
+                debugDiv.innerText = 'Sincronizando com o Supabase...';
+                
                 const { data, error } = await supabaseClient
                     .from('clientes')
-                    .select('*');
+                    .select('*')
+                    .order('id', { ascending: false });
 
                 const tbody = document.getElementById('tabela-clientes');
                 tbody.innerHTML = '';
 
                 if (error) {
-                    debugDiv.innerText = 'Erro retornado pelo Supabase: ' + JSON.stringify(error);
+                    debugDiv.innerText = 'Erro na consulta: ' + error.message;
                     tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro: ${error.message}</td></tr>`;
                     return;
                 }
 
-                debugDiv.innerText = 'Conexão bem-sucedida! Total de registros: ' + (data ? data.length : 0);
+                debugDiv.innerText = 'Conectado com sucesso! Exibindo registros.';
 
                 if (!data || data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado ainda.</td></tr>';
@@ -82,6 +84,7 @@
 
             carregarClientes();
 
+            // Atualização em tempo real via WebSocket do Supabase
             supabaseClient
                 .channel('public:clientes')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
@@ -90,7 +93,7 @@
                 .subscribe();
 
         } catch (e) {
-            debugDiv.innerText = 'Erro crítico no script: ' + e.message;
+            debugDiv.innerText = 'Erro crítico: ' + e.message;
         }
     </script>
 </body>
