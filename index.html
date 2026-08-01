@@ -400,161 +400,111 @@
         }
 
         function renderizarPainelAdmin() {
-            const container = document.getElementById('tabela-clientes-admin');
+            const container = document.getElementById('lista-propostas-admin');
+            const dashResumo = document.getElementById('dashboard-resumo-financeiro');
             if (!container) return;
 
             if (listaClientes.length === 0) {
-                container.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400 text-xs font-bold">Nenhuma proposta cadastrada no sistema.</td></tr>`;
+                container.innerHTML = `<div class="p-8 text-center bg-slate-50 rounded-2xl border text-slate-500 text-xs">Nenhuma proposta registrada.</div>`;
+                if (dashResumo) dashResumo.innerHTML = '';
                 return;
+            }
+
+            let totalPagas = 0;
+            listaClientes.forEach(c => {
+                if (c.entradaPaga) totalPagas += (c.valorEntrada || 0);
+            });
+
+            if (dashResumo) {
+                dashResumo.innerHTML = `
+                    <div class="p-5 bg-blue-950 text-white rounded-2xl shadow-md space-y-1 mb-6">
+                        <span class="text-[11px] font-bold opacity-80 uppercase">Entradas Pix Confirmadas Automaticamente</span>
+                        <div class="text-2xl font-black">R$ ${totalPagas.toFixed(2)}</div>
+                    </div>
+                `;
             }
 
             let html = '';
             listaClientes.forEach(c => {
-                const limite = c.limite || 1500;
-                const entrada = c.valorEntrada || (limite * 0.1);
                 html += `
-                    <tr class="hover:bg-slate-50 border-b text-xs">
-                        <td class="p-4 font-bold text-blue-950">${c.protocolo}</td>
-                        <td class="p-4">
-                            <div class="font-bold text-slate-800">${c.nome || 'N/D'}</div>
-                            <div class="text-[10px] text-slate-400">${c.cpf || ''} - ${c.whatsapp || ''}</div>
-                        </td>
-                        <td class="p-4 font-black text-emerald-700">R$ ${limite.toFixed(2)}</td>
-                        <td class="p-4 font-bold text-blue-900">R$ ${entrada.toFixed(2)}</td>
-                        <td class="p-4">
-                            <select onchange="alterarStatusAdmin('${c.protocolo}', this.value)" class="p-1.5 rounded-lg text-xs font-bold border ${c.status === 'aprovado' ? 'bg-blue-50 text-blue-800 border-blue-200' : c.status === 'liberado' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : c.status === 'reprovado' ? 'bg-red-50 text-red-800 border-red-200' : 'bg-amber-50 text-amber-800 border-amber-200'}">
-                                <option value="analise" ${c.status === 'analise' ? 'selected' : ''}>Em Análise</option>
-                                <option value="aprovado" ${c.status === 'aprovado' ? 'selected' : ''}>Aprovado (Pix Entrada)</option>
-                                <option value="liberado" ${c.status === 'liberado' ? 'selected' : ''}>Liberado</option>
-                                <option value="reprovado" ${c.status === 'reprovado' ? 'selected' : ''}>Reprovado</option>
-                            </select>
-                        </td>
-                        <td class="p-4">
-                            <button onclick="excluirPropostaAdmin('${c.protocolo}')" class="px-3 py-1.5 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200"><i class="fa-solid fa-trash"></i> Excluir</button>
-                        </td>
-                    </tr>
+                    <div class="bg-white rounded-2xl border shadow-md p-6 space-y-4">
+                        <div class="flex justify-between items-center border-b pb-3">
+                            <div><span class="text-xs text-slate-400 font-bold">Protocolo</span><div class="font-black text-blue-950">${c.protocolo}</div></div>
+                            <div class="flex items-center gap-2">
+                                <span class="px-3 py-1 rounded-full text-xs font-bold uppercase ${c.entradaPaga ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${c.entradaPaga ? 'Pix Pago' : 'Aguardando Pix'}</span>
+                                <button onclick="excluirPropostaAdmin('${c.protocolo}')" class="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100"><i class="fa-solid fa-trash text-xs"></i></button>
+                            </div>
+                        </div>
+                        <div class="text-xs space-y-1">
+                            <div><strong>Nome:</strong> ${c.nome}</div>
+                            <div><strong>CPF:</strong> ${c.cpf}</div>
+                            <div><strong>Entrada:</strong> R$ ${(c.valorEntrada || 0).toFixed(2)}</div>
+                        </div>
+                        <div class="flex gap-2 pt-2">
+                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'liberado')" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700">Liberar Crédito</button>
+                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'reprovado')" class="px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700">Reprovar</button>
+                        </div>
+                    </div>
                 `;
             });
             container.innerHTML = html;
         }
     </script>
 </head>
-<body class="bg-slate-100 min-h-screen font-sans text-slate-800">
-
-    <!-- Navegação Superior -->
-    <header class="bg-blue-950 text-white shadow-md sticky top-0 z-40">
-        <div class="max-w-6xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-4">
-            <div class="flex items-center space-x-2">
-                <i class="fa-solid fa-bolt text-amber-400 text-xl"></i>
-                <span class="font-black text-base tracking-wider">FLASHCRED PRODUÇÃO</span>
-            </div>
-            <div class="flex flex-wrap gap-2">
-                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition">Solicitar Crédito</button>
-                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition">Acompanhar Proposta</button>
-                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold transition">Painel Admin</button>
-            </div>
+<body class="bg-slate-100 min-h-screen text-slate-800 font-sans">
+    <header class="bg-blue-950 text-white shadow-xl border-b border-blue-900">
+        <div class="max-w-6xl mx-auto px-4 py-5 flex justify-between items-center">
+            <h1 class="font-black text-lg">Distribuidora Flash Point - FlashCred</h1>
+            <nav class="flex gap-2">
+                <button id="btn-solicitar" onclick="switchTab('solicitar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold">Solicitar</button>
+                <button id="btn-acompanhar" onclick="switchTab('acompanhar')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold">Acompanhar</button>
+                <button id="btn-painel" onclick="switchTab('painel')" class="tab-btn px-4 py-2 rounded-xl text-xs font-bold">Painel Admin</button>
+            </nav>
         </div>
     </header>
-
     <main class="max-w-6xl mx-auto px-4 py-8">
-
-        <!-- ABA SOLICITAR -->
-        <section id="tab-solicitar" class="tab-content max-w-xl mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-200 space-y-6">
-            <div>
-                <h2 class="text-xl font-black text-blue-950">Solicitar Novo Crédito</h2>
-                <p class="text-xs text-slate-500 mt-1">Preencha os dados abaixo para gerar sua proposta e simulação instantânea.</p>
+        <div id="tab-solicitar" class="tab-content">
+            <div class="max-w-2xl mx-auto bg-white rounded-3xl shadow-xl p-8">
+                <h2 class="text-xl font-black text-blue-950 mb-4">Solicite seu Crédito</h2>
+                <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4 text-xs">
+                    <input type="text" id="nome" required placeholder="Nome Completo" class="w-full p-3 bg-slate-50 border rounded-xl">
+                    <input type="text" id="cpf" required placeholder="CPF" class="w-full p-3 bg-slate-50 border rounded-xl">
+                    <input type="text" id="whatsapp" required placeholder="WhatsApp" class="w-full p-3 bg-slate-50 border rounded-xl">
+                    <input type="text" id="cep" required placeholder="CEP" onblur="consultarCEP(this.value)" class="w-full p-3 bg-slate-50 border rounded-xl">
+                    <input type="text" id="endereco" required placeholder="Endereço Completo" class="w-full p-3 bg-slate-50 border rounded-xl">
+                    <input type="number" id="valor" value="1500" required class="w-full p-3 bg-slate-50 border rounded-xl font-bold">
+                    <button type="submit" class="w-full py-4 bg-blue-950 text-white rounded-xl font-bold uppercase">Gerar Pix de Entrada Real</button>
+                </form>
             </div>
-
-            <form id="form-proposta" onsubmit="enviarProposta(event)" class="space-y-4 text-xs">
-                <div>
-                    <label class="block font-bold text-slate-700 mb-1">Nome Completo</label>
-                    <input type="text" id="nome" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold">
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">CPF</label>
-                        <input type="text" id="cpf" required placeholder="000.000.000-00" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">WhatsApp</label>
-                        <input type="text" id="whatsapp" required placeholder="(11) 90000-0000" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">CEP</label>
-                        <input type="text" id="cep" required onblur="consultarCEP(this.value)" placeholder="00000-000" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                    </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Valor do Crédito Desejado (R$)</label>
-                        <input type="number" id="valor" required value="1500" step="100" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-emerald-700">
-                    </div>
-                </div>
-                <div>
-                    <label class="block font-bold text-slate-700 mb-1">Endereço Completo</label>
-                    <input type="text" id="endereco" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                </div>
-                <button type="submit" class="w-full py-4 bg-blue-950 text-white font-black rounded-2xl hover:bg-blue-900 transition shadow-lg text-sm">Enviar Solicitação de Crédito</button>
-            </form>
-        </section>
-
-        <!-- ABA ACOMPANHAR -->
-        <section id="tab-acompanhar" class="tab-content hidden max-w-xl mx-auto space-y-6">
-            <div class="bg-white p-6 sm:p-8 rounded-3xl shadow-xl border border-slate-200 space-y-4">
+        </div>
+        <div id="tab-acompanhar" class="tab-content hidden">
+            <div class="max-w-2xl mx-auto bg-white rounded-3xl shadow-xl p-8 space-y-4">
                 <h2 class="text-xl font-black text-blue-950">Acompanhar Proposta</h2>
-                <p class="text-xs text-slate-500">Digite seu CPF ou o código de Protocolo fornecido ao enviar a proposta:</p>
                 <div class="flex gap-2">
-                    <input type="text" id="busca-cpf" placeholder="CPF ou Protocolo (ex: FP-123456)" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
-                    <button onclick="consultarProposta()" class="px-6 py-3 bg-blue-950 text-white font-bold rounded-xl text-xs hover:bg-blue-950/90 shrink-0">Buscar</button>
+                    <input type="text" id="busca-cpf" placeholder="Digite CPF ou Protocolo" class="w-full p-3 bg-slate-50 border rounded-xl text-xs">
+                    <button onclick="consultarProposta()" class="px-6 py-3 bg-blue-950 text-white rounded-xl text-xs font-bold">Consultar</button>
                 </div>
+                <div id="resultado-consulta" class="hidden"></div>
             </div>
-            <div id="resultado-consulta" class="hidden"></div>
-        </section>
-
-        <!-- ABA LOGIN ADMIN -->
-        <section id="tab-login-admin" class="tab-content hidden max-w-md mx-auto bg-white p-8 rounded-3xl shadow-xl border border-slate-200 space-y-6">
-            <h2 class="text-xl font-black text-blue-950 text-center">Acesso Administrativo</h2>
-            <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4 text-xs">
-                <div>
-                    <label class="block font-bold text-slate-700 mb-1">Senha do Painel</label>
-                    <input type="password" id="senha-admin" required class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                </div>
-                <div id="erro-senha" class="hidden text-red-600 font-bold text-center">Senha incorreta!</div>
-                <button type="submit" class="w-full py-3 bg-blue-950 text-white font-bold rounded-xl hover:bg-blue-900">Entrar no Painel</button>
-            </form>
-        </section>
-
-        <!-- ABA PAINEL ADMIN -->
-        <section id="tab-painel" class="tab-content hidden space-y-6">
-            <div class="flex justify-between items-center bg-white p-6 rounded-2xl shadow border">
-                <div>
-                    <h2 class="text-xl font-black text-blue-950">Painel de Controle Admin</h2>
-                    <p class="text-xs text-slate-500">Gerencie todas as propostas e altere os status diretamente abaixo.</p>
-                </div>
-                <button onclick="logoutAdmin()" class="px-4 py-2 bg-red-100 text-red-700 font-bold text-xs rounded-xl hover:bg-red-200">Sair do Painel</button>
+        </div>
+        <div id="tab-login-admin" class="tab-content hidden">
+            <div class="max-w-md mx-auto bg-white rounded-3xl shadow-xl p-8 space-y-4">
+                <h2 class="text-xl font-black text-blue-950 text-center">Painel Admin</h2>
+                <form onsubmit="verificarSenhaAdmin(event)" class="space-y-4 text-xs">
+                    <input type="password" id="senha-admin" required placeholder="Senha" class="w-full p-3 bg-slate-50 border rounded-xl">
+                    <div id="erro-senha" class="hidden text-red-600 font-bold text-center">Senha incorreta.</div>
+                    <button type="submit" class="w-full py-3 bg-blue-950 text-white rounded-xl font-bold">Entrar</button>
+                </form>
             </div>
-
-            <div class="bg-white rounded-2xl shadow border overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50 border-b text-[11px] font-black text-slate-400 uppercase">
-                                <th class="p-4">Protocolo</th>
-                                <th class="p-4">Cliente / Contato</th>
-                                <th class="p-4">Crédito</th>
-                                <th class="p-4">Entrada (10%)</th>
-                                <th class="p-4">Status</th>
-                                <th class="p-4">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabela-clientes-admin">
-                            <!-- Preenchido via JavaScript -->
-                        </tbody>
-                    </table>
-                </div>
+        </div>
+        <div id="tab-painel" class="tab-content hidden space-y-6">
+            <div class="flex justify-between items-center bg-white p-6 rounded-2xl shadow">
+                <h2 class="text-lg font-black text-blue-950">Painel Administrativo</h2>
+                <button onclick="logoutAdmin()" class="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-bold">Sair</button>
             </div>
-        </section>
-
+            <div id="dashboard-resumo-financeiro"></div>
+            <div id="lista-propostas-admin" class="space-y-4"></div>
+        </div>
     </main>
 </body>
 </html>
