@@ -447,32 +447,76 @@
 
             if (dashResumo) {
                 dashResumo.innerHTML = `
-                    <div class="p-5 bg-blue-950 text-white rounded-2xl shadow-md space-y-1 mb-6">
-                        <span class="text-[11px] font-bold opacity-80 uppercase">Entradas Pix Confirmadas Automaticamente</span>
-                        <div class="text-2xl font-black">R$ ${totalPagas.toFixed(2)}</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                        <div class="p-5 bg-blue-950 text-white rounded-2xl shadow-md space-y-1">
+                            <span class="text-[11px] font-bold opacity-80 uppercase">Total de Propostas</span>
+                            <div class="text-2xl font-black">${listaClientes.length}</div>
+                        </div>
+                        <div class="p-5 bg-emerald-900 text-white rounded-2xl shadow-md space-y-1">
+                            <span class="text-[11px] font-bold opacity-80 uppercase">Entradas Pix Confirmadas</span>
+                            <div class="text-2xl font-black">R$ ${totalPagas.toFixed(2)}</div>
+                        </div>
                     </div>
                 `;
             }
 
             let html = '';
             listaClientes.forEach(c => {
+                const limite = c.limite || 1500;
+                const valorEntrada = c.valorEntrada || (limite * 0.1);
+                const parcelas = c.parcelas || 48;
+                const juros = c.jurosParcelamento || 2.5;
+                const saldoDevedor = limite - valorEntrada;
+                const totalComJuros = saldoDevedor * (1 + (juros / 100));
+                const valorParcela = parcelas > 0 ? (totalComJuros / parcelas) : 0;
+
+                const statusMap = {
+                    'analise': { label: 'Em Análise Cadastral', color: 'bg-amber-100 text-amber-800 border-amber-300' },
+                    'aprovado': { label: 'Aprovado / Aguardando Entrada', color: 'bg-blue-100 text-blue-800 border-blue-300' },
+                    'liberado': { label: 'Crédito Liberado com Sucesso', color: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+                    'reprovado': { label: 'Reprovado', color: 'bg-red-100 text-red-800 border-red-300' }
+                };
+                const stInfo = statusMap[c.status] || { label: c.status, color: 'bg-slate-100 text-slate-800' };
+
                 html += `
-                    <div class="bg-white rounded-2xl border shadow-md p-6 space-y-4">
-                        <div class="flex justify-between items-center border-b pb-3">
-                            <div><span class="text-xs text-slate-400 font-bold">Protocolo</span><div class="font-black text-blue-950">${c.protocolo}</div></div>
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-xl p-6 space-y-5">
+                        <div class="flex flex-wrap justify-between items-center gap-3 border-b pb-4">
+                            <div>
+                                <span class="text-xs text-slate-400 font-bold uppercase">Protocolo</span>
+                                <div class="font-black text-blue-950 text-base">${c.protocolo}</div>
+                            </div>
                             <div class="flex items-center gap-2">
-                                <span class="px-3 py-1 rounded-full text-xs font-bold uppercase ${c.entradaPaga ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${c.entradaPaga ? 'Pix Pago' : 'Aguardando Pix'}</span>
-                                <button onclick="excluirPropostaAdmin('${c.protocolo}')" class="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100"><i class="fa-solid fa-trash text-xs"></i></button>
+                                <span class="px-3 py-1 rounded-full text-xs font-extrabold border ${stInfo.color}">${stInfo.label}</span>
+                                <span class="px-3 py-1 rounded-full text-xs font-bold uppercase ${c.entradaPaga ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">${c.entradaPaga ? '<i class="fa-solid fa-check mr-1"></i> Pix Pago' : 'Aguardando Pix'}</span>
+                                <button onclick="excluirPropostaAdmin('${c.protocolo}')" title="Excluir Proposta" class="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition"><i class="fa-solid fa-trash text-xs"></i></button>
                             </div>
                         </div>
-                        <div class="text-xs space-y-1">
-                            <div><strong>Nome:</strong> ${c.nome}</div>
-                            <div><strong>CPF:</strong> ${c.cpf}</div>
-                            <div><strong>Entrada:</strong> R$ ${(c.valorEntrada || 0).toFixed(2)}</div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                            <div class="p-3 bg-slate-50 rounded-xl border"><span class="text-slate-400 block font-bold">Cliente</span><strong class="text-slate-800 text-sm">${c.nome}</strong></div>
+                            <div class="p-3 bg-slate-50 rounded-xl border"><span class="text-slate-400 block font-bold">CPF</span><strong class="text-slate-800">${c.cpf}</strong></div>
+                            <div class="p-3 bg-slate-50 rounded-xl border"><span class="text-slate-400 block font-bold">WhatsApp</span><strong class="text-slate-800">${c.whatsapp || 'Não informado'}</strong></div>
                         </div>
-                        <div class="flex gap-2 pt-2">
-                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'liberado')" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700">Liberar Crédito</button>
-                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'reprovado')" class="px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700">Reprovar</button>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                            <div class="p-3 bg-slate-50 rounded-xl border"><span class="text-slate-400 block font-bold">Endereço</span><strong class="text-slate-800">${c.endereco || 'Não informado'} (CEP: ${c.cep || ''})</strong></div>
+                            <div class="p-3 bg-slate-50 rounded-xl border"><span class="text-slate-400 block font-bold">Valores</span>Crédito: <strong class="text-emerald-700">R$ ${limite.toFixed(2)}</strong> | Entrada (10%): <strong class="text-blue-900">R$ ${valorEntrada.toFixed(2)}</strong></div>
+                        </div>
+
+                        <div class="p-4 bg-slate-900 text-white rounded-xl space-y-2 text-xs">
+                            <h6 class="font-bold text-blue-400 uppercase tracking-wider"><i class="fa-solid fa-calculator mr-1"></i> Condições das Parcelas</h6>
+                            <div class="grid grid-cols-3 gap-2">
+                                <div><span class="opacity-70 block">Parcelas</span><strong>${parcelas}x</strong></div>
+                                <div><span class="opacity-70 block">Valor Mensal</span><strong class="text-emerald-400">R$ ${valorParcela.toFixed(2)}</strong></div>
+                                <div><span class="opacity-70 block">Juros</span><strong>${juros}% a.m.</strong></div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2 pt-2 border-t">
+                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'analise')" class="px-3 py-2 bg-amber-100 text-amber-900 rounded-xl text-xs font-bold hover:bg-amber-200 transition">Marcar Em Análise</button>
+                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'aprovado')" class="px-3 py-2 bg-blue-100 text-blue-900 rounded-xl text-xs font-bold hover:bg-blue-200 transition">Aprovar / Gerar Pix</button>
+                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'liberado')" class="px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition"><i class="fa-solid fa-check mr-1"></i> Liberar Crédito</button>
+                            <button onclick="alterarStatusAdmin('${c.protocolo}', 'reprovado')" class="px-3 py-2 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition"><i class="fa-solid fa-xmark mr-1"></i> Reprovar</button>
                         </div>
                     </div>
                 `;
