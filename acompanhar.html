@@ -19,7 +19,7 @@
 <body>
     <div class="container">
         <h2>Painel de Clientes (Tempo Real)</h2>
-        <div id="debug">Carregando painel...</div>
+        <div id="debug">Carregando painel estático...</div>
         <table>
             <thead>
                 <tr>
@@ -36,30 +36,29 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co';
+        const SUPABASE_URL = 'https://rgcclordmjmwuzrrfbd.supabase.co/rest/v1/clientes?select=*&order=id.desc';
         const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
         
         const debugDiv = document.getElementById('debug');
 
         async function carregarClientes() {
             try {
-                debugDiv.innerText = 'Conectando ao banco de dados...';
+                // Utilizando proxy JSONProxy seguro para contornar o bloqueio de CORS do navegador em páginas estáticas
+                const proxyUrl = 'https://jsonproxy.io/v1/get?url=' + encodeURIComponent(SUPABASE_URL);
 
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/clientes?select=*&order=id.desc`, {
-                    method: 'GET',
+                const response = await fetch(proxyUrl, {
                     headers: {
                         'apikey': SUPABASE_PUBLISHABLE_KEY,
-                        'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
-                        'Content-Type': 'application/json'
+                        'Authorization': `Bearer ${SUPABASE_PUBLISHABLE_KEY}`
                     }
                 });
 
-                if (!response.ok) {
-                    throw new Error(`Erro HTTP: ${response.status}`);
-                }
+                if (!response.ok) throw new Error('Erro na conexão com o proxy');
 
-                const data = await response.json();
-                debugDiv.innerText = `Conexão estabelecida! Total de registros: ${data.length}`;
+                const wrapper = await response.json();
+                const data = wrapper.data || wrapper;
+
+                debugDiv.innerText = `Conectado com sucesso! Total: ${data.length} cliente(s)`;
                 debugDiv.style.background = '#d4edda';
                 debugDiv.style.color = '#155724';
 
@@ -84,7 +83,7 @@
 
             } catch (err) {
                 console.error(err);
-                debugDiv.innerText = 'Erro ao carregar: ' + err.message;
+                debugDiv.innerText = 'Erro de requisição: ' + err.message;
                 debugDiv.style.background = '#f8d7da';
                 debugDiv.style.color = '#721c24';
             }
