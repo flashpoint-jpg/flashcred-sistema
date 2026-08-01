@@ -15,12 +15,11 @@
         .status-pago { color: green; font-weight: bold; }
         #debug { background: #eef2f7; padding: 10px; margin-bottom: 15px; font-family: monospace; font-size: 12px; border-radius: 4px; color: #333; }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
     <div class="container">
         <h2>Painel de Clientes (Tempo Real)</h2>
-        <div id="debug">Carregando painel...</div>
+        <div id="debug">Carregando painel via REST...</div>
         <table>
             <thead>
                 <tr>
@@ -42,28 +41,26 @@
         
         const debugDiv = document.getElementById('debug');
 
-        try {
-            const { createClient } = window.supabase;
-            const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        async function carregarClientes() {
+            try {
+                debugDiv.innerText = 'Consultando API do Supabase...';
 
-            async function carregarClientes() {
-                debugDiv.innerText = 'Sincronizando com o Supabase...';
-                
-                const { data, error } = await supabaseClient
-                    .from('clientes')
-                    .select('*')
-                    .order('id', { ascending: false });
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/clientes?select=*&order=id.desc`, {
+                    headers: {
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                debugDiv.innerText = 'Dados carregados com sucesso!';
 
                 const tbody = document.getElementById('tabela-clientes');
                 tbody.innerHTML = '';
-
-                if (error) {
-                    debugDiv.innerText = 'Erro na consulta: ' + error.message;
-                    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro: ${error.message}</td></tr>`;
-                    return;
-                }
-
-                debugDiv.innerText = 'Conectado com sucesso! Exibindo registros.';
 
                 if (!data || data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum cliente cadastrado ainda.</td></tr>';
@@ -80,21 +77,19 @@
                     `;
                     tbody.appendChild(tr);
                 });
+
+            } catch (err) {
+                debugDiv.innerText = 'Erro na requisição: ' + err.message;
+                const tbody = document.getElementById('tabela-clientes');
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: red;">Erro: ${err.message}</td></tr>`;
             }
-
-            carregarClientes();
-
-            // Atualização em tempo real via WebSocket do Supabase
-            supabaseClient
-                .channel('public:clientes')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
-                    carregarClientes();
-                })
-                .subscribe();
-
-        } catch (e) {
-            debugDiv.innerText = 'Erro crítico: ' + e.message;
         }
+
+        // Carrega ao abrir a página
+        carregarClientes();
+
+        // Atualiza automaticamente a cada 10 segundos
+        setInterval(carregarClientes, 10000);
     </script>
 </body>
 </html>
