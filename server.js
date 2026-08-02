@@ -1,45 +1,3 @@
-const express = require('express');
-const { Pool } = require('pg');
-const path = require('path');
-
-const app = express();
-
-app.use(express.json());
-app.use(express.static(path.join(__dirname)));
-
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false
-    }
-});
-
-// FUNÇÃO PARA CRIAR A TABELA AUTOMATICAMENTE AO INICIAR O SERVIDOR
-async function criarTabela() {
-    try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS propostas (
-                id SERIAL PRIMARY KEY,
-                nome VARCHAR(255) NOT NULL,
-                cpf VARCHAR(20) NOT NULL,
-                nascimento DATE NOT NULL,
-                cep VARCHAR(10) NOT NULL,
-                endereco TEXT NOT NULL,
-                telefone VARCHAR(20) NOT NULL,
-                valor_desejado NUMERIC(12,2) NOT NULL,
-                status VARCHAR(50) DEFAULT 'Em Análise',
-                data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        `);
-        console.log("Tabela 'propostas' verificada/criada com sucesso!");
-    } catch (err) {
-        console.error("Erro ao criar tabela automaticamente:", err);
-    }
-}
-
-criarTabela();
-
-// Rota para cadastrar uma nova proposta
 app.post('/api/propostas', async (req, res) => {
     try {
         let { nome, cpf, nascimento, cep, endereco, telefone, valor } = req.body;
@@ -56,22 +14,10 @@ app.post('/api/propostas', async (req, res) => {
         
         res.json({ success: true, data: result.rows[0] });
     } catch (error) {
-        console.error('ERRO EXATO NO POSTGRESQL:', error.message);
-        res.status(500).json({ success: false, message: `Erro ao salvar: ${error.message}` });
+        console.error('ERRO DETALHADO COMPLETO:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: error.message || 'Falha de comunicação com o banco de dados. Verifique a variável DATABASE_URL no Render.' 
+        });
     }
-});
-
-// Demais rotas...
-app.get('/api/propostas', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM propostas ORDER BY data_criacao DESC;');
-        res.json({ success: true, data: result.rows });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Erro ao buscar propostas.' });
-    }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
 });
