@@ -4,22 +4,17 @@ const { Pool } = require('pg');
 
 const app = express();
 
-// Ativa o CORS e o leitor de JSON
 app.use(cors());
 app.use(express.json());
 
-// Configuração do Banco de Dados PostgreSQL (usando a sua DATABASE_URL do Render)
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
 
-// 1. ROTA DA API PARA BUSCAR A PROPOSTA PELO CPF
 app.get('/api/propostas/:cpf', async (req, res) => {
     try {
         const cpfParam = req.params.cpf;
-        
-        // Substitua 'propostas' pelo nome exato da sua tabela no banco de dados se for diferente
         const queryText = 'SELECT * FROM propostas WHERE regexp_replace(cpf, \'\\D\', \'\', \'g\') = $1 LIMIT 1';
         const result = await pool.query(queryText, [cpfParam]);
 
@@ -34,7 +29,6 @@ app.get('/api/propostas/:cpf', async (req, res) => {
     }
 });
 
-// 2. ROTA QUE SERVE A PÁGINA HTML DE ACOMPANHAMENTO DIRETAMENTE NO NAVEGADOR
 app.get('*', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -45,7 +39,6 @@ app.get('*', (req, res) => {
     <style>
         :root {
             --primary: #0A2463;
-            --primary-dark: #071A47;
             --accent: #32BCAD;
             --accent-hover: #299e91;
             --bg-body: #F4F7FA;
@@ -86,11 +79,7 @@ app.get('*', (req, res) => {
             box-shadow: 0 4px 12px rgba(10, 36, 99, 0.06);
             transition: all 0.25s ease;
         }
-        .nav-links a:hover { 
-            background: var(--primary);
-            color: #ffffff; 
-            border-color: transparent;
-        }
+        .nav-links a:hover { background: var(--primary); color: #ffffff; border-color: transparent; }
 
         main { max-width: 800px; margin: 40px auto; padding: 0 20px; }
 
@@ -150,8 +139,6 @@ app.get('*', (req, res) => {
         }
         .status { font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 16px; display: inline-block; border-radius: 20px; }
         .status.analise { background: #FEF3C7; color: #D97706; }
-        .status.aprovado { background: #D1FAE5; color: #059669; }
-        .status.recusado { background: #FEE2E2; color: #DC2626; }
 
         .spinner {
             width: 18px;
@@ -162,10 +149,7 @@ app.get('*', (req, res) => {
             animation: spin 1s linear infinite;
             display: inline-block;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         .detalhes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
         @media(max-width: 600px) { .detalhes-grid { grid-template-columns: 1fr; } }
@@ -173,6 +157,23 @@ app.get('*', (req, res) => {
         .detalhe-item { background: #F8FAFC; padding: 15px; border-radius: 12px; border: 1px solid var(--border-color); }
         .detalhe-item span { display: block; font-size: 12px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
         .detalhe-item strong { font-size: 16px; color: var(--primary); }
+
+        .btn-whatsapp {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: #25D366;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 16px;
+            font-weight: 700;
+            font-size: 16px;
+            box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3);
+            transition: all 0.2s ease;
+            margin-top: 20px;
+        }
+        .btn-whatsapp:hover { background: #22bf5b; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37, 211, 102, 0.4); }
 
         footer { 
             background: var(--primary); 
@@ -215,16 +216,13 @@ app.get('*', (req, res) => {
 
     <div class="card" id="resultado">
         <div class="status-box" id="statusBoxContainer">
-            <div id="statusTexto" class="status">Carregando...</div>
+            <div class="spinner"></div>
+            <div id="statusTexto" class="status analise">Aguardando Análise</div>
         </div>
 
-        <h3 style="color: var(--primary); font-size: 18px; margin-bottom: 15px;">Detalhes do Cadastro</h3>
+        <h3 style="color: var(--primary); font-size: 18px; margin-bottom: 15px;">Detalhes da Solicitação</h3>
         <div class="detalhes-grid">
             <div class="detalhe-item" style="grid-column: 1 / -1;">
-                <span>Número da Proposta</span>
-                <strong id="resIdProposta" style="color: var(--accent-hover); font-size: 18px;">-</strong>
-            </div>
-            <div class="detalhe-item">
                 <span>Nome do Solicitante</span>
                 <strong id="resNome">-</strong>
             </div>
@@ -233,30 +231,12 @@ app.get('*', (req, res) => {
                 <strong id="resCpf">-</strong>
             </div>
             <div class="detalhe-item">
-                <span>Limite Solicitado</span>
-                <strong id="resValor">R$ 0,00</strong>
-            </div>
-            <div class="detalhe-item">
-                <span>Limite Disponibilizado</span>
-                <strong id="resAprovado" style="color: #059669;">R$ 0,00</strong>
+                <span>Valor Solicitado</span>
+                <strong id="resValor" style="color: var(--accent-hover);">R$ 0,00</strong>
             </div>
         </div>
 
-        <h3 style="color: var(--primary); font-size: 18px; margin-bottom: 15px;">Simulação de Parcelamento</h3>
-        <div class="detalhes-grid">
-            <div class="detalhe-item">
-                <span>Valor de Entrada (39%)</span>
-                <strong id="resEntrada">R$ 0,00</strong>
-            </div>
-            <div class="detalhe-item">
-                <span>Prazo de Pagamento</span>
-                <strong id="resParcelas">12 vezes</strong>
-            </div>
-            <div class="detalhe-item" style="grid-column: 1 / -1;">
-                <span>Valor Estimado da Parcela Mensal</span>
-                <strong id="resValorParcela" style="font-size: 18px; color: var(--accent-hover);">R$ 0,00</strong>
-            </div>
-        </div>
+        <a id="btnWp" href="#" target="_blank" class="btn-whatsapp">Agilizar Análise por WhatsApp</a>
     </div>
 </main>
 
@@ -309,45 +289,17 @@ document.getElementById('formConsulta').addEventListener('submit', e => {
             const p = result.data;
             resultadoEl.style.display = 'block';
             
-            const statusEl = document.getElementById('statusTexto');
-            const statusBoxContainer = document.getElementById('statusBoxContainer');
-            
-            const spinnerAntigo = statusBoxContainer.querySelector('.spinner');
-            if (spinnerAntigo) spinnerAntigo.remove();
-
-            let statusLower = (p.status || 'Em Análise').toLowerCase();
-            statusEl.textContent = \`Status: \${p.status || 'Em Análise'}\`;
-            
-            let classeStatus = 'analise';
-            if (statusLower.includes('aprovado') || statusLower.includes('aprovada')) {
-                classeStatus = 'aprovado';
-            } else if (statusLower.includes('recusado') || statusLower.includes('recusada')) {
-                classeStatus = 'recusado';
-            } else {
-                const spinner = document.createElement('div');
-                spinner.className = 'spinner';
-                statusBoxContainer.insertBefore(spinner, statusEl);
-            }
-            
-            statusEl.className = \`status \${classeStatus}\`;
-
-            document.getElementById('resIdProposta').textContent = \`#\${p.id || '---'}\`;
             document.getElementById('resNome').textContent = p.nome;
             document.getElementById('resCpf').textContent = p.cpf;
             
             const valorNum = Number(p.valor_desejado);
             const valorFormatado = valorNum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            
             document.getElementById('resValor').textContent = valorFormatado;
-            document.getElementById('resAprovado').textContent = valorFormatado;
 
-            let entrada = valorNum * 0.39;
-            let saldoDevedor = valorNum - entrada;
-            let valorParcela = (saldoDevedor * (1 + 0.35)) / 12;
-
-            document.getElementById('resEntrada').textContent = entrada.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) + ' (39%)';
-            document.getElementById('resParcelas').textContent = '12 vezes';
-            document.getElementById('resValorParcela').textContent = valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            // Link do WhatsApp com mensagem pronta
+            const telefoneAtendimento = "5511999999999"; // Substitua pelo seu número com DDD
+            const mensagem = encodeURIComponent(\`Olá! Gostaria de agilizar a análise da minha proposta. Meu nome é \${p.nome}, CPF: \${p.cpf}, valor solicitado: \${valorFormatado}.\`);
+            document.getElementById('btnWp').href = \`https://wa.me/\${telefoneAtendimento}?text=\${mensagem}\`;
 
         } else {
             erroEl.textContent = "Nenhuma proposta encontrada para este CPF.";
@@ -366,4 +318,4 @@ document.getElementById('formConsulta').addEventListener('submit', e => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
+app.listen(PORT, () => console.log(\`Servidor rodando na porta \${PORT}\`));
