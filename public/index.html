@@ -52,10 +52,10 @@
         }
 
         .card { background: #FFFFFF; border-radius: 24px; box-shadow: 0 4px 20px rgba(10, 36, 99, 0.08); padding: 32px; border: 1px solid #E2E8F0; }
-        .btn { width: 100%; padding: 14px 20px; border-radius: 14px; font-weight: 600; font-size: 16px; border: none; cursor: pointer; transition: all 0.3s ease; }
+        .btn { width: 100%; padding: 14px 20px; border-radius: 14px; font-weight: 600; font-size: 16px; border: none; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 10px; }
         .btn-primary { background: linear-gradient(135deg, #0A2463 0%, #153A8C 100%); color: white; box-shadow: 0 6px 16px rgba(10, 36, 99, 0.25); }
         .btn-primary:hover { opacity: 0.95; transform: translateY(-1px); }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
 
         .input { width: 100%; padding: 12px 16px; border: 1px solid #CBD5E1; border-radius: 12px; font-size: 15px; background: #FAFBFC; margin-bottom: 16px; }
         .input:focus { outline: none; border-color: #10B981; background: #FFFFFF; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12); }
@@ -69,8 +69,7 @@
         .erro { color: #DC2626; font-size: 13px; margin: -10px 0 12px; display: none; }
         footer { background: #0A2463; color: #CBD5E1; border-radius: 32px 32px 0 0; margin-top: 50px; padding: 28px; text-align: center; font-size: 14px; }
 
-        .loading { display: none; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; color: #0A2463; font-weight: 500; }
-        .spinner { width: 20px; height: 20px; border: 3px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: rodar 0.8s linear infinite; }
+        .spinner { width: 22px; height: 22px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #ffffff; border-radius: 50%; animation: rodar 0.8s linear infinite; display: none; }
         @keyframes rodar { to { transform: rotate(360deg); } }
     </style>
 </head>
@@ -151,11 +150,10 @@
                     <label>Valor Desejado para Compra (R$)</label>
                     <input type="number" id="valor" class="input" placeholder="0,00" min="100" step="0.01" required>
 
-                    <button type="submit" id="btnEnviar" class="btn btn-primary mt-2">Enviar Solicitação</button>
-                    <div id="loadingEnvio" class="loading">
-                        <div class="spinner"></div>
-                        Enviando sua solicitação...
-                    </div>
+                    <button type="submit" id="btnEnviar" class="btn btn-primary mt-2">
+                        <div id="spinnerEnvio" class="spinner"></div>
+                        <span id="textoBtn">Enviar Solicitação</span>
+                    </button>
                 </form>
             </div>
         </div>
@@ -221,14 +219,20 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
 
     if (valido) {
         const btn = document.getElementById('btnEnviar');
-        const loading = document.getElementById('loadingEnvio');
+        const spinner = document.getElementById('spinnerEnvio');
+        const textoBtn = document.getElementById('textoBtn');
         
+        // Ativa a animação de rodar e muda o texto
         btn.disabled = true;
-        loading.style.display = 'flex';
+        spinner.style.display = 'block';
+        textoBtn.textContent = 'Enviando proposta...';
+
+        const cpfDigitado = document.getElementById('cpf').value;
+        const cpfLimpo = cpfDigitado.replace(/\D/g, '');
 
         const dados = {
             nome: document.getElementById('nome').value.trim(),
-            cpf: document.getElementById('cpf').value.trim(),
+            cpf: cpfDigitado,
             nascimento: document.getElementById('nascimento').value,
             telefone: document.getElementById('telefone').value.trim(),
             cep: document.getElementById('cep').value.trim(),
@@ -240,17 +244,18 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
 
         const { error } = await supabase.from('propostas').insert([dados]);
 
-        setTimeout(() => {
-            loading.style.display = 'none';
+        if(error) {
+            spinner.style.display = 'none';
             btn.disabled = false;
-            
-            if(error) {
-                alert('❌ Erro ao enviar: ' + error.message);
-            } else {
-                alert('✅ Solicitação enviada com sucesso! Acompanhe pelo link abaixo.');
-                window.location.href = `consultar.html?cpf=${dados.cpf.replace(/\D/g, '')}`;
-            }
-        }, 1000);
+            textoBtn.textContent = 'Enviar Solicitação';
+            alert('❌ Erro ao enviar: ' + error.message);
+        } else {
+            // Sucesso! Troca a mensagem e redireciona
+            textoBtn.textContent = 'Proposta enviada com sucesso! Redirecionando...';
+            setTimeout(() => {
+                window.location.href = `consultar.html?cpf=${cpfLimpo}`;
+            }, 1200);
+        }
     }
 });
 </script>
