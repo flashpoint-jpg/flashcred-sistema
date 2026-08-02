@@ -54,10 +54,7 @@
             margin: 8px 0;
         }
         .card-financeiro .rotulo {
-            font-size: 13px;
-            color: var(--text-muted);
-            font-weight: 500;
-            text-transform: uppercase;
+            font-size: 13px; color: var(--text-muted); font-weight: 500; text-transform: uppercase;
         }
         .card-financeiro.entrada { border-top: 4px solid var(--pix-green); }
         .card-financeiro.parcelas { border-top: 4px solid var(--alerta); }
@@ -197,6 +194,11 @@ if(localStorage.getItem('logado_flashcred') !== 'sim') {
                 <div class="cliente-nome" id="cliNome">—</div>
                 <div class="dado-linha"><span class="dado-rotulo">CPF:</span><span class="dado-valor" id="cliCpf">—</span></div>
                 <div class="dado-linha"><span class="dado-rotulo">Data de Nascimento:</span><span class="dado-valor" id="cliNascimento">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">CEP:</span><span class="dado-valor" id="cliCep">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Endereço:</span><span class="dado-valor" id="cliEndereco">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Número:</span><span class="dado-valor" id="cliNumero">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Bairro:</span><span class="dado-valor" id="cliBairro">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Cidade/UF:</span><span class="dado-valor" id="cliCidade">—</span></div>
                 <div class="dado-linha"><span class="dado-rotulo">WhatsApp:</span><span class="dado-valor" id="cliWhatsapp">—</span></div>
                 <div class="dado-linha"><span class="dado-rotulo">Status Entrada:</span><span class="dado-valor" id="statusEntrada">—</span></div>
 
@@ -314,7 +316,6 @@ let totalReceber = 0;
 let totalPago = 0;
 let qtdVencidas = 0;
 let modoAtual = 'teste';
-let ultimaAtualizacao = Date.now();
 
 // 🔄 ATUALIZAÇÃO AUTOMÁTICA A CADA 10 SEGUNDOS
 setInterval(() => {
@@ -349,17 +350,6 @@ function alterarSenha() {
     document.getElementById('senhaAtual').value = '';
     document.getElementById('novaSenha').value = '';
     document.getElementById('confirmaNovaSenha').value = '';
-}
-
-// 📌 CALCULAR IDADE
-function calcularIdade(dataNascimento) {
-    if(!dataNascimento) return '—';
-    const nasc = new Date(dataNascimento);
-    const hoje = new Date();
-    let idade = hoje.getFullYear() - nasc.getFullYear();
-    const mes = hoje.getMonth() - nasc.getMonth();
-    if (mes < 0 || (mes === 0 && hoje.getDate() < nasc.getDate())) idade--;
-    return `${idade} anos`;
 }
 
 // 📌 CONTAR PARCELAS VENCIDAS
@@ -508,12 +498,12 @@ async function carregarPropostas() {
                 `;
             });
         } else {
-            lista.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhuma proposta recebida ainda.</div>`;
+            lista.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhuma solicitação recebida.</div>`;
         }
         contarParcelasVencidas();
     } catch (erro) {
         console.error(erro);
-        document.getElementById('listaPropostas').innerHTML = `<div style="text-align: center; color: var(--perigo); padding: 20px;">Erro ao carregar propostas.</div>`;
+        document.getElementById('listaPropostas').innerHTML = `<div style="text-align: center; color: var(--perigo); padding: 20px;">Erro ao carregar solicitações.</div>`;
     }
 }
 
@@ -533,6 +523,11 @@ function selecionarProposta(index) {
     document.getElementById('cliNome').textContent = clienteSelecionado.nome || '—';
     document.getElementById('cliCpf').textContent = clienteSelecionado.cpf || '—';
     document.getElementById('cliNascimento').textContent = clienteSelecionado.data_nascimento ? new Date(clienteSelecionado.data_nascimento).toLocaleDateString('pt-BR') : '—';
+    document.getElementById('cliCep').textContent = clienteSelecionado.cep || '—';
+    document.getElementById('cliEndereco').textContent = clienteSelecionado.endereco || '—';
+    document.getElementById('cliNumero').textContent = clienteSelecionado.numero || '—';
+    document.getElementById('cliBairro').textContent = clienteSelecionado.bairro || '—';
+    document.getElementById('cliCidade').textContent = clienteSelecionado.cidade_uf || '—';
     document.getElementById('cliWhatsapp').textContent = clienteSelecionado.telefone || '—';
     document.getElementById('statusEntrada').textContent = clienteSelecionado.entrada_paga ? '✅ Pago' : '⏳ Pendente';
 
@@ -563,7 +558,7 @@ function selecionarProposta(index) {
 }
 
 async function alterarStatus(novoStatus) {
-    if(!clienteSelecionado) { mostrarAviso('Selecione uma proposta primeiro!'); return; }
+    if(!clienteSelecionado) { mostrarAviso('Selecione uma solicitação primeiro!'); return; }
     const valorTotal = parseFloat(document.getElementById('valorTotal').value) || 0;
     const porcEntrada = parseFloat(document.getElementById('porcEntrada').value) || 0;
     const porcJuros = parseFloat(document.getElementById('porcJuros').value) || 0;
@@ -605,16 +600,16 @@ async function alterarStatus(novoStatus) {
             pix_copia_cola: document.getElementById('codigoPix').textContent || ''
         };
 
-        const resposta = await fetch(`/api/proposta/${clienteSelecionado.id}/status`, {
+        const resposta = await fetch(`/api/proposta/${clienteSelecionado.id || clienteSelecionado.cpf}/status`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(dadosAtualizados)
         });
         const result = await resposta.json();
         
         if(result.success) {
-            mostrarAviso(`✅ Proposta ${novoStatus.toLowerCase()}! O cliente já vê a atualização na página dele.`);
+            mostrarAviso(`✅ Solicitação ${novoStatus.toLowerCase()}! O cliente já vê a atualização na página dele.`);
             carregarPropostas();
-        } else { mostrarAviso('❌ Erro ao atualizar proposta.'); }
+        } else { mostrarAviso('❌ Erro ao atualizar solicitação.'); }
     } catch (erro) {
         console.error(erro);
         mostrarAviso('❌ Erro de conexão com o servidor.');
@@ -622,16 +617,16 @@ async function alterarStatus(novoStatus) {
 }
 
 async function excluirProposta() {
-    if(!clienteSelecionado) { mostrarAviso('Selecione uma proposta!'); return; }
-    if(!confirm(`Deseja realmente excluir a proposta de ${clienteSelecionado.nome}? Essa ação não pode ser desfeita.`)) return;
+    if(!clienteSelecionado) { mostrarAviso('Selecione uma solicitação!'); return; }
+    if(!confirm(`Deseja realmente excluir a solicitação de ${clienteSelecionado.nome}? Essa ação não pode ser desfeita.`)) return;
     try {
-        const resposta = await fetch(`/api/proposta/${clienteSelecionado.id}`, { method: 'DELETE' });
+        const resposta = await fetch(`/api/proposta/${clienteSelecionado.id || clienteSelecionado.cpf}`, { method: 'DELETE' });
         const result = await resposta.json();
         if(result.success) {
-            mostrarAviso('🗑️ Proposta excluída com sucesso!');
+            mostrarAviso('🗑️ Solicitação excluída com sucesso!');
             document.getElementById('cardDetalhes').style.display = 'none';
             carregarPropostas();
-        } else { mostrarAviso('❌ Erro ao excluir proposta.'); }
+        } else { mostrarAviso('❌ Erro ao excluir solicitação.'); }
     } catch (erro) { console.error(erro); mostrarAviso('❌ Erro de conexão com o servidor.'); }
 }
 
@@ -641,6 +636,9 @@ function copiarDadosCliente() {
 NOME: ${clienteSelecionado.nome}
 CPF: ${clienteSelecionado.cpf}
 NASCIMENTO: ${clienteSelecionado.data_nascimento ? new Date(clienteSelecionado.data_nascimento).toLocaleDateString('pt-BR') : '—'}
+ENDEREÇO: ${clienteSelecionado.endereco || ''}, ${clienteSelecionado.numero || ''} - ${clienteSelecionado.bairro || ''}
+CIDADE/UF: ${clienteSelecionado.cidade_uf || ''}
+CEP: ${clienteSelecionado.cep || ''}
 WHATSAPP: ${clienteSelecionado.telefone}
 VALOR SOLICITADO: R$ ${parseFloat(clienteSelecionado.valor_desejado || 0).toFixed(2)}
             `;
@@ -651,7 +649,7 @@ VALOR SOLICITADO: R$ ${parseFloat(clienteSelecionado.valor_desejado || 0).toFixe
 function enviarWhatsApp() {
     if(!clienteSelecionado) { mostrarAviso('Selecione um cliente!'); return; }
     const tel = clienteSelecionado.telefone.replace(/\D/g, '');
-    const msg = encodeURIComponent(`Olá ${clienteSelecionado.nome}! Sua proposta já foi analisada! Acesse o link para ver o valor aprovado, escolher as parcelas e assinar o contrato: https://flashcred-sistema.onrender.com/proposta-aprovada.html?cpf=${clienteSelecionado.cpf}`);
+    const msg = encodeURIComponent(`Olá ${clienteSelecionado.nome}! Sua solicitação já foi analisada! Acesse o link para ver o valor aprovado, escolher as parcelas e assinar o contrato: https://flashcred-sistema.onrender.com/consultar?cpf=${clienteSelecionado.cpf}`);
     window.open(`https://wa.me/55${tel}?text=${msg}`, '_blank');
 }
 
