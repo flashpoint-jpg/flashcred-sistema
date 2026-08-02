@@ -11,10 +11,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Servir arquivos estáticos
+// Servir arquivos estáticos da pasta public
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Funções de salvamento seguro
+// 📂 Funções de leitura e salvamento seguro
 function lerPropostas() {
     try {
         if (fs.existsSync(ARQUIVO_DADOS)) {
@@ -35,7 +35,7 @@ function salvarPropostas(lista) {
     }
 }
 
-// Rotas de Páginas
+// 📄 Rotas das Páginas
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -48,7 +48,7 @@ app.get('/painel', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'painel.html'));
 });
 
-// Rotas da API
+// 📋 Rotas de Propostas
 app.post('/api/propostas', (req, res) => {
     try {
         let propostas = lerPropostas();
@@ -59,15 +59,18 @@ app.post('/api/propostas', (req, res) => {
             nome: req.body.nome || 'Cliente',
             cpf: req.body.cpf || '---',
             telefone: req.body.telefone || '---',
-            valor_desejado: req.body.valor_desejado || 0,
+            valor_desejado: parseFloat(req.body.valor_desejado) || 0,
             status: 'Em Análise',
-            data_criacao: new Date().toISOString()
+            data_criacao: new Date().toISOString(),
+            entrada_paga: false,
+            valor_entrada: 0,
+            modo_api: req.body.modo_api || 'teste'
         };
 
         propostas.push(novaProposta);
         salvarPropostas(propostas);
         
-        res.status(201).json({ success: true, message: "Proposta salva!", id: novaProposta.id });
+        res.status(201).json({ success: true, message: "Proposta salva com sucesso!", id: novaProposta.id });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -85,15 +88,19 @@ app.get('/api/propostas', (req, res) => {
 app.put('/api/proposta/:id/status', (req, res) => {
     try {
         const id = parseInt(req.params.id);
-        const { status } = req.body;
+        const { status, entrada_paga, valor_entrada } = req.body;
         let propostas = lerPropostas();
         const p = propostas.find(item => item.id === id);
+        
         if (p) {
-            p.status = status;
+            if(status) p.status = status;
+            if(typeof entrada_paga !== 'undefined') p.entrada_paga = entrada_paga;
+            if(valor_entrada) p.valor_entrada = valor_entrada;
+            
             salvarPropostas(propostas);
             res.json({ success: true, data: p });
         } else {
-            res.status(404).json({ success: false, error: "Não encontrada" });
+            res.status(404).json({ success: false, error: "Proposta não encontrada" });
         }
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -105,23 +112,30 @@ app.delete('/api/proposta/:id', (req, res) => {
         const id = parseInt(req.params.id);
         let propostas = lerPropostas();
         const index = propostas.findIndex(item => item.id === id);
+        
         if (index !== -1) {
             propostas.splice(index, 1);
             salvarPropostas(propostas);
-            res.json({ success: true });
+            res.json({ success: true, message: "Proposta excluída" });
         } else {
-            res.status(404).json({ success: false, error: "Não encontrada" });
+            res.status(404).json({ success: false, error: "Proposta não encontrada" });
         }
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Rota Pix Mercado Pago
+// 💳 Rota para criar Pix via Mercado Pago
 app.post('/api/criar-pix', async (req, res) => {
     try {
         const { valor, descricao, emailCliente, tokenApi } = req.body;
-        if (!tokenApi) return res.status(400).json({ success: false, error: "Token ausente" });
+        
+        if (!tokenApi) {
+            return res.status(400).json({ success: false, error: "Token da API não informado" });
+        }
+        if (!valor || parseFloat(valor) <= 0) {
+            return res.status(400).json({ success: false, error: "Valor inválido" });
+        }
 
         const response = await fetch('https://api.mercadopago.com/v1/payments', {
             method: 'POST',
@@ -139,6 +153,7 @@ app.post('/api/criar-pix', async (req, res) => {
         });
 
         const data = await response.json();
+        
         if (response.ok && data.point_of_interaction) {
             res.json({
                 success: true,
@@ -147,13 +162,22 @@ app.post('/api/criar-pix', async (req, res) => {
                 payment_id: data.id
             });
         } else {
-            res.status(400).json({ success: false, error: data });
+            console.error("Erro Mercado Pago:", data);
+            res.status(400).json({ 
+                success: false, 
+                error: data.message || "Erro ao gerar Pix",
+                detalhes: data 
+            });
         }
     } catch (error) {
+        console.error("Erro na rota Pix:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
+// 🚀 Iniciar servidor
 app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`✅ Servidor FlashCred rodando na porta ${PORT}`);
+    console.log(`📂 Páginas servidas da pasta: ${path.join(__dirname, 'public')}`);
+    console.log(`🔗 Acesse: http://localhost:${PORT}`);
 });
