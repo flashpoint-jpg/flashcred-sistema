@@ -124,6 +124,29 @@ app.get('*', (req, res) => {
         }
         .btn-consultar:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(50, 188, 173, 0.4); }
 
+        #modalSenha {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 36, 99, 0.6);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-card {
+            background: white;
+            padding: 35px;
+            border-radius: 24px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            border: 1px solid var(--border-color);
+            text-align: center;
+        }
+        .modal-card h2 { color: var(--primary); margin-bottom: 10px; font-size: 20px; }
+        .modal-card p { color: var(--text-muted); font-size: 13px; margin-bottom: 20px; }
+
         #resultado { display: none; animation: fadeIn 0.4s ease; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -189,6 +212,21 @@ app.get('*', (req, res) => {
 </head>
 <body>
 
+<!-- MODAL DE SENHA -->
+<div id="modalSenha">
+    <div class="modal-card">
+        <h2>Área Restrita</h2>
+        <p>Digite a senha de acesso para visualizar o painel.</p>
+        <form id="formSenha">
+            <div class="form-group">
+                <input type="password" id="senhaInput" placeholder="Digite a senha" required>
+            </div>
+            <button type="submit" class="btn-consultar">Entrar</button>
+            <div class="erro" id="erroSenha" style="display: block; margin-top: 10px;"></div>
+        </form>
+    </div>
+</div>
+
 <nav>
     <div class="nav-conteudo">
         <a href="#" class="logo">FlashCred</a>
@@ -245,6 +283,19 @@ app.get('*', (req, res) => {
 </footer>
 
 <script>
+// CONTROLE DE SENHA DO PAINEL
+document.getElementById('formSenha').addEventListener('submit', e => {
+    e.preventDefault();
+    const senhaDigitada = document.getElementById('senhaInput').value;
+    const erroSenha = document.getElementById('erroSenha');
+
+    if (senhaDigitada === 'Asstec@4523') {
+        document.getElementById('modalSenha').style.display = 'none';
+    } else {
+        erroSenha.textContent = "Senha incorreta!";
+    }
+});
+
 document.getElementById('cpf').addEventListener('input', e => {
     let v = e.target.value.replace(/\\D/g,'');
     if (v.length > 11) v = v.slice(0, 11);
@@ -296,8 +347,7 @@ document.getElementById('formConsulta').addEventListener('submit', e => {
             const valorFormatado = valorNum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             document.getElementById('resValor').textContent = valorFormatado;
 
-            // Link do WhatsApp com mensagem pronta
-            const telefoneAtendimento = "5511999999999"; // Substitua pelo seu número com DDD
+            const telefoneAtendimento = "5511999999999"; 
             const mensagem = encodeURIComponent(\`Olá! Gostaria de agilizar a análise da minha proposta. Meu nome é \${p.nome}, CPF: \${p.cpf}, valor solicitado: \${valorFormatado}.\`);
             document.getElementById('btnWp').href = \`https://wa.me/\${telefoneAtendimento}?text=\${mensagem}\`;
 
