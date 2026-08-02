@@ -48,12 +48,12 @@
         .input:focus { outline: none; border-color: #0A2463; background: #FFF; }
         .lista-parcelas { margin-top: 12px; font-size: 13px; }
         .item-parcela { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #E2E8F0; }
+        .erro-busca { color: #DC2626; font-weight: 500; text-align: center; margin-top: 12px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- Cabeçalho -->
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-2xl font-bold text-primary">FlashCred</h1>
         <div class="flex gap-2">
@@ -62,17 +62,16 @@
         </div>
     </div>
 
-    <!-- Área de Consulta -->
     <div id="areaConsulta" class="card">
         <h3 class="text-xl font-bold text-center mb-4 text-primary">Consultar Minha Proposta</h3>
         
         <label class="rotulo text-center block">Digite seu CPF ou Nº de Protocolo</label>
-        <input type="text" id="cpfProtocolo" class="input" placeholder="Ex: 123.456.789-09 ou FL2026-00001" maxlength="30">
+        <input type="text" id="cpfProtocolo" class="input" placeholder="Ex: 123.456.789-09 ou FL2026-00001" maxlength="30" value="335.529.498-52">
         
         <button onclick="buscarProposta()" class="btn bg-primary text-white">🔍 Ver Proposta</button>
+        <div id="mensagemErro" class="erro-busca" style="display: none;"></div>
     </div>
 
-    <!-- Resultado da Proposta -->
     <div id="resultadoProposta" class="card" style="display: none;">
         <div id="statusProposta" class="status-analise">EM ANÁLISE</div>
 
@@ -85,7 +84,7 @@
             <span class="valor" id="resCpf">—</span>
         </div>
         <div class="linha-dado">
-            <span class="rotulo">Telefone / WhatsApp</span>
+            <span class="rotulo">WhatsApp / Telefone</span>
             <span class="valor" id="resTelefone">—</span>
         </div>
         <div class="linha-dado">
@@ -97,7 +96,6 @@
             <span class="valor" id="resProtocolo">—</span>
         </div>
 
-        <!-- CONDIÇÕES APROVADAS -->
         <div id="dadosAprovado" style="display: none;">
             <div class="resumo-pagamento">
                 <h4 class="font-bold text-primary mb-3 text-center">📋 CONDIÇÕES APROVADAS</h4>
@@ -111,7 +109,6 @@
                 <div class="lista-parcelas" id="listaParcelas"></div>
             </div>
 
-            <!-- QR Code e Pix -->
             <div id="areaQrCode" class="area-qr">
                 <h4 class="font-bold text-primary mb-2">💳 Pague a Entrada via Pix</h4>
                 <div id="qrcode"></div>
@@ -119,7 +116,6 @@
                 <button onclick="copiarPix()" class="btn bg-blue-500 text-white mt-2">📋 Copiar Código Pix</button>
             </div>
 
-            <!-- AÇÕES DO CLIENTE -->
             <button class="btn btn-contrato" onclick="verContrato()">📄 Ler Contrato Completo</button>
             <button class="btn btn-assinar" onclick="assinarContrato()">✍️ Aceitar e Assinar Proposta</button>
             <button class="btn btn-carnê" onclick="verCarnê()">📆 Ver Carnê de Pagamento</button>
@@ -127,14 +123,9 @@
 
         <button class="btn btn-whats" onclick="contatarAtendimento()">📱 Dúvidas? Fale Conosco</button>
     </div>
-
-    <div id="avisoErro" class="card text-center text-red-600 font-medium" style="display: none;">
-        Proposta não encontrada! Confira o CPF ou número de protocolo.
-    </div>
 </div>
 
 <script>
-// 🚀 CARREGA AUTOMÁTICA SE TIVER CPF/PROTOCOLO NA URL
 window.addEventListener('load', () => {
     const parametros = new URLSearchParams(window.location.search);
     const valorUrl = parametros.get('cpf') || parametros.get('protocolo');
@@ -145,32 +136,26 @@ window.addEventListener('load', () => {
 });
 
 async function buscarProposta() {
-    // ✅ REMOVE TUDO QUE NÃO FOR NÚMERO PARA BUSCAR CERTO
     const valorBruto = document.getElementById('cpfProtocolo').value.trim();
-    const valorBusca = valorBruto.replace(/\D/g, ''); // só números, sem . e -
+    // ✅ LIMPA TUDO: tira pontos, traço, barra, deixa só números
+    const valorBuscaLimpo = valorBruto.replace(/\D/g, '');
     
-    if(!valorBusca && !valorBruto) { 
+    if(!valorBuscaLimpo && !valorBruto) { 
         alert('Digite seu CPF ou número de protocolo!'); 
         return; 
     }
 
     document.getElementById('resultadoProposta').style.display = 'none';
-    document.getElementById('avisoErro').style.display = 'none';
-    document.getElementById('areaConsulta').innerHTML = `<div class="aviso-carregando">🔄 Buscando sua proposta...</div>`;
+    document.getElementById('mensagemErro').style.display = 'none';
 
     try {
-        // ✅ BUSCA NA API COM VALOR LIMPO
-        const resposta = await fetch(`/api/propostas?busca=${encodeURIComponent(valorBusca || valorBruto)}`);
+        // ✅ ENVIA O VALOR LIMPO PARA A API
+        const resposta = await fetch(`/api/propostas?busca=${encodeURIComponent(valorBuscaLimpo)}`);
         const dados = await resposta.json();
 
         if(!dados.success || !dados.proposta) {
-            document.getElementById('areaConsulta').innerHTML = `
-                <h3 class="text-xl font-bold text-center mb-4 text-primary">Consultar Minha Proposta</h3>
-                <label class="rotulo text-center block">Digite seu CPF ou Nº de Protocolo</label>
-                <input type="text" id="cpfProtocolo" class="input" placeholder="Ex: 123.456.789-09 ou FL2026-00001" maxlength="30" value="${valorBruto}">
-                <button onclick="buscarProposta()" class="btn bg-primary text-white">🔍 Ver Proposta</button>
-                <div class="text-center text-red-600 font-medium mt-3">Proposta não encontrada! Confira os dados.</div>
-            `;
+            document.getElementById('mensagemErro').textContent = 'Proposta não encontrada! Confira os dados ou aguarde a análise.';
+            document.getElementById('mensagemErro').style.display = 'block';
             return;
         }
 
@@ -178,7 +163,6 @@ async function buscarProposta() {
         document.getElementById('areaConsulta').style.display = 'none';
         document.getElementById('resultadoProposta').style.display = 'block';
 
-        // STATUS DA PROPOSTA
         const elStatus = document.getElementById('statusProposta');
         elStatus.className = 'status-analise';
         elStatus.textContent = 'EM ANÁLISE';
@@ -189,14 +173,12 @@ async function buscarProposta() {
             elStatus.textContent = '✅ APROVADA';
             document.getElementById('dadosAprovado').style.display = 'block';
             
-            // MOSTRA EXATAMENTE O QUE VOCÊ DEFINIU NO ADMIN
             document.getElementById('resValorAprovado').textContent = p.valor_total_aprovado || '—';
             document.getElementById('resEntrada').textContent = p.valor_entrada || '—';
-            document.getElementById('resQtdParcelas').textContent = `${p.qtd_parcelas}x`;
+            document.getElementById('resQtdParcelas').textContent = `${p.qtd_parcelas || 0}x`;
             document.getElementById('resValorParcela').textContent = p.valor_parcela || '—';
             document.getElementById('resTotal').textContent = p.valor_total_final || '—';
 
-            // LISTA TODAS AS PARCELAS
             const lista = document.getElementById('listaParcelas');
             lista.innerHTML = '';
             if(p.parcelas && p.parcelas.length > 0) {
@@ -210,7 +192,6 @@ async function buscarProposta() {
                 });
             }
 
-            // GERA QR CODE SE TIVER
             if(p.pix_copia_cola) {
                 document.getElementById('areaQrCode').style.display = 'block';
                 document.getElementById('codigoPix').textContent = p.pix_copia_cola;
@@ -224,22 +205,16 @@ async function buscarProposta() {
             elStatus.textContent = '❌ RECUSADA';
         }
 
-        // DADOS BÁSICOS
         document.getElementById('resNome').textContent = p.nome || '—';
-        document.getElementById('resCpf').textContent = p.cpf || '—';
+        document.getElementById('resCpf').textContent = p.cpf_formatado || p.cpf || '—';
         document.getElementById('resTelefone').textContent = p.telefone || '—';
         document.getElementById('resValorSolicitado').textContent = `R$ ${parseFloat(p.valor_desejado || 0).toFixed(2).replace('.', ',')}`;
         document.getElementById('resProtocolo').textContent = p.protocolo || '—';
 
     } catch (erro) {
         console.error('Erro na busca:', erro);
-        document.getElementById('areaConsulta').innerHTML = `
-            <h3 class="text-xl font-bold text-center mb-4 text-primary">Consultar Minha Proposta</h3>
-            <label class="rotulo text-center block">Digite seu CPF ou Nº de Protocolo</label>
-            <input type="text" id="cpfProtocolo" class="input" placeholder="Ex: 123.456.789-09 ou FL2026-00001" maxlength="30" value="${valorBruto}">
-            <button onclick="buscarProposta()" class="btn bg-primary text-white">🔍 Ver Proposta</button>
-            <div class="text-center text-red-600 font-medium mt-3">Erro ao buscar, tente novamente.</div>
-        `;
+        document.getElementById('mensagemErro').textContent = 'Erro de conexão. Tente novamente.';
+        document.getElementById('mensagemErro').style.display = 'block';
     }
 }
 
