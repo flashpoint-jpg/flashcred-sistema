@@ -14,27 +14,30 @@ const pool = new Pool({
     }
 });
 
-// Inicialização segura da tabela sem travar o app
-pool.query(`
-    CREATE TABLE IF NOT EXISTS propostas (
-        id SERIAL PRIMARY KEY,
-        nome VARCHAR(255) NOT NULL,
-        cpf VARCHAR(20) NOT NULL,
-        nascimento DATE NOT NULL,
-        cep VARCHAR(10) NOT NULL,
-        endereco TEXT NOT NULL,
-        telefone VARCHAR(20) NOT NULL,
-        valor_desejado NUMERIC(12,2) NOT NULL,
-        status VARCHAR(50) DEFAULT 'Em Análise',
-        data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-`).then(() => {
-    console.log("Tabela 'propostas' verificada com sucesso.");
-}).catch(err => {
-    console.error("Erro ao criar tabela:", err);
-});
+// Função segura para inicializar a tabela no banco
+async function iniciarBanco() {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS propostas (
+                id SERIAL PRIMARY KEY,
+                nome VARCHAR(255) NOT NULL,
+                cpf VARCHAR(20) NOT NULL,
+                nascimento DATE NOT NULL,
+                cep VARCHAR(10) NOT NULL,
+                endereco TEXT NOT NULL,
+                telefone VARCHAR(20) NOT NULL,
+                valor_desejado NUMERIC(12,2) NOT NULL,
+                status VARCHAR(50) DEFAULT 'Em Análise',
+                data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log("Tabela 'propostas' pronta para uso.");
+    } catch (err) {
+        console.error("Erro ao configurar tabela no banco:", err.message);
+    }
+}
 
-// Rota de cadastro
+// Rota para cadastrar proposta com tratamento completo de erros
 app.post('/api/propostas', async (req, res) => {
     try {
         let { nome, cpf, nascimento, cep, endereco, telefone, valor } = req.body;
@@ -51,22 +54,25 @@ app.post('/api/propostas', async (req, res) => {
         
         res.json({ success: true, data: result.rows[0] });
     } catch (error) {
-        console.error('ERRO NO POSTGRESQL:', error.message);
+        console.error('ERRO AO SALVAR PROPOSTA:', error.message);
         res.status(500).json({ success: false, message: error.message || 'Erro interno ao salvar proposta.' });
     }
 });
 
-// Rota de listagem
+// Rota para listar propostas
 app.get('/api/propostas', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM propostas ORDER BY data_criacao DESC;');
         res.json({ success: true, data: result.rows });
     } catch (error) {
+        console.error('ERRO AO BUSCAR PROPOSTAS:', error.message);
         res.status(500).json({ success: false, message: 'Erro ao buscar propostas.' });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+
+app.listen(PORT, async () => {
+    await iniciarBanco();
     console.log(`Servidor rodando na porta ${PORT}`);
 });
