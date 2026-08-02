@@ -8,6 +8,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Diz ao Express para servir os arquivos HTML da pasta 'public'
+app.use(express.static(path.join(__dirname, 'public')));
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
@@ -67,18 +70,15 @@ app.get('/api/propostas/:cpf', async (req, res) => {
     }
 });
 
-// --- FRONTEND ROUTES (Arquivos na raiz) ---
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
+// --- FRONTEND ROUTES ---
+// Com o 'express.static' acima, o index.html principal já abre automaticamente na raiz ('/').
+// Se precisar de rotas amigáveis extras, você pode mapeá-las assim:
 app.get('/consultar', (req, res) => {
-    res.sendFile(path.join(__dirname, 'consultar.html'));
+    res.sendFile(path.join(__dirname, 'public', 'consultar.html'));
 });
 
 app.get('/painel', (req, res) => {
-    res.sendFile(path.join(__dirname, 'painel.html'));
+    res.sendFile(path.join(__dirname, 'public', 'painel.html'));
 });
 
 const PORT = process.env.PORT || 3000;
