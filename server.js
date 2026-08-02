@@ -12,6 +12,31 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false }
 });
 
+// API: Buscar todas as propostas (para o painel)
+app.get('/api/propostas', async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM propostas ORDER BY id DESC');
+        return res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('Erro ao buscar propostas:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// API: Atualizar status da proposta
+app.put('/api/propostas/:id/status', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        await pool.query('UPDATE propostas SET status = $1 WHERE id = $2', [status, id]);
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('Erro ao atualizar status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// API: Buscar proposta específica por CPF (para o cliente consultar)
 app.get('/api/propostas/:cpf', async (req, res) => {
     try {
         const cpfParam = req.params.cpf;
@@ -29,6 +54,293 @@ app.get('/api/propostas/:cpf', async (req, res) => {
     }
 });
 
+// ROTA DO PAINEL ADMINISTRATIVO COM SENHA
+app.get('/painel', (req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlashCred | Painel Administrativo</title>
+    <style>
+        :root {
+            --primary: #0A2463;
+            --primary-dark: #071A47;
+            --accent: #32BCAD;
+            --accent-hover: #299e91;
+            --bg-body: #F4F7FA;
+            --text-main: #1E293B;
+            --text-muted: #64748B;
+            --border-color: #E2E8F0;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background: var(--bg-body); color: var(--text-main); line-height: 1.5; }
+
+        /* MODAL DE SENHA */
+        #modalSenha {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 36, 99, 0.7);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-card {
+            background: white;
+            padding: 40px;
+            border-radius: 24px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+            border: 1px solid var(--border-color);
+            text-align: center;
+        }
+        .modal-card h2 { color: var(--primary); margin-bottom: 10px; font-size: 22px; font-weight: 700; }
+        .modal-card p { color: var(--text-muted); font-size: 13px; margin-bottom: 25px; }
+
+        .form-group { margin-bottom: 18px; text-align: left; }
+        label { display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        input { 
+            width: 100%; 
+            padding: 14px 16px; 
+            border: 1.5px solid var(--border-color); 
+            border-radius: 16px; 
+            font-size: 15px; 
+            background: #F8FAFC;
+            color: var(--text-main);
+        }
+        input:focus { outline: none; border-color: var(--accent); background: white; box-shadow: 0 0 0 4px rgba(50, 188, 173, 0.12); }
+
+        .btn-entrar { 
+            width: 100%; 
+            padding: 16px; 
+            background: linear-gradient(135deg, var(--accent) 0%, #299e91 100%); 
+            color: #04203a; 
+            border: none; 
+            border-radius: 16px; 
+            font-weight: 700; 
+            font-size: 16px; 
+            cursor: pointer; 
+            box-shadow: 0 4px 15px rgba(50, 188, 173, 0.3);
+            transition: all 0.2s ease;
+        }
+        .btn-entrar:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(50, 188, 173, 0.4); }
+        .erro { color: #EF4444; font-size: 13px; font-weight: 600; margin-top: 12px; display: none; }
+
+        /* CONTEÚDO DO PAINEL (Inicialmente Oculto) */
+        #painelConteudo { display: none; }
+
+        nav { 
+            background: rgba(255, 255, 255, 0.95); 
+            backdrop-filter: blur(10px);
+            padding: 16px 24px; 
+            border-bottom: 1px solid var(--border-color); 
+            box-shadow: 0 4px 20px -2px rgba(10, 36, 99, 0.04); 
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .nav-conteudo { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-weight: 700; color: var(--primary); font-size: 18px; text-decoration: none; }
+
+        .nav-links { display: flex; gap: 12px; align-items: center; }
+        .nav-links a { 
+            display: flex; align-items: center; gap: 8px; color: var(--primary); text-decoration: none; font-weight: 600; font-size: 13px;
+            padding: 10px 18px; border-radius: 16px; background: #ffffff; border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(10, 36, 99, 0.06); transition: all 0.25s ease;
+        }
+        .nav-links a:hover { background: var(--primary); color: #ffffff; border-color: transparent; }
+
+        main { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+
+        .card { 
+            background: white; padding: 30px; border-radius: 24px; 
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04); border: 1px solid var(--border-color); margin-bottom: 30px;
+        }
+        .card h2 { color: var(--primary); margin-bottom: 10px; font-size: 22px; font-weight: 700; }
+        .card p { color: var(--text-muted); font-size: 14px; margin-bottom: 20px; }
+
+        .table-responsive { width: 100%; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; }
+        th { background: #F8FAFC; color: var(--primary); padding: 14px; font-weight: 700; border-bottom: 2px solid var(--border-color); }
+        td { padding: 14px; border-bottom: 1px solid var(--border-color); color: var(--text-main); }
+        tr:hover td { background: #F8FAFC; }
+
+        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; display: inline-block; }
+        .status-badge.analise { background: #FEF3C7; color: #D97706; }
+        .status-badge.aprovada { background: #D1FAE5; color: #059669; }
+        .status-badge.recusada { background: #FEE2E2; color: #DC2626; }
+
+        select.select-status {
+            padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border-color);
+            background: white; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--primary);
+        }
+
+        .sem-dados { text-align: center; padding: 30px; color: var(--text-muted); font-style: italic; }
+
+        footer { 
+            background: var(--primary); color: #94A3B8; text-align: center; padding: 30px 20px; 
+            margin-top: 60px; font-size: 13px; border-top: 4px solid var(--accent); border-radius: 24px 24px 0 0;
+        }
+    </style>
+</head>
+<body>
+
+<!-- MODAL DE SENHA -->
+<div id="modalSenha">
+    <div class="modal-card">
+        <h2>Área Restrita</h2>
+        <p>Digite a senha de administrador para acessar o painel.</p>
+        <form id="formSenha">
+            <div class="form-group">
+                <label>Senha de Acesso</label>
+                <input type="password" id="senhaInput" placeholder="Digite a senha" required>
+            </div>
+            <button type="submit" class="btn-entrar">Entrar no Painel</button>
+            <div class="erro" id="erroSenha">Senha incorreta! Tente novamente.</div>
+        </form>
+    </div>
+</div>
+
+<!-- CONTEÚDO DO PAINEL -->
+<div id="painelConteudo">
+    <nav>
+        <div class="nav-conteudo">
+            <a href="/" class="logo">FlashCred | Painel</a>
+            <div class="nav-links">
+                <a href="/">Consultar Proposta</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="card">
+            <h2>Gerenciamento de Propostas</h2>
+            <p>Lista de todas as solicitações de limite enviadas pelos clientes através do sistema.</p>
+
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Cliente</th>
+                            <th>CPF</th>
+                            <th>Telefone</th>
+                            <th>Valor Desejado</th>
+                            <th>Status Atual</th>
+                            <th>Ações / Alterar Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaPropostas">
+                        <tr>
+                            <td colspan="7" class="sem-dados">Carregando propostas do banco de dados...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>© 2026 FlashCred | Soluções de Pagamento e Limite no Pix. Todos os direitos reservados.</p>
+    </footer>
+</div>
+
+<script>
+// CONTROLE DE SENHA
+document.getElementById('formSenha').addEventListener('submit', e => {
+    e.preventDefault();
+    const senha = document.getElementById('senhaInput').value;
+    const erroEl = document.getElementById('erroSenha');
+
+    if (senha === 'Asstec@4523') {
+        document.getElementById('modalSenha').style.display = 'none';
+        document.getElementById('painelConteudo').style.display = 'block';
+        carregarPropostas();
+    } else {
+        erroEl.style.display = 'block';
+        document.getElementById('senhaInput').value = '';
+    }
+});
+
+// CARREGAR PROPOSTAS
+function carregarPropostas() {
+    fetch('/api/propostas')
+    .then(res => res.json())
+    .then(result => {
+        const tbody = document.getElementById('tabelaPropostas');
+        tbody.innerHTML = '';
+
+        if (result.success && result.data && result.data.length > 0) {
+            result.data.forEach(p => {
+                const tr = document.createElement('tr');
+                
+                const dataFormatada = new Date(p.data_criacao).toLocaleDateString('pt-BR', {
+                    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
+
+                const valorFormatado = Number(p.valor_desejado).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+                let classeStatus = 'analise';
+                if (p.status === 'Aprovada') classeStatus = 'aprovada';
+                if (p.status === 'Recusada') classeStatus = 'recusada';
+
+                tr.innerHTML = \`
+                    <td>\${dataFormatada}</td>
+                    <td><strong>\${p.nome}</strong></td>
+                    <td>\${p.cpf}</td>
+                    <td>\${p.telefone}</td>
+                    <td>\${valorFormatado}</td>
+                    <td><span class="status-badge \${classeStatus}">\${p.status}</span></td>
+                    <td>
+                        <select class="select-status" onchange="atualizarStatus(\${p.id}, this.value)">
+                            <option value="Em Análise" \${p.status === 'Em Análise' ? 'selected' : ''}>Em Análise</option>
+                            <option value="Aprovada" \${p.status === 'Aprovada' ? 'selected' : ''}>Aprovada</option>
+                            <option value="Recusada" \${p.status === 'Recusada' ? 'selected' : ''}>Recusada</option>
+                        </select>
+                    </td>
+                \`;
+                tbody.appendChild(tr);
+            });
+        } else {
+            tbody.innerHTML = \`<tr><td colspan="7" class="sem-dados">Nenhuma proposta cadastrada no banco de dados ainda.</td></tr>\`;
+        }
+    })
+    .catch(err => {
+        console.error('Erro ao buscar propostas:', err);
+        document.getElementById('tabelaPropostas').innerHTML = \`<tr><td colspan="7" class="sem-dados" style="color: #DC2626;">Erro ao carregar dados do servidor.</td></tr>\`;
+    });
+}
+
+// ATUALIZAR STATUS
+function atualizarStatus(id, novoStatus) {
+    fetch('/api/propostas/' + id + '/status', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: novoStatus })
+    })
+    .then(res => res.json())
+    .then(result => {
+        if (result.success) {
+            carregarPropostas();
+        } else {
+            alert('Erro ao atualizar status: ' + result.message);
+        }
+    })
+    .catch(err => {
+        console.error('Erro na requisição:', err);
+        alert('Erro de conexão com o servidor.');
+    });
+}
+</script>
+</body>
+</html>`);
+});
+
+// ROTA DA INDEX (Consulta pública para o cliente acompanhar o CPF)
 app.get('*', (req, res) => {
     res.send(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -65,31 +377,17 @@ app.get('*', (req, res) => {
 
         .nav-links { display: flex; gap: 12px; align-items: center; }
         .nav-links a { 
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            color: var(--primary); 
-            text-decoration: none; 
-            font-weight: 600; 
-            font-size: 13px;
-            padding: 10px 18px;
-            border-radius: 16px;
-            background: #ffffff;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 4px 12px rgba(10, 36, 99, 0.06);
-            transition: all 0.25s ease;
+            display: flex; align-items: center; gap: 8px; color: var(--primary); text-decoration: none; font-weight: 600; font-size: 13px;
+            padding: 10px 18px; border-radius: 16px; background: #ffffff; border: 1px solid var(--border-color);
+            box-shadow: 0 4px 12px rgba(10, 36, 99, 0.06); transition: all 0.25s ease;
         }
         .nav-links a:hover { background: var(--primary); color: #ffffff; border-color: transparent; }
 
         main { max-width: 800px; margin: 40px auto; padding: 0 20px; }
 
         .card { 
-            background: white; 
-            padding: 35px; 
-            border-radius: 24px; 
-            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04); 
-            border: 1px solid var(--border-color); 
-            margin-bottom: 30px;
+            background: white; padding: 35px; border-radius: 24px; 
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04); border: 1px solid var(--border-color); margin-bottom: 30px;
         }
         .card h2 { color: var(--primary); margin-bottom: 10px; font-size: 22px; font-weight: 700; }
         .card p { color: var(--text-muted); font-size: 14px; margin-bottom: 25px; }
@@ -97,30 +395,17 @@ app.get('*', (req, res) => {
         .form-group { margin-bottom: 18px; }
         label { display: block; font-size: 13px; font-weight: 600; color: #475569; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
         input { 
-            width: 100%; 
-            padding: 14px 16px; 
-            border: 1.5px solid var(--border-color); 
-            border-radius: 16px; 
-            font-size: 15px; 
-            background: #F8FAFC;
-            color: var(--text-main);
+            width: 100%; padding: 14px 16px; border: 1.5px solid var(--border-color); border-radius: 16px; 
+            font-size: 15px; background: #F8FAFC; color: var(--text-main);
         }
         input:focus { outline: none; border-color: var(--accent); background: white; box-shadow: 0 0 0 4px rgba(50, 188, 173, 0.12); }
 
         .erro { color: #EF4444; font-size: 13px; font-weight: 600; margin-top: 10px; display: none; }
 
         .btn-consultar { 
-            width: 100%; 
-            padding: 16px; 
-            background: linear-gradient(135deg, var(--accent) 0%, #299e91 100%); 
-            color: #04203a; 
-            border: none; 
-            border-radius: 16px; 
-            font-weight: 700; 
-            font-size: 16px; 
-            cursor: pointer; 
-            box-shadow: 0 4px 15px rgba(50, 188, 173, 0.3);
-            transition: all 0.2s ease;
+            width: 100%; padding: 16px; background: linear-gradient(135deg, var(--accent) 0%, #299e91 100%); 
+            color: #04203a; border: none; border-radius: 16px; font-weight: 700; font-size: 16px; cursor: pointer; 
+            box-shadow: 0 4px 15px rgba(50, 188, 173, 0.3); transition: all 0.2s ease;
         }
         .btn-consultar:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(50, 188, 173, 0.4); }
 
@@ -128,26 +413,15 @@ app.get('*', (req, res) => {
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
         .status-box {
-            padding: 20px;
-            border-radius: 16px;
-            margin-bottom: 25px;
-            text-align: center;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
+            padding: 20px; border-radius: 16px; margin-bottom: 25px; text-align: center;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
         }
         .status { font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 16px; display: inline-block; border-radius: 20px; }
         .status.analise { background: #FEF3C7; color: #D97706; }
 
         .spinner {
-            width: 18px;
-            height: 18px;
-            border: 3px solid rgba(217, 119, 6, 0.3);
-            border-top: 3px solid #D97706;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            display: inline-block;
+            width: 18px; height: 18px; border: 3px solid rgba(217, 119, 6, 0.3); border-top: 3px solid #D97706;
+            border-radius: 50%; animation: spin 1s linear infinite; display: inline-block;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
@@ -159,31 +433,15 @@ app.get('*', (req, res) => {
         .detalhe-item strong { font-size: 16px; color: var(--primary); }
 
         .btn-whatsapp {
-            display: block;
-            width: 100%;
-            padding: 16px;
-            background: #25D366;
-            color: white;
-            text-align: center;
-            text-decoration: none;
-            border-radius: 16px;
-            font-weight: 700;
-            font-size: 16px;
-            box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3);
-            transition: all 0.2s ease;
-            margin-top: 20px;
+            display: block; width: 100%; padding: 16px; background: #25D366; color: white; text-align: center;
+            text-decoration: none; border-radius: 16px; font-weight: 700; font-size: 16px;
+            box-shadow: 0 4px 15px rgba(37, 211, 102, 0.3); transition: all 0.2s ease; margin-top: 20px;
         }
         .btn-whatsapp:hover { background: #22bf5b; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(37, 211, 102, 0.4); }
 
         footer { 
-            background: var(--primary); 
-            color: #94A3B8; 
-            text-align: center; 
-            padding: 30px 20px; 
-            margin-top: 60px; 
-            font-size: 13px; 
-            border-top: 4px solid var(--accent); 
-            border-radius: 24px 24px 0 0;
+            background: var(--primary); color: #94A3B8; text-align: center; padding: 30px 20px; 
+            margin-top: 60px; font-size: 13px; border-top: 4px solid var(--accent); border-radius: 24px 24px 0 0;
         }
     </style>
 </head>
@@ -191,10 +449,9 @@ app.get('*', (req, res) => {
 
 <nav>
     <div class="nav-conteudo">
-        <a href="#" class="logo">FlashCred</a>
+        <a href="/" class="logo">FlashCred</a>
         <div class="nav-links">
-            <a href="#">Nova Solicitação</a>
-            <a href="#">Painel</a>
+            <a href="/painel">Painel Admin</a>
         </div>
     </div>
 </nav>
