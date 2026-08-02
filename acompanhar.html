@@ -106,11 +106,30 @@
             border-radius: 16px;
             margin-bottom: 25px;
             text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
         .status { font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 16px; display: inline-block; border-radius: 20px; }
         .status.analise { background: #FEF3C7; color: #D97706; }
         .status.aprovado { background: #D1FAE5; color: #059669; }
         .status.recusado { background: #FEE2E2; color: #DC2626; }
+
+        /* Bolinha rodando (Spinner) */
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 3px solid rgba(217, 119, 6, 0.3);
+            border-top: 3px solid #D97706;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
 
         .detalhes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
         @media(max-width: 600px) { .detalhes-grid { grid-template-columns: 1fr; } }
@@ -160,12 +179,16 @@
 
     <!-- BLOCO DE RESULTADO BUSCADO DO BANCO DE DADOS -->
     <div class="card" id="resultado">
-        <div class="status-box">
+        <div class="status-box" id="statusBoxContainer">
             <div id="statusTexto" class="status">Carregando...</div>
         </div>
 
         <h3 style="color: var(--primary); font-size: 18px; margin-bottom: 15px;">Detalhes do Cadastro</h3>
         <div class="detalhes-grid">
+            <div class="detalhe-item" style="grid-column: 1 / -1;">
+                <span>Número da Proposta</span>
+                <strong id="resIdProposta" style="color: var(--accent-hover); font-size: 18px;">-</strong>
+            </div>
             <div class="detalhe-item">
                 <span>Nome do Solicitante</span>
                 <strong id="resNome">-</strong>
@@ -254,16 +277,32 @@ document.getElementById('formConsulta').addEventListener('submit', e => {
             const p = result.data;
             resultadoEl.style.display = 'block';
             
-            // Status do banco (Ex: 'Em Análise', 'Aprovada', 'Recusada')
             const statusEl = document.getElementById('statusTexto');
-            statusEl.textContent = `Status: ${p.status}`;
+            const statusBoxContainer = document.getElementById('statusBoxContainer');
+            
+            // Remove spinner antigo se houver
+            const spinnerAntigo = statusBoxContainer.querySelector('.spinner');
+            if (spinnerAntigo) spinnerAntigo.remove();
+
+            let statusLower = (p.status || 'Em Análise').toLowerCase();
+            statusEl.textContent = `Status: ${p.status || 'Em Análise'}`;
             
             let classeStatus = 'analise';
-            if (p.status.toLowerCase() === 'aprovada') classeStatus = 'aprovado';
-            if (p.status.toLowerCase() === 'recusada') classeStatus = 'recusado';
+            if (statusLower.includes('aprovado') || statusLower.includes('aprovada')) {
+                classeStatus = 'aprovado';
+            } else if (statusLower.includes('recusado') || statusLower.includes('recusada')) {
+                classeStatus = 'recusado';
+            } else {
+                // Adiciona a bolinha rodando se estiver em análise
+                const spinner = document.createElement('div');
+                spinner.className = 'spinner';
+                statusBoxContainer.insertBefore(spinner, statusEl);
+            }
+            
             statusEl.className = `status ${classeStatus}`;
 
-            // Dados preenchidos com o que veio do PostgreSQL
+            // Preenche o Número da Proposta (ID do banco) e demais dados
+            document.getElementById('resIdProposta').textContent = `#${p.id || '---'}`;
             document.getElementById('resNome').textContent = p.nome;
             document.getElementById('resCpf').textContent = p.cpf;
             
