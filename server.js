@@ -1,83 +1,53 @@
-
-// 📄 Rotas das Páginas
-app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'login.html'));
-});
-
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/consultar', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'consultar.html'));
-});
-
-app.get('/painel', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'painel.html'));
-});
-
-
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const fs = require('fs');
-
-// Adiciona o fetch compatível com todas as versões do Node
 const fetch = require('node-fetch');
 
 const app = express();
-// Usa a porta que o Render definir, ou 3000 localmente
 const PORT = process.env.PORT || 3000;
 const ARQUIVO_DADOS = path.join(__dirname, 'propostas.json');
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Servir arquivos estáticos da pasta public
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 📂 Funções de leitura e salvamento seguro
+// Garante que o arquivo de dados existe
+if (!fs.existsSync(ARQUIVO_DADOS)) {
+    fs.writeFileSync(ARQUIVO_DADOS, '[]', 'utf8');
+}
+
 function lerPropostas() {
     try {
-        if (fs.existsSync(ARQUIVO_DADOS)) {
-            const dados = fs.readFileSync(ARQUIVO_DADOS, 'utf8');
-            return JSON.parse(dados);
-        }
+        const dados = fs.readFileSync(ARQUIVO_DADOS, 'utf8');
+        return JSON.parse(dados);
     } catch (e) {
-        console.error("Erro ao ler propostas:", e);
+        console.error("Erro ao ler propostas:", e.message);
+        return [];
     }
-    return [];
 }
 
 function salvarPropostas(lista) {
     try {
         fs.writeFileSync(ARQUIVO_DADOS, JSON.stringify(lista, null, 2), 'utf8');
     } catch (e) {
-        console.error("Erro ao salvar propostas:", e);
+        console.error("Erro ao salvar:", e.message);
     }
 }
 
-// 📄 Rotas das Páginas
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// Páginas
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/consultar', (req, res) => res.sendFile(path.join(__dirname, 'public', 'consultar.html')));
+app.get('/painel', (req, res) => res.sendFile(path.join(__dirname, 'public', 'painel.html')));
 
-app.get('/consultar', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'consultar.html'));
-});
-
-app.get('/painel', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'painel.html'));
-});
-
-// 📋 Rotas de Propostas
+// API Propostas
 app.post('/api/propostas', (req, res) => {
     try {
         let propostas = lerPropostas();
         const novoId = propostas.length > 0 ? Math.max(...propostas.map(p => p.id)) + 1 : 1;
-
-        const novaProposta = {
+        const nova = {
             id: novoId,
             nome: req.body.nome || 'Cliente',
             cpf: req.body.cpf || '---',
@@ -86,25 +56,21 @@ app.post('/api/propostas', (req, res) => {
             status: 'Em Análise',
             data_criacao: new Date().toISOString(),
             entrada_paga: false,
-            valor_entrada: 0,
-            modo_api: req.body.modo_api || 'teste'
+            valor_entrada: 0
         };
-
-        propostas.push(novaProposta);
+        propostas.push(nova);
         salvarPropostas(propostas);
-        
-        res.status(201).json({ success: true, message: "Proposta salva com sucesso!", id: novaProposta.id });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        res.status(201).json({ success: true, id: novoId });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
 app.get('/api/propostas', (req, res) => {
     try {
-        const propostas = lerPropostas();
-        res.json({ success: true, data: propostas });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        res.json({ success: true, data: lerPropostas() });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
@@ -112,55 +78,40 @@ app.put('/api/proposta/:id/status', (req, res) => {
     try {
         const id = parseInt(req.params.id);
         const { status, entrada_paga, valor_entrada } = req.body;
-        let propostas = lerPropostas();
-        const p = propostas.find(item => item.id === id);
+        const lista = lerPropostas();
+        const item = lista.find(i => i.id === id);
+        if (!item) return res.status(404).json({ success: false });
         
-        if (p) {
-            if(status) p.status = status;
-            if(typeof entrada_paga !== 'undefined') p.entrada_paga = entrada_paga;
-            if(valor_entrada) p.valor_entrada = valor_entrada;
-            
-            salvarPropostas(propostas);
-            res.json({ success: true, data: p });
-        } else {
-            res.status(404).json({ success: false, error: "Proposta não encontrada" });
-        }
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        if(status) item.status = status;
+        if(typeof entrada_paga !== 'undefined') item.entrada_paga = entrada_paga;
+        if(valor_entrada) item.valor_entrada = valor_entrada;
+        salvarPropostas(lista);
+        res.json({ success: true, data: item });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
 app.delete('/api/proposta/:id', (req, res) => {
     try {
-        const id = parseInt(req.params.id);
-        let propostas = lerPropostas();
-        const index = propostas.findIndex(item => item.id === id);
-        
-        if (index !== -1) {
-            propostas.splice(index, 1);
-            salvarPropostas(propostas);
-            res.json({ success: true, message: "Proposta excluída" });
-        } else {
-            res.status(404).json({ success: false, error: "Proposta não encontrada" });
-        }
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        const lista = lerPropostas();
+        const index = lista.findIndex(i => i.id === parseInt(req.params.id));
+        if (index === -1) return res.status(404).json({ success: false });
+        lista.splice(index, 1);
+        salvarPropostas(lista);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
-// 💳 Rota para criar Pix via Mercado Pago
+// Rota Pix Mercado Pago
 app.post('/api/criar-pix', async (req, res) => {
     try {
         const { valor, descricao, emailCliente, tokenApi } = req.body;
-        
-        if (!tokenApi) {
-            return res.status(400).json({ success: false, error: "Token da API não informado" });
-        }
-        if (!valor || parseFloat(valor) <= 0) {
-            return res.status(400).json({ success: false, error: "Valor inválido" });
-        }
+        if (!tokenApi || !valor) return res.status(400).json({ success: false, error: "Dados incompletos" });
 
-        const response = await fetch('https://api.mercadopago.com/v1/payments', {
+        const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${tokenApi}`,
@@ -175,31 +126,22 @@ app.post('/api/criar-pix', async (req, res) => {
             })
         });
 
-        const data = await response.json();
-        
-        if (response.ok && data.point_of_interaction) {
+        const dados = await resposta.json();
+        if (resposta.ok && dados.point_of_interaction) {
             res.json({
                 success: true,
-                qr_code: data.point_of_interaction.transaction_data.qr_code,
-                qr_code_base64: data.point_of_interaction.transaction_data.qr_code_base64,
-                payment_id: data.id
+                qr_code: dados.point_of_interaction.transaction_data.qr_code,
+                payment_id: dados.id
             });
         } else {
-            console.error("Erro Mercado Pago:", data);
-            res.status(400).json({ 
-                success: false, 
-                error: data.message || "Erro ao gerar Pix",
-                detalhes: data 
-            });
+            res.status(400).json({ success: false, error: dados.message || "Erro Mercado Pago" });
         }
-    } catch (error) {
-        console.error("Erro na rota Pix:", error);
-        res.status(500).json({ success: false, error: error.message });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
-// 🚀 Iniciar servidor - obrigatório para o Render detectar que está rodando
+// Inicialização OBRIGATÓRIA para o Render
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Servidor FlashCred rodando na porta ${PORT}`);
-    console.log(`📂 Páginas servidas da pasta: ${path.join(__dirname, 'public')}`);
+    console.log(`✅ Servidor rodando na porta ${PORT}`);
 });
