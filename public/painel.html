@@ -86,7 +86,7 @@
         .cliente-nome { font-size: 20px; font-weight: 800; color: var(--primary); margin-bottom: 12px; }
         .dado-linha { padding: 8px 0; border-bottom: 1px solid #F8FAFC; font-size: 14px; }
         .dado-linha:last-child { border: none; }
-        .dado-rotulo { font-weight: 600; color: var(--text-muted); display: inline-block; width: 140px; }
+        .dado-rotulo { font-weight: 600; color: var(--text-muted); display: inline-block; width: 180px; }
         .dado-valor { font-weight: 500; color: var(--text-main); }
 
         .grupo-linha { display: flex; gap: 12px; margin-bottom: 12px; }
@@ -174,17 +174,21 @@ if(localStorage.getItem('logado_flashcred') !== 'sim') {
             </div>
 
             <div class="card" id="cardDetalhes" style="display:none;">
-                <h2 class="card-titulo">👤 Dados do Cliente</h2>
+                <h2 class="card-titulo">👤 Dados Completos do Cliente</h2>
                 <div class="cliente-nome" id="cliNome">—</div>
                 <div class="dado-linha"><span class="dado-rotulo">CPF:</span><span class="dado-valor" id="cliCpf">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Data de Nascimento:</span><span class="dado-valor" id="cliNascimento">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Idade:</span><span class="dado-valor" id="cliIdade">—</span></div>
                 <div class="dado-linha"><span class="dado-rotulo">WhatsApp:</span><span class="dado-valor" id="cliWhatsapp">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">CEP:</span><span class="dado-valor" id="cliCep">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Endereço Completo:</span><span class="dado-valor" id="cliEndereco">—</span></div>
                 <div class="dado-linha"><span class="dado-rotulo">Status Entrada:</span><span class="dado-valor" id="statusEntrada">—</span></div>
                 <div class="dado-linha"><span class="dado-rotulo">Valor da Entrada:</span><span class="dado-valor" id="valorEntradaCli">—</span></div>
 
                 <button class="btn btn-manual" onclick="darBaixaManualEntrada()">💵 Dar Baixa Manual</button>
 
                 <div class="area-botoes" style="margin-top: 12px;">
-                    <button class="btn btn-copiar" onclick="copiarDadosCliente()">📋 Copiar Dados</button>
+                    <button class="btn btn-copiar" onclick="copiarDadosCliente()">📋 Copiar Dados Completos</button>
                     <button class="btn btn-excluir" onclick="excluirProposta()">🗑️ Excluir</button>
                 </div>
             </div>
@@ -241,9 +245,11 @@ if(localStorage.getItem('logado_flashcred') !== 'sim') {
             </div>
             <div class="grupo-linha">
                 <div class="grupo-item">
-                    <label>Quantidade de Parcelas</label>
+                    <label>Quantidade de Parcelas (1 a 48x)</label>
                     <select id="qtdParcelas" class="input" onchange="atualizarCalculo()">
-                        <option value="" disabled selected>Selecione...</option>
+                        <option value="" disabled selected>Escolha a quantidade...</option>
+                        <option value="1">1x</option>
+                        <option value="2">2x</option>
                         <option value="3">3x</option>
                         <option value="4">4x</option>
                         <option value="5">5x</option>
@@ -254,9 +260,14 @@ if(localStorage.getItem('logado_flashcred') !== 'sim') {
                         <option value="10">10x</option>
                         <option value="11">11x</option>
                         <option value="12">12x</option>
+                        <option value="13">13x</option>
+                        <option value="14">14x</option>
+                        <option value="15">15x</option>
                         <option value="18">18x</option>
                         <option value="24">24x</option>
+                        <option value="30">30x</option>
                         <option value="36">36x</option>
+                        <option value="42">42x</option>
                         <option value="48">48x</option>
                     </select>
                 </div>
@@ -306,8 +317,6 @@ function alterarSenha() {
     const aviso = document.getElementById('avisoSenha');
 
     aviso.style.display = 'none';
-
-    // Pega a senha atual salva (mesma do login)
     const senhaCorretaAtual = localStorage.getItem('senha_admin') || 'flashcred2026';
 
     if(!senhaAtual || !novaSenha || !confirmaSenha) {
@@ -331,18 +340,29 @@ function alterarSenha() {
         return;
     }
 
-    // Salva a nova senha
     localStorage.setItem('senha_admin', novaSenha);
     aviso.className = 'aviso-sucesso';
     aviso.textContent = '✅ Senha alterada com sucesso!';
     aviso.style.display = 'block';
 
-    // Limpa os campos
     document.getElementById('senhaAtual').value = '';
     document.getElementById('novaSenha').value = '';
     document.getElementById('confirmaNovaSenha').value = '';
 
     setTimeout(() => { aviso.style.display = 'none'; }, 3000);
+}
+
+// 📌 CALCULAR IDADE
+function calcularIdade(dataNascimento) {
+    if(!dataNascimento) return '—';
+    const nasc = new Date(dataNascimento);
+    const hoje = new Date();
+    let idade = hoje.getFullYear() - nasc.getFullYear();
+    const mes = hoje.getMonth() - nasc.getMonth();
+    if (mes < 0 || (mes === 0 && hoje.getDate() < nasc.getDate())) {
+        idade--;
+    }
+    return `${idade} anos`;
 }
 
 window.addEventListener('load', () => {
@@ -505,30 +525,65 @@ function selecionarProposta(index) {
     clienteSelecionado = propostasGlobal[index];
     if(!clienteSelecionado) return;
 
+    // ✅ PREENCHE AUTOMÁTICAMENTE OS CAMPOS
+    document.getElementById('valorTotal').value = clienteSelecionado.valor_desejado || '';
+    document.getElementById('porcEntrada').value = clienteSelecionado.porc_entrada || '';
+    document.getElementById('porcJuros').value = clienteSelecionado.porc_juros || '';
+    document.getElementById('qtdParcelas').value = ''; // COMEÇA ZERADO, VOCÊ ESCOLHE
+
+    // ✅ TODOS OS DADOS DO CLIENTE
     document.getElementById('cardDetalhes').style.display = 'block';
-    document.getElementById('cliNome').textContent = clienteSelecionado.nome;
-    document.getElementById('cliCpf').textContent = clienteSelecionado.cpf;
-    document.getElementById('cliWhatsapp').textContent = clienteSelecionado.telefone;
+    document.getElementById('cliNome').textContent = clienteSelecionado.nome || '—';
+    document.getElementById('cliCpf').textContent = clienteSelecionado.cpf || '—';
+    document.getElementById('cliNascimento').textContent = clienteSelecionado.data_nascimento ? new Date(clienteSelecionado.data_nascimento).toLocaleDateString('pt-BR') : '—';
+    document.getElementById('cliIdade').textContent = calcularIdade(clienteSelecionado.data_nascimento);
+    document.getElementById('cliWhatsapp').textContent = clienteSelecionado.telefone || '—';
+    document.getElementById('cliCep').textContent = clienteSelecionado.cep || '—';
+    document.getElementById('cliEndereco').textContent = `${clienteSelecionado.rua || ''}, ${clienteSelecionado.numero || ''} - ${clienteSelecionado.bairro || ''}, ${clienteSelecionado.cidade || ''}/${clienteSelecionado.uf || ''}`;
     document.getElementById('statusEntrada').textContent = clienteSelecionado.entrada_paga ? '✅ Pago' : '⏳ Pendente';
-    document.getElementById('valorEntradaCli').textContent = clienteSelecionado.valor_entrada ? `R$ ${parseFloat(clienteSelecionado.valor_entrada).toFixed(2)}` : '—';
+    document.getElementById('valorEntradaCli').textContent = clienteSelecionado.valor_entrada || '—';
+
+    atualizarCalculo();
 }
 
 async function alterarStatus(novoStatus) {
     if(!clienteSelecionado) { mostrarAviso('Selecione uma proposta primeiro!'); return; }
     
+    const valorTotal = parseFloat(document.getElementById('valorTotal').value) || 0;
+    const porcEntrada = parseFloat(document.getElementById('porcEntrada').value) || 0;
+    const porcJuros = parseFloat(document.getElementById('porcJuros').value) || 0;
+    const qtdParcelas = parseInt(document.getElementById('qtdParcelas').value) || 0;
+
+    if(novoStatus === 'Aprovada' && (!valorTotal || !porcEntrada || !qtdParcelas)) {
+        mostrarAviso('⚠️ Preencha valor total, entrada e quantidade de parcelas antes de aprovar!');
+        return;
+    }
+
     try {
+        const dadosAtualizados = {
+            status: novoStatus,
+            valor_total: valorTotal,
+            porc_entrada: porcEntrada,
+            porc_juros: porcJuros,
+            qtd_parcelas: qtdParcelas,
+            valor_entrada: document.getElementById('resEntrada').textContent,
+            valor_parcela: document.getElementById('resParcela').textContent,
+            valor_total_final: document.getElementById('resTotal').textContent,
+            pix_copia_cola: document.getElementById('codigoPix').textContent || ''
+        };
+
         const resposta = await fetch(`/api/proposta/${clienteSelecionado.id}/status`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: novoStatus })
+            body: JSON.stringify(dadosAtualizados)
         });
         const result = await resposta.json();
         
         if(result.success) {
-            mostrarAviso(`✅ Proposta ${novoStatus.toLowerCase()} com sucesso!`);
+            mostrarAviso(`✅ Proposta ${novoStatus.toLowerCase()}! Agora o cliente já vê tudo na página de consulta.`);
             carregarPropostas();
         } else {
-            mostrarAviso('❌ Erro ao atualizar status.');
+            mostrarAviso('❌ Erro ao atualizar proposta.');
         }
     } catch (erro) {
         console.error(erro);
@@ -559,9 +614,18 @@ async function excluirProposta() {
 
 function copiarDadosCliente() {
     if(!clienteSelecionado) return;
-    const texto = `Nome: ${clienteSelecionado.nome}\nCPF: ${clienteSelecionado.cpf}\nTelefone: ${clienteSelecionado.telefone}\nValor Desejado: R$ ${parseFloat(clienteSelecionado.valor_desejado || 0).toFixed(2)}`;
-    navigator.clipboard.writeText(texto);
-    mostrarAviso('📋 Dados copiados!');
+    const texto = `
+NOME: ${clienteSelecionado.nome}
+CPF: ${clienteSelecionado.cpf}
+NASCIMENTO: ${clienteSelecionado.data_nascimento ? new Date(clienteSelecionado.data_nascimento).toLocaleDateString('pt-BR') : '—'}
+IDADE: ${calcularIdade(clienteSelecionado.data_nascimento)}
+WHATSAPP: ${clienteSelecionado.telefone}
+CEP: ${clienteSelecionado.cep}
+ENDEREÇO: ${clienteSelecionado.rua || ''}, ${clienteSelecionado.numero || ''} - ${clienteSelecionado.bairro || ''}, ${clienteSelecionado.cidade || ''}/${clienteSelecionado.uf || ''}
+VALOR SOLICITADO: R$ ${parseFloat(clienteSelecionado.valor_desejado || 0).toFixed(2)}
+            `;
+    navigator.clipboard.writeText(texto.trim());
+    mostrarAviso('📋 Dados completos copiados!');
 }
 
 function enviarWhatsApp() {
