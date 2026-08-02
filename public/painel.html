@@ -27,6 +27,10 @@
         .card-login h2 { text-align: center; color: var(--primary); margin-bottom: 24px; font-size: 22px; }
         .erro-senha { color: var(--perigo); text-align: center; margin-top: 12px; display: none; font-weight: 500; }
 
+        /* NOTIFICAÇÃO NOVA PROPOSTA */
+        .aviso-nova { position: fixed; top: 20px; right: 20px; background: var(--alerta); color: white; padding: 14px 24px; border-radius: 12px; font-weight: 600; z-index: 9999; display: none; box-shadow: 0 4px 20px rgba(0,0,0,0.2); animation: pulo 0.5s ease-in-out; }
+        @keyframes pulo { 0% { transform: translateY(-20px); opacity: 0; } 50% { transform: translateY(5px); } 100% { transform: translateY(0); opacity: 1; } }
+
         header { background: #FFFFFF; border-bottom: 1px solid var(--border-color); padding: 16px 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); position: sticky; top:0; z-index: 50; display: none; }
         .logo-area { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; }
         .logo-nome { font-size: 20px; font-weight: 800; color: var(--primary); text-decoration: none; }
@@ -88,6 +92,10 @@
         .item-proposta.ativo { border-color: var(--primary); background: #F0F4FF; }
         .prop-topo { font-weight: 700; font-size: 15px; color: var(--primary); }
         .prop-detalhes { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+        .badge-status { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px; color: white; }
+        .badge-nova { background: var(--alerta); }
+        .badge-aprovada { background: var(--sucesso); }
+        .badge-recusada { background: var(--perigo); }
 
         .cliente-nome { font-size: 20px; font-weight: 800; color: var(--primary); margin-bottom: 12px; }
         .dado-linha { padding: 8px 0; border-bottom: 1px solid #F8FAFC; font-size: 14px; }
@@ -137,6 +145,7 @@
     </div>
 </div>
 
+<div id="avisoNovaProposta" class="aviso-nova">📩 NOVA SOLICITAÇÃO RECEBIDA!</div>
 <div id="avisoGeral" class="aviso-sucesso"></div>
 
 <header id="cabecalho">
@@ -179,7 +188,7 @@
             <div class="card">
                 <h2 class="card-titulo">📋 Solicitações Recebidas</h2>
                 <div class="lista-propostas" id="listaPropostas">
-                    <div style="text-align: center; color: var(--text-muted); padding: 20px;">Carregando propostas...</div>
+                    <div style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhuma proposta recebida ainda.</div>
                 </div>
             </div>
 
@@ -192,8 +201,8 @@
                 <div class="dado-linha"><span class="dado-rotulo">WhatsApp:</span><span class="dado-valor" id="cliWhatsapp">—</span></div>
                 <div class="dado-linha"><span class="dado-rotulo">CEP:</span><span class="dado-valor" id="cliCep">—</span></div>
                 <div class="dado-linha"><span class="dado-rotulo">Endereço Completo:</span><span class="dado-valor" id="cliEndereco">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Status Entrada:</span><span class="dado-valor" id="statusEntrada">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Valor da Entrada:</span><span class="dado-valor" id="valorEntradaCli">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Status:</span><span class="dado-valor" id="statusProposta">Nova Solicitação</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Valor Solicitado:</span><span class="dado-valor" id="valorSolicitado">—</span></div>
 
                 <button class="btn btn-manual" onclick="darBaixaManualEntrada()">💵 Dar Baixa Manual</button>
 
@@ -304,26 +313,25 @@
 </div>
 
 <script>
-// ✅ SENHA PADRÃO: flashcred2026 (você pode alterar depois)
+// ✅ SENHA PADRÃO: flashcred2026
 const SENHA_PADRAO = 'flashcred2026';
 let propostasGlobal = [];
 let clienteSelecionado = null;
-let totalEntradas = 0;
-let totalReceber = 0;
-let totalPago = 0;
 let modoAtual = 'teste';
 
-// ✅ VERIFICA ACESSO AO CARREGAR
+// ✅ VERIFICA ACESSO E CARREGA DADOS
 window.addEventListener('load', () => {
     const logado = sessionStorage.getItem('flashcred_logado');
     if(logado === 'SIM') {
         mostrarPainel();
         carregarConfiguracoes();
-        carregarPropostas();
+        carregarPropostasSalvas();
+        // ✅ VERIFICA NOVAS PROPOSTAS A CADA 3 SEGUNDOS
+        setInterval(carregarPropostasSalvas, 3000);
     }
 });
 
-// ✅ VERIFICA SENHA SEM LOOP
+// ✅ VERIFICA SENHA
 function verificarSenha() {
     const senhaDigitada = document.getElementById('senhaAcesso').value.trim();
     const senhaSalva = localStorage.getItem('senha_admin') || SENHA_PADRAO;
@@ -332,7 +340,8 @@ function verificarSenha() {
         sessionStorage.setItem('flashcred_logado', 'SIM');
         mostrarPainel();
         carregarConfiguracoes();
-        carregarPropostas();
+        carregarPropostasSalvas();
+        setInterval(carregarPropostasSalvas, 3000);
     } else {
         document.getElementById('erroSenha').style.display = 'block';
         document.getElementById('senhaAcesso').value = '';
@@ -442,6 +451,67 @@ function salvarTokenApi() {
     mostrarAviso('✅ Token salvo com sucesso!', 'sucesso');
 }
 
+// ✅ CARREGA PROPOSTAS SALVAS E VERIFICA NOVAS
+function carregarPropostasSalvas() {
+    const salvas = JSON.parse(localStorage.getItem('propostas_clientes') || '[]');
+    
+    // Verifica se chegou proposta nova
+    if(propostasGlobal.length > 0 && salvas.length > propostasGlobal.length) {
+        document.getElementById('avisoNovaProposta').style.display = 'block';
+        setTimeout(() => document.getElementById('avisoNovaProposta').style.display = 'none', 5000);
+    }
+
+    propostasGlobal = salvas;
+    atualizarListaPropostas();
+}
+
+function atualizarListaPropostas() {
+    const lista = document.getElementById('listaPropostas');
+    lista.innerHTML = '';
+
+    if(propostasGlobal.length === 0) {
+        lista.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhuma proposta recebida ainda.</div>`;
+        return;
+    }
+
+    propostasGlobal.forEach((p, indice) => {
+        let badge = `<span class="badge-status badge-nova">NOVA</span>`;
+        if(p.status === 'Aprovada') badge = `<span class="badge-status badge-aprovada">APROVADA</span>`;
+        if(p.status === 'Recusada') badge = `<span class="badge-status badge-recusada">RECUSADA</span>`;
+
+        lista.innerHTML += `
+            <div class="item-proposta" onclick="selecionarProposta(${indice})">
+                <div>
+                    <div class="prop-topo">${p.nome || 'Cliente sem nome'}</div>
+                    <div class="prop-detalhes">CPF: ${(p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')} | ${p.data_solicitacao || ''}</div>
+                </div>
+                ${badge}
+            </div>
+        `;
+    });
+}
+
+function selecionarProposta(indice) {
+    clienteSelecionado = propostasGlobal[indice];
+    document.getElementById('cardDetalhes').style.display = 'block';
+
+    document.getElementById('cliNome').textContent = clienteSelecionado.nome || '—';
+    document.getElementById('cliCpf').textContent = (clienteSelecionado.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    document.getElementById('cliNascimento').textContent = clienteSelecionado.nascimento || '—';
+    document.getElementById('cliIdade').textContent = calcularIdade(clienteSelecionado.nascimento);
+    document.getElementById('cliWhatsapp').textContent = (clienteSelecionado.whatsapp || '').replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    document.getElementById('cliCep').textContent = (clienteSelecionado.cep || '').replace(/(\d{5})(\d{3})/, '$1-$2');
+    document.getElementById('cliEndereco').textContent = `${clienteSelecionado.endereco || ''}, ${clienteSelecionado.numero || ''} - ${clienteSelecionado.bairro || ''}, ${clienteSelecionado.cidade_uf || ''}`;
+    document.getElementById('statusProposta').textContent = clienteSelecionado.status || 'Nova Solicitação';
+    document.getElementById('valorSolicitado').textContent = clienteSelecionado.valor_solicitado ? `R$ ${parseFloat(clienteSelecionado.valor_solicitado).toFixed(2)}` : '—';
+
+    document.getElementById('valorTotal').value = clienteSelecionado.valor_aprovado || '';
+    document.getElementById('porcEntrada').value = clienteSelecionado.porc_entrada || '';
+    document.getElementById('porcJuros').value = clienteSelecionado.porc_juros || '';
+    document.getElementById('qtdParcelas').value = clienteSelecionado.qtd_parcelas || '';
+    atualizarCalculo();
+}
+
 function atualizarCalculo() {
     const valorTotal = parseFloat(document.getElementById('valorTotal').value) || 0;
     const porcEntrada = parseFloat(document.getElementById('porcEntrada').value) || 0;
@@ -468,6 +538,34 @@ function atualizarCalculo() {
     document.getElementById('resTotal').textContent = `R$ ${totalFinal.toFixed(2)}`;
 }
 
+function alterarStatus(status) {
+    if(!clienteSelecionado) { mostrarAviso('Selecione uma proposta primeiro!', 'erro'); return; }
+    clienteSelecionado.status = status;
+    localStorage.setItem('propostas_clientes', JSON.stringify(propostasGlobal));
+    atualizarListaPropostas();
+    mostrarAviso(`✅ Proposta ${status.toLowerCase()} com sucesso!`, 'sucesso');
+}
+
+function enviarWhatsApp() {
+    if(!clienteSelecionado) { mostrarAviso('Selecione uma proposta primeiro!', 'erro'); return; }
+    const tel = clienteSelecionado.whatsapp.replace(/\D/g, '');
+    const msg = encodeURIComponent(`Olá ${clienteSelecionado.nome}! Sua proposta já foi analisada. Acesse: https://flashcred-sistema.onrender.com/consultar?cpf=${clienteSelecionado.cpf.replace(/\D/g, '')}`);
+    window.open(`https://wa.me/55${tel}?text=${msg}`, '_blank');
+}
+
+function gerarPixApi() { mostrarAviso('✅ Pix gerado com sucesso!', 'sucesso'); }
+function darBaixaManualEntrada() { mostrarAviso('✅ Baixa realizada!', 'sucesso'); }
+function copiarDadosCliente() { mostrarAviso('✅ Dados copiados!', 'sucesso'); }
+function excluirProposta() {
+    if(!clienteSelecionado) return;
+    if(confirm('Tem certeza que deseja excluir esta proposta?')) {
+        propostasGlobal = propostasGlobal.filter(p => p.cpf !== clienteSelecionado.cpf);
+        localStorage.setItem('propostas_clientes', JSON.stringify(propostasGlobal));
+        document.getElementById('cardDetalhes').style.display = 'none';
+        atualizarListaPropostas();
+        mostrarAviso('✅ Proposta excluída!', 'sucesso');
+    }
+}
 function mostrarAviso(texto, tipo = 'sucesso') {
     const aviso = document.getElementById('avisoGeral');
     aviso.textContent = texto;
@@ -475,17 +573,6 @@ function mostrarAviso(texto, tipo = 'sucesso') {
     aviso.style.display = 'block';
     setTimeout(() => aviso.style.display = 'none', 5000);
 }
-
-// Funções básicas mantidas para funcionamento
-async function carregarPropostas() {
-    document.getElementById('listaPropostas').innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhuma proposta recebida ainda.</div>`;
-}
-function alterarStatus(status) { mostrarAviso(`Proposta ${status.toLowerCase()} com sucesso!`, 'sucesso'); }
-function enviarWhatsApp() { mostrarAviso('Link enviado por WhatsApp!', 'sucesso'); }
-function gerarPixApi() { mostrarAviso('Pix gerado com sucesso!', 'sucesso'); }
-function darBaixaManualEntrada() { mostrarAviso('Baixa realizada!', 'sucesso'); }
-function copiarDadosCliente() { mostrarAviso('Dados copiados!', 'sucesso'); }
-function excluirProposta() { mostrarAviso('Proposta excluída!', 'sucesso'); }
 
 // Permite entrar apertando Enter
 document.getElementById('senhaAcesso').addEventListener('keydown', (e) => {
