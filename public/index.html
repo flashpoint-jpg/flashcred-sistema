@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FlashCred | Limite no Pix - Distribuidora Flash Point</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -54,6 +55,7 @@
         .btn { width: 100%; padding: 14px 20px; border-radius: 14px; font-weight: 600; font-size: 16px; border: none; cursor: pointer; transition: all 0.3s ease; }
         .btn-primary { background: linear-gradient(135deg, #0A2463 0%, #153A8C 100%); color: white; box-shadow: 0 6px 16px rgba(10, 36, 99, 0.25); }
         .btn-primary:hover { opacity: 0.95; transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
         .input { width: 100%; padding: 12px 16px; border: 1px solid #CBD5E1; border-radius: 12px; font-size: 15px; background: #FAFBFC; margin-bottom: 16px; }
         .input:focus { outline: none; border-color: #10B981; background: #FFFFFF; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12); }
@@ -66,6 +68,10 @@
         .aviso-exclusivo { background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); border: 1px solid #FCD34D; border-radius: 14px; padding: 14px; color: #92400E; font-size: 14px; font-weight: 500; margin-bottom: 20px; }
         .erro { color: #DC2626; font-size: 13px; margin: -10px 0 12px; display: none; }
         footer { background: #0A2463; color: #CBD5E1; border-radius: 32px 32px 0 0; margin-top: 50px; padding: 28px; text-align: center; font-size: 14px; }
+
+        .loading { display: none; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; color: #0A2463; font-weight: 500; }
+        .spinner { width: 20px; height: 20px; border: 3px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: rodar 0.8s linear infinite; }
+        @keyframes rodar { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
@@ -79,8 +85,8 @@
             </div>
         </div>
         <div class="flex gap-4 sm:gap-6">
-            <a href="/painel" class="nav-link">Painel de Controle</a>
-            <a href="/consultar" class="nav-link">Acompanhar Proposta</a>
+            <a href="painel.html" class="nav-link">Painel de Controle</a>
+            <a href="consultar.html" class="nav-link">Acompanhar Proposta</a>
         </div>
     </div>
 </nav>
@@ -93,15 +99,7 @@
         </header>
 
         <div class="destaque-container">
-            <img 
-                src="/banner.png" 
-                alt="FlashCred - Limite no Pix Parcelado" 
-                class="destaque-imagem"
-                onerror="this.parentElement.style.display='none'; document.getElementById('erro-img').style.display='block';"
-            >
-        </div>
-        <div id="erro-img" style="display:none;" class="mb-8 p-4 bg-amber-50 border border-amber-300 text-amber-800 rounded-2xl text-center text-sm">
-            ⚠️ O arquivo <strong>banner.png</strong> não foi encontrado na pasta <strong>public</strong>.
+            <img src="/banner.png" alt="FlashCred - Limite no Pix Parcelado" class="destaque-imagem" onerror="this.parentElement.style.display='none';">
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -153,7 +151,11 @@
                     <label>Valor Desejado para Compra (R$)</label>
                     <input type="number" id="valor" class="input" placeholder="0,00" min="100" step="0.01" required>
 
-                    <button type="submit" class="btn btn-primary mt-2">Enviar Solicitação</button>
+                    <button type="submit" id="btnEnviar" class="btn btn-primary mt-2">Enviar Solicitação</button>
+                    <div id="loadingEnvio" class="loading">
+                        <div class="spinner"></div>
+                        Enviando sua solicitação...
+                    </div>
                 </form>
             </div>
         </div>
@@ -166,6 +168,10 @@
 </footer>
 
 <script>
+const supabaseUrl = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const supabaseKey = 'sb_publishable_g5Tcimge2aiMX8JE3mlU3W55Y2s0CjZtxXkT2VjR3K9Rz0NnI2s1M3p5X7z6bX7kY5aQ3dF2gH9jK8lL7mN6bV8cX7z9';
+const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
 function validarCPF(cpf) {
     cpf = cpf.replace(/\D/g, '');
     if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
@@ -199,7 +205,7 @@ document.getElementById('telefone').addEventListener('input', e => {
     e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
 });
 
-document.getElementById('formSolicitacao').addEventListener('submit', e => {
+document.getElementById('formSolicitacao').addEventListener('submit', async e => {
     e.preventDefault();
     let valido = true;
     document.querySelectorAll('.erro').forEach(el => el.style.display = 'none');
@@ -214,29 +220,37 @@ document.getElementById('formSolicitacao').addEventListener('submit', e => {
     }
 
     if (valido) {
-        const nome = document.getElementById('nome').value;
-        const cpf = document.getElementById('cpf').value;
-        const telefone = document.getElementById('telefone').value;
-        const valor_desejado = parseFloat(document.getElementById('valor').value);
+        const btn = document.getElementById('btnEnviar');
+        const loading = document.getElementById('loadingEnvio');
+        
+        btn.disabled = true;
+        loading.style.display = 'flex';
 
-        fetch('/api/propostas', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nome, cpf, telefone, valor_desejado })
-        })
-        .then(res => res.json())
-        .then(result => {
-            if(result.success) {
-                alert('✅ Solicitação enviada com sucesso! Redirecionando...');
-                window.location.href = '/consultar';
+        const dados = {
+            nome: document.getElementById('nome').value.trim(),
+            cpf: document.getElementById('cpf').value.trim(),
+            nascimento: document.getElementById('nascimento').value,
+            telefone: document.getElementById('telefone').value.trim(),
+            cep: document.getElementById('cep').value.trim(),
+            endereco: document.getElementById('endereco').value.trim(),
+            valor_solicitado: document.getElementById('valor').value,
+            status: 'Nova',
+            data_solicitacao: new Date().toLocaleDateString('pt-BR')
+        };
+
+        const { error } = await supabase.from('propostas').insert([dados]);
+
+        setTimeout(() => {
+            loading.style.display = 'none';
+            btn.disabled = false;
+            
+            if(error) {
+                alert('❌ Erro ao enviar: ' + error.message);
             } else {
-                alert('Erro ao salvar proposta no servidor.');
+                alert('✅ Solicitação enviada com sucesso! Acompanhe pelo link abaixo.');
+                window.location.href = `consultar.html?cpf=${dados.cpf.replace(/\D/g, '')}`;
             }
-        })
-        .catch(err => {
-            console.error(err);
-            alert('Falha na comunicação com o servidor.');
-        });
+        }, 1000);
     }
 });
 </script>
