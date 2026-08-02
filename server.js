@@ -1,3 +1,4 @@
+
 const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
@@ -7,11 +8,10 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
+// Conexão blindada para o PostgreSQL do Render
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false
-    }
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
 // Função segura para inicializar a tabela no banco
