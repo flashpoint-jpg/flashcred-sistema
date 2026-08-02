@@ -27,22 +27,24 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
         body { background: #F8FAFC; min-height: 100vh; }
-        .sidebar { width: 250px; background: #1E293B; min-height: 100vh; position: fixed; left: 0; top: 0; padding: 20px 0; }
+        .tela-login { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, #0A2463 0%, #081C49 100%); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+        .card-login { background: white; padding: 32px; border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); width: 90%; max-width: 400px; }
+        .card-login h2 { text-align: center; color: #0A2463; margin-bottom: 24px; font-size: 22px; }
+        .sidebar { width: 250px; background: #1E293B; min-height: 100vh; position: fixed; left: 0; top: 0; padding: 20px 0; display: none; }
         .sidebar .logo { color: white; font-size: 20px; font-weight: 800; text-align: center; padding: 20px; border-bottom: 1px solid #334155; margin-bottom: 10px; }
         .sidebar a { display: block; color: #CBD5E1; padding: 12px 24px; text-decoration: none; transition: 0.2s; font-size: 14px; }
         .sidebar a:hover, .sidebar a.ativo { background: #0A2463; color: white; border-left: 4px solid #F59E0B; }
-        .conteudo { margin-left: 250px; padding: 24px; max-width: 1400px; }
+        .conteudo { margin-left: 250px; padding: 24px; max-width: 1400px; display: none; }
         .cabecalho { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
         .titulo-pagina { font-size: 24px; font-weight: 700; color: #0F172A; }
         .card { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); border: 1px solid #E2E8F0; margin-bottom: 20px; }
         .card-titulo { font-size: 18px; font-weight: 600; color: #0F172A; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid #F1F5F9; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .input { width: 100%; padding: 10px 14px; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 14px; margin-bottom: 12px; }
+        .input { width: 100%; padding: 12px 14px; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 14px; margin-bottom: 12px; }
         .input:focus { outline: none; border-color: #0A2463; background: #FAFBFF; }
         .btn { padding: 10px 16px; border: none; border-radius: 10px; font-weight: 600; font-size: 14px; cursor: pointer; transition: 0.2s; }
         .btn:hover { transform: translateY(-1px); }
-        .btn-primario { background: #0A2463; color: white; }
-        .btn-primario:hover { background: #081C49; }
+        .btn-primario { background: #0A2463; color: white; width: 100%; padding: 12px; font-size: 16px; }
         .btn-sucesso { background: #059669; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
         .btn-perigo { background: #EF4444; color: white; }
@@ -84,9 +86,19 @@
 </head>
 <body>
 
+<!-- TELA DE LOGIN (SÓ APARECE SE NÃO ESTIVER LOGADO) -->
+<div id="telaLogin" class="tela-login">
+    <div class="card-login">
+        <h2>🔐 Acesso Administrativo</h2>
+        <input type="password" id="senhaAcesso" class="input" placeholder="Digite a senha de acesso">
+        <button class="btn btn-primario" onclick="verificarSenha()">Entrar no Sistema</button>
+        <p id="erroSenha" style="color:#EF4444; text-align:center; margin-top:12px; display:none;">Senha incorreta! Tente novamente.</p>
+    </div>
+</div>
+
 <div id="avisoGeral" class="aviso-topo"></div>
 
-<div class="sidebar">
+<div id="menuLateral" class="sidebar">
     <div class="logo">⚡ FlashCred</div>
     <a href="#" class="ativo"><i class="fas fa-tachometer-alt mr-2"></i> Início</a>
     <a href="#"><i class="fas fa-list mr-2"></i> Propostas</a>
@@ -96,7 +108,7 @@
     <a href="#" onclick="sair()"><i class="fas fa-sign-out-alt mr-2"></i> Sair</a>
 </div>
 
-<div class="conteudo">
+<div id="areaConteudo" class="conteudo">
     <div class="cabecalho">
         <h1 class="titulo-pagina">Painel Administrativo</h1>
         <button class="btn btn-perigo" onclick="sair()">Sair</button>
@@ -246,22 +258,53 @@
 </div>
 
 <script>
+// ✅ SENHA DE ACESSO (VOCÊ PODE ALTERAR QUANDO QUISER)
+const SENHA_ADMIN = 'flashcred2026';
 let propostas = [];
 let clienteSelecionado = null;
 let totalRecebido = 0;
 
-// Verifica login
-if(!localStorage.getItem('logadoFlashCred')) {
-    window.location.href = '/login.html';
-}
-
-// Carrega dados ao abrir
+// ✅ VERIFICA LOGO AO ABRIR, NÃO FICA VERIFICANDO SEM PARAR
 window.addEventListener('load', () => {
-    carregarPropostas();
-    atualizarCards();
+    const logado = sessionStorage.getItem('flashcred_logado');
+    if(logado === 'SIM') {
+        mostrarPainel();
+        carregarPropostas();
+        atualizarCards();
+    } else {
+        document.getElementById('telaLogin').style.display = 'flex';
+    }
 });
 
-// Carrega lista de propostas
+// ✅ VERIFICA SENHA E NÃO DEIXA FICAR PISCANDO
+function verificarSenha() {
+    const senhaDigitada = document.getElementById('senhaAcesso').value;
+    if(senhaDigitada === SENHA_ADMIN) {
+        sessionStorage.setItem('flashcred_logado', 'SIM');
+        mostrarPainel();
+        carregarPropostas();
+        atualizarCards();
+    } else {
+        document.getElementById('erroSenha').style.display = 'block';
+        document.getElementById('senhaAcesso').value = '';
+        setTimeout(() => document.getElementById('erroSenha').style.display = 'none', 3000);
+    }
+}
+
+function mostrarPainel() {
+    document.getElementById('telaLogin').style.display = 'none';
+    document.getElementById('menuLateral').style.display = 'block';
+    document.getElementById('areaConteudo').style.display = 'block';
+}
+
+function sair() {
+    if(confirm('Deseja realmente sair?')) {
+        sessionStorage.removeItem('flashcred_logado');
+        location.reload();
+    }
+}
+
+// ✅ FUNÇÕES DO SISTEMA
 async function carregarPropostas() {
     try {
         const res = await fetch('/api/propostas');
@@ -295,13 +338,11 @@ async function carregarPropostas() {
     }
 }
 
-// Seleciona proposta e carrega dados
 function selecionarProposta(indice) {
     clienteSelecionado = propostas[indice];
     document.getElementById('semSelecao').style.display = 'none';
     document.getElementById('dadosProposta').style.display = 'block';
 
-    // Preenche todos os campos
     document.getElementById('cliNome').textContent = clienteSelecionado.nome || '—';
     document.getElementById('cliCpf').textContent = formatarCpf(clienteSelecionado.cpf) || '—';
     document.getElementById('cliNascimento').textContent = clienteSelecionado.nascimento || '—';
@@ -312,7 +353,6 @@ function selecionarProposta(indice) {
     document.getElementById('cliCidade').textContent = clienteSelecionado.cidade_uf || '—';
     document.getElementById('cliWhatsapp').textContent = formatarTelefone(clienteSelecionado.telefone) || '—';
 
-    // Status da entrada
     const statusEl = document.getElementById('statusEntrada');
     if(clienteSelecionado.entrada_paga) {
         statusEl.innerHTML = `<span class="sinal-status sinal-verde"></span>Entrada Paga`;
@@ -320,22 +360,18 @@ function selecionarProposta(indice) {
         statusEl.innerHTML = `<span class="sinal-status sinal-vermelho"></span>Pendente de Pagamento`;
     }
 
-    // Preenche campos de edição se já houver dados
     document.getElementById('valorTotal').value = clienteSelecionado.valor_aprovado || '';
     document.getElementById('porcEntrada').value = clienteSelecionado.porc_entrada || '';
     document.getElementById('porcJuros').value = clienteSelecionado.porc_juros || '';
     document.getElementById('qtdParcelas').value = clienteSelecionado.qtd_parcelas || '';
     atualizarCalculo();
 
-    // Atualiza tabela de parcelas
     atualizarTabelaParcelas();
 
-    // Marca como ativo na lista
     document.querySelectorAll('.item-proposta').forEach(el => el.classList.remove('ativo'));
     document.querySelectorAll('.item-proposta')[indice].classList.add('ativo');
 }
 
-// Atualiza cálculo automático
 function atualizarCalculo() {
     const valorTotal = parseFloat(document.getElementById('valorTotal').value) || 0;
     const porcEntrada = parseFloat(document.getElementById('porcEntrada').value) || 0;
@@ -362,7 +398,6 @@ function atualizarCalculo() {
     document.getElementById('resTotal').textContent = `R$ ${totalFinal.toFixed(2)}`;
 }
 
-// Atualiza tabela de parcelas
 function atualizarTabelaParcelas() {
     const corpo = document.getElementById('corpoParcelas');
     corpo.innerHTML = '';
@@ -396,7 +431,6 @@ function atualizarTabelaParcelas() {
     });
 }
 
-// Aprova proposta e gera parcelas
 async function aprovarProposta() {
     if(!clienteSelecionado) { mostrarAviso('Selecione uma proposta primeiro!', 'alerta'); return; }
 
@@ -415,7 +449,6 @@ async function aprovarProposta() {
     const fator = Math.pow((1 + (porcJuros/100)), qtdParcelas);
     const valorParcela = (valorFinanciado * fator) / qtdParcelas;
 
-    // Salva dados
     clienteSelecionado.status = 'Aprovada';
     clienteSelecionado.valor_aprovado = valorTotal;
     clienteSelecionado.porc_entrada = porcEntrada;
@@ -426,7 +459,6 @@ async function aprovarProposta() {
     clienteSelecionado.entrada_paga = false;
     clienteSelecionado.parcelas = [];
 
-    // Gera datas de vencimento
     let dataVencimento = new Date();
     dataVencimento.setDate(dataVencimento.getDate() + 30);
 
@@ -511,27 +543,10 @@ function formatarData(data) {
     return `${dia}/${mes}/${ano}`;
 }
 
-function sair() {
-    if(confirm('Deseja realmente sair?')) {
-        localStorage.removeItem('logadoFlashCred');
-        window.location.href = '/login.html';
-    }
-}
-
-// Verifica pagamentos novos a cada 10 segundos
-setInterval(async () => {
-    try {
-        const res = await fetch('/api/verificar-pagamentos');
-        const dados = await res.json();
-        if(dados.sucesso && dados.pagamentos) {
-            dados.pagamentos.forEach(pag => {
-                totalRecebido += pag.valor;
-                mostrarAviso(`✅ Pagamento recebido: ${pag.cliente} - R$ ${pag.valor.toFixed(2)}`, 'sucesso');
-            });
-            carregarPropostas();
-        }
-    } catch(e) {}
-}, 10000);
+// Permite apertar Enter para logar
+document.getElementById('senhaAcesso').addEventListener('keydown', (e) => {
+    if(e.key === 'Enter') verificarSenha();
+});
 </script>
 </body>
 </html>
