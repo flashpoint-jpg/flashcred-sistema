@@ -15,7 +15,7 @@ const pool = new Pool({
 app.get('/api/propostas/:cpf', async (req, res) => {
     try {
         const cpfParam = req.params.cpf;
-        const queryText = 'SELECT * FROM propostas WHERE regexp_replace(cpf, \'\\D\', \'\', \'g\') = $1 LIMIT 1';
+        const queryText = "SELECT * FROM propostas WHERE regexp_replace(cpf, '\\D', '', 'g') = $1 LIMIT 1";
         const result = await pool.query(queryText, [cpfParam]);
 
         if (result.rows.length > 0) {
@@ -212,7 +212,6 @@ app.get('*', (req, res) => {
 </head>
 <body>
 
-<!-- MODAL DE SENHA -->
 <div id="modalSenha">
     <div class="modal-card">
         <h2>Área Restrita</h2>
@@ -283,7 +282,6 @@ app.get('*', (req, res) => {
 </footer>
 
 <script>
-// CONTROLE DE SENHA DO PAINEL
 document.getElementById('formSenha').addEventListener('submit', e => {
     e.preventDefault();
     const senhaDigitada = document.getElementById('senhaInput').value;
@@ -333,7 +331,7 @@ document.getElementById('formConsulta').addEventListener('submit', e => {
         return;
     }
 
-    fetch(\`/api/propostas/\${cpfLimpo}\`)
+    fetch('/api/propostas/' + cpfLimpo)
     .then(res => res.json())
     .then(result => {
         if (result.success && result.data) {
@@ -348,8 +346,8 @@ document.getElementById('formConsulta').addEventListener('submit', e => {
             document.getElementById('resValor').textContent = valorFormatado;
 
             const telefoneAtendimento = "5511999999999"; 
-            const mensagem = encodeURIComponent(\`Olá! Gostaria de agilizar a análise da minha proposta. Meu nome é \${p.nome}, CPF: \${p.cpf}, valor solicitado: \${valorFormatado}.\`);
-            document.getElementById('btnWp').href = \`https://wa.me/\${telefoneAtendimento}?text=\${mensagem}\`;
+            const mensagem = encodeURIComponent("Olá! Gostaria de agilizar a análise da minha proposta. Meu nome é " + p.nome + ", CPF: " + p.cpf + ", valor solicitado: " + valorFormatado + ".");
+            document.getElementById('btnWp').href = "https://wa.me/" + telefoneAtendimento + "?text=" + mensagem;
 
         } else {
             erroEl.textContent = "Nenhuma proposta encontrada para este CPF.";
@@ -368,4 +366,6 @@ document.getElementById('formConsulta').addEventListener('submit', e => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(\`Servidor rodando na porta \${PORT}\`));
+app.listen(PORT, () => {
+    console.log("Servidor rodando na porta " + PORT);
+});
