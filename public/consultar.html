@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Consultar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -25,7 +26,7 @@
         body { background: #F8FAFC; padding: 16px; min-height: 100vh; }
         .cabecalho { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; max-width: 480px; margin-left: auto; margin-right: auto; }
         .titulo-topo { font-size: 24px; font-weight: 800; color: #0A2463; }
-        .btn-topo { padding: 8px 12px; border-radius: 10px; border: none; font-weight: 500; cursor: pointer; transition: 0.2s; text-decoration: none; display: inline-flex; align-items: center; }
+        .btn-topo { padding: 8px 12px; border-radius: 10px; border: none; font-weight: 500; cursor: pointer; transition: 0.2s; text-decoration: none; display: inline-block; }
         .btn-nova { background: white; color: #0A2463; border: 1px solid #0A2463; }
         .btn-admin { background: #0A2463; color: white; }
 
@@ -38,7 +39,6 @@
         .btn-verificar:hover { background: #081C49; }
         .btn-verificar:disabled { opacity: 0.6; cursor: not-allowed; }
 
-        /* Status visuais */
         .status-analise { display: none; align-items: center; justify-content: center; gap: 12px; padding: 20px; background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 14px; margin-top: 20px; }
         .spinner { width: 24px; height: 24px; border: 3px solid #FDE68A; border-top-color: #F59E0B; border-radius: 50%; animation: girar 0.8s linear infinite; }
         @keyframes girar { to { transform: rotate(360deg); } }
@@ -54,8 +54,8 @@
 <div class="cabecalho">
     <h1 class="titulo-topo">FlashCred</h1>
     <div style="display: flex; gap: 10px;">
-        <a href="/" class="btn-topo btn-nova">Nova Solicitação</a>
-        <a href="/painel" class="btn-topo btn-admin">Painel Admin</a>
+        <a href="index.html" class="btn-topo btn-nova">Nova Solicitação</a>
+        <a href="painel.html" class="btn-topo btn-admin">Painel Admin</a>
     </div>
 </div>
 
@@ -83,7 +83,10 @@
 </div>
 
 <script>
-// Pega CPF direto da URL se vier do formulário
+const supabaseUrl = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const supabaseKey = 'sb_publishable_g5Tcimge2aiMX8JE3mlU3W55Y2s0CjZtxXkT2VjR3K9Rz0NnI2s1M3p5X7z6bX7kY5aQ3dF2gH9jK8lL7mN6bV8cX7z9';
+const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
 window.addEventListener('load', () => {
     const params = new URLSearchParams(window.location.search);
     const cpfUrl = params.get('cpf');
@@ -96,13 +99,12 @@ window.addEventListener('load', () => {
 
 async function buscarProposta() {
     const cpfDigitado = document.getElementById('cpfConsulta').value;
-    const cpfLimpo = cpfDigitado.replace(/\D/g, ''); // Tira tudo que não é número
+    const cpfLimpo = cpfDigitado.replace(/\D/g, '');
     const btn = document.getElementById('btnVerificar');
     const statusAnalise = document.getElementById('statusAnalise');
     const mensagemErro = document.getElementById('mensagemErro');
     const resultado = document.getElementById('resultado');
 
-    // Reseta visualizações anteriores
     statusAnalise.style.display = 'none';
     mensagemErro.style.display = 'none';
     resultado.style.display = 'none';
@@ -114,47 +116,42 @@ async function buscarProposta() {
     }
 
     btn.disabled = true;
-    btn.textContent = 'Buscando no servidor...';
+    btn.textContent = 'Buscando...';
 
-    try {
-        // BUSCA DIRETAMENTE DA API DO SERVIDOR (render.com)
-        const response = await fetch('/api/propostas');
-        const resultadoApi = await response.json();
+    const { data: propostas, error } = await supabase
+        .from('propostas')
+        .select('*');
 
-        if (!resultadoApi.success) {
-            throw new Error('Erro ao carregar dados do servidor');
-        }
-
-        const propostas = resultadoApi.data || [];
-        
-        // Procura a proposta correspondente ignorando formatação do CPF
-        const propostaEncontrada = propostas.find(item => {
-            const cpfSalvoLimpo = String(item.cpf || '').replace(/\D/g, '');
-            return cpfSalvoLimpo === cpfLimpo;
-        });
-
+    setTimeout(() => {
         btn.disabled = false;
         btn.textContent = '🔍 Ver Proposta';
+
+        if(error || !propostas) {
+            mensagemErro.style.display = 'block';
+            return;
+        }
+
+        const propostaEncontrada = propostas.find(item => {
+            const cpfSalvoLimpo = item.cpf.replace(/\D/g, '');
+            return cpfSalvoLimpo === cpfLimpo;
+        });
 
         if(!propostaEncontrada) {
             mensagemErro.style.display = 'block';
             return;
         }
 
-        // MOSTRA O STATUS CORRETO VINDO DO SERVIDOR
-        const statusAtual = propostaEncontrada.status || 'Em Análise';
-        
-        if(statusAtual === 'Nova' || statusAtual === 'Em Análise') {
+        if(propostaEncontrada.status === 'Nova' || propostaEncontrada.status === 'Em Análise') {
             statusAnalise.style.display = 'flex';
-        } else if(statusAtual === 'Aprovada') {
+        } else if(propostaEncontrada.status === 'Aprovada') {
             resultado.className = 'resultado aprovado';
             resultado.innerHTML = `
                 <h3>✅ PROPOSTA APROVADA!</h3>
-                <p style="margin: 10px 0;">Valor solicitado: <strong>R$ ${parseFloat(propostaEncontrada.valor_desejado || 0).toFixed(2)}</strong></p>
+                <p style="margin: 10px 0;">Valor solicitado: <strong>R$ ${parseFloat(propostaEncontrada.valor_solicitado).toFixed(2)}</strong></p>
                 <p>Em breve entraremos em contato com as condições de pagamento.</p>
             `;
             resultado.style.display = 'block';
-        } else if(statusAtual === 'Recusada') {
+        } else if(propostaEncontrada.status === 'Recusada') {
             resultado.className = 'resultado recusado';
             resultado.innerHTML = `
                 <h3>❌ PROPOSTA RECUSADA</h3>
@@ -162,14 +159,7 @@ async function buscarProposta() {
             `;
             resultado.style.display = 'block';
         }
-
-    } catch (error) {
-        console.error("Erro na busca:", error);
-        btn.disabled = false;
-        btn.textContent = '🔍 Ver Proposta';
-        mensagemErro.innerHTML = '<strong>⚠️ Erro de conexão!</strong><br>Não foi possível conectar ao servidor.';
-        mensagemErro.style.display = 'block';
-    }
+    }, 800);
 }
 </script>
 </body>
