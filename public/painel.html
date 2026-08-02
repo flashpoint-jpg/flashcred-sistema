@@ -28,6 +28,8 @@
         .badge-modo { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; color: white; }
         .modo-teste { background: var(--modo-teste); }
         .modo-producao { background: var(--modo-producao); }
+        .btn-sair { font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 10px; border: none; background: #FEE2E2; color: #B91C1C; cursor: pointer; transition: 0.2s; }
+        .btn-sair:hover { background: #FECACA; }
 
         .notificacao-pagamento {
             position: fixed;
@@ -46,16 +48,6 @@
         .notificacao-pagamento.ativa { transform: translateX(0); }
         .notificacao-pagamento h4 { font-size: 15px; margin-bottom: 4px; }
         .notificacao-pagamento p { font-size: 13px; opacity: 0.95; }
-
-        .aviso-api {
-            background: #FFFBEB;
-            border: 1px solid var(--alerta);
-            color: #92400E;
-            padding: 12px;
-            border-radius: 12px;
-            font-size: 13px;
-            margin-bottom: 12px;
-        }
 
         .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
 
@@ -151,6 +143,13 @@
 </head>
 <body>
 
+<!-- 🔒 PROTEÇÃO DE ACESSO -->
+<script>
+if(localStorage.getItem('logado_flashcred') !== 'sim') {
+    window.location.href = '/login';
+}
+</script>
+
 <div id="notifPagamento" class="notificacao-pagamento">
     <h4>✅ Pagamento Confirmado!</h4>
     <p id="textoNotif">Entrada paga por <strong>—</strong> no valor de R$ —</p>
@@ -159,10 +158,13 @@
 <header>
     <div class="logo-area">
         <div>
-            <a href="/" class="logo-nome">FlashCred | Painel Administrativo</a>
+            <a href="/painel" class="logo-nome">FlashCred | Painel Administrativo</a>
             <div class="logo-slogan">Limite Pix Parcelado - Distribuidora Flash Point</div>
         </div>
-        <span id="indicadorModo" class="badge-modo modo-teste">🧪 MODO TESTE</span>
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span id="indicadorModo" class="badge-modo modo-teste">🧪 MODO TESTE</span>
+            <button onclick="deslogar()" class="btn-sair">🚪 Sair</button>
+        </div>
     </div>
 </header>
 
@@ -303,6 +305,14 @@ let totalReceber = 0;
 let totalPago = 0;
 let modoAtual = 'teste';
 
+// 🚪 FUNÇÃO DE DESLOGAR
+function deslogar() {
+    if(confirm('Deseja realmente sair do painel?')) {
+        localStorage.removeItem('logado_flashcred');
+        window.location.href = '/login';
+    }
+}
+
 window.addEventListener('load', () => {
     const modoSalvo = localStorage.getItem('modo_api') || 'teste';
     definirModo(modoSalvo);
@@ -412,7 +422,7 @@ function adicionarLinhaParcela() {
     `;
 }
 
-function gerarPixApi() {
+async function gerarPixApi() {
     const token = localStorage.getItem('token_mp_' + modoAtual) || document.getElementById('tokenApi').value.trim();
     if(!token) { alert(`Salve o token primeiro no Modo ${modoAtual === 'teste' ? 'Teste' : 'Produção'}.`); return; }
 
@@ -422,35 +432,30 @@ function gerarPixApi() {
 
     mostrarAviso(`⏳ Gerando Pix no ${modoAtual === 'teste' ? 'Modo Teste' : 'Modo Produção'}...`);
 
-    fetch('https://api.mercadopago.com/v1/payments', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-            'X-Idempotency-Key': Date.now().toString()
-        },
-        body: JSON.stringify({
-            transaction_amount: valorEntrada,
-            description: clienteSelecionado ? `Entrada FlashCred - ${clienteSelecionado.nome}` : 'Entrada FlashCred',
-            payment_method_id: 'pix',
-            payer: { email: 'cliente@flashcred.com' }
-        })
-    })
-    .then(async res => {
-        const data = await res.json();
-        if(res.ok && data.point_of_interaction) {
+    try {
+        const resposta = await fetch('/api/criar-pix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                valor: valorEntrada,
+                descricao: clienteSelecionado ? `Entrada FlashCred - ${clienteSelecionado.nome}` : 'Entrada FlashCred',
+                emailCliente: 'admin@flashcred.com',
+                tokenApi: token
+            })
+        });
+
+        const dados = await resposta.json();
+        if(dados.success) {
             document.getElementById('codigoPix').style.display = 'block';
-            document.getElementById('pixCodigo').textContent = data.point_of_interaction.transaction_data.qr_code;
+            document.getElementById('pixCodigo').textContent = dados.qr_code;
             mostrarAviso(`✅ Pix gerado com sucesso no ${modoAtual === 'teste' ? 'Modo Teste' : 'Modo Produção'}!`);
         } else {
-            console.error(data);
-            alert(`Erro ao gerar Pix. Verifique o token do Modo ${modoAtual === 'teste' ? 'Teste' : 'Produção'}.`);
+            alert(`Erro: ${dados.error || 'Não foi possível gerar o Pix'}`);
         }
-    })
-    .catch(err => {
-        console.error(err);
-        alert('Falha de comunicação com a API.');
-    });
+    } catch (erro) {
+        console.error(erro);
+        alert('Falha de comunicação com o servidor.');
+    }
 }
 
 function darBaixaManualEntrada() {
@@ -468,19 +473,114 @@ function darBaixaManualEntrada() {
     mostrarAviso(`✅ Entrada baixada manualmente com sucesso!`);
 }
 
-function carregarPropostas() {
-    document.getElementById('listaPropostas').innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhuma proposta carregada.</div>`;
+async function carregarPropostas() {
+    try {
+        const resposta = await fetch('/api/propostas');
+        const resJson = await resposta.json();
+        const lista = document.getElementById('listaPropostas');
+        lista.innerHTML = '';
+        
+        if(resJson.success && resJson.data.length > 0) {
+            propostasGlobal = resJson.data;
+            resJson.data.forEach((p, index) => {
+                lista.innerHTML += `
+                    <div class="item-proposta" onclick="selecionarProposta(${index})">
+                        <div>
+                            <div class="prop-topo">${p.nome}</div>
+                            <div class="prop-detalhes">CPF: ${p.cpf} | Valor: R$ ${parseFloat(p.valor_desejado || 0).toFixed(2)}</div>
+                        </div>
+                        <span style="font-size:12px; font-weight:700; color:var(--primary); background:#E2E8F0; padding:4px 8px; border-radius:8px;">${p.status || 'Em Análise'}</span>
+                    </div>
+                `;
+            });
+        } else {
+            lista.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhuma proposta encontrada.</div>`;
+        }
+    } catch (erro) {
+        console.error(erro);
+        document.getElementById('listaPropostas').innerHTML = `<div style="text-align: center; color: var(--perigo); padding: 20px;">Erro ao carregar propostas.</div>`;
+    }
 }
-function selecionarProposta(index) {}
-function alterarStatus(novoStatus) { mostrarAviso(`✅ Status alterado para ${novoStatus}`); }
-function excluirProposta() { mostrarAviso("🗑️ Proposta excluída"); }
-function copiarDadosCliente() { mostrarAviso("📋 Dados copiados"); }
-function enviarWhatsApp() { mostrarAviso("📤 Link enviado"); }
+
+function selecionarProposta(index) {
+    document.querySelectorAll('.item-proposta').forEach(el => el.classList.remove('ativo'));
+    const itens = document.querySelectorAll('.item-proposta');
+    if(itens[index]) itens[index].classList.add('ativo');
+
+    clienteSelecionado = propostasGlobal[index];
+    if(!clienteSelecionado) return;
+
+    document.getElementById('cardDetalhes').style.display = 'block';
+    document.getElementById('cliNome').textContent = clienteSelecionado.nome;
+    document.getElementById('cliCpf').textContent = clienteSelecionado.cpf;
+    document.getElementById('cliWhatsapp').textContent = clienteSelecionado.telefone;
+    document.getElementById('statusEntrada').textContent = clienteSelecionado.entrada_paga ? 'Pago' : 'Pendente';
+    document.getElementById('valorEntradaCli').textContent = '—';
+}
+
+async function alterarStatus(novoStatus) {
+    if(!clienteSelecionado) { alert("Selecione uma proposta na lista."); return; }
+    
+    try {
+        const resposta = await fetch(`/api/proposta/${clienteSelecionado.id}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: novoStatus })
+        });
+        const result = await resposta.json();
+        
+        if(result.success) {
+            mostrarAviso(`✅ Status alterado para: ${novoStatus}`);
+            carregarPropostas();
+        } else {
+            alert("Erro ao atualizar status.");
+        }
+    } catch (erro) {
+        console.error(erro);
+        alert("Erro de conexão com o servidor.");
+    }
+}
+
+async function excluirProposta() {
+    if(!clienteSelecionado) { alert("Selecione uma proposta."); return; }
+    if(!confirm(`Deseja realmente excluir a proposta de ${clienteSelecionado.nome}?`)) return;
+
+    try {
+        const resposta = await fetch(`/api/proposta/${clienteSelecionado.id}`, { method: 'DELETE' });
+        const result = await resposta.json();
+        
+        if(result.success) {
+            mostrarAviso("🗑️ Proposta excluída com sucesso!");
+            document.getElementById('cardDetalhes').style.display = 'none';
+            carregarPropostas();
+        } else {
+            alert("Erro ao excluir proposta.");
+        }
+    } catch (erro) {
+        console.error(erro);
+        alert("Erro de conexão com o servidor.");
+    }
+}
+
+function copiarDadosCliente() {
+    if(!clienteSelecionado) return;
+    const texto = `Nome: ${clienteSelecionado.nome}\nCPF: ${clienteSelecionado.cpf}\nTelefone: ${clienteSelecionado.telefone}\nValor Desejado: R$ ${parseFloat(clienteSelecionado.valor_desejado || 0).toFixed(2)}`;
+    navigator.clipboard.writeText(texto);
+    mostrarAviso("📋 Dados copiados para a área de transferência!");
+}
+
+function enviarWhatsApp() {
+    if(!clienteSelecionado) { alert("Selecione um cliente."); return; }
+    const tel = clienteSelecionado.telefone.replace(/\D/g, '');
+    const msg = encodeURIComponent(`Olá ${clienteSelecionado.nome}, entramos em contato referente à sua análise de crédito na Distribuidora Flash Point.`);
+    window.open(`https://wa.me/55${tel}?text=${msg}`, '_blank');
+}
+
 function mostrarAviso(texto) {
     const aviso = document.getElementById('aviso');
     aviso.textContent = texto;
     aviso.style.display = 'block';
-    setTimeout(() => aviso.style.display = 'none', 4000);
+    setTimeout(() => { aviso.style.display = 'none'; }, 4000);
 }
 </script>
 </body>
