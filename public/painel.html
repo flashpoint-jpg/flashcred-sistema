@@ -192,7 +192,7 @@ function gerarCodigoPix() { const c=document.getElementById('chavePagamento').va
 
 async function calcularTotaisFinanceiros() { try { const {data}=await supabase.from('propostas').select('valor_entrada,valor_parcela,status_pagamento'); let tE=0,tR=0,p=0; data.forEach(x=>{if(x.status_pagamento==='entrada_paga')tE+=Number(x.valor_entrada)||0; tR+=Number(x.valor_parcela)||0; if(x.status_pagamento!=='pago')p++; }); document.getElementById('totalEntradas').textContent=`R$ ${tE.toFixed(2).replace('.',',')}`; document.getElementById('totalReceber').textContent=`R$ ${tR.toFixed(2).replace('.',',')}`; document.getElementById('totalPendentes').textContent=p; } catch(e) { console.log('Sem dados'); } }
 
-// ✅ SALVAR E APROVAR FUNCIONANDO DE VERDADE
+// ✅ SALVAR E APROVAR - AGORA ATUALIZA NO BANCO E RECARREGA
 async function salvarEAprovar() {
     try {
         const qtdParc = parseInt(document.getElementById('qtdParcelas').value);
@@ -217,25 +217,39 @@ async function salvarEAprovar() {
             atualizado_em: new Date().toISOString()
         };
 
-        await supabase.from('propostas').update(dados).eq('id', propostaAtual.id);
+        const { error } = await supabase.from('propostas').update(dados).eq('id', propostaAtual.id);
+        if(error) throw error;
         
-        // Atualiza o status na tela AGORA MESMO
-        document.getElementById('textoStatus').textContent = '✅ Aprovada';
-        document.getElementById('textoStatus').className = 'status-aprovado';
-        
-        alert('✅ PROPOSTA APROVADA!\nStatus alterado para verde.\nCódigo Pix gerado e já aparece para o cliente!');
-        calcularTotaisFinanceiros();
+        alert('✅ PROPOSTA APROVADA!\nJá está visível para o cliente.\nA página vai atualizar agora.');
+        window.location.reload(); // ✅ Recarrega para mostrar a alteração real
     } catch(e) {
-        alert('❌ Erro: ' + e.message);
+        alert('❌ Erro ao aprovar: ' + e.message);
     }
 }
 
+// ✅ REPROVAR
 async function marcarReprovado() {
     if(confirm('Deseja REPROVAR essa proposta?')) {
-        await supabase.from('propostas').update({status:'Reprovada', atualizado_em: new Date().toISOString()}).eq('id', propostaAtual.id);
-        document.getElementById('textoStatus').textContent = '❌ Reprovada';
-        document.getElementById('textoStatus').className = 'status-reprovado';
-        alert('✅ Proposta reprovada!');
+        try {
+            await supabase.from('propostas').update({status:'Reprovada', atualizado_em: new Date().toISOString()}).eq('id', propostaAtual.id);
+            alert('✅ Proposta reprovada!');
+            window.location.reload();
+        } catch(e) { alert('❌ Erro: ' + e.message); }
+    }
+}
+
+// ✅ EXCLUIR DEFINITIVAMENTE
+async function excluirProposta() {
+    if(confirm('⚠️ ATENÇÃO!\nEssa proposta será APAGADA DEFINITIVAMENTE do sistema.\nNão importa se está aprovada ou não, não tem volta!')) {
+        try {
+            const { error } = await supabase.from('propostas').delete().eq('id', propostaAtual.id);
+            if(error) throw error;
+            alert('✅ Proposta EXCLUÍDA com sucesso!');
+            window.location.reload(); // ✅ Recarrega e some da lista
+        } catch(e) {
+            alert('❌ Erro ao excluir: ' + e.message);
+            console.error('Erro exclusão:', e);
+        }
     }
 }
 
@@ -245,18 +259,6 @@ function enviarWhatsApp() {
 }
 function copiarDados() { navigator.clipboard.writeText(`Nome: ${propostaAtual.nome}\nCPF: ${propostaAtual.cpf}\nValor: R$ 4.000,00\nEntrada: R$ ${parseFloat(document.getElementById('valorEntrada').value).toFixed(2).replace('.',',')}`).then(()=>alert('✅ Copiado!')); }
 function imprimirProposta() { window.print(); }
-
-// ✅ EXCLUIR FUNCIONA PARA TODAS, INCLUSIVE APROVADAS
-async function excluirProposta() {
-    if(confirm('⚠️ TEM CERTEZA? Essa ação apaga DEFINITIVAMENTE, não importa se está aprovada ou não!')) {
-        try {
-            await supabase.from('propostas').delete().eq('id', propostaAtual.id);
-            alert('✅ Proposta EXCLUÍDA com sucesso!');
-            window.location.reload();
-        } catch(e) { alert('❌ Erro ao excluir: ' + e.message); }
-    }
-}
-
 function cancelarEdicao() { alert('✅ Edição cancelada.'); }
 </script>
 </body>
