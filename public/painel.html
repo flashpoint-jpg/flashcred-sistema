@@ -263,8 +263,17 @@ function atualizarCalculo() {
 // --- CARREGAR E MOSTRAR DADOS ---
 async function carregarPropostas() {
     try {
-        const { data, error } = await supabase.from('propostas').select('*').order('created_at', {ascending: false});
-        if(error) throw error;
+        console.log('Buscando propostas...');
+        const { data, error } = await supabase
+            .from('propostas')
+            .select('*')
+            .order('created_at', {ascending: false});
+        
+        console.log('Resposta:', { data, error });
+
+        if(error) {
+            throw new Error(`Erro: ${error.message} (Código: ${error.code})`);
+        }
         
         listaPropostas = data || [];
         listaFiltrada = listaPropostas;
@@ -281,9 +290,14 @@ async function carregarPropostas() {
         document.getElementById('totalPago').textContent = `R$ ${totalPago.toFixed(2).replace('.', ',')}`;
         document.getElementById('totalReceber').textContent = `R$ ${totalReceber.toFixed(2).replace('.', ',')}`;
         renderizarLista();
-    } catch (e) {
-        console.error('Erro ao carregar:', e);
-        document.getElementById('listaPropostas').innerHTML = '<p class="text-center text-perigo py-6">Erro ao carregar as propostas!</p>';
+
+    } catch (erro) {
+        console.error('❌ Erro completo:', erro);
+        document.getElementById('listaPropostas').innerHTML = `
+            <p class="text-center text-perigo py-6">
+                ⚠️ ${erro.message}<br>
+                Verifique as permissões no Supabase!
+            </p>`;
     }
 }
 
@@ -387,7 +401,7 @@ function renderizarLista() {
             const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
             const link = `${window.location.origin}/consultar.html?cpf=${limparCpf(p.cpf)}`;
             const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas || 0}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\nAcesse para ver o Pix e detalhes: ${link}`;
-            window.open(`https://wa.me/${telLimpo}?text=${encodeURIComponent(msg)}`, '_blank');
+            window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
         });
     });
 
