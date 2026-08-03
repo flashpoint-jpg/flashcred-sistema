@@ -13,6 +13,8 @@
                 extend: {
                     colors: {
                         primary: '#0A2463',
+                        modo_teste: '#F59E0B',
+                        modo_producao: '#10B981',
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444',
@@ -85,6 +87,13 @@
         }
         .aviso-sistema.mostrar { transform: translateX(0); }
 
+        .modo-operacao {
+            display: flex; gap: 12px; align-items: center; margin-bottom: 16px; padding: 12px; background: #F8FAFC; border-radius: 12px;
+        }
+        .modo-tag { padding: 6px 12px; border-radius: 20px; font-weight: 600; font-size: 13px; color: white; }
+        .modo-teste-tag { background: #F59E0B; }
+        .modo-producao-tag { background: #10B981; }
+
         .dados-cliente { 
             margin: 16px 0; 
             padding: 16px; 
@@ -156,7 +165,10 @@
     <div class="cabecalho">
         <div>
             <h1 class="text-lg font-bold text-primary">📋 Propostas Recebidas</h1>
-            <span class="text-xs text-textoClaro">✅ Atualização automática ativada</span>
+            <div class="modo-operacao">
+                <span class="modo-tag modo-teste-tag">Modo Teste</span>
+                <span class="modo-tag modo-producao-tag">Modo Produção</span>
+            </div>
         </div>
         <div>
             <button class="btn btn-alerta text-xs" onclick="alterarSenha()">Alterar Senha</button>
@@ -217,7 +229,7 @@ function sair() { sessionStorage.removeItem('logadoAdmin'); location.reload(); }
 function alterarSenha() { const n = prompt('Digite a nova senha:'); if(n && n.length>=4) { senhaCorreta = n; alert('✅ Senha alterada com sucesso!'); } }
 function limparNumeros(v) { return String(v||'').replace(/\D/g,''); }
 
-// Cálculo automático
+// ✅ CÁLCULO COMPLETO COM ENTRADA E SOMA DAS PARCELAS
 function atualizarCalculo() {
     const valorTotal = parseFloat(document.getElementById('valorTotal')?.value) || 0;
     const percEntrada = parseFloat(document.getElementById('percEntrada')?.value) || 0;
@@ -226,11 +238,14 @@ function atualizarCalculo() {
 
     const valorEntrada = valorTotal * (percEntrada / 100);
     const valorComJuros = valorTotal * (1 + (percJuros / 100));
-    const valorParcela = qtdParc > 0 ? (valorComJuros - valorEntrada) / qtdParc : 0;
+    const valorTotalParcelas = valorComJuros - valorEntrada;
+    const valorParcela = qtdParc > 0 ? valorTotalParcelas / qtdParc : 0;
 
     if(document.getElementById('valorEntrada')) document.getElementById('valorEntrada').value = valorEntrada.toFixed(2);
+    if(document.getElementById('valorTotalParcelas')) document.getElementById('valorTotalParcelas').value = valorTotalParcelas.toFixed(2);
     if(document.getElementById('valorParcela')) document.getElementById('valorParcela').value = valorParcela.toFixed(2);
     if(document.getElementById('mostraEntrada')) document.getElementById('mostraEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
+    if(document.getElementById('mostraTotalParcelas')) document.getElementById('mostraTotalParcelas').textContent = valorTotalParcelas.toFixed(2).replace('.', ',');
     if(document.getElementById('mostraParcela')) document.getElementById('mostraParcela').textContent = valorParcela.toFixed(2).replace('.', ',');
 
     const hoje = new Date();
@@ -240,7 +255,6 @@ function atualizarCalculo() {
     if(document.getElementById('dataPrimeira')) document.getElementById('dataPrimeira').value = formatarData(dataPrimeira);
 }
 
-// Atualização automática
 function iniciarAtualizacaoAutomatica() {
     supabase.channel('atualizacoes')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'propostas' }, () => {
@@ -295,6 +309,7 @@ function abrirModalEditar(cpf) {
             <p>📅 <strong>1º Vencimento:</strong> <input type="text" id="dataPrimeira" class="input input-pequeno" readonly></p>
             <hr class="my-2">
             <p>💸 <strong>Valor da Entrada:</strong> R$ <span id="mostraEntrada">0,00</span></p>
+            <p>📊 <strong>Total das Parcelas:</strong> R$ <span id="mostraTotalParcelas">0,00</span></p>
             <p>📦 <strong>Valor de Cada Parcela:</strong> R$ <span id="mostraParcela">0,00</span></p>
         </div>
 
@@ -309,7 +324,6 @@ function abrirModalEditar(cpf) {
 
 function fecharModalEditar() { document.getElementById('modalEditar').style.display = 'none'; }
 
-// ✅ BOTÃO SALVAR E APROVAR CORRIGIDO E FUNCIONANDO
 async function salvarEProvar(cpf) {
     const qtd = parseInt(document.getElementById('qtdParc').value);
     if(!qtd || qtd < 1 || qtd > 48) {
@@ -320,6 +334,7 @@ async function salvarEProvar(cpf) {
     const dadosAtualizados = {
         valor_aprovado: parseFloat(document.getElementById('valorTotal').value),
         valor_entrada: parseFloat(document.getElementById('valorEntrada').value),
+        valor_total_parcelas: parseFloat(document.getElementById('valorTotalParcelas').value),
         valor_parcela: parseFloat(document.getElementById('valorParcela').value),
         qtd_parcelas_escolhida: qtd,
         status: 'Aprovada'
