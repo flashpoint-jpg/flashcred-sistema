@@ -14,9 +14,6 @@
                 extend: {
                     colors: {
                         primary: '#0A2463',
-                        modo_manual: '#3B82F6',
-                        modo_teste: '#F59E0B',
-                        modo_producao: '#10B981',
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444',
@@ -60,7 +57,6 @@
         .btn-sucesso { background: #10B981; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
         .btn-perigo { background: #EF4444; color: white; }
-        .btn-whatsapp { background: #25D366; color: white; }
 
         .input { 
             width: 100%; 
@@ -73,6 +69,22 @@
         }
         .input:focus { outline: none; border-color: #0A2463; box-shadow: 0 0 0 3px rgba(10, 36, 99, 0.1); }
         .input-pequeno { max-width: 120px; text-align: center; }
+
+        .notificacao-sistema {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #0A2463;
+            color: white;
+            padding: 16px 24px;
+            border-radius: 14px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+            z-index: 9999;
+            transform: translateX(120%);
+            transition: transform 0.3s ease;
+            max-width: 380px;
+        }
+        .notificacao-sistema.mostrar { transform: translateX(0); }
 
         .dados-cliente { 
             margin: 16px 0; 
@@ -130,6 +142,8 @@
 </head>
 <body>
 
+<div id="avisoSistema" class="notificacao-sistema"></div>
+
 <div id="telaLogin" class="area-login">
     <div class="card w-full max-w-md">
         <h2 class="text-xl font-bold text-center text-primary mb-6">🔐 Acesso Administrativo</h2>
@@ -141,14 +155,17 @@
 
 <div id="painel" class="hidden">
     <div class="cabecalho">
-        <h1 class="text-lg font-bold text-primary">📋 Propostas</h1>
+        <div>
+            <h1 class="text-lg font-bold text-primary">📋 Propostas e Acompanhamento</h1>
+            <span class="text-xs text-textoClaro">✅ Atualização automática ativada</span>
+        </div>
         <div>
             <button class="btn btn-alerta text-xs" onclick="alterarSenha()">Alterar Senha</button>
             <button class="btn btn-perigo text-xs" onclick="sair()">Sair</button>
         </div>
     </div>
     <div class="p-5 max-w-6xl mx-auto">
-        <div id="listaPropostas"><p class="text-center text-textoClaro py-8">Carregando...</p></div>
+        <div id="listaPropostas"><p class="text-center text-textoClaro py-8">Carregando propostas...</p></div>
     </div>
 </div>
 
@@ -170,11 +187,19 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 let senhaCorreta = 'flashcred2026';
 let listaPropostas = [];
 
+function mostrarAviso(texto) {
+    const aviso = document.getElementById('avisoSistema');
+    aviso.textContent = '🔔 ' + texto;
+    aviso.classList.add('mostrar');
+    setTimeout(() => aviso.classList.remove('mostrar'), 5000);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     if(sessionStorage.getItem('logadoAdmin') === 'sim') {
         document.getElementById('telaLogin').classList.add('hidden');
         document.getElementById('painel').classList.remove('hidden');
         carregarPropostas();
+        iniciarAtualizacaoAutomatica();
     }
 });
 
@@ -184,37 +209,50 @@ function fazerLogin() {
         document.getElementById('telaLogin').classList.add('hidden');
         document.getElementById('painel').classList.remove('hidden');
         carregarPropostas();
+        iniciarAtualizacaoAutomatica();
     } else {
         document.getElementById('erroLogin').classList.remove('hidden');
     }
 }
 function sair() { sessionStorage.removeItem('logadoAdmin'); location.reload(); }
-function alterarSenha() { const n = prompt('Nova senha:'); if(n && n.length>=4) senhaCorreta = n; alert('Senha alterada!'); }
+function alterarSenha() { const n = prompt('Nova senha de acesso:'); if(n && n.length>=4) { senhaCorreta = n; alert('✅ Senha alterada com sucesso!'); } }
 function limparApenasNumeros(v) { return String(v||'').replace(/\D/g,''); }
 
-// ✅ CÁLCULO AUTOMÁTICO COMPLETO + DATAS
+// ✅ CÁLCULO AUTOMÁTICO + DATAS
 function atualizarCalculo() {
     const valorTotal = parseFloat(document.getElementById('valorTotal')?.value) || 0;
     const percEntrada = parseFloat(document.getElementById('percEntrada')?.value) || 0;
     const percJuros = parseFloat(document.getElementById('percJuros')?.value) || 0;
     const qtdParc = parseInt(document.getElementById('qtdParc')?.value) || 0;
 
-    // Cálculos
     const valorEntrada = valorTotal * (percEntrada / 100);
     const valorComJuros = valorTotal * (1 + (percJuros / 100));
     const valorParcela = qtdParc > 0 ? (valorComJuros - valorEntrada) / qtdParc : 0;
 
-    // Atualiza valores na tela
     if(document.getElementById('valorEntrada')) document.getElementById('valorEntrada').value = valorEntrada.toFixed(2);
     if(document.getElementById('valorParcela')) document.getElementById('valorParcela').value = valorParcela.toFixed(2);
+    if(document.getElementById('mostraEntrada')) document.getElementById('mostraEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
+    if(document.getElementById('mostraParcela')) document.getElementById('mostraParcela').textContent = valorParcela.toFixed(2).replace('.', ',');
 
-    // ✅ DATAS GERADAS AUTOMATICAMENTE
     const hoje = new Date();
-    const dataPrimeiraParcela = new Date(hoje.setMonth(hoje.getMonth() + 1));
+    const dataPrimeira = new Date(hoje.setMonth(hoje.getMonth() + 1));
     const formatarData = (d) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
-    
     if(document.getElementById('dataAprovacao')) document.getElementById('dataAprovacao').value = formatarData(new Date());
-    if(document.getElementById('dataPrimeira')) document.getElementById('dataPrimeira').value = formatarData(dataPrimeiraParcela);
+    if(document.getElementById('dataPrimeira')) document.getElementById('dataPrimeira').value = formatarData(dataPrimeira);
+}
+
+// ✅ ATUALIZAÇÃO AUTOMÁTICA EM TEMPO REAL
+function iniciarAtualizacaoAutomatica() {
+    supabase.channel('atualizacoes-propostas')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'propostas' }, () => {
+            mostrarAviso('Nova proposta recebida!');
+            carregarPropostas();
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas' }, () => {
+            mostrarAviso('Proposta atualizada!');
+            carregarPropostas();
+        })
+        .subscribe();
 }
 
 async function carregarPropostas() {
@@ -269,21 +307,11 @@ function abrirModalEditar(cpf) {
     atualizarCalculo();
 }
 
-// Atualiza também os valores mostrados no resumo
-const originalAtualizar = atualizarCalculo;
-atualizarCalculo = function() {
-    originalAtualizar();
-    const ve = document.getElementById('valorEntrada')?.value || '0.00';
-    const vp = document.getElementById('valorParcela')?.value || '0.00';
-    if(document.getElementById('mostraEntrada')) document.getElementById('mostraEntrada').textContent = ve.replace('.',',');
-    if(document.getElementById('mostraParcela')) document.getElementById('mostraParcela').textContent = vp.replace('.',',');
-};
-
 function fecharModalEditar() { document.getElementById('modalEditar').style.display = 'none'; }
 
 async function salvarAprovar(cpf) {
     const qtd = parseInt(document.getElementById('qtdParc').value);
-    if(!qtd || qtd<1 || qtd>48) return alert('Informe de 1 a 48 parcelas!');
+    if(!qtd || qtd<1 || qtd>48) return alert('⚠️ Informe de 1 a 48 parcelas!');
     
     const dados = {
         valor_aprovado: parseFloat(document.getElementById('valorTotal').value),
@@ -296,7 +324,6 @@ async function salvarAprovar(cpf) {
     await supabase.from('propostas').update(dados).eq('cpf', limparApenasNumeros(cpf));
     alert('✅ Proposta salva com sucesso!');
     fecharModalEditar();
-    carregarPropostas();
 }
 
 function renderizarLista() {
@@ -316,7 +343,7 @@ function renderizarLista() {
             <div class="flex flex-wrap gap-2 mt-3">
                 <!-- BOTÃO EDITAR SEMPRE VISÍVEL -->
                 <button class="btn btn-editar" onclick="abrirModalEditar('${p.cpf}')"><i class="fa-solid fa-pen-to-square"></i> Editar / Analisar</button>
-                <button class="btn btn-whatsapp" onclick="alert('Função de enviar WhatsApp mantida')"><i class="fa-brands fa-whatsapp"></i> Enviar Resultado</button>
+                <button class="btn btn-alerta" onclick="alert('Função WhatsApp mantida')"><i class="fa-brands fa-whatsapp"></i> Enviar Resultado</button>
             </div>
         `;
         container.appendChild(card);
