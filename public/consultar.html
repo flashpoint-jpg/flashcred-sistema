@@ -51,12 +51,14 @@
             justify-content: center; 
             gap: 8px; 
             width: 100%; 
+            margin: 6px 0;
         }
         .btn:hover { opacity: 0.92; transform: translateY(-1px); }
         .btn-primary { background: #0A2463; color: white; }
         .btn-sucesso { background: #10B981; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
-        .btn-whatsapp { background: #25D366; color: white; margin-top: 10px; }
+        .btn-whatsapp { background: #25D366; color: white; }
+        .btn-imprimir { background: #8B5CF6; color: white; }
         
         .input { 
             width: 100%; 
@@ -85,10 +87,10 @@
         }
         
         .status-badge {
-            padding: 8px 16px;
+            padding: 10px 20px;
             border-radius: 20px;
             font-weight: 600;
-            font-size: 15px;
+            font-size: 16px;
             display: inline-block;
             margin: 12px 0;
         }
@@ -99,12 +101,12 @@
         .dados-proposta {
             background: #F8FAFC;
             border-radius: 16px;
-            padding: 16px;
+            padding: 18px;
             margin: 16px 0;
             border-left: 4px solid #0A2463;
         }
         .dados-proposta p {
-            padding: 6px 0;
+            padding: 7px 0;
             border-bottom: 1px dashed #E2E8F0;
             font-size: 15px;
         }
@@ -113,17 +115,25 @@
         
         .qrcode-area {
             text-align: center;
-            padding: 20px;
+            padding: 22px;
             background: white;
             border-radius: 16px;
-            margin: 16px 0;
+            margin: 18px 0;
             border: 2px solid #E2E8F0;
+        }
+        .contrato-area {
+            background: #FFFBEB;
+            border-radius: 16px;
+            padding: 18px;
+            margin: 16px 0;
+            border-left: 4px solid #F59E0B;
         }
         .aviso {
             font-size: 14px;
             color: #64748B;
             text-align: center;
             margin-top: 12px;
+            line-height: 1.5;
         }
         .hidden { display: none !important; }
     </style>
@@ -132,171 +142,4 @@
 
 <div class="card">
     <div class="text-center mb-6">
-        <h2 class="text-2xl font-bold text-primary">📋 Acompanhe sua Proposta</h2>
-        <p class="text-textoClaro mt-2">Digite seu CPF para ver o andamento</p>
-    </div>
-
-    <div id="areaBusca">
-        <input type="text" id="cpfConsulta" class="input" placeholder="Digite seu CPF" maxlength="18">
-        <button class="btn btn-primary" onclick="buscarProposta()">
-            <i class="fa-solid fa-magnifying-glass"></i> Consultar
-        </button>
-    </div>
-
-    <div id="carregando" class="hidden text-center py-6">
-        <span class="bolinha-carregando"></span>
-        <span class="text-lg font-medium">Buscando sua proposta...</span>
-    </div>
-
-    <div id="resultado" class="hidden"></div>
-</div>
-
-<script>
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-function limparApenasNumeros(valor) {
-    return String(valor || '').replace(/\D/g, '');
-}
-
-function formatarCpf(cpf) {
-    const n = limparApenasNumeros(cpf);
-    if(n.length === 11) return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    return n;
-}
-
-async function buscarProposta() {
-    const cpfDigitado = limparApenasNumeros(document.getElementById('cpfConsulta').value);
-    
-    if(!cpfDigitado || cpfDigitado.length !== 11) {
-        alert('⚠️ Digite um CPF válido!');
-        return;
-    }
-
-    document.getElementById('areaBusca').classList.add('hidden');
-    document.getElementById('resultado').classList.add('hidden');
-    document.getElementById('carregando').classList.remove('hidden');
-
-    try {
-        const { data, error } = await supabase
-            .from('propostas')
-            .select('*')
-            .eq('cpf', cpfDigitado)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-        document.getElementById('carregando').classList.add('hidden');
-
-        if(error || !data || data.length === 0) {
-            document.getElementById('resultado').innerHTML = `
-                <div class="text-center py-6">
-                    <i class="fa-solid fa-circle-xmark text-perigo text-4xl mb-4"></i>
-                    <h3 class="text-xl font-semibold text-perigo">Proposta não encontrada</h3>
-                    <p class="text-textoClaro mt-2">Verifique o CPF digitado ou aguarde alguns minutos se acabou de enviar.</p>
-                    <button class="btn btn-alerta mt-5" onclick="voltarBusca()">🔙 Tentar novamente</button>
-                </div>
-            `;
-            document.getElementById('resultado').classList.remove('hidden');
-            return;
-        }
-
-        const p = data[0];
-        let conteudoStatus = '';
-
-        if(!p.status || p.status === 'Nova') {
-            conteudoStatus = `
-                <div class="text-center py-4">
-                    <span class="bolinha-carregando"></span>
-                    <span class="status-badge status-nova">EM ANÁLISE</span>
-                </div>
-                <p class="text-center text-textoClaro mt-3">Estamos analisando sua solicitação. Em breve você receberá o retorno aqui ou pelo WhatsApp.</p>
-            `;
-        } else if(p.status === 'Reprovada') {
-            conteudoStatus = `
-                <div class="text-center py-4">
-                    <span class="status-badge status-reprovada">REPROVADA</span>
-                </div>
-                <p class="text-center text-textoClaro mt-3">Infelizmente não foi possível aprovar dessa vez. Você pode fazer uma nova solicitação quando quiser!</p>
-            `;
-        } else if(p.status === 'Aprovada') {
-            conteudoStatus = `
-                <div class="text-center py-4">
-                    <span class="status-badge status-aprovada">✅ APROVADA!</span>
-                </div>
-                
-                <div class="dados-proposta">
-                    <p><strong>Valor Aprovado:</strong> R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}</p>
-                    <p><strong>Valor da Entrada:</strong> R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}</p>
-                    <p><strong>Quantidade de Parcelas:</strong> ${p.qtd_parcelas_escolhida||0} vezes</p>
-                    <p><strong>Valor de Cada Parcela:</strong> R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}</p>
-                </div>
-
-                ${p.codigo_pix ? `
-                <div class="qrcode-area">
-                    <p class="font-semibold text-primary mb-3">📱 Pague a entrada via Pix</p>
-                    <div id="qrcode-pix" class="mx-auto mb-3"></div>
-                    <button class="btn btn-sucesso" onclick="copiarPix('${p.codigo_pix}')">
-                        <i class="fa-solid fa-copy"></i> Copiar Código Pix
-                    </button>
-                    <p class="aviso">Após o pagamento, envie o comprovante pelo WhatsApp e aguarde a confirmação!</p>
-                </div>
-                ` : ''}
-            `;
-        }
-
-        document.getElementById('resultado').innerHTML = `
-            <div class="text-center mb-3">
-                <h3 class="text-xl font-bold text-primary">Olá ${p.nome}!</h3>
-            </div>
-            ${conteudoStatus}
-            <button class="btn btn-alerta mt-5" onclick="voltarBusca()">🔙 Consultar outro CPF</button>
-        `;
-
-        document.getElementById('resultado').classList.remove('hidden');
-
-        if(p.codigo_pix && p.status === 'Aprovada') {
-            new QRCode(document.getElementById('qrcode-pix'), {
-                text: p.codigo_pix,
-                width: 180,
-                height: 180
-            });
-        }
-
-    } catch(erro) {
-        document.getElementById('carregando').classList.add('hidden');
-        document.getElementById('resultado').innerHTML = `
-            <div class="text-center py-6">
-                <i class="fa-solid fa-triangle-exclamation text-alerta text-4xl mb-4"></i>
-                <h3 class="text-xl font-semibold text-alerta">Erro ao buscar</h3>
-                <p class="text-textoClaro mt-2">Tente novamente em instantes.</p>
-                <button class="btn btn-alerta mt-5" onclick="voltarBusca()">🔙 Tentar novamente</button>
-            </div>
-        `;
-        document.getElementById('resultado').classList.remove('hidden');
-    }
-}
-
-function voltarBusca() {
-    document.getElementById('resultado').classList.add('hidden');
-    document.getElementById('cpfConsulta').value = '';
-    document.getElementById('areaBusca').classList.remove('hidden');
-}
-
-function copiarPix(codigo) {
-    navigator.clipboard.writeText(codigo);
-    alert('✅ Código Pix copiado! Basta colar no app do seu banco.');
-}
-
-// Carrega direto se vier link com ?cpf=...
-document.addEventListener('DOMContentLoaded', () => {
-    const parametros = new URLSearchParams(window.location.search);
-    const cpfUrl = parametros.get('cpf');
-    if(cpfUrl) {
-        document.getElementById('cpfConsulta').value = cpfUrl;
-        buscarProposta();
-    }
-});
-</script>
-</body>
-</html>
+        <h2 class="text-2xl font-bold text-primar
