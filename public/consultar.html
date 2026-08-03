@@ -23,34 +23,37 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
         body { background: #F8FAFC; min-height: 100vh; padding: 20px; }
-        .card { background: white; border-radius: 16px; padding: 20px; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-        .input { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 15px; margin: 10px 0; }
-        .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 15px; }
+        .card { background: white; border-radius: 16px; padding: 24px; max-width: 520px; margin: 0 auto; box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+        .input { width: 100%; padding: 14px; border: 1px solid #CBD5E1; border-radius: 12px; font-size: 16px; margin: 12px 0; }
+        .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 16px; transition: 0.2s; }
         .btn-primary { background: #0A2463; color: white; }
-        .status { padding: 8px 12px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 10px 0; }
+        .btn-primary:hover { background: #081d45; }
+        .status { padding: 10px 16px; border-radius: 10px; font-weight: 600; display: inline-block; margin: 12px 0; font-size: 15px; }
         .status.Nova { background: #FEF3C7; color: #92400E; }
         .status.Aprovada { background: #D1FAE5; color: #065F46; }
         .status.Recusada { background: #FEE2E2; color: #991B1B; }
-        .resumo { background: #F8FAFC; border-radius: 12px; padding: 16px; margin-top: 16px; }
-        .linha { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #E2E8F0; }
-        .linha.total { font-weight: bold; color: #0A2463; font-size: 16px; border: none; margin-top: 6px; }
-        .carregando { display: none; text-align: center; padding: 15px; }
-        .spinner { width: 24px; height: 24px; border: 3px solid #ddd; border-top-color: #0A2463; border-radius: 50%; animation: girar 0.8s linear infinite; margin: 0 auto; }
+        .resumo { background: #F8FAFC; border-radius: 14px; padding: 18px; margin-top: 18px; border: 1px solid #E2E8F0; }
+        .linha { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0; font-size: 15px; }
+        .linha.total { font-weight: bold; color: #0A2463; font-size: 17px; border: none; margin-top: 8px; }
+        .carregando { display: none; text-align: center; padding: 20px; }
+        .spinner { width: 28px; height: 28px; border: 3px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: girar 0.8s linear infinite; margin: 0 auto; }
         @keyframes girar { to { transform: rotate(360deg); } }
+        .aviso-erro { background: #FEF2F2; color: #991B1B; padding: 12px; border-radius: 10px; margin-top: 12px; text-align: center; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2 class="text-2xl font-bold text-center text-primary mb-6">Acompanhar Minha Proposta</h2>
+    <h2 class="text-2xl font-bold text-center text-primary mb-2">Acompanhar Minha Proposta</h2>
+    <p class="text-center text-gray-500 mb-6">Digite o CPF que usou para se cadastrar</p>
     
-    <label class="font-medium text-gray-700">Digite seu CPF</label>
-    <input type="text" id="cpfBusca" class="input" placeholder="Ex: 123.456.789-00" maxlength="18">
+    <label class="font-medium text-gray-700">Seu CPF</label>
+    <input type="text" id="cpfBusca" class="input" placeholder="Ex: 123.456.789-00 ou 12345678900" maxlength="18">
     <button id="btnBuscar" class="btn btn-primary">Verificar Status</button>
 
     <div id="carregando" class="carregando">
         <div class="spinner"></div>
-        <p class="mt-2 text-gray-600">Buscando sua proposta...</p>
+        <p class="mt-3 text-gray-600">Buscando sua proposta...</p>
     </div>
 
     <div id="resultado" class="mt-6 hidden"></div>
@@ -61,62 +64,91 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// LIMPA CPF: TIRA PONTO, TRAÇO, TUDO
-function limparCPF(cpf) {
-    return cpf.replace(/\D/g, '');
+// ✅ FUNÇÃO QUE LIMPA QUALQUER CPF: TIRA TUDO QUE NÃO FOR NÚMERO
+function limparValor(valor) {
+    return valor.replace(/\D/g, '');
 }
 
 document.getElementById('btnBuscar').addEventListener('click', async () => {
-    const cpfDigitado = limparCPF(document.getElementById('cpfBusca').value);
-    if(cpfDigitado.length !== 11) return alert('Digite um CPF válido!');
+    const cpfDigitado = limparValor(document.getElementById('cpfBusca').value);
+    
+    // Validação básica
+    if(cpfDigitado.length !== 11) {
+        alert('⚠️ Digite um CPF com 11 números, por favor!');
+        return;
+    }
 
     document.getElementById('carregando').style.display = 'block';
     document.getElementById('resultado').style.display = 'none';
 
-    // BUSCA SEM PONTOS, ENCONTRA DE QUALQUER JEITO
-    const { data, error } = await supabase
-        .from('propostas')
-        .select('*')
-        .eq('cpf', cpfDigitado)
-        .order('created_at', { ascending: false })
-        .limit(1);
+    try {
+        // ✅ BUSCA PELO CPF JÁ LIMPO, IGUAL FOI SALVO
+        const { data, error } = await supabase
+            .from('propostas')
+            .select('*')
+            .eq('cpf', cpfDigitado) // Compara só números com só números
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-    document.getElementById('carregando').style.display = 'none';
+        document.getElementById('carregando').style.display = 'none';
 
-    if(error || !data || data.length === 0) {
-        alert('❌ Nenhuma proposta encontrada para esse CPF. Verifique os dados ou aguarde a análise.');
-        return;
+        if(error) throw error;
+
+        if(!data || data.length === 0) {
+            document.getElementById('resultado').style.display = 'block';
+            document.getElementById('resultado').innerHTML = `
+                <div class="aviso-erro">
+                    ❌ Nenhuma proposta encontrada para esse CPF.<br>
+                    Verifique se digitou corretamente ou aguarde o recebimento do formulário.
+                </div>
+            `;
+            return;
+        }
+
+        const p = data[0];
+        const resumo = document.getElementById('resultado');
+        resumo.style.display = 'block';
+
+        resumo.innerHTML = `
+            <div class="text-center mb-4">
+                <span class="status ${p.status}">
+                    ${p.status === 'Nova' ? '🔎 Em Análise' : p.status === 'Aprovada' ? '✅ Aprovada!' : '❌ Reprovada'}
+                </span>
+            </div>
+
+            <h3 class="font-bold text-xl text-primary mb-4">Olá, ${p.nome}!</h3>
+            
+            ${p.status === 'Aprovada' ? `
+            <div class="resumo">
+                <h4 class="font-bold text-primary mb-3">📋 Demonstrativo de Valores</h4>
+                <div class="linha"><span>Valor Total Aprovado:</span><span>R$ ${parseFloat(p.valor_aprovado || 0).toFixed(2).replace('.', ',')}</span></div>
+                <div class="linha"><span>Valor da Entrada (39%):</span><span>R$ ${parseFloat(p.valor_entrada || 0).toFixed(2).replace('.', ',')}</span></div>
+                <div class="linha"><span>Quantidade de Parcelas:</span><span>${p.qtd_parcelas}x</span></div>
+                <div class="linha"><span>Valor de Cada Parcela:</span><span>R$ ${parseFloat(p.valor_parcela || 0).toFixed(2).replace('.', ',')}</span></div>
+                <div class="linha total"><span>Total Final:</span><span>R$ ${(parseFloat(p.valor_entrada || 0) + (parseFloat(p.qtd_parcelas || 0) * parseFloat(p.valor_parcela || 0))).toFixed(2).replace('.', ',')}</span></div>
+            </div>
+
+            <div class="mt-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                <p class="font-semibold text-green-800 mb-2">💳 Pagamento da Entrada via Pix:</p>
+                <p class="font-mono text-sm bg-white p-3 rounded-lg break-all">${p.chave_pix || 'Aguardando geração automática...'}</p>
+            </div>
+            ` : p.status === 'Nova' ? `
+            <div class="resumo text-center">
+                <p class="text-gray-700 mb-2">Sua proposta foi recebida com sucesso!</p>
+                <p class="text-gray-600">Estamos analisando seus dados. O resultado será enviado para o seu WhatsApp: ${p.whatsapp}</p>
+            </div>
+            ` : `
+            <div class="resumo text-center">
+                <p class="text-red-700">Infelizmente não foi possível aprovar no momento.</p>
+                <p class="text-gray-600 mt-2">Você pode fazer uma nova solicitação após 30 dias.</p>
+            </div>
+            `}
+        `;
+
+    } catch (erro) {
+        document.getElementById('carregando').style.display = 'none';
+        alert('⚠️ Erro ao buscar: ' + erro.message);
     }
-
-    const p = data[0];
-    const resumo = document.getElementById('resultado');
-    resumo.style.display = 'block';
-
-    resumo.innerHTML = `
-        <div class="text-center mb-4">
-            <span class="status ${p.status}">${p.status === 'Nova' ? '🔎 Em Análise' : p.status}</span>
-        </div>
-
-        <h3 class="font-bold text-lg text-primary mb-3">Olá, ${p.nome}!</h3>
-        
-        ${p.status === 'Aprovada' ? `
-        <div class="resumo">
-            <h4 class="font-bold text-primary mb-3">📋 Demonstrativo de Valores</h4>
-            <div class="linha"><span>Valor Total Aprovado:</span><span>R$ ${parseFloat(p.valor_aprovado || 0).toFixed(2).replace('.', ',')}</span></div>
-            <div class="linha"><span>Valor da Entrada:</span><span>R$ ${parseFloat(p.valor_entrada || 0).toFixed(2).replace('.', ',')}</span></div>
-            <div class="linha"><span>Quantidade de Parcelas:</span><span>${p.qtd_parcelas}x</span></div>
-            <div class="linha"><span>Valor de Cada Parcela:</span><span>R$ ${parseFloat(p.valor_parcela || 0).toFixed(2).replace('.', ',')}</span></div>
-            <div class="linha total"><span>Total a Pagar:</span><span>R$ ${(parseFloat(p.valor_entrada || 0) + (parseFloat(p.qtd_parcelas || 0) * parseFloat(p.valor_parcela || 0))).toFixed(2).replace('.', ',')}</span></div>
-        </div>
-
-        <div class="mt-4 p-4 bg-green-50 rounded-xl border border-green-200">
-            <p class="font-semibold text-green-800 mb-2">💳 Pagamento da Entrada via Pix:</p>
-            <p class="font-mono text-sm bg-white p-2 rounded">${p.chave_pix || 'Aguardando geração...'}</p>
-        </div>
-        ` : `
-        <p class="text-gray-600 text-center">Sua proposta está sendo analisada. Em breve você receberá o resultado aqui ou pelo WhatsApp.</p>
-        `}
-    `;
 });
 </script>
 </body>
