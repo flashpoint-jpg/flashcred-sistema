@@ -13,11 +13,7 @@
                 extend: {
                     colors: {
                         primary: '#0A2463',
-                        pix-green: '#32BCAD',
                         bg-body: '#F8FAFC',
-                        text-main: '#1E293B',
-                        text-muted: '#64748B',
-                        border-color: '#E2E8F0',
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444',
@@ -49,6 +45,9 @@
         .grupo-botoes-acoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 12px; }
         .dados-cliente p { margin: 4px 0; font-size: 15px; }
         .dados-cliente strong { color: #0A2463; }
+        .status-aprovado { color: #10B981; font-weight: 600; }
+        .status-analise { color: #F59E0B; font-weight: 600; }
+        .status-reprovado { color: #EF4444; font-weight: 600; }
         .esconder { display: none !important; }
         .barra-topo { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: white; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
         .caixa-login { max-width: 420px; margin: 80px auto 0; padding: 30px; }
@@ -56,7 +55,6 @@
 </head>
 <body>
 
-<!-- TELA DE LOGIN -->
 <div id="telaLogin" class="esconder">
     <div class="container">
         <div class="card caixa-login">
@@ -68,10 +66,8 @@
     </div>
 </div>
 
-<!-- PAINEL PRINCIPAL (SÓ APARECE SE LOGADO) -->
 <div id="painelPrincipal" class="esconder">
     <div class="container">
-        <!-- BARRA SUPERIOR -->
         <div class="barra-topo">
             <h1 class="text-xl font-bold text-primary">⚙️ Painel Administrativo - FlashCred</h1>
             <div class="flex gap-2">
@@ -80,7 +76,6 @@
             </div>
         </div>
 
-        <!-- RESUMO FINANCEIRO -->
         <div class="grid-resumo">
             <div class="card">
                 <p class="text-sm text-gray-500">💵 Total de Entradas Recebidas</p>
@@ -96,7 +91,6 @@
             </div>
         </div>
 
-        <!-- CONFIGURAÇÃO DE PAGAMENTO -->
         <div class="card">
             <h3 class="text-lg font-semibold mb-4">⚙️ Configuração de Pagamento</h3>
             <div class="flex flex-wrap gap-3 mb-4">
@@ -110,12 +104,11 @@
             <button class="btn btn-principal w-full" onclick="salvarConfiguracao()">💾 Salvar Configuração</button>
         </div>
 
-        <!-- ÁREA DE EDIÇÃO E ANÁLISE -->
         <div class="card" id="areaEdicao">
             <div class="dados-cliente mb-4">
                 <h4 class="text-xl font-bold text-primary" id="nomeCliente">Felipe Costa</h4>
                 <p><strong>CPF:</strong> <span id="cpfCliente">335.529.498-52</span></p>
-                <p><strong>Status:</strong> <span class="text-sucesso font-medium">Aguardando Análise</span></p>
+                <p><strong>Status:</strong> <span id="textoStatus" class="status-analise">Aguardando Análise</span></p>
                 <p><strong>Valor Solicitado:</strong> R$ <span id="valorSolicitado">4.000,00</span></p>
             </div>
 
@@ -148,6 +141,7 @@
 
             <div class="grupo-botoes mt-4">
                 <button class="btn btn-sucesso" onclick="salvarEAprovar()">✅ Salvar e Aprovar</button>
+                <button class="btn btn-perigo" onclick="marcarReprovado()">❌ Reprovar</button>
                 <button class="btn btn-alerta" onclick="cancelarEdicao()">🔙 Cancelar</button>
             </div>
 
@@ -176,121 +170,29 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let modoAtual = 'teste';
 let propostaAtual = { id: 'id-exemplo', nome: 'Felipe Costa', cpf: '33552949852', telefone: '11999999999' };
-let senhaCorreta = localStorage.getItem('senhaAdmin') || 'flashcred2026'; // Senha inicial
+let senhaCorreta = localStorage.getItem('senhaAdmin') || 'flashcred2026';
 
-// VERIFICAR SE JÁ ESTÁ LOGADO AO ABRIR
 document.addEventListener('DOMContentLoaded', () => {
     const logado = sessionStorage.getItem('adminLogado');
-    if(logado === 'sim') {
-        mostrarPainel();
-    } else {
-        mostrarLogin();
-    }
+    logado === 'sim' ? mostrarPainel() : mostrarLogin();
     carregarConfiguracoes();
 });
 
-function mostrarLogin() {
-    document.getElementById('telaLogin').classList.remove('esconder');
-    document.getElementById('painelPrincipal').classList.add('esconder');
-}
+function mostrarLogin() { document.getElementById('telaLogin').classList.remove('esconder'); document.getElementById('painelPrincipal').classList.add('esconder'); }
+function mostrarPainel() { document.getElementById('telaLogin').classList.add('esconder'); document.getElementById('painelPrincipal').classList.remove('esconder'); calcularTotaisFinanceiros(); }
+function fazerLogin() { const s = document.getElementById('senhaLogin').value.trim(); s === senhaCorreta ? (sessionStorage.setItem('adminLogado','sim'), mostrarPainel()) : (alert('❌ Senha incorreta'), document.getElementById('senhaLogin').value=''); }
+function abrirAlterarSenha() { const n = prompt('Nova senha:'); if(n?.length>=4) { senhaCorreta=n; localStorage.setItem('senhaAdmin',n); alert('✅ Senha alterada'); } }
+function sairDoPainel() { if(confirm('Sair?')) { sessionStorage.removeItem('adminLogado'); mostrarLogin(); document.getElementById('senhaLogin').value=''; } }
 
-function mostrarPainel() {
-    document.getElementById('telaLogin').classList.add('esconder');
-    document.getElementById('painelPrincipal').classList.remove('esconder');
-    calcularTotaisFinanceiros();
-}
+function carregarConfiguracoes() { const s = localStorage.getItem('configFlashCred'); if(s) { const c=JSON.parse(s); modoAtual=c.modo||'teste'; document.getElementById('chavePagamento').value=c.chave||''; atualizarBotoesModo(); } }
+function selecionarModo(m) { modoAtual=m; atualizarBotoesModo(); }
+function atualizarBotoesModo() { document.getElementById('btnModoTeste').className=`btn ${modoAtual==='teste'?'btn-modoteste':'btn-modoinativo'}`; document.getElementById('btnModoProducao').className=`btn ${modoAtual==='producao'?'btn-modoproducao':'btn-modoinativo'}`; }
+function salvarConfiguracao() { const c=document.getElementById('chavePagamento').value.trim(); localStorage.setItem('configFlashCred',JSON.stringify({modo:modoAtual,chave:c,data:new Date().toISOString()})); alert(`✅ Salvo! Modo: ${modoAtual==='teste'?'Teste':'Produção'}`); }
+function gerarCodigoPix() { const c=document.getElementById('chavePagamento').value.trim()||'33552949852'; const v=parseFloat(document.getElementById('valorEntrada').value)||0; return `00020126580014br.gov.bcb.pix0136${c}0214Entrada FlashCred5204000053039865802BR5925Distribuidora Flash Point6009Muzambinho62070503***6304${v.toFixed(2).replace('.','')}`; }
 
-function fazerLogin() {
-    const senha = document.getElementById('senhaLogin').value.trim();
-    if(senha === senhaCorreta) {
-        sessionStorage.setItem('adminLogado', 'sim');
-        mostrarPainel();
-    } else {
-        alert('❌ Senha incorreta! Tente novamente.');
-        document.getElementById('senhaLogin').value = '';
-    }
-}
+async function calcularTotaisFinanceiros() { try { const {data}=await supabase.from('propostas').select('valor_entrada,valor_parcela,status_pagamento'); let tE=0,tR=0,p=0; data.forEach(x=>{if(x.status_pagamento==='entrada_paga')tE+=Number(x.valor_entrada)||0; tR+=Number(x.valor_parcela)||0; if(x.status_pagamento!=='pago')p++; }); document.getElementById('totalEntradas').textContent=`R$ ${tE.toFixed(2).replace('.',',')}`; document.getElementById('totalReceber').textContent=`R$ ${tR.toFixed(2).replace('.',',')}`; document.getElementById('totalPendentes').textContent=p; } catch(e) { console.log('Sem dados'); } }
 
-function abrirAlterarSenha() {
-    const novaSenha = prompt('Digite a NOVA senha de acesso:');
-    if(novaSenha && novaSenha.length >= 4) {
-        senhaCorreta = novaSenha;
-        localStorage.setItem('senhaAdmin', novaSenha);
-        alert('✅ Senha alterada com sucesso!');
-    } else if(novaSenha) {
-        alert('❌ Senha muito curta, use pelo menos 4 caracteres.');
-    }
-}
-
-function sairDoPainel() {
-    if(confirm('Tem certeza que deseja sair?')) {
-        sessionStorage.removeItem('adminLogado');
-        document.getElementById('senhaLogin').value = '';
-        mostrarLogin();
-    }
-}
-
-// FUNÇÕES EXISTENTES
-function carregarConfiguracoes() {
-    const salvas = localStorage.getItem('configFlashCred');
-    if(salvas) {
-        const cfg = JSON.parse(salvas);
-        modoAtual = cfg.modo || 'teste';
-        document.getElementById('chavePagamento').value = cfg.chave || '';
-        atualizarBotoesModo();
-    }
-}
-
-function selecionarModo(modo) {
-    modoAtual = modo;
-    atualizarBotoesModo();
-}
-
-function atualizarBotoesModo() {
-    const btnTeste = document.getElementById('btnModoTeste');
-    const btnProd = document.getElementById('btnModoProducao');
-    if(modoAtual === 'teste') {
-        btnTeste.className = 'btn btn-modoteste';
-        btnProd.className = 'btn btn-modoinativo';
-    } else {
-        btnProd.className = 'btn btn-modoproducao';
-        btnTeste.className = 'btn btn-modoinativo';
-    }
-}
-
-function salvarConfiguracao() {
-    const chave = document.getElementById('chavePagamento').value.trim();
-    localStorage.setItem('configFlashCred', JSON.stringify({
-        modo: modoAtual,
-        chave: chave,
-        data: new Date().toISOString()
-    }));
-    alert(`✅ Configuração salva!\nModo: ${modoAtual === 'teste' ? 'Teste' : 'Produção'}`);
-}
-
-function gerarCodigoPix() {
-    const chave = document.getElementById('chavePagamento').value.trim() || '33552949852';
-    const valorEntrada = parseFloat(document.getElementById('valorEntrada').value) || 0;
-    return `00020126580014br.gov.bcb.pix0136${chave}0214Entrada FlashCred5204000053039865802BR5925Distribuidora Flash Point6009Muzambinho62070503***6304` + valorEntrada.toFixed(2).replace('.','');
-}
-
-async function calcularTotaisFinanceiros() {
-    try {
-        const { data } = await supabase.from('propostas').select('valor_entrada, valor_parcela, status_pagamento');
-        let totalEntradas = 0, totalReceber = 0, pendentes = 0;
-        data.forEach(p => {
-            if(p.status_pagamento === 'entrada_paga') totalEntradas += Number(p.valor_entrada) || 0;
-            totalReceber += Number(p.valor_parcela) || 0;
-            if(p.status_pagamento !== 'pago') pendentes++;
-        });
-        document.getElementById('totalEntradas').textContent = `R$ ${totalEntradas.toFixed(2).replace('.',',')}`;
-        document.getElementById('totalReceber').textContent = `R$ ${totalReceber.toFixed(2).replace('.',',')}`;
-        document.getElementById('totalPendentes').textContent = pendentes;
-    } catch(e) {
-        console.log('Sem dados para somar ainda');
-    }
-}
-
+// ✅ SALVAR E APROVAR FUNCIONANDO DE VERDADE
 async function salvarEAprovar() {
     try {
         const qtdParc = parseInt(document.getElementById('qtdParcelas').value);
@@ -316,30 +218,41 @@ async function salvarEAprovar() {
         };
 
         await supabase.from('propostas').update(dados).eq('id', propostaAtual.id);
-        alert('✅ Proposta APROVADA!\nCódigo Pix gerado e salvo.\nJá aparece para o cliente!');
+        
+        // Atualiza o status na tela AGORA MESMO
+        document.getElementById('textoStatus').textContent = '✅ Aprovada';
+        document.getElementById('textoStatus').className = 'status-aprovado';
+        
+        alert('✅ PROPOSTA APROVADA!\nStatus alterado para verde.\nCódigo Pix gerado e já aparece para o cliente!');
         calcularTotaisFinanceiros();
     } catch(e) {
-        alert('❌ Erro ao salvar: ' + e.message);
+        alert('❌ Erro: ' + e.message);
+    }
+}
+
+async function marcarReprovado() {
+    if(confirm('Deseja REPROVAR essa proposta?')) {
+        await supabase.from('propostas').update({status:'Reprovada', atualizado_em: new Date().toISOString()}).eq('id', propostaAtual.id);
+        document.getElementById('textoStatus').textContent = '❌ Reprovada';
+        document.getElementById('textoStatus').className = 'status-reprovado';
+        alert('✅ Proposta reprovada!');
     }
 }
 
 function enviarWhatsApp() {
-    const msg = `Olá ${propostaAtual.nome}! Sua proposta foi APROVADA ✅\nValor Total: R$ 4.000,00\nEntrada: R$ ${parseFloat(document.getElementById('valorEntrada').value).toFixed(2).replace('.',',')}\nParcelamento: até ${document.getElementById('qtdParcelas').value}x\nAcesse: ${window.location.origin}/consultar.html para conferir e pagar.`;
+    const msg = `Olá ${propostaAtual.nome}! Sua proposta foi APROVADA ✅\nValor Total: R$ 4.000,00\nEntrada: R$ ${parseFloat(document.getElementById('valorEntrada').value).toFixed(2).replace('.',',')}\nParcelamento: até ${document.getElementById('qtdParcelas').value}x\nAcesse: ${window.location.origin}/consultar.html`;
     window.open(`https://wa.me/55${propostaAtual.telefone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`);
 }
-
-function copiarDados() {
-    const texto = `Nome: ${propostaAtual.nome}\nCPF: ${propostaAtual.cpf}\nValor: R$ 4.000,00\nEntrada: R$ ${parseFloat(document.getElementById('valorEntrada').value).toFixed(2).replace('.',',')}`;
-    navigator.clipboard.writeText(texto).then(() => alert('✅ Dados copiados!'));
-}
-
+function copiarDados() { navigator.clipboard.writeText(`Nome: ${propostaAtual.nome}\nCPF: ${propostaAtual.cpf}\nValor: R$ 4.000,00\nEntrada: R$ ${parseFloat(document.getElementById('valorEntrada').value).toFixed(2).replace('.',',')}`).then(()=>alert('✅ Copiado!')); }
 function imprimirProposta() { window.print(); }
 
+// ✅ EXCLUIR FUNCIONA PARA TODAS, INCLUSIVE APROVADAS
 async function excluirProposta() {
-    if(confirm('⚠️ Tem certeza? Essa ação não pode ser desfeita!')) {
+    if(confirm('⚠️ TEM CERTEZA? Essa ação apaga DEFINITIVAMENTE, não importa se está aprovada ou não!')) {
         try {
             await supabase.from('propostas').delete().eq('id', propostaAtual.id);
-            alert('✅ Proposta excluída!');
+            alert('✅ Proposta EXCLUÍDA com sucesso!');
+            window.location.reload();
         } catch(e) { alert('❌ Erro ao excluir: ' + e.message); }
     }
 }
