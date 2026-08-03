@@ -83,7 +83,6 @@
         .area-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, #0A2463 0%, #051236 100%); }
         .hidden { display: none !important; }
         label { font-weight: 500; margin-bottom: 4px; display: inline-block; }
-        /* 📱 Área QR Code */
         .area-qrcode { text-align: center; padding: 16px; background: #F0FDF4; border-radius: 12px; margin: 12px 0; border: 1px solid #A7F3D0; }
         .qrcode-img { display: inline-block; margin: 10px auto; padding: 8px; background: white; border-radius: 8px; }
         .codigo-pix { font-family: monospace; font-size: 11px; word-break: break-all; background: #E5E7EB; padding: 8px; border-radius: 6px; margin: 8px 0; text-align: left; }
@@ -97,10 +96,9 @@
     <div class="card w-full max-w-md">
         <h2 class="text-xl font-bold text-center text-primary mb-6">🔐 Acesso Administrativo</h2>
         <label class="text-white">Senha de Acesso</label>
-        <input type="password" id="senhaAdmin" class="input" placeholder="Digite sua senha" onkeydown="if(event.key === 'Enter') fazerLogin()">
-        <div id="erroLogin" class="text-perigo text-sm mb-3 hidden">Senha incorreta!</div>
-        <button id="btnEntrar" class="btn btn-primary" onclick="fazerLogin()">Entrar no Sistema</button>
-        <p class="text-xs text-center text-gray-300 mt-3">Senha padrão: flashcred2026</p>
+        <input type="password" id="senhaAdmin" class="input" placeholder="Digite sua senha de acesso" onkeydown="if(event.key === 'Enter') fazerLogin()">
+        <div id="erroLogin" class="text-perigo text-sm mb-3 hidden">Senha incorreta! Tente novamente.</div>
+        <button id="btnEntrar" class="btn btn-primary mt-2" onclick="fazerLogin()">Entrar no Sistema</button>
     </div>
 </div>
 
@@ -120,7 +118,6 @@
     </div>
 
     <div class="p-4 max-w-6xl mx-auto">
-        <!-- ⚙️ CONFIGURAÇÕES PIX E TOKEN -->
         <div class="card mb-4">
             <h3 class="text-md font-semibold text-primary mb-3">⚙️ Configurações de Pagamento</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
@@ -175,7 +172,6 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 let senhaCorreta = 'flashcred2026';
 let listaPropostas = [];
 
-// ✅ CARREGAR CONFIGURAÇÕES SALVAS
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('chavePixGlobal').value = localStorage.getItem('chavePixGlobal') || '';
     document.getElementById('nomeBeneficiario').value = localStorage.getItem('nomeBeneficiario') || 'Distribuidora Flash Point';
@@ -209,10 +205,12 @@ function mostrarNotificacao(texto, tipo = 'sucesso') {
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 
 function fazerLogin() {
-    if(document.getElementById('senhaAdmin').value.trim() === senhaCorreta) {
+    const senhaDigitada = document.getElementById('senhaAdmin').value.trim();
+    if(senhaDigitada === senhaCorreta) {
         sessionStorage.setItem('logado', 'sim');
         document.getElementById('telaLogin').classList.add('hidden');
         document.getElementById('painel').classList.remove('hidden');
+        document.getElementById('erroLogin').classList.add('hidden');
         carregarPropostas();
         iniciarTempoReal();
     } else {
@@ -224,6 +222,7 @@ function sair() {
     sessionStorage.removeItem('logado');
     document.getElementById('painel').classList.add('hidden');
     document.getElementById('telaLogin').classList.remove('hidden');
+    document.getElementById('senhaAdmin').value = '';
 }
 
 function alterarSenha() {
@@ -254,11 +253,174 @@ function atualizarCalculo() {
     if(document.getElementById('valorParcela')) document.getElementById('valorParcela').value = valorParcela.toFixed(2);
 }
 
-// 📷 GERAR CÓDIGO PIX E QR CODE
 function gerarPixCodigo(valor, descricao = 'Entrada Compra Móveis') {
     const chavePix = localStorage.getItem('chavePixGlobal') || '';
     const nome = localStorage.getItem('nomeBeneficiario') || 'Distribuidora Flash Point';
     if(!chavePix) return null;
     
-    // Código simplificado padrão Pix Copia e Cola
     const valorStr = parseFloat(valor).toFixed(2).replace('.', '');
+    return `00020126580014br.gov.bcb.pix01${String(chavePix.length).padStart(2,'0')}${chavePix}02${String(descricao.length).padStart(2,'0')}${descricao}5204000053039865802BR59${String(nome.length).padStart(2,'0')}${nome}6008BRASIL62070503***6304`;
+}
+
+async function carregarPropostas() {
+    const { data } = await supabase.from('propostas').select('*').order('created_at', {ascending: false});
+    listaPropostas = data || [];
+    
+    let totalPago = 0, totalReceber = 0;
+    listaPropostas.forEach(p => {
+        if(p.status === 'Aprovada') {
+            if(p.pago) totalPago += parseFloat(p.valor_entrada || 0);
+            totalPago += parseFloat(p.valor_parcela || 0) * parseInt(p.parcelas_pagas || 0);
+            totalReceber += parseFloat(p.valor_parcela || 0) * (parseInt(p.qtd_parcelas || 0) - parseInt(p.parcelas_pagas || 0));
+        }
+    });
+
+    document.getElementById('totalPago').textContent = `R$ ${totalPago.toFixed(2).replace('.', ',')}`;
+    document.getElementById('totalReceber').textContent = `R$ ${totalReceber.toFixed(2).replace('.', ',')}`;
+    renderizarLista();
+}
+
+function filtrarPropostas() {
+    const termo = limparCpf(document.getElementById('buscaCpf').value);
+    renderizarLista(termo ? listaPropostas.filter(p => limparCpf(p.cpf).includes(termo)) : listaPropostas);
+}
+
+function copiarDadosCliente(proposta) {
+    const cpfFmt = limparCpf(proposta.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    const dados = `Nome: ${proposta.nome}
+CPF: ${cpfFmt}
+Nascimento: ${proposta.nascimento}
+WhatsApp: ${proposta.telefone}
+CEP: ${proposta.cep}
+Endereço: ${proposta.endereco}
+Valor Solicitado: R$ ${parseFloat(proposta.valor_desejado||0).toFixed(2).replace('.',',')}`;
+    navigator.clipboard.writeText(dados).then(() => mostrarNotificacao('✅ Dados copiados!', 'sucesso'));
+}
+
+function abrirModalEditar(cpf) {
+    const proposta = listaPropostas.find(p => p.cpf === cpf);
+    if(!proposta) return;
+
+    const form = document.getElementById('formModal');
+    form.innerHTML = `
+        <div class="nome-cliente mb-3">${proposta.nome}</div>
+        <div class="linha-calculo">
+            <label>Valor Total (R$):</label>
+            <input type="number" step="0.01" id="valorTotal" class="input input-pequeno" value="${proposta.valor_aprovado || proposta.valor_desejado || 0}" oninput="atualizarCalculo()">
+        </div>
+        <div class="linha-calculo">
+            <label>Entrada (%):</label>
+            <input type="number" min="2" max="70" id="percEntrada" class="input input-pequeno" value="39" oninput="atualizarCalculo()">
+        </div>
+        <div class="linha-calculo">
+            <label>Juros (%):</label>
+            <input type="number" min="0" max="30" id="percJuros" class="input input-pequeno" value="6" oninput="atualizarCalculo()">
+        </div>
+        <div class="linha-calculo">
+            <label>Qtd Parcelas (1-48):</label>
+            <input type="number" min="1" max="48" id="qtdParc" class="input input-pequeno" value="${proposta.qtd_parcelas_escolhida || 0}" oninput="atualizarCalculo()">
+        </div>
+        <hr class="my-3">
+        <div class="linha-calculo font-medium">
+            <span>Valor Entrada: R$ <strong id="valorEntrada">0,00</strong></span>
+            <span>Valor Parcela: R$ <strong id="valorParcela">0,00</strong></span>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-4">
+            <button class="btn btn-sucesso" onclick="salvarAprovar('${cpf}')">✅ Salvar e Aprovar</button>
+            <button class="btn btn-perigo" onclick="reprovar('${cpf}')">❌ Reprovar</button>
+            <button class="btn btn-alerta" onclick="fecharModalEditar()">Cancelar</button>
+        </div>
+    `;
+    document.getElementById('modalEditar').style.display = 'flex';
+    atualizarCalculo();
+}
+
+function fecharModalEditar() {
+    document.getElementById('modalEditar').style.display = 'none';
+}
+
+async function salvarAprovar(cpf) {
+    const chavePix = localStorage.getItem('chavePixGlobal') || '';
+    const valorEntrada = parseFloat(document.getElementById('valorEntrada').value);
+    const codigoPix = gerarPixCodigo(valorEntrada);
+    
+    const dados = {
+        valor_aprovado: parseFloat(document.getElementById('valorTotal').value),
+        valor_entrada: valorEntrada,
+        valor_parcela: parseFloat(document.getElementById('valorParcela').value),
+        qtd_parcelas_escolhida: parseInt(document.getElementById('qtdParc').value),
+        status: 'Aprovada',
+        chave_pix: chavePix,
+        codigo_pix: codigoPix,
+        parcelas_pagas: 0,
+        pago: false
+    };
+
+    const { error } = await supabase.from('propostas').update(dados).eq('cpf', cpf);
+    if(error) return mostrarNotificacao('❌ Erro ao salvar: ' + error.message, 'perigo');
+    
+    mostrarNotificacao('✅ Proposta aprovada! QR Code Pix gerado para o cliente.', 'sucesso');
+    fecharModalEditar();
+    carregarPropostas();
+}
+
+async function reprovar(cpf) {
+    if(!confirm('Tem certeza que deseja reprovar esta proposta?')) return;
+    const { error } = await supabase.from('propostas').update({ status: 'Reprovada' }).eq('cpf', cpf);
+    if(error) return mostrarNotificacao('❌ Erro ao reprovar', 'perigo');
+    mostrarNotificacao('✅ Proposta reprovada.', 'alerta');
+    carregarPropostas();
+}
+
+function renderizarLista(lista = listaPropostas) {
+    const container = document.getElementById('listaPropostas');
+    container.innerHTML = '';
+    if(lista.length === 0) { container.innerHTML = '<p class="text-center text-textoClaro py-8">Nenhuma proposta encontrada.</p>'; return; }
+
+    lista.forEach(proposta => {
+        const statusEntrada = proposta.pago 
+            ? `<span class="bolinha-status bolinha-verde"></span>Entrada Paga` 
+            : `<span class="bolinha-status bolinha-amarela"></span>Entrada Pendente`;
+
+        const cpfFmt = limparCpf(proposta.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+        const cepFmt = proposta.cep ? limparCpf(proposta.cep).replace(/(\d{5})(\d{3})/, '$1-$3') : '-';
+
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+            <div class="flex justify-between items-start flex-wrap gap-2">
+                <div>
+                    <span class="nome-cliente">${proposta.nome || 'Sem Nome'}</span>
+                    <span class="badge badge-${(proposta.status || 'Nova').toLowerCase()}">${proposta.status || 'Nova'}</span>
+                </div>
+            </div>
+            
+            <div class="dados-cliente mt-2">
+                <p><strong>CPF:</strong> ${cpfFmt}</p>
+                <p><strong>Nascimento:</strong> ${proposta.nascimento || '-'}</p>
+                <p><strong>WhatsApp:</strong> ${proposta.telefone || '-'}</p>
+                <p><strong>CEP:</strong> ${cepFmt}</p>
+                <p><strong>Endereço:</strong> ${proposta.endereco || '-'}</p>
+                <p><strong>Valor Solicitado:</strong> R$ ${parseFloat(proposta.valor_desejado || 0).toFixed(2).replace('.', ',')}</p>
+                ${proposta.status === 'Aprovada' ? `
+                <p><strong>Valor Aprovado:</strong> R$ ${parseFloat(proposta.valor_aprovado||0).toFixed(2).replace('.',',')}</p>
+                <p><strong>Entrada:</strong> R$ ${parseFloat(proposta.valor_entrada||0).toFixed(2).replace('.',',')}</p>
+                <p><strong>Parcelas:</strong> ${proposta.qtd_parcelas_escolhida || 0}x de R$ ${parseFloat(proposta.valor_parcela||0).toFixed(2).replace('.',',')}</p>
+                ` : ''}
+                <p>${statusEntrada}</p>
+            </div>
+
+            <div class="flex flex-wrap gap-2 mt-3">
+                <button class="btn btn-copiar" onclick='copiarDadosCliente(${JSON.stringify(proposta).replace(/'/g, "&#39;")})'><i class="fa-solid fa-copy"></i> Copiar Dados</button>
+                ${proposta.status === 'Nova' ? `
+                <button class="btn btn-editar" onclick="abrirModalEditar('${proposta.cpf}')"><i class="fa-solid fa-pen"></i> Editar / Aprovar</button>
+                ` : ''}
+                <button class="btn btn-whatsapp" onclick="window.open('https://wa.me/${limparCpf(proposta.telefone)}', '_blank')"><i class="fa-brands fa-whatsapp"></i> Enviar WhatsApp</button>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+}
+</script>
+</body>
+</html>
