@@ -35,7 +35,7 @@
         .status-analise { background: #FEF3C7; color: #92400E; }
         .status-aprovada { background: #D1FAE5; color: #065F46; }
         .status-reprovada { background: #FEE2E2; color: #991B1B; }
-        .dado { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1F5F9; }
+        .dado { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1F5F9; flex-wrap: wrap; gap: 4px; }
         .qrcode { margin: 20px auto; display: flex; justify-content: center; }
         .hidden { display: none !important; }
         .bolinha-carregando { display: inline-block; width: 16px; height: 16px; border: 2px solid #92400E; border-top-color: transparent; border-radius: 50%; animation: rodar 1s linear infinite; margin-right: 8px; }
@@ -54,17 +54,22 @@
 </div>
 
 <script>
+// Dados do Supabase IGUAIS os do painel
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { enabled: true } });
 
 let cpfAtual = null;
+let inscricaoTempoReal = null;
 
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 
 async function buscarProposta() {
     const cpf = limparCpf(document.getElementById('cpfBusca').value);
     if(!cpf || cpf.length !== 11) return alert('Digite um CPF válido!');
+    
+    // Cancela inscrição antiga se existir
+    if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
     
     cpfAtual = cpf;
     document.getElementById('resultadoBusca').innerHTML = `
@@ -74,15 +79,33 @@ async function buscarProposta() {
     `;
     document.getElementById('resultadoBusca').classList.remove('hidden');
 
-    carregarDadosProposta();
+    // Carrega dados pela primeira vez
+    await carregarDadosProposta();
+
+    // LIGA A ATUALIZAÇÃO EM TEMPO REAL PARA ESSE CPF
+    inscricaoTempoReal = supabase.channel(`proposta-${cpfAtual}`)
+        .on('postgres_changes', { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'propostas', 
+            filter: `cpf=eq.${cpfAtual}` 
+        }, () => {
+            // Atualiza automaticamente quando você aprovar no painel
+            carregarDadosProposta();
+        })
+        .subscribe();
 }
 
 async function carregarDadosProposta() {
     if(!cpfAtual) return;
     
-    const { data } = await supabase.from('propostas').select('*').eq('cpf', cpfAtual).single();
+    const { data, error } = await supabase
+        .from('propostas')
+        .select('*')
+        .eq('cpf', cpfAtual)
+        .single();
     
-    if(!data) {
+    if(error || !data) {
         document.getElementById('resultadoBusca').innerHTML = `<p class="text-center text-red-500 py-4">Nenhuma proposta encontrada para este CPF.</p>`;
         return;
     }
@@ -92,19 +115,24 @@ async function carregarDadosProposta() {
         <div class="dado"><strong>CPF:</strong> <span>${limparCpf(data.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span></div>
     `;
 
-    if(data.status === 'Nova' || !data.status) {
+    // Status NOVA / EM ANÁLISE
+    if(!data.status || data.status === 'Nova') {
         conteudo += `
             <div class="status-card status-analise mt-4">
                 <span class="bolinha-carregando"></span> Em análise, aguarde...
             </div>
             <p class="text-center text-gray-600 text-sm mt-2">A atualização é automática, você não precisa recarregar a página.</p>
         `;
-    } else if(data.status === 'Reprovada') {
+    } 
+    // Status REPROVADA
+    else if(data.status === 'Reprovada') {
         conteudo += `
             <div class="status-card status-reprovada mt-4">❌ Proposta Reprovada</div>
             <p class="text-center text-gray-600 text-sm mt-2">Entre em contato com a FlashPoint para mais informações.</p>
         `;
-    } else if(data.status === 'Aprovada') {
+    } 
+    // Status APROVADA - AQUI VAI APARECER TUDO QUANDO VOCÊ APROVAR
+    else if(data.status === 'Aprovada') {
         conteudo += `
             <div class="status-card status-aprovada mt-4">✅ Proposta Aprovada!</div>
             <div class="mt-4">
@@ -115,11 +143,12 @@ async function carregarDadosProposta() {
             </div>
         `;
 
+        // Mostra Pix se tiver chave cadastrada
         if(data.chave_pix) {
             conteudo += `
                 <div class="mt-4 p-4 bg-green-50 rounded-xl">
                     <p class="text-center font-semibold text-green-800 mb-2">Pague a entrada via Pix:</p>
-                    <p class="text-center text-sm mb-2">Chave Pix: <code class="bg-white p-1 rounded">${data.chave_pix}</code></p>
+                    <p class="text-center text-sm mb-2">Chave Pix: <code class="bg-white p-1 rounded break-all">${data.chave_pix}</code></p>
                     <div id="qrcode-pix" class="qrcode"></div>
                     <p class="text-center text-xs text-gray-500 mt-2">Após o pagamento, envie o comprovante para o WhatsApp</p>
                 </div>
@@ -129,19 +158,19 @@ async function carregarDadosProposta() {
 
     document.getElementById('resultadoBusca').innerHTML = conteudo;
 
+    // Gera QR Code depois de inserir o conteúdo
     if(data?.chave_pix && data.status === 'Aprovada') {
-        new QRCode(document.getElementById('qrcode-pix'), { text: data.chave_pix, width: 180, height: 180 });
+        new QRCode(document.getElementById('qrcode-pix'), { 
+            text: data.chave_pix, 
+            width: 180, 
+            height: 180,
+            colorDark : "#0A2463",
+            colorLight : "#ffffff"
+        });
     }
 }
 
-// ATUALIZAÇÃO EM TEMPO REAL PARA O CLIENTE
-supabase.channel('atualizacao-proposta')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpfAtual}` }, () => {
-        carregarDadosProposta();
-    })
-    .subscribe();
-
-// CARREGA AUTOMÁTICO SE VIAR PELO LINK
+// Carrega automaticamente se acessar por link com o CPF
 window.addEventListener('load', () => {
     const parametros = new URLSearchParams(window.location.search);
     const cpfLink = limparCpf(parametros.get('cpf'));
