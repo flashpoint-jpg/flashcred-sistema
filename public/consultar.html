@@ -32,13 +32,16 @@
         .dado { padding: 10px 0; border-bottom: 1px solid #E2E8F0; font-size: 15px; }
         .dado strong { color: #0A2463; min-width: 140px; display: inline-block; }
         .status { padding: 8px 12px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 12px 0; }
-        .status.nova { background: #FEF3C7; color: #92400E; }
-        .status.aprovada { background: #D1FAE5; color: #065F46; }
-        .status.recusada { background: #FEE2E2; color: #991B1B; }
+        .status.Nova { background: #FEF3C7; color: #92400E; }
+        .status.Aprovada { background: #D1FAE5; color: #065F46; }
+        .status.Recusada { background: #FEE2E2; color: #991B1B; }
         .spinner { width: 20px; height: 20px; border: 3px solid #ddd; border-top-color: #0A2463; border-radius: 50%; animation: girar 0.8s linear infinite; display: none; margin: 0 auto; }
         @keyframes girar { to { transform: rotate(360deg); } }
         .resultado { margin-top: 20px; }
         .voltar { display: block; text-align: center; margin-top: 20px; color: #0A2463; font-weight: 500; text-decoration: none; }
+        .analisando { color: #92400E; font-weight: 500; margin: 12px 0; display: flex; align-items: center; gap: 8px; }
+        .bolinha-analise { width: 16px; height: 16px; background: #0A2463; border-radius: 50%; animation: pulsar 1s infinite; }
+        @keyframes pulsar { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
@@ -62,6 +65,12 @@
         <div class="dado"><strong>Data de Nascimento:</strong> <span id="resNascimento"></span></div>
         <div class="dado"><strong>Valor Desejado:</strong> R$ <span id="resValor"></span></div>
         <div class="dado"><strong>Status:</strong> <span id="resStatus" class="status"></span></div>
+
+        <div id="msgAnalisando" class="analisando" style="display: none;">
+            <div class="bolinha-analise"></div>
+            <span>Proposta em análise, aguarde a avaliação. Em breve retornaremos pelo WhatsApp.</span>
+        </div>
+
         <div id="detalhesAprovado" style="display: none; margin-top: 16px;">
             <h4 class="font-semibold text-lg text-sucesso mb-2">✅ Proposta Aprovada!</h4>
             <div class="dado"><strong>Valor Aprovado:</strong> R$ <span id="resValorAprovado"></span></div>
@@ -69,6 +78,7 @@
             <div class="dado"><strong>Parcelas:</strong> <span id="resParcelas"></span>x de R$ <span id="resValorParcela"></span></div>
             <div class="dado"><strong>Chave Pix Pagamento:</strong> <span id="resPix"></span></div>
         </div>
+
         <button id="btnNovaBusca" class="btn btn-primary mt-4">Consultar Outro CPF</button>
     </div>
 
@@ -87,7 +97,9 @@ document.getElementById('cpfBusca').addEventListener('input', e => {
 
 // Buscar proposta
 document.getElementById('btnBuscar').addEventListener('click', async () => {
-    const cpfLimpo = document.getElementById('cpfBusca').value.replace(/\D/g, '');
+    const cpfDigitado = document.getElementById('cpfBusca').value;
+    const cpfLimpo = cpfDigitado.replace(/\D/g, '');
+
     if (!cpfLimpo || cpfLimpo.length !== 11) {
         alert('Informe um CPF válido!');
         return;
@@ -101,10 +113,11 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
     textoBtn.textContent = 'Buscando...';
     carregando.style.display = 'block';
 
+    // Busca tanto com formatação quanto sem formatação
     const { data, error } = await supabase
         .from('propostas')
         .select('*')
-        .ilike('cpf', `%${cpfLimpo}%`);
+        .or(`cpf.ilike.%${cpfDigitado}%,cpf.ilike.%${cpfLimpo}%`);
 
     btn.disabled = false;
     textoBtn.textContent = 'Verificar Situação';
@@ -124,10 +137,14 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
     
     const statusEl = document.getElementById('resStatus');
     statusEl.textContent = proposta.status;
-    statusEl.className = `status ${proposta.status.toLowerCase()}`;
+    statusEl.className = `status ${proposta.status}`;
 
-    // Mostra detalhes se aprovado
-    if (proposta.status === 'Aprovada') {
+    // Mostra mensagem de análise ou detalhes aprovado
+    if (proposta.status === 'Nova') {
+        document.getElementById('msgAnalisando').style.display = 'flex';
+        document.getElementById('detalhesAprovado').style.display = 'none';
+    } else if (proposta.status === 'Aprovada') {
+        document.getElementById('msgAnalisando').style.display = 'none';
         document.getElementById('detalhesAprovado').style.display = 'block';
         document.getElementById('resValorAprovado').textContent = proposta.valor_aprovado ? parseFloat(proposta.valor_aprovado).toFixed(2).replace('.', ',') : '---';
         document.getElementById('resEntrada').textContent = proposta.valor_entrada ? parseFloat(proposta.valor_entrada).toFixed(2).replace('.', ',') : '---';
@@ -135,6 +152,7 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
         document.getElementById('resValorParcela').textContent = proposta.valor_parcela ? parseFloat(proposta.valor_parcela).toFixed(2).replace('.', ',') : '---';
         document.getElementById('resPix').textContent = proposta.chave_pix || 'Aguardando geração...';
     } else {
+        document.getElementById('msgAnalisando').style.display = 'none';
         document.getElementById('detalhesAprovado').style.display = 'none';
     }
 
