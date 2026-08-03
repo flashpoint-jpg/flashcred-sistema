@@ -140,28 +140,19 @@
 
                     <label>Data de Nascimento *</label>
                     <input type="date" id="nascimento" class="input" required>
-                    <div id="erroIdade" class="erro">É necessário ter pelo menos 17 anos para solicitar.</div>
+                    <div id="erroIdade" class="erro">É necessário ter pelo menos 18 anos para solicitar.</div>
 
                     <label>CEP *</label>
                     <input type="text" id="cep" class="input" placeholder="00000-000" maxlength="9" required onblur="buscarCep()">
 
-                    <label>Endereço</label>
-                    <input type="text" id="endereco" class="input" readonly placeholder="Preenchido automaticamente">
-
-                    <label>Número *</label>
-                    <input type="text" id="numero" class="input" placeholder="Ex: 123" required>
-
-                    <label>Bairro</label>
-                    <input type="text" id="bairro" class="input" readonly placeholder="Preenchido automaticamente">
-
-                    <label>Cidade / UF</label>
-                    <input type="text" id="cidade" class="input" readonly placeholder="Preenchido automaticamente">
+                    <label>Endereço Completo *</label>
+                    <input type="text" id="endereco" class="input" placeholder="Rua, número, bairro, complemento" required>
 
                     <label>WhatsApp / Telefone *</label>
                     <input type="tel" id="telefone" class="input" placeholder="(00) 00000-0000" maxlength="16" required>
 
                     <label>Valor Desejado para Compra (R$) *</label>
-                    <input type="number" id="valor_desejado" class="input" placeholder="0,00" min="100" step="0.01" required>
+                    <input type="text" id="valor" class="input" placeholder="0,00" required>
 
                     <button type="submit" id="btnEnviar" class="btn btn-primary mt-2">📤 Enviar Solicitação</button>
                     <div id="avisoForm" class="aviso-form"></div>
@@ -177,7 +168,6 @@
 </footer>
 
 <script>
-// CONEXÃO DIRETA COM O BANCO QUE JÁ FUNCIONAVA
 const supabaseUrl = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const supabaseKey = 'sb_publishable_g5Tcimge2aiMX8JE3mlU3W55Y2s0CjZtxXkT2VjR3K9Rz0NnI2s1M3p5X7z6bX7kY5aQ3dF2gH9jK8lL7mN6bV8cX7z9';
 const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
@@ -189,11 +179,11 @@ async function buscarCep() {
         const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
         const dados = await res.json();
         if(!dados.erro) {
-            document.getElementById('endereco').value = dados.logradouro || '';
-            document.getElementById('bairro').value = dados.bairro || '';
-            document.getElementById('cidade').value = `${dados.localidade}/${dados.uf}`;
+            document.getElementById('endereco').value = `${dados.logradouro}, - Bairro: ${dados.bairro} - ${dados.localidade}/${dados.uf}`;
         }
-    } catch(e) {}
+    } catch(e) {
+        console.error("Erro ao buscar CEP:", e);
+    }
 }
 
 function validarCPF(cpf) {
@@ -216,7 +206,7 @@ function validarIdade(dataNasc) {
     let idade = hoje.getFullYear() - nasc.getFullYear();
     const mes = hoje.getMonth() - nasc.getMonth();
     if (mes < 0 || (mes === 0 && hoje.getDate() < nasc.getDate())) idade--;
-    return idade >= 17;
+    return idade >= 18;
 }
 
 document.getElementById('cpf').addEventListener('input', e => {
@@ -248,48 +238,50 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
 
     if (!valido) return;
 
-    // Efeito de carregamento
     btn.disabled = true;
-    btn.innerHTML = '<span class="icone-carregando">⏳</span> Enviando...';
+    btn.innerHTML = '<span class="icone-carregando">⏳</span> Enviando proposta...';
 
+    const cpfDigitado = document.getElementById('cpf').value.trim();
+    const cpfLimpo = cpfDigitado.replace(/\D/g, '');
+
+    // Dados exatamente padronizados com as colunas essenciais do painel
     const dados = {
         nome: document.getElementById('nome').value.trim(),
-        cpf: document.getElementById('cpf').value.trim(),
-        data_nascimento: document.getElementById('nascimento').value,
+        cpf: cpfDigitado,
+        nascimento: document.getElementById('nascimento').value,
         cep: document.getElementById('cep').value.trim(),
         endereco: document.getElementById('endereco').value.trim(),
-        numero: document.getElementById('numero').value.trim(),
-        bairro: document.getElementById('bairro').value.trim(),
-        cidade: document.getElementById('cidade').value.trim(),
         telefone: document.getElementById('telefone').value.trim(),
-        valor_desejado: parseFloat(document.getElementById('valor_desejado').value),
+        valor_solicitado: document.getElementById('valor').value.trim(),
         status: 'Nova',
-        data_solicitacao: new Date().toISOString()
+        data_solicitacao: new Date().toLocaleDateString('pt-BR')
     };
 
-    // SALVA DIRETO NO BANCO — VOLTOU COMO ERA ANTES
-    const { error } = await supabase.from('propostas').insert([dados]);
+    try {
+        const { error } = await supabase.from('propostas').insert([dados]);
 
-    if(error) {
-        aviso.textContent = 'Erro ao enviar: ' + error.message;
+        if(error) {
+            throw error;
+        }
+
+        aviso.innerHTML = `
+            <strong>✅ Proposta enviada com sucesso!</strong><br>
+            Redirecionando para acompanhar...
+        `;
+        aviso.className = 'aviso-form sucesso';
+        aviso.style.display = 'block';
+        
+        setTimeout(() => {
+            window.location.href = `consultar.html?cpf=${cpfLimpo}`;
+        }, 1500);
+
+    } catch (err) {
+        aviso.textContent = 'Erro ao enviar: ' + (err.message || 'Verifique sua conexão.');
         aviso.className = 'aviso-form erro';
         aviso.style.display = 'block';
         btn.disabled = false;
         btn.textContent = '📤 Enviar Solicitação';
-        return;
     }
-
-    // SUCESSO E REDIRECIONAMENTO
-    aviso.innerHTML = `
-        <strong>✅ Solicitação enviada com sucesso!</strong><br>
-        Você está sendo redirecionado para a página de acompanhamento...
-    `;
-    aviso.className = 'aviso-form sucesso';
-    aviso.style.display = 'block';
-    
-    setTimeout(() => {
-        window.location.href = `consultar.html?cpf=${dados.cpf.replace(/\D/g, '')}`;
-    }, 2000);
 });
 </script>
 </body>
