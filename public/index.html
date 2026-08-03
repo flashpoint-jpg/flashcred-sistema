@@ -164,4 +164,134 @@
                     <input type="tel" id="telefone" class="input" placeholder="(00) 00000-0000" maxlength="16" required>
 
                     <label>Valor Desejado para Compra (R$)</label>
-                    <input type="number" id="valor" class="input" 
+                    <input type="number" id="valor" class="input" placeholder="0,00" min="100" step="0.01" required>
+
+                    <button type="submit" id="btnEnviar" class="btn btn-primary mt-2 flex items-center justify-center gap-2">
+                        <span id="textoBtn">Enviar Solicitação</span>
+                        <div class="spinner" id="carregando"></div>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</main>
+
+<footer>
+    <p class="font-medium">© 2026 FlashCred | Limite no Pix</p>
+    <p class="text-sm mt-1">Serviço exclusivo da Distribuidora Flash Point Móveis | Todos os direitos reservados</p>
+</footer>
+
+<script>
+const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+let supabase = null;
+
+window.addEventListener('load', iniciarSistema);
+function iniciarSistema() {
+    try {
+        if (typeof window.supabase === 'undefined') throw new Error('Biblioteca não carregou');
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        console.log('✅ Conectado ao sistema!');
+    } catch (erro) {
+        console.error('❌ Erro de conexão:', erro.message);
+    }
+}
+
+function validarCPF(cpf) {
+    cpf = cpf.replace(/\D/g, '');
+    if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
+    let soma = 0, resto;
+    for (let i = 1; i <= 9; i++) soma += parseInt(cpf[i-1]) * (11 - i);
+    resto = (soma * 10) % 11;
+    if (resto === 10 || resto === 11) resto = 0;
+    if (resto !== parseInt(cpf[9])) return false;
+    soma = 0;
+    for (let i = 1; i <= 10; i++) soma += parseInt(cpf[i-1]) * (12 - i);
+    resto = (soma * 10) % 11;
+    return resto === parseInt(cpf[10]);
+}
+
+function validarIdade(dataNasc) {
+    const nasc = new Date(dataNasc);
+    const hoje = new Date();
+    let idade = hoje.getFullYear() - nasc.getFullYear();
+    const mes = hoje.getMonth() - nasc.getMonth();
+    if (mes < 0 || (mes === 0 && hoje.getDate() < nasc.getDate())) idade--;
+    return idade >= 18;
+}
+
+async function buscarCep() {
+    const cep = document.getElementById('cep').value.replace(/\D/g, '');
+    if(cep.length !== 8) return;
+    try {
+        const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const dados = await res.json();
+        if(!dados.erro) {
+            document.getElementById('endereco').value = `${dados.logradouro || ''}, ${dados.bairro || ''}, ${dados.localidade} - ${dados.uf}`;
+        }
+    } catch(e) { console.error("Erro ao buscar CEP"); }
+}
+
+// Máscaras
+document.getElementById('cpf').addEventListener('input', e => {
+    e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+});
+document.getElementById('cep').addEventListener('input', e => {
+    e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{5})(\d{3})/, '$1-$2');
+});
+document.getElementById('telefone').addEventListener('input', e => {
+    e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+});
+
+// Envio do formulário
+document.getElementById('formSolicitacao').addEventListener('submit', async e => {
+    e.preventDefault();
+    let valido = true;
+    document.querySelectorAll('.erro').forEach(el => el.style.display = 'none');
+
+    if (!validarCPF(document.getElementById('cpf').value)) {
+        document.getElementById('erroCpf').style.display = 'block';
+        valido = false;
+    }
+    if (!validarIdade(document.getElementById('nascimento').value)) {
+        document.getElementById('erroIdade').style.display = 'block';
+        valido = false;
+    }
+    if (!valido || !supabase) {
+        if(!supabase) alert('Aguarde o sistema carregar completamente antes de enviar.');
+        return;
+    }
+
+    const btn = document.getElementById('btnEnviar');
+    const textoBtn = document.getElementById('textoBtn');
+    const carregando = document.getElementById('carregando');
+    btn.disabled = true;
+    textoBtn.textContent = 'Enviando solicitação...';
+    carregando.style.display = 'block';
+
+    const dadosProposta = {
+        nome: document.getElementById('nome').value.trim(),
+        cpf: document.getElementById('cpf').value.trim(),
+        nascimento: document.getElementById('nascimento').value,
+        telefone: document.getElementById('telefone').value.trim(),
+        cep: document.getElementById('cep').value.trim(),
+        endereco: document.getElementById('endereco').value.trim(),
+        valor_desejado: parseFloat(document.getElementById('valor').value),
+        status: 'Nova'
+    };
+
+    const { error } = await supabase.from('propostas').insert([dadosProposta]);
+
+    if (error) {
+        alert('❌ Erro ao enviar: ' + error.message);
+        btn.disabled = false;
+        textoBtn.textContent = 'Enviar Solicitação';
+        carregando.style.display = 'none';
+    } else {
+        alert('✅ Solicitação enviada com sucesso! Você será redirecionado para acompanhar o resultado.');
+        setTimeout(() => window.location.href = 'consultar.html', 1500);
+    }
+});
+</script>
+</body>
+</html>
