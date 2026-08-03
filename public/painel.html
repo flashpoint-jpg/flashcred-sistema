@@ -52,7 +52,24 @@
         .badge-reprovada { background: #FEE2E2; color: #991B1B; }
         .dados-cliente { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #F1F5F9; }
         .nome-cliente { font-size: 18px; font-weight: 700; color: #0A2463; margin-bottom: 8px; display: block; }
-        .notificacao { position: fixed; top: 20px; right: 20px; z-index: 9999; padding: 15px 20px; border-radius: 12px; color: white; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transform: translateX(120%); transition: transform 0.3s ease; max-width: 380px; }
+        /* ✅ NOTIFICAÇÃO CORRIGIDA: TEXTO SEMPRE VISÍVEL */
+        .notificacao { 
+            position: fixed; 
+            top: 20px; 
+            right: 20px; 
+            z-index: 9999; 
+            padding: 15px 20px; 
+            border-radius: 12px; 
+            font-weight: 600; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+            transform: translateX(120%); 
+            transition: transform 0.3s ease; 
+            max-width: 380px; 
+            color: #FFFFFF !important; /* Texto branco garantido */
+        }
+        .notificacao.sucesso { background: #10B981; }
+        .notificacao.alerta { background: #F59E0B; }
+        .notificacao.perigo { background: #EF4444; }
         .notificacao.mostrar { transform: translateX(0); }
         .resumo-valores { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
         .resumo-card { background: white; padding: 15px; border-radius: 12px; text-align: center; border-left: 4px solid; }
@@ -142,6 +159,7 @@ function definirModo(modo) {
     mostrarNotificacao(`Modo alterado para ${modo}`, 'alerta');
 }
 
+// ✅ Função de notificação atualizada
 function mostrarNotificacao(texto, tipo = 'sucesso') {
     const el = document.getElementById('notificacao');
     el.textContent = texto;
@@ -267,138 +285,4 @@ function renderizarLista(lista = listaPropostas) {
 
             <div class="flex flex-wrap gap-2 mt-3">
                 <button class="btn btn-copiar" onclick='copiarDadosCliente(${JSON.stringify(proposta).replace(/'/g, "&#39;")})'><i class="fa-solid fa-copy"></i> Copiar Dados</button>
-                <button class="btn btn-editar" onclick="abrirModalEditar('${proposta.cpf}')"><i class="fa-solid fa-pen"></i> Editar/Aprovar</button>
-                <button class="btn btn-perigo" onclick="reprovarProposta('${proposta.cpf}')"><i class="fa-solid fa-x"></i> Reprovar</button>
-                
-                ${proposta.status === 'Aprovada' ? `
-                <button class="btn btn-whatsapp" onclick="enviarWhatsApp('${proposta.cpf}')"><i class="fa-brands fa-whatsapp"></i> Enviar Proposta</button>
-                <button class="btn btn-whatsapp" onclick="cobrarParcela('${proposta.cpf}')"><i class="fa-brands fa-whatsapp"></i> Cobrar Parcela</button>
-                ${!proposta.pago ? `
-                <button class="btn btn-sucesso" onclick="marcarEntradaPaga('${proposta.cpf}')"><i class="fa-solid fa-hand-holding-dollar"></i> Entrada Paga</button>
-                ` : `
-                <button class="btn btn-alerta" onclick="registrarParcela('${proposta.cpf}')"><i class="fa-solid fa-coins"></i> Registrar Parcela</button>
-                `}
-                ` : ''}
-                
-                <button class="btn btn-perigo" onclick="excluirProposta('${proposta.cpf}')"><i class="fa-solid fa-trash"></i> Excluir</button>
-            </div>
-        `;
-        container.appendChild(card);
-    });
-}
-
-async function abrirModalEditar(cpf) {
-    const proposta = listaPropostas.find(p => limparCpf(p.cpf) === limparCpf(cpf));
-    document.getElementById('formModal').innerHTML = `
-        <label>Valor Total do Produto (R$)</label>
-        <input type="number" step="0.01" id="valorTotal" class="input" value="${proposta.valor_aprovado || proposta.valor_desejado || ''}" oninput="atualizarCalculo()">
-
-        <div class="linha-calculo">
-            <div><label>% Entrada</label><input type="number" id="percEntrada" class="input input-pequeno" min="2" max="70" value="39" oninput="atualizarCalculo()"></div>
-            <div><label>% Juros</label><input type="number" id="percJuros" class="input input-pequeno" min="0" max="20" value="6" oninput="atualizarCalculo()"></div>
-        </div>
-
-        <div class="linha-calculo">
-            <div><label>Valor Entrada</label><input type="number" step="0.01" id="valorEntrada" class="input input-pequeno bg-gray-100" readonly></div>
-            <div><label>Quantas Parcelas</label>
-                <select id="qtdParc" class="input input-pequeno" oninput="atualizarCalculo()">
-                    <option value="">Escolha</option>
-                    ${Array.from({length:48}, (_,i) => `<option value="${i+1}">${i+1}</option>`).join('')}
-                </select>
-            </div>
-            <div><label>Valor Parcela</label><input type="number" step="0.01" id="valorParcela" class="input input-pequeno bg-gray-100" readonly></div>
-        </div>
-
-        <div class="flex gap-3 mt-5">
-            <button class="btn btn-sucesso flex-1" onclick="salvarAprovacao('${cpf}')">✅ Salvar e Aprovar</button>
-            <button class="btn btn-perigo flex-1" onclick="fecharModalEditar()">Cancelar</button>
-        </div>
-    `;
-    document.getElementById('modalEditar').style.display = 'flex';
-}
-
-function fecharModalEditar() { document.getElementById('modalEditar').style.display = 'none'; }
-
-async function salvarAprovacao(cpfOriginal) {
-    const valorTotal = parseFloat(document.getElementById('valorTotal').value) || 0;
-    const valorEntrada = parseFloat(document.getElementById('valorEntrada').value) || 0;
-    const qtdParc = parseInt(document.getElementById('qtdParc').value) || 0;
-    const valorParcela = parseFloat(document.getElementById('valorParcela').value) || 0;
-
-    const cpfLimpo = limparCpf(cpfOriginal);
-
-    const { error } = await supabase.from('propostas').update({
-        status: 'Aprovada',
-        valor_aprovado: valorTotal,
-        valor_entrada: valorEntrada,
-        qtd_parcelas: qtdParc,
-        valor_parcela: valorParcela
-    }).eq('cpf', cpfLimpo);
-    
-    if(error) {
-        mostrarNotificacao('❌ Erro: ' + error.message, 'perigo');
-    } else {
-        mostrarNotificacao('✅ PROPOSTA APROVADA! Atualizado para o cliente.', 'sucesso');
-        fecharModalEditar();
-        carregarPropostas();
-    }
-}
-
-async function reprovarProposta(cpf) {
-    if(confirm('Reprovar essa proposta?')) {
-        await supabase.from('propostas').update({status: 'Reprovada'}).eq('cpf', limparCpf(cpf));
-        mostrarNotificacao('Proposta reprovada!', 'perigo');
-    }
-}
-
-async function excluirProposta(cpf) {
-    if(confirm('Excluir essa proposta?')) {
-        await supabase.from('propostas').delete().eq('cpf', limparCpf(cpf));
-        mostrarNotificacao('Proposta excluída!', 'alerta');
-    }
-}
-
-async function marcarEntradaPaga(cpf) {
-    if(confirm('Confirmar entrada paga?')) {
-        await supabase.from('propostas').update({pago: true}).eq('cpf', limparCpf(cpf));
-        mostrarNotificacao('✅ Entrada marcada como paga!', 'sucesso');
-    }
-}
-
-async function registrarParcela(cpf) {
-    const p = listaPropostas.find(x => limparCpf(x.cpf) === limparCpf(cpf));
-    const novaQtd = (p.parcelas_pagas || 0) + 1;
-    if(novaQtd > p.qtd_parcelas) return alert('Todas parcelas já pagas!');
-    await supabase.from('propostas').update({parcelas_pagas: novaQtd}).eq('cpf', limparCpf(cpf));
-    mostrarNotificacao(`✅ Parcela ${novaQtd} registrada!`, 'sucesso');
-}
-
-function enviarWhatsApp(cpf) {
-    const p = listaPropostas.find(x => limparCpf(x.cpf) === limparCpf(cpf));
-    if(!p) return alert('Cliente não encontrado.');
-    const cpfLimpo = limparCpf(p.cpf);
-    const link = `${window.location.origin}/acompanhar.html?cpf=${cpfLimpo}`;
-    const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\nAcesse aqui para ver o Pix: ${link}`;
-    window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
-    mostrarNotificacao('Mensagem enviada!', 'sucesso');
-}
-
-function cobrarParcela(cpf) {
-    const p = listaPropostas.find(x => limparCpf(x.cpf) === limparCpf(cpf));
-    if(!p) return alert('Cliente não encontrado.');
-    const restante = parseInt(p.qtd_parcelas||0) - parseInt(p.parcelas_pagas||0);
-    const msg = `Olá ${p.nome}! Tudo bem?\nLembrete de parcela: R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\nFaltam ${restante} parcelas. Contamos com seu pagamento!`;
-    window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
-}
-
-window.addEventListener('load', () => {
-    if(sessionStorage.getItem('logado') === 'sim') {
-        document.getElementById('telaLogin').classList.add('hidden');
-        document.getElementById('painel').classList.remove('hidden');
-        carregarPropostas();
-        iniciarTempoReal();
-    }
-});
-</script>
-</body>
-</html>
+                <button class="btn btn-editar" onclick="abrirModalEditar('${proposta.cpf}')"><i class="fa-solid fa-pen"></i> Edit
