@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Consultar Proposta | FlashCred</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --primary: #0A2463;
@@ -34,15 +35,14 @@
         }
 
         nav { background: rgba(255,255,255,0.95); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border-color); padding: 16px 24px; position: sticky; top:0; z-index:50; }
-        .nav-container { max-width: 720px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+        .nav-container { max-width: 720px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
         .logo { font-size: 22px; font-weight: 800; color: var(--primary); text-decoration: none; }
-        .nav-links { display: flex; gap: 12px; }
+        .nav-links { display: flex; gap: 12px; flex-wrap: wrap; }
         .nav-links a { font-weight: 600; color: var(--primary); text-decoration: none; font-size: 13px; padding: 8px 14px; border-radius: 12px; border: 1px solid var(--border-color); background: #fff; transition: all 0.2s ease; }
         .nav-links a:hover { background: var(--primary); color: #fff; }
 
         main { max-width: 720px; margin: 30px auto; padding: 0 20px; }
 
-        /* Estilo do Banner em Alta Definição */
         .destaque-container {
             width: 100%;
             margin-bottom: 24px;
@@ -62,6 +62,13 @@
 
         .card { background: #FFFFFF; border-radius: 24px; padding: 36px; box-shadow: 0 10px 30px -5px rgba(0,0,0,0.04); border: 1px solid var(--border-color); }
 
+        .grupo-busca { margin-bottom: 24px; }
+        .grupo-busca label { display: block; font-weight: 600; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; }
+        .input-busca { width: 100%; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 12px; font-size: 15px; background: #FAFBFC; margin-bottom: 12px; }
+        .input-busca:focus { outline: none; border-color: var(--primary); background: #FFF; }
+        .btn-buscar { width: 100%; padding: 12px; border: none; border-radius: 12px; background: var(--primary); color: #FFF; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .btn-buscar:hover { opacity: 0.92; }
+
         .status { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 16px; border-radius: 16px; background: #F1F5F9; color: var(--primary); font-weight: 700; font-size: 18px; margin-bottom: 30px; text-align: center; }
         
         .dados-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 30px; }
@@ -73,116 +80,167 @@
 
         .btn-acao { width: 100%; padding: 16px; border: none; border-radius: 16px; background: linear-gradient(135deg, var(--pix-green) 0%, var(--pix-green-dark) 100%); color: #04203a; font-weight: 700; font-size: 15px; cursor: pointer; transition: 0.2s; margin-top: 20px; text-align: center; text-decoration: none; display: block; }
         .btn-acao:hover { opacity: 0.95; }
+        .btn-acao:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .detalhes-aprovado { margin-top: 20px; padding: 16px; background: #ECFDF5; border-radius: 16px; border: 1px solid #A7F3D0; display: none; }
+        .detalhes-aprovado h4 { color: #065F46; margin-bottom: 12px; }
     </style>
 </head>
 <body>
 
 <nav>
     <div class="nav-container">
-        <a href="/" class="logo">FlashCred</a>
+        <a href="index.html" class="logo">FlashCred</a>
         <div class="nav-links">
-            <a href="/">Nova Solicitação</a>
-            <a href="/painel">Painel Admin</a>
+            <a href="index.html">Nova Solicitação</a>
+            <a href="painel.html">Painel Admin</a>
         </div>
     </div>
 </nav>
 
 <main>
-    <!-- 🖼️ BANNER DE ALTA RESOLUÇÃO NA PÁGINA DE CONSULTA -->
     <div class="destaque-container">
         <img 
-            src="/banner.png" 
-            alt="FlashCred Banner" 
+            src="banner.png" 
+            alt="FlashCred - Consultar Proposta" 
             class="destaque-imagem"
-            onerror="this.parentElement.style.display='none'; document.getElementById('erro-img-consultar').style.display='block';"
+            onerror="this.parentElement.style.display='none';"
         >
-    </div>
-    <div id="erro-img-consultar" style="display:none;" class="mb-6 p-4 bg-amber-50 border border-amber-300 text-amber-800 rounded-2xl text-center text-sm mb-4">
-        ⚠️ O arquivo <strong>banner.png</strong> não foi encontrado na pasta <strong>public</strong> do GitHub.
     </div>
 
     <div class="card">
-        <!-- Status dinâmico -->
-        <div class="status" id="statusBox">
+        <div class="grupo-busca">
+            <label>Digite seu CPF ou Nº Protocolo para consultar</label>
+            <input type="text" id="campoBusca" class="input-busca" placeholder="000.000.000-00 ou FL2026-0000">
+            <button onclick="buscarProposta()" class="btn-buscar">🔍 Consultar</button>
+        </div>
+
+        <div class="status" id="statusBox" style="display: none;">
             <span class="bolinha-carregando" id="spinner"></span>
             <span id="statusTexto">BUSCANDO PROPOSTA...</span>
         </div>
 
-        <div class="dados-grid">
-            <div>
-                <div class="rotulo">Nome do Solicitante</div>
-                <div class="valor" id="nomeCliente">Carregando...</div>
+        <div id="resultadoProposta" style="display: none;">
+            <div class="dados-grid">
+                <div>
+                    <div class="rotulo">Nome do Solicitante</div>
+                    <div class="valor" id="nomeCliente">---</div>
+                </div>
+                <div>
+                    <div class="rotulo">CPF</div>
+                    <div class="valor" id="cpfCliente">---</div>
+                </div>
+                <div>
+                    <div class="rotulo">Telefone / WhatsApp</div>
+                    <div class="valor" id="telCliente">---</div>
+                </div>
+                <div>
+                    <div class="rotulo">Valor Solicitado</div>
+                    <div class="valor" id="valorCliente">---</div>
+                </div>
             </div>
-            <div>
-                <div class="rotulo">CPF</div>
-                <div class="valor" id="cpfCliente">---</div>
-            </div>
-            <div>
-                <div class="rotulo">Telefone / WhatsApp</div>
-                <div class="valor" id="telCliente">---</div>
-            </div>
-            <div>
-                <div class="rotulo">Valor Solicitado</div>
-                <div class="valor" id="valorCliente">---</div>
-            </div>
-        </div>
 
-        <div class="protocolo">
-            <strong>Nº Protocolo:</strong> <span id="protocoloNum">FL-2026-0000</span>
-        </div>
+            <div class="protocolo">
+                <strong>Nº Protocolo:</strong> <span id="protocoloNum">---</span>
+            </div>
 
-        <a href="#" id="btnWhats" class="btn-acao" target="_blank">
-            📱 Agilizar Análise via WhatsApp
-        </a>
+            <div id="detalhesAprovado" class="detalhes-aprovado">
+                <h4>✅ Proposta Aprovada!</h4>
+                <p style="margin-bottom: 8px;">Valor da Entrada: <strong id="valorEntrada">---</strong></p>
+                <p style="margin-bottom: 8px;">Quantidade de Parcelas: <strong id="qtdParcelas">---</strong></p>
+                <p>Valor de cada Parcela: <strong id="valorParcela">---</strong></p>
+            </div>
+
+            <a href="#" id="btnWhats" class="btn-acao" target="_blank">
+                📱 Agilizar Análise via WhatsApp
+            </a>
+        </div>
     </div>
 </main>
 
 <script>
-window.addEventListener('load', () => {
-    fetch('/api/propostas')
-        .then(res => res.json())
-        .then(resJson => {
-            if(resJson.success && resJson.data.length > 0) {
-                // Pega a última proposta enviada
-                const p = resJson.data[resJson.data.length - 1];
-                
-                document.getElementById('nomeCliente').textContent = p.nome;
-                document.getElementById('cpfCliente').textContent = p.cpf;
-                document.getElementById('telCliente').textContent = p.telefone;
-                
-                let valFmt = Number(p.valor_desejado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                document.getElementById('valorCliente').textContent = valFmt;
-                
-                const protocolo = `FL2026-${p.id.toString().padStart(5, '0')}`;
-                document.getElementById('protocoloNum').textContent = protocolo;
+const supabaseUrl = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const supabaseKey = 'sb_publishable_g5Tcimge2aiMX8JE3mlU3W55Y2s0CjZtxXkT2VjR3K9Rz0NnI2s1M3p5X7z6bX7kY5aQ3dF2gH9jK8lL7mN6bV8cX7z9';
+const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-                const status = p.status || 'Em Análise';
-                document.getElementById('statusTexto').textContent = status.toUpperCase();
+async function buscarProposta() {
+    const termo = document.getElementById('campoBusca').value.trim().replace(/\D/g, '');
+    if(!termo) {
+        alert('Digite seu CPF ou protocolo para consultar');
+        return;
+    }
 
-                if(status === 'Aprovada') {
-                    document.getElementById('spinner').style.display = 'none';
-                    document.getElementById('statusBox').style.background = '#D1FAE5';
-                    document.getElementById('statusBox').style.color = '#065F46';
-                } else if(status === 'Recusada') {
-                    document.getElementById('spinner').style.display = 'none';
-                    document.getElementById('statusBox').style.background = '#FEE2E2';
-                    document.getElementById('statusBox').style.color = '#B91C1C';
-                }
+    document.getElementById('statusBox').style.display = 'flex';
+    document.getElementById('resultadoProposta').style.display = 'none';
+    document.getElementById('spinner').style.display = 'inline-block';
+    document.getElementById('statusTexto').textContent = 'BUSCANDO PROPOSTA...';
+    document.getElementById('statusBox').style.background = '#F1F5F9';
+    document.getElementById('statusBox').style.color = '#0A2463';
 
-                const msg = encodeURIComponent(`Olá! Gostaria de agilizar a análise da minha proposta (${protocolo}) em nome de ${p.nome}.`);
-                document.getElementById('btnWhats').href = `https://wa.me/5535999998888?text=${msg}`;
-            } else {
-                document.getElementById('statusTexto').textContent = "NENHUMA SOLICITAÇÃO ENCONTRADA";
-                document.getElementById('spinner').style.display = 'none';
-                document.getElementById('nomeCliente').textContent = "Faça uma nova solicitação";
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            document.getElementById('statusTexto').textContent = "ERRO DE CONEXÃO";
+    try {
+        const { data, error } = await supabase
+            .from('propostas')
+            .select('*')
+            .or(`cpf.ilike.%${termo}%,protocolo.ilike.%${termo}%`)
+            .order('id', { ascending: false })
+            .limit(1);
+
+        if(error) throw error;
+
+        if(!data || data.length === 0) {
             document.getElementById('spinner').style.display = 'none';
-        });
-});
+            document.getElementById('statusTexto').textContent = 'NENHUMA PROPOSTA ENCONTRADA';
+            document.getElementById('statusBox').style.background = '#FEF3C7';
+            document.getElementById('statusBox').style.color = '#92400E';
+            return;
+        }
+
+        const p = data[0];
+        document.getElementById('nomeCliente').textContent = p.nome || '---';
+        document.getElementById('cpfCliente').textContent = p.cpf || '---';
+        document.getElementById('telCliente').textContent = p.telefone || '---';
+        document.getElementById('valorCliente').textContent = Number(p.valor_solicitado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        
+        const protocolo = p.protocolo || `FL2026-${p.id.toString().padStart(5, '0')}`;
+        document.getElementById('protocoloNum').textContent = protocolo;
+
+        const status = p.status || 'Em Análise';
+        document.getElementById('statusTexto').textContent = status.toUpperCase();
+
+        if(status === 'Aprovada') {
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('statusBox').style.background = '#D1FAE5';
+            document.getElementById('statusBox').style.color = '#065F46';
+            document.getElementById('detalhesAprovado').style.display = 'block';
+            document.getElementById('valorEntrada').textContent = p.valor_entrada || '---';
+            document.getElementById('qtdParcelas').textContent = p.quantidade_parcelas || '---';
+            document.getElementById('valorParcela').textContent = p.valor_parcela || '---';
+            document.getElementById('btnWhats').textContent = '💳 Ver Dados de Pagamento';
+        } else if(status === 'Recusada') {
+            document.getElementById('spinner').style.display = 'none';
+            document.getElementById('statusBox').style.background = '#FEE2E2';
+            document.getElementById('statusBox').style.color = '#B91C1C';
+            document.getElementById('detalhesAprovado').style.display = 'none';
+        } else {
+            document.getElementById('spinner').style.display = 'inline-block';
+            document.getElementById('statusBox').style.background = '#F1F5F9';
+            document.getElementById('statusBox').style.color = '#0A2463';
+            document.getElementById('detalhesAprovado').style.display = 'none';
+        }
+
+        const msg = encodeURIComponent(`Olá! Gostaria de informações da minha proposta ${protocolo} em nome de ${p.nome}.`);
+        document.getElementById('btnWhats').href = `https://wa.me/5535999998888?text=${msg}`;
+
+        document.getElementById('resultadoProposta').style.display = 'block';
+
+    } catch (err) {
+        console.error(err);
+        document.getElementById('spinner').style.display = 'none';
+        document.getElementById('statusTexto').textContent = 'ERRO AO BUSCAR';
+        document.getElementById('statusBox').style.background = '#FEE2E2';
+        document.getElementById('statusBox').style.color = '#B91C1C';
+    }
+}
 </script>
 </body>
 </html>
