@@ -45,20 +45,17 @@
         .hidden { display: none !important; }
         .pix-aguardando { color: #92400E; font-style: italic; }
         .pix-liberado { color: #065F46; font-weight: 500; }
-        .area-camera { background: #111827; border-radius: 12px; padding: 12px; margin: 16px 0; text-align: center; }
-        video, #previewSelfie { width: 100%; max-height: 320px; border-radius: 8px; object-fit: cover; }
+        .area-camera { background: #111827; border-radius: 12px; padding: 12px; margin: 16px 0; text-align: center; color: white; }
+        video, #previewSelfie { width: 100%; max-height: 320px; border-radius: 8px; object-fit: cover; margin: 8px 0; }
         .etapa { border-top: 1px solid #E2E8F0; padding-top: 16px; margin-top: 16px; }
         .cabecalho-contrato { text-align: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #0A2463; }
         .cabecalho-contrato h4 { font-size: 17px; font-weight: 700; color: #0A2463; }
         .cabecalho-contrato p { font-size: 13px; color: #64748B; }
-
-        /* Estilo para impressão */
         @media print {
             body { background: white; padding: 0; }
             .card { box-shadow: none; max-width: 100%; padding: 10px; }
-            .btn, .area-camera, .selecionar-parcelas, #resultado > div:nth-child(-n+5) { display: none !important; }
+            .btn, .area-camera, .selecionar-parcelas { display: none !important; }
             .area-contrato { max-height: unset; overflow: visible; border: none; }
-            .etapa { border: none; }
         }
     </style>
 </head>
@@ -80,6 +77,11 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
+function formatarData(data) {
+    if(!data) return '';
+    const d = new Date(data);
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+}
 let dadosProposta = null;
 let streamCamera = null;
 let selfieBase64 = null;
@@ -104,8 +106,26 @@ async function buscarProposta() {
     renderizarResultado(data);
 }
 
+function gerarDatasVencimento(qtd) {
+    const datas = [];
+    const hoje = new Date();
+    for(let i=1; i<=qtd; i++) {
+        const venc = new Date(hoje);
+        venc.setDate(hoje.getDate() + (30 * i));
+        datas.push(formatarData(venc));
+    }
+    return datas;
+}
+
 function renderizarResultado(p) {
     const resultado = document.getElementById('resultado');
+    const jaAutorizado = p.selfie_contrato && p.contrato_aceito;
+    const temPix = !!p.chave_pix;
+    let datasParcelas = [];
+    if(jaAutorizado && p.qtd_parcelas_escolhida) {
+        datasParcelas = gerarDatasVencimento(p.qtd_parcelas_escolhida);
+    }
+
     let conteudo = `
         <div class="linha-dado"><strong>Nome:</strong> ${p.nome || '-'}</div>
         <div class="linha-dado"><strong>CPF:</strong> ${limparCpf(p.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</div>
@@ -116,7 +136,6 @@ function renderizarResultado(p) {
     } else if(p.status === 'Reprovada') {
         conteudo += `<div class="text-center p-4 bg-red-50 text-red-700 rounded-xl font-semibold">❌ Proposta Reprovada</div>`;
     } else if(p.status === 'Aprovada') {
-        const jaAutorizado = p.selfie_contrato && p.contrato_aceito;
         conteudo += `
             <div class="status-aprovado">✅ Proposta Aprovada!</div>
             <div class="linha-dado"><strong>Valor Total dos Móveis:</strong> R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}</div>
@@ -126,14 +145,25 @@ function renderizarResultado(p) {
                 <label class="font-medium mb-2 block">Escolha a quantidade de parcelas:</label>
                 <select id="qtdParcelasEscolhida" class="input" onchange="atualizarValorParcela()" ${jaAutorizado ? 'disabled' : ''}>
                     <option value="">Selecione</option>
-                    ${Array.from({length: parseInt(p.qtd_parcelas||0)}, (_,i) => `<option value="${i+1}">${i+1} vezes</option>`).join('')}
+                    ${Array.from({length: parseInt(p.qtd_parcelas||0)}, (_,i) => `<option value="${i+1}" ${jaAutorizado && p.qtd_parcelas_escolhida === i+1 ? 'selected' : ''}>${i+1} vezes</option>`).join('')}
                 </select>
             </div>
             
-            <div class="linha-dado"><strong>Valor de Cada Parcela:</strong> R$ <span id="valorParcelaMostrar">0,00</span></div>
+            <div class="linha-dado"><strong>Valor de Cada Parcela:</strong> R$ <span id="valorParcelaMostrar">${jaAutorizado && p.valor_parcela ? parseFloat(p.valor_parcela).toFixed(2).replace('.',',') : '0,00'}</span></div>
             <div class="linha-dado"><strong>Status da Entrada:</strong> ${p.pago ? '✅ Paga' : '⏳ Pendente'}</div>
+        `;
 
-            <div class="area-contrato" id="areaContrato">
+        // Lista de vencimentos aparece quando contrato é assinado
+        if(jaAutorizado && datasParcelas.length > 0) {
+            conteudo += `
+            <div class="mt-4 p-3 bg-gray-50 rounded-xl">
+                <p class="font-semibold mb-2">📅 Datas de Vencimento:</p>
+                ${datasParcelas.map((d, i) => `<div class="text-sm py-1 border-b border-gray-200">${i+1}ª Parcela: ${d}</div>`).join('')}
+            </div>`;
+        }
+
+        conteudo += `
+            <div class="area-contrato">
                 <div class="cabecalho-contrato">
                     <h4>📄 TERMO DE CONTRATO DE COMPRA E PARCELAMENTO DE MÓVEIS</h4>
                     <p>Distribuidora Flash Point - FlashCred</p>
@@ -167,6 +197,7 @@ function renderizarResultado(p) {
                     <button type="button" id="btnAbrirCamera" class="btn btn-alerta" onclick="abrirCamera()">📷 Abrir Câmera</button>
                     <button type="button" id="btnCapturar" class="btn btn-sucesso hidden" onclick="capturarSelfie()">✅ Tirar Foto</button>
                     <button type="button" id="btnRepetir" class="btn btn-alerta hidden" onclick="repetirFoto()">🔄 Tirar Novamente</button>
+                    <p id="avisoCamera" class="text-xs mt-2 hidden">💡 Permita o acesso à câmera quando solicitado pelo navegador</p>
                 </div>
                 ` : `<p class="text-center text-sucesso font-semibold">✅ Foto de autorização já enviada e contrato aceito</p>`}
             </div>
@@ -180,7 +211,7 @@ function renderizarResultado(p) {
                     <p class="font-semibold text-center mb-2">Pagamento da Entrada via Pix</p>
                     <div id="qrcodePix" class=""></div>
                     <p class="text-sm text-center mt-2 font-mono bg-gray-100 p-2 rounded-lg break-all">
-                        ${p.chave_pix ? `<span class="pix-liberado">${p.chave_pix}</span>` : `<span class="pix-aguardando">Chave Pix será liberada após confirmação da loja</span>`}
+                        ${temPix ? `<span class="pix-liberado">${p.chave_pix}</span>` : `<span class="pix-aguardando">Chave Pix ainda não cadastrada pela loja</span>`}
                     </p>
                     <p class="aviso">Escaneie o código ou copie a chave para pagar a entrada e liberar a entrega dos móveis</p>
                 </div>
@@ -191,24 +222,28 @@ function renderizarResultado(p) {
     resultado.innerHTML = conteudo;
     resultado.classList.remove('hidden');
 
-    if(p.status === 'Aprovada' && jaAutorizado && p.chave_pix) {
+    if(p.status === 'Aprovada' && jaAutorizado && temPix) {
         setTimeout(() => gerarQrCode(p.chave_pix), 300);
     }
 }
 
 async function abrirCamera() {
     try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } });
+        streamCamera = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false
+        });
         const video = document.getElementById('camera');
         video.srcObject = streamCamera;
         video.classList.remove('hidden');
         document.getElementById('btnAbrirCamera').classList.add('hidden');
         document.getElementById('btnCapturar').classList.remove('hidden');
         document.getElementById('previewSelfie').classList.add('hidden');
+        document.getElementById('avisoCamera').classList.add('hidden');
         selfieBase64 = null;
     } catch(e) {
-        alert('❌ Não foi possível acessar a câmera! Permita o acesso e tente novamente.');
-        console.error(e);
+        document.getElementById('avisoCamera').classList.remove('hidden');
+        alert('❌ Não foi possível acessar a câmera! Permita o acesso na barra do navegador.');
     }
 }
 
@@ -259,10 +294,13 @@ async function confirmarContrato() {
     if(qtdEscolhida < 1) {
         return alert('⚠️ Escolha a quantidade de parcelas primeiro!');
     }
+    const valorParcela = parseFloat(document.getElementById('valorParcelaMostrar').value.replace(',', '.')) || 0;
 
     const atualizacao = {
         contrato_aceito: true,
-        qtd_parcelas_escolhida: qtdEscolhida
+        qtd_parcelas_escolhida: qtdEscolhida,
+        valor_parcela: valorParcela,
+        datas_vencimento: gerarDatasVencimento(qtdEscolhida)
     };
     if(selfieBase64) atualizacao.selfie_contrato = selfieBase64;
 
@@ -274,7 +312,7 @@ async function confirmarContrato() {
     if(error) {
         alert('❌ Erro ao confirmar: ' + error.message);
     } else {
-        alert('✅ Contrato autorizado com sucesso! Agora já pode efetuar o pagamento da entrada para liberarmos a entrega dos seus móveis.');
+        alert('✅ Contrato autorizado com sucesso! Já pode efetuar o pagamento da entrada.');
         renderizarResultado({...dadosProposta, ...atualizacao});
     }
 }
