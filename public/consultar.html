@@ -14,13 +14,9 @@
                 extend: {
                     colors: {
                         primary: '#0A2463',
-                        secundaria: '#1E293B',
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         fundo: '#F8FAFC'
-                    },
-                    fontFamily: {
-                        sans: ['Arial', 'sans-serif']
                     }
                 }
             }
@@ -158,15 +154,15 @@
         .area-contrato h5 { color: #0A2463; font-weight: 600; margin-bottom: 8px; text-align: center; font-size: 15px; }
         .check-aceito { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-weight: 500; font-size: 14px; }
 
-        .area-assinatura {
+        .area-camera {
             background: #F8FAFC;
             padding: 16px;
             border-radius: 8px;
             margin: 16px 0;
             text-align: center;
         }
-        #cameraPreview { width: 100%; max-width: 280px; border-radius: 8px; margin: 10px auto; display: none; border: 1px solid #CBD5E1; }
-        #fotoAssinatura { width: 100%; max-width: 250px; border-radius: 8px; margin: 10px auto; display: none; border: 1px solid #CBD5E1; }
+        #cameraPreview { width: 100%; max-width: 300px; border-radius: 8px; margin: 10px auto; display: none; border: 1px solid #CBD5E1; transform: scaleX(-1); }
+        #fotoConfirmacao { width: 100%; max-width: 280px; border-radius: 8px; margin: 10px auto; display: none; border: 2px solid #10B981; }
 
         .area-pagamento {
             text-align: center;
@@ -224,7 +220,7 @@
             .assinaturas { display: flex; justify-content: space-between; margin-top: 60px; }
             .linha-assinatura { border-top: 1px solid #333; width: 220px; text-align: center; padding-top: 8px; font-size: 11pt; }
             .data-local { text-align: center; margin-top: 40px; font-size: 11pt; }
-            .btn, .titulo, .areaBusca, .status, .dados, .destaque-entrada, .destaque-parcelas, .area-escolha-parcelas, .check-aceito, .area-assinatura, .area-pagamento, .consultar-outro { display: none !important; }
+            .btn, .titulo, .areaBusca, .status, .dados, .destaque-entrada, .destaque-parcelas, .area-escolha-parcelas, .check-aceito, .area-camera, .area-pagamento, .consultar-outro { display: none !important; }
             @page { size: A4; margin: 2cm; }
         }
     </style>
@@ -257,7 +253,8 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let propostaAtual = null;
-let aceitouContrato = false;
+let streamCamera = null;
+let fotoBase64 = null;
 
 function limparNumeros(v) { return String(v||'').replace(/\D/g,''); }
 
@@ -314,7 +311,7 @@ function atualizarContratoImpressao() {
             <h4>CLÁUSULA 4 - ENTREGA E DEVOLUÇÃO</h4>
             <p>Entrega após confirmação do pagamento da entrada. Inadimplemento autoriza a requisição do produto e cobrança judicial.</p>
             <h4>CLÁUSULA 5 - ACEITE</h4>
-            <p>O contratado declara que leu, compreendeu e aceita todas as condições, assumindo total responsabilidade.</p>
+            <p>O contratado declara que leu, compreendeu e aceita todas as condições, assumindo total responsabilidade, e confirma com a foto anexa.</p>
         </div>
         <div class="data-local"><p>Muzambinho/MG, ${dataFormatada}</p></div>
         <div class="assinaturas">
@@ -322,6 +319,96 @@ function atualizarContratoImpressao() {
             <div class="linha-assinatura"><p>Distribuidora Flash Point</p></div>
         </div>
     `;
+}
+
+async function abrirCamera() {
+    try {
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        const video = document.getElementById('cameraPreview');
+        video.srcObject = streamCamera;
+        video.play();
+        video.style.display = 'block';
+        document.getElementById('btnAbrirCamera').classList.add('esconder');
+        document.getElementById('btnTirarFoto').classList.remove('esconder');
+    } catch {
+        alert('Não foi possível acessar a câmera. Você pode prosseguir normalmente.');
+        document.getElementById('btnProsseguir').classList.remove('esconder');
+    }
+}
+
+function tirarFoto() {
+    const video = document.getElementById('cameraPreview');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0);
+    
+    fotoBase64 = canvas.toDataURL('image/jpeg', 0.8);
+    
+    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
+    video.style.display = 'none';
+    
+    const img = document.getElementById('fotoConfirmacao');
+    img.src = fotoBase64;
+    img.style.display = 'block';
+    
+    document.getElementById('btnTirarFoto').classList.add('esconder');
+    document.getElementById('btnProsseguir').classList.remove('esconder');
+}
+
+async function salvarConfirmacao() {
+    if(!propostaAtual) return;
+    try {
+        const dadosAtualizacao = {
+            contrato_aceito: true,
+            data_aceite: new Date().toISOString(),
+            parcelas_escolhidas: propostaAtual.qtd_escolhida,
+            valor_parcela: propostaAtual.valor_parcela_final
+        };
+        
+        if(fotoBase64) {
+            dadosAtualizacao.foto_confirmacao = fotoBase64;
+        }
+        
+        const { error } = await supabase
+            .from('propostas')
+            .update(dadosAtualizacao)
+            .eq('id', propostaAtual.id);
+        
+        if(error) console.error('Erro ao salvar:', error);
+    } catch (e) {
+        console.error('Erro:', e);
+    }
+}
+
+async function aceitarContrato() {
+    const aceito = document.getElementById('aceitoContrato').checked;
+    if(aceito) {
+        document.getElementById('areaCamera').classList.remove('esconder');
+    } else {
+        document.getElementById('areaCamera').classList.add('esconder');
+        document.getElementById('areaPagamento').classList.add('esconder');
+    }
+}
+
+async function liberarPagamento() {
+    await salvarConfirmacao();
+    document.getElementById('areaCamera').classList.add('esconder');
+    document.getElementById('areaPagamento').classList.remove('esconder');
+    
+    if(propostaAtual.codigo_pix) {
+        new QRCode(document.getElementById('qrcode'), {
+            text: propostaAtual.codigo_pix,
+            width: 180,
+            height: 180,
+            colorDark: '#0A2463',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H
+        });
+    }
 }
 
 async function buscar() {
@@ -397,7 +484,7 @@ async function buscar() {
                     <p>2. Entrada via Pix, restante nas parcelas escolhidas.</p>
                     <p>3. Atraso gera multa de 2% + juros de mora e registro no SPC/Serasa.</p>
                     <p>4. Entrega após confirmação do pagamento da entrada.</p>
-                    <p>5. Ao concordar, você aceita todas as condições legais.</p>
+                    <p>5. Ao concordar, você aceita todas as condições legais e confirma com foto.</p>
                 </div>
 
                 <button class="btn btn-secundario" onclick="atualizarContratoImpressao(); window.print()">🖨️ Imprimir Contrato Completo</button>
@@ -407,19 +494,19 @@ async function buscar() {
                     Li e concordo com todos os termos do contrato
                 </label>
 
-                <div id="areaAssinatura" class="esconder area-assinatura">
-                    <p class="font-medium mb-2">📸 Confirme sua aceite:</p>
-                    <button type="button" class="btn btn-principal" onclick="abrirCamera()">📷 Tirar Foto de Confirmação</button>
+                <div id="areaCamera" class="area-camera esconder">
+                    <p class="font-medium mb-2">📸 Confirme sua identificação:</p>
                     <video id="cameraPreview" autoplay playsinline></video>
-                    <button id="btnTirarFoto" class="btn btn-sucesso esconder" onclick="tirarFoto()">✅ Confirmar Foto</button>
-                    <img id="fotoAssinatura" alt="Confirmação">
-                    <button id="btnProsseguir" class="btn btn-sucesso esconder" onclick="liberarPagamento()">✅ Prosseguir para Pagamento</button>
+                    <img id="fotoConfirmacao" alt="Foto de confirmação">
+                    <button type="button" id="btnAbrirCamera" class="btn btn-principal" onclick="abrirCamera()">📷 Abrir Câmera</button>
+                    <button type="button" id="btnTirarFoto" class="btn btn-sucesso esconder" onclick="tirarFoto()">✅ Tirar Foto</button>
+                    <button type="button" id="btnProsseguir" class="btn btn-sucesso esconder" onclick="liberarPagamento()">✅ Prosseguir para Pagamento</button>
                 </div>
 
                 <div id="areaPagamento" class="esconder">
                     <div class="destaque-parcelas">
                         <p class="font-medium">📋 Resumo Final:</p>
-                        <div class="valor" id="resumoParcelas"></div>
+                        <div class="valor" id="resumoParcelas">${propostaAtual.qtd_escolhida || '___'}x de R$ ${propostaAtual.valor_parcela_final ? propostaAtual.valor_parcela_final.toFixed(2).replace('.',',') : '___'}</div>
                     </div>
 
                     ${propostaAtual.codigo_pix ? `
@@ -428,12 +515,12 @@ async function buscar() {
                         <div id="qrcode"></div>
                         <p class="text-sm mb-2">Ou use o código abaixo:</p>
                         <div class="codigo-pix" id="codigoPix">${propostaAtual.codigo_pix}</div>
-                        <button class="btn btn-sucesso" onclick="copiarPix()">
+                        <button class="btn btn-sucesso" onclick="navigator.clipboard.writeText('${propostaAtual.codigo_pix}').then(() => alert('Código copiado!'))">
                             <i class="fa-solid fa-copy"></i> Copiar Código Pix
                         </button>
                         <p class="aviso-pagamento">✅ Após confirmação do pagamento, enviamos seu pedido imediatamente.</p>
                     </div>
-                    ` : '<p class="text-center text-amber-600 py-3">Código Pix disponível após confirmação do contrato.</p>'}
+                    ` : '<p class="text-center text-amber-600 py-3">Código Pix disponível após confirmação.</p>'}
                 </div>
             `;
         }
@@ -462,71 +549,12 @@ async function buscar() {
     }
 }
 
-function aceitarContrato() {
-    aceitouContrato = document.getElementById('aceitoContrato').checked;
-    document.getElementById('areaAssinatura').classList.toggle('esconder', !aceitouContrato);
-    if(!aceitouContrato) document.getElementById('areaPagamento').classList.add('esconder');
-}
-
-let streamCamera = null;
-async function abrirCamera() {
-    try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-        document.getElementById('cameraPreview').srcObject = streamCamera;
-        document.getElementById('cameraPreview').style.display = 'block';
-        document.getElementById('btnTirarFoto').classList.remove('esconder');
-    } catch {
-        alert('Não foi possível acessar a câmera. Você pode prosseguir normalmente.');
-        document.getElementById('btnProsseguir').classList.remove('esconder');
-    }
-}
-
-function tirarFoto() {
-    const video = document.getElementById('cameraPreview');
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    const foto = canvas.toDataURL('image/jpeg');
-    
-    document.getElementById('fotoAssinatura').src = foto;
-    document.getElementById('fotoAssinatura').style.display = 'block';
-    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
-    document.getElementById('cameraPreview').style.display = 'none';
-    document.getElementById('btnTirarFoto').classList.add('esconder');
-    document.getElementById('btnProsseguir').classList.remove('esconder');
-}
-
-function liberarPagamento() {
-    const qtd = propostaAtual.qtd_escolhida;
-    const valorParc = propostaAtual.valor_parcela_final.toFixed(2).replace('.',',');
-    document.getElementById('resumoParcelas').textContent = `${qtd}x de R$ ${valorParc}`;
-    document.getElementById('areaAssinatura').classList.add('esconder');
-    document.getElementById('areaPagamento').classList.remove('esconder');
-    
-    if(propostaAtual.codigo_pix) {
-        new QRCode(document.getElementById('qrcode'), { 
-            text: propostaAtual.codigo_pix, 
-            width: 180, 
-            height: 180,
-            colorDark : "#0A2463",
-            colorLight : "#ffffff"
-        });
-    }
-}
-
 function voltar() {
     document.getElementById('resultado').classList.add('esconder');
-    document.getElementById('cpfBusca').value = '';
     document.getElementById('areaBusca').classList.remove('esconder');
-    propostaAtual = null;
-    aceitouContrato = false;
+    document.getElementById('cpfBusca').value = '';
     if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
-}
-
-function copiarPix() {
-    navigator.clipboard.writeText(propostaAtual.codigo_pix);
-    alert('✅ Código Pix copiado com sucesso!');
+    fotoBase64 = null;
 }
 </script>
 </body>
