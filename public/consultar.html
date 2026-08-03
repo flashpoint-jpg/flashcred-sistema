@@ -38,7 +38,6 @@
         .carregando { display: none; text-align: center; padding: 20px; }
         .spinner { width: 28px; height: 28px; border: 3px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: girar 0.8s linear infinite; margin: 0 auto; }
         @keyframes girar { to { transform: rotate(360deg); } }
-        .aviso-erro { background: #FEF2F2; color: #991B1B; padding: 12px; border-radius: 10px; margin-top: 12px; text-align: center; }
     </style>
 </head>
 <body>
@@ -48,7 +47,7 @@
     <p class="text-center text-gray-500 mb-6">Digite o CPF que usou para se cadastrar</p>
     
     <label class="font-medium text-gray-700">Seu CPF</label>
-    <input type="text" id="cpfBusca" class="input" placeholder="Ex: 123.456.789-00 ou 12345678900" maxlength="18">
+    <input type="text" id="cpfBusca" class="input" placeholder="Ex: 123.456.789-00" maxlength="18">
     <button id="btnBuscar" class="btn btn-primary">Verificar Status</button>
 
     <div id="carregando" class="carregando">
@@ -64,17 +63,16 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ✅ FUNÇÃO QUE LIMPA QUALQUER CPF: TIRA TUDO QUE NÃO FOR NÚMERO
-function limparValor(valor) {
-    return valor.replace(/\D/g, '');
+// ✅ LIMPA QUALQUER CARACTERE QUE NÃO SEJA NÚMERO
+function limpar(cpf) {
+    return cpf.replace(/\D/g, '');
 }
 
 document.getElementById('btnBuscar').addEventListener('click', async () => {
-    const cpfDigitado = limparValor(document.getElementById('cpfBusca').value);
+    const cpfDigitado = limpar(document.getElementById('cpfBusca').value);
     
-    // Validação básica
     if(cpfDigitado.length !== 11) {
-        alert('⚠️ Digite um CPF com 11 números, por favor!');
+        alert('⚠️ Digite um CPF com 11 números!');
         return;
     }
 
@@ -82,11 +80,11 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
     document.getElementById('resultado').style.display = 'none';
 
     try {
-        // ✅ BUSCA PELO CPF JÁ LIMPO, IGUAL FOI SALVO
+        // ✅ BUSCA EXATAMENTE COMO FOI SALVO
         const { data, error } = await supabase
             .from('propostas')
             .select('*')
-            .eq('cpf', cpfDigitado) // Compara só números com só números
+            .eq('cpf', cpfDigitado)
             .order('created_at', { ascending: false })
             .limit(1);
 
@@ -97,9 +95,9 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
         if(!data || data.length === 0) {
             document.getElementById('resultado').style.display = 'block';
             document.getElementById('resultado').innerHTML = `
-                <div class="aviso-erro">
-                    ❌ Nenhuma proposta encontrada para esse CPF.<br>
-                    Verifique se digitou corretamente ou aguarde o recebimento do formulário.
+                <div class="p-4 bg-red-50 text-red-700 rounded-xl text-center">
+                    ❌ Nenhuma proposta encontrada.<br>
+                    Se acabou de enviar, aguarde alguns instantes ou confira o número do CPF.
                 </div>
             `;
             return;
@@ -121,33 +119,32 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
             ${p.status === 'Aprovada' ? `
             <div class="resumo">
                 <h4 class="font-bold text-primary mb-3">📋 Demonstrativo de Valores</h4>
-                <div class="linha"><span>Valor Total Aprovado:</span><span>R$ ${parseFloat(p.valor_aprovado || 0).toFixed(2).replace('.', ',')}</span></div>
-                <div class="linha"><span>Valor da Entrada (39%):</span><span>R$ ${parseFloat(p.valor_entrada || 0).toFixed(2).replace('.', ',')}</span></div>
-                <div class="linha"><span>Quantidade de Parcelas:</span><span>${p.qtd_parcelas}x</span></div>
-                <div class="linha"><span>Valor de Cada Parcela:</span><span>R$ ${parseFloat(p.valor_parcela || 0).toFixed(2).replace('.', ',')}</span></div>
+                <div class="linha"><span>Valor Total:</span><span>R$ ${parseFloat(p.valor_aprovado || 0).toFixed(2).replace('.', ',')}</span></div>
+                <div class="linha"><span>Valor da Entrada:</span><span>R$ ${parseFloat(p.valor_entrada || 0).toFixed(2).replace('.', ',')}</span></div>
+                <div class="linha"><span>Parcelas:</span><span>${p.qtd_parcelas}x de R$ ${parseFloat(p.valor_parcela || 0).toFixed(2).replace('.', ',')}</span></div>
                 <div class="linha total"><span>Total Final:</span><span>R$ ${(parseFloat(p.valor_entrada || 0) + (parseFloat(p.qtd_parcelas || 0) * parseFloat(p.valor_parcela || 0))).toFixed(2).replace('.', ',')}</span></div>
             </div>
 
             <div class="mt-4 p-4 bg-green-50 rounded-xl border border-green-200">
-                <p class="font-semibold text-green-800 mb-2">💳 Pagamento da Entrada via Pix:</p>
-                <p class="font-mono text-sm bg-white p-3 rounded-lg break-all">${p.chave_pix || 'Aguardando geração automática...'}</p>
+                <p class="font-semibold text-green-800 mb-2">💳 Chave Pix para Pagamento:</p>
+                <p class="font-mono text-sm bg-white p-3 rounded-lg break-all">${p.chave_pix || 'Aguardando geração...'}</p>
             </div>
             ` : p.status === 'Nova' ? `
             <div class="resumo text-center">
-                <p class="text-gray-700 mb-2">Sua proposta foi recebida com sucesso!</p>
-                <p class="text-gray-600">Estamos analisando seus dados. O resultado será enviado para o seu WhatsApp: ${p.whatsapp}</p>
+                <p class="text-gray-700 mb-2">✅ Sua proposta foi recebida!</p>
+                <p class="text-gray-600">Estamos analisando, em breve enviamos o resultado para o seu WhatsApp: ${p.whatsapp}</p>
             </div>
             ` : `
             <div class="resumo text-center">
-                <p class="text-red-700">Infelizmente não foi possível aprovar no momento.</p>
-                <p class="text-gray-600 mt-2">Você pode fazer uma nova solicitação após 30 dias.</p>
+                <p class="text-red-700">Infelizmente não foi aprovada no momento.</p>
+                <p class="text-gray-600 mt-2">Você pode tentar novamente após 30 dias.</p>
             </div>
             `}
         `;
 
     } catch (erro) {
         document.getElementById('carregando').style.display = 'none';
-        alert('⚠️ Erro ao buscar: ' + erro.message);
+        alert('⚠️ Erro: ' + erro.message);
     }
 });
 </script>
