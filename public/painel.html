@@ -83,9 +83,6 @@
         .area-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, #0A2463 0%, #051236 100%); }
         .hidden { display: none !important; }
         label { font-weight: 500; margin-bottom: 4px; display: inline-block; }
-        .area-qrcode { text-align: center; padding: 16px; background: #F0FDF4; border-radius: 12px; margin: 12px 0; border: 1px solid #A7F3D0; }
-        .qrcode-img { display: inline-block; margin: 10px auto; padding: 8px; background: white; border-radius: 8px; }
-        .codigo-pix { font-family: monospace; font-size: 11px; word-break: break-all; background: #E5E7EB; padding: 8px; border-radius: 6px; margin: 8px 0; text-align: left; }
     </style>
 </head>
 <body>
@@ -171,6 +168,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let senhaCorreta = 'flashcred2026';
 let listaPropostas = [];
+const LINK_SISTEMA = 'https://flashcred-sistema.onrender.com/acompanhar.html';
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('chavePixGlobal').value = localStorage.getItem('chavePixGlobal') || '';
@@ -359,7 +357,7 @@ async function salvarAprovar(cpf) {
     const { error } = await supabase.from('propostas').update(dados).eq('cpf', cpf);
     if(error) return mostrarNotificacao('❌ Erro ao salvar: ' + error.message, 'perigo');
     
-    mostrarNotificacao('✅ Proposta aprovada! QR Code Pix gerado para o cliente.', 'sucesso');
+    mostrarNotificacao('✅ Proposta aprovada! Link e Pix gerados.', 'sucesso');
     fecharModalEditar();
     carregarPropostas();
 }
@@ -370,6 +368,25 @@ async function reprovar(cpf) {
     if(error) return mostrarNotificacao('❌ Erro ao reprovar', 'perigo');
     mostrarNotificacao('✅ Proposta reprovada.', 'alerta');
     carregarPropostas();
+}
+
+function abrirWhatsappProposta(proposta) {
+    const cpfLimpo = limparCpf(proposta.cpf);
+    const linkAcompanhamento = `${LINK_SISTEMA}?cpf=${cpfLimpo}`;
+    let mensagem = `Olá ${proposta.nome}! Tudo bem?\n\nSua proposta na FlashPoint/FlashCred foi: *${proposta.status || 'Em análise'}*`;
+
+    if(proposta.status === 'Aprovada') {
+        mensagem += `\n\n✅ Valor Aprovado: R$ ${parseFloat(proposta.valor_aprovado||0).toFixed(2).replace('.',',')}\n💸 Entrada: R$ ${parseFloat(proposta.valor_entrada||0).toFixed(2).replace('.',',')}\n📦 ${proposta.qtd_parcelas_escolhida || 0}x de R$ ${parseFloat(proposta.valor_parcela||0).toFixed(2).replace('.',',')}\n\n👉 Clique aqui para ver os detalhes, Pix e contrato: ${linkAcompanhamento}`;
+    } else if(proposta.status === 'Reprovada') {
+        mensagem += `\n\nInfelizmente não foi aprovada dessa vez, mas você pode fazer uma nova solicitação quando quiser pelo nosso site.\n${linkAcompanhamento}`;
+    } else {
+        mensagem += `\n\nEstamos analisando, logo você terá o retorno. Acompanhe aqui: ${linkAcompanhamento}`;
+    }
+
+    const numero = limparCpf(proposta.telefone || '');
+    if(!numero) return mostrarNotificacao('❌ Número de WhatsApp não encontrado', 'perigo');
+    
+    window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`, '_blank');
 }
 
 function renderizarLista(lista = listaPropostas) {
@@ -415,7 +432,7 @@ function renderizarLista(lista = listaPropostas) {
                 ${proposta.status === 'Nova' ? `
                 <button class="btn btn-editar" onclick="abrirModalEditar('${proposta.cpf}')"><i class="fa-solid fa-pen"></i> Editar / Aprovar</button>
                 ` : ''}
-                <button class="btn btn-whatsapp" onclick="window.open('https://wa.me/${limparCpf(proposta.telefone)}', '_blank')"><i class="fa-brands fa-whatsapp"></i> Enviar WhatsApp</button>
+                <button class="btn btn-whatsapp" onclick='abrirWhatsappProposta(${JSON.stringify(proposta).replace(/'/g, "&#39;")})'><i class="fa-brands fa-whatsapp"></i> Enviar Resultado</button>
             </div>
         `;
         container.appendChild(card);
