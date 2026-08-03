@@ -41,6 +41,7 @@
         .btn-alerta { background: #F59E0B; color: white; }
         .btn-perigo { background: #EF4444; color: white; }
         .btn-whatsapp { background: #25D366; color: white; }
+        .btn-whatsapp:hover { background: #128C7E; }
         .input { width: 100%; padding: 10px 12px; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 14px; background: #FAFBFC; margin-bottom: 10px; }
         .input-pequeno { max-width: 90px; text-align: center; }
         .bolinha-status { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; box-shadow: 0 0 4px rgba(0,0,0,0.2); }
@@ -62,8 +63,9 @@
         .notificacao.perigo { background: #EF4444; }
         .resumo-valores { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
         .resumo-card { background: white; padding: 14px; border-radius: 12px; text-align: center; border-left: 4px solid; }
-        .resumo-card h4 { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
         .linha-calculo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; padding: 8px; background: #F8FAFC; border-radius: 8px; }
+        .area-busca { margin-bottom: 16px; display: flex; gap: 8px; align-items: center; }
+        .area-busca input { max-width: 280px; margin: 0; }
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 999; padding: 15px; }
         .modal-conteudo { background: white; border-radius: 16px; max-width: 580px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; }
         .cabecalho { background: white; padding: 16px 20px; border-bottom: 1px solid #E2E8F0; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
@@ -73,7 +75,7 @@
             body * { visibility: hidden; }
             .card, .card * { visibility: visible; }
             .card { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; border: none; }
-            .btn, .area-modo, .notificacao { display: none !important; }
+            .btn, .area-modo, .notificacao, .area-busca { display: none !important; }
         }
     </style>
 </head>
@@ -100,7 +102,6 @@
     <div class="cabecalho">
         <div class="flex flex-col md:flex-row md:items-center gap-3">
             <h1 class="text-lg font-bold text-primary">📋 Propostas e Pagamentos</h1>
-            <!-- ✅ MODO DE OPERAÇÃO -->
             <div class="area-modo">
                 <span class="text-sm text-textoClaro">Modo:</span>
                 <span id="modoOperacao" class="modo-selecionado modo_manual">Manual</span>
@@ -116,6 +117,13 @@
     </div>
 
     <div class="p-4 max-w-6xl mx-auto">
+        <!-- 🔍 BUSCA POR CPF -->
+        <div class="area-busca">
+            <input type="text" id="buscaCpf" class="input" placeholder="Buscar por CPF (com ou sem pontos/traço)" oninput="filtrarPropostas()">
+            <button class="btn btn-primary" onclick="filtrarPropostas()"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
+            <button class="btn btn-alerta" onclick="document.getElementById('buscaCpf').value=''; filtrarPropostas();">Limpar</button>
+        </div>
+
         <!-- RESUMO COM VALORES -->
         <div class="resumo-valores">
             <div class="resumo-card" style="border-color: #10B981;">
@@ -152,6 +160,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let senhaCorreta = 'flashcred2026';
 let listaPropostas = [];
+let listaFiltrada = [];
 let inscricaoTempoReal = null;
 let modoAtual = 'manual';
 
@@ -217,6 +226,13 @@ function iniciarTempoReal() {
         .subscribe();
 }
 
+// ✅ FILTRAR / BUSCAR POR CPF (ACEITA COM OU SEM PONTOS)
+function filtrarPropostas() {
+    const termo = document.getElementById('buscaCpf').value.replace(/\D/g, '');
+    listaFiltrada = termo ? listaPropostas.filter(p => p.cpf.replace(/\D/g, '').includes(termo)) : listaPropostas;
+    renderizarLista();
+}
+
 // CÁLCULO AUTOMÁTICO
 function atualizarCalculo() {
     const valorTotal = parseFloat(document.getElementById('valorTotal')?.value) || 0;
@@ -235,8 +251,9 @@ function atualizarCalculo() {
 // CARREGAR DADOS
 async function carregarPropostas() {
     try {
-        const { data } = await supabase.from('propostas').select('*');
+        const { data } = await supabase.from('propostas').select('*').order('created_at', {ascending: false});
         listaPropostas = data || [];
+        listaFiltrada = listaPropostas;
         
         let totalPago = 0, totalReceber = 0;
         listaPropostas.forEach(p => {
@@ -256,12 +273,12 @@ function renderizarLista() {
     const container = document.getElementById('listaPropostas');
     container.innerHTML = '';
 
-    if(listaPropostas.length === 0) {
-        container.innerHTML = '<p class="text-center text-textoClaro py-8">Nenhuma proposta recebida.</p>';
+    if(listaFiltrada.length === 0) {
+        container.innerHTML = '<p class="text-center text-textoClaro py-8">Nenhuma proposta encontrada.</p>';
         return;
     }
 
-    listaPropostas.forEach(proposta => {
+    listaFiltrada.forEach(proposta => {
         // ✅ BOLINHAS DE STATUS
         let statusEntrada = `<span class="bolinha-status bolinha-amarela"></span>Entrada Pendente`;
         if(proposta.pago) statusEntrada = `<span class="bolinha-status bolinha-verde"></span>Entrada Paga`;
@@ -276,13 +293,18 @@ function renderizarLista() {
             statusParc = `<p class="mt-1"><span class="bolinha-status ${bolinha}"></span>Parcelas: ${pagas} de ${proposta.qtd_parcelas}</p>`;
         }
 
+        // ✅ FORMATAR DADOS CORRETAMENTE
+        const cpfFormatado = proposta.cpf ? proposta.cpf.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '-';
+        const cepFormatado = proposta.cep ? proposta.cep.replace(/\D/g, '').replace(/(\d{5})(\d{3})/, '$1-$3') : '-';
+        const telefoneLimpo = proposta.telefone ? proposta.telefone.replace(/\D/g, '') : '';
+
         const card = document.createElement('div');
         card.className = 'card';
         card.innerHTML = `
             <div class="flex justify-between items-start flex-wrap gap-2">
                 <div>
-                    <span class="nome-cliente">${proposta.nome}</span>
-                    <span class="badge badge-${proposta.status.toLowerCase()}">${proposta.status}</span>
+                    <span class="nome-cliente">${proposta.nome || 'Sem Nome'}</span>
+                    <span class="badge badge-${(proposta.status || 'Nova').toLowerCase()}">${proposta.status || 'Nova'}</span>
                 </div>
                 <div class="flex gap-1">
                     <button class="btn btn-imprimir" onclick="window.print()"><i class="fa-solid fa-print"></i></button>
@@ -292,9 +314,11 @@ function renderizarLista() {
             </div>
             
             <div class="dados-cliente mt-2">
-                <p><strong>CPF:</strong> ${proposta.cpf.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
-                <p><strong>Nascimento:</strong> ${proposta.nascimento || '-'}</p>
-                <p><strong>WhatsApp:</strong> ${proposta.telefone}</p>
+                <p><strong>CPF:</strong> ${cpfFormatado}</p>
+                <p><strong>Data de Nascimento:</strong> ${proposta.nascimento || '-'}</p>
+                <p><strong>WhatsApp:</strong> ${proposta.telefone || '-'}</p>
+                <p><strong>CEP:</strong> ${cepFormatado}</p>
+                <p><strong>Endereço Completo:</strong> ${proposta.endereco || '-'}</p>
                 <p><strong>Valor Solicitado:</strong> R$ ${parseFloat(proposta.valor_desejado || 0).toFixed(2).replace('.', ',')}</p>
                 <p>${statusEntrada}</p>
                 ${statusParc}
@@ -304,12 +328,17 @@ function renderizarLista() {
                 <button class="btn btn-editar btn-editar-proposta" data-cpf="${proposta.cpf}"><i class="fa-solid fa-pen"></i> Editar</button>
                 <button class="btn btn-sucesso btn-aprovar" data-cpf="${proposta.cpf}"><i class="fa-solid fa-check"></i> Aprovar</button>
                 <button class="btn btn-perigo btn-reprovar" data-cpf="${proposta.cpf}"><i class="fa-solid fa-x"></i> Reprovar</button>
+                
                 ${proposta.status === 'Aprovada' ? `
-                <button class="btn btn-whatsapp btn-wpp" data-cpf="${proposta.cpf}"><i class="fa-brands fa-whatsapp"></i> Enviar Link</button>
+                <!-- ✅ BOTÕES WHATSAPP -->
+                <button class="btn btn-whatsapp btn-wpp-proposta" data-cpf="${proposta.cpf}"><i class="fa-brands fa-whatsapp"></i> Enviar Proposta</button>
+                <button class="btn btn-whatsapp btn-wpp-cobranca" data-cpf="${proposta.cpf}"><i class="fa-brands fa-whatsapp"></i> Cobrar Parcela</button>
+                
+                <!-- ✅ BOTÃO MARCAR ENTRADA PAGA MANUAL -->
                 ${!proposta.pago ? `
-                <button class="btn btn-sucesso btn-pago" data-cpf="${proposta.cpf}"><i class="fa-solid fa-check-circle"></i> Marcar Entrada</button>
+                <button class="btn btn-sucesso btn-marcar-entrada" data-cpf="${proposta.cpf}"><i class="fa-solid fa-hand-holding-dollar"></i> Entrada Paga (Dinheiro/Pix)</button>
                 ` : `
-                <button class="btn btn-alerta btn-parcela" data-cpf="${proposta.cpf}"><i class="fa-solid fa-coins"></i> Registrar Parcela</button>
+                <button class="btn btn-alerta btn-registrar-parcela" data-cpf="${proposta.cpf}"><i class="fa-solid fa-coins"></i> Registrar Parcela</button>
                 `}
                 ` : ''}
             </div>
@@ -322,13 +351,60 @@ function renderizarLista() {
         btn.addEventListener('click', () => abrirModalEditar(btn.dataset.cpf));
     });
 
+    // ✅ BOTÃO MARCAR ENTRADA PAGA MANUAL
+    document.querySelectorAll('.btn-marcar-entrada').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if(confirm('Confirmar que a entrada foi paga manualmente (dinheiro/pix)?')) {
+                await supabase.from('propostas').update({pago: true}).eq('cpf', btn.dataset.cpf);
+                mostrarNotificacao('✅ Entrada marcada como paga manualmente!', 'sucesso');
+            }
+        });
+    });
+
+    // ✅ BOTÕES WHATSAPP
+    document.querySelectorAll('.btn-wpp-proposta').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
+            const link = `https://flashcred-sistema.onrender.com/consultar.html?cpf=${p.cpf}`;
+            const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\nAcesse para ver o Pix e detalhes: ${link}`;
+            window.open(`https://wa.me/${p.telefone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+        });
+    });
+
+    document.querySelectorAll('.btn-wpp-cobranca').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
+            const restante = (parseFloat(p.qtd_parcelas||0) - parseFloat(p.parcelas_pagas||0));
+            const msg = `Olá ${p.nome}! Tudo bem?\nPassando para lembrar do pagamento da parcela de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}.\nFaltam ${restante} parcelas para quitar.\nPodemos contar com o pagamento? 😉`;
+            window.open(`https://wa.me/${p.telefone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+        });
+    });
+
+    // OUTRAS AÇÕES
     document.querySelectorAll('.btn-excluir-proposta').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if(confirm('Tem certeza que deseja EXCLUIR esta proposta? Essa ação não pode ser desfeita!')) {
+            if(confirm('Tem certeza que deseja EXCLUIR? Não tem volta!')) {
                 await supabase.from('propostas').delete().eq('cpf', btn.dataset.cpf);
                 mostrarNotificacao('Proposta excluída!', 'alerta');
                 carregarPropostas();
             }
+        });
+    });
+
+    document.querySelectorAll('.btn-copiar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
+            const texto = `
+NOME: ${p.nome}
+CPF: ${p.cpf.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}
+NASCIMENTO: ${p.nascimento || '-'}
+WHATSAPP: ${p.telefone}
+CEP: ${p.cep ? p.cep.replace(/\D/g, '').replace(/(\d{5})(\d{3})/, '$1-$3') : '-'}
+ENDEREÇO: ${p.endereco || '-'}
+VALOR: R$ ${parseFloat(p.valor_desejado||0).toFixed(2).replace('.',',')}
+            `.trim();
+            navigator.clipboard.writeText(texto);
+            mostrarNotificacao('Dados copiados!', 'sucesso');
         });
     });
 
@@ -340,16 +416,13 @@ function renderizarLista() {
         });
     });
 
-    document.querySelectorAll('.btn-pago').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            await supabase.from('propostas').update({pago: true}).eq('cpf', btn.dataset.cpf);
-        });
-    });
-
-    document.querySelectorAll('.btn-parcela').forEach(btn => {
+    document.querySelectorAll('.btn-registrar-parcela').forEach(btn => {
         btn.addEventListener('click', async () => {
             const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
-            await supabase.from('propostas').update({parcelas_pagas: (p.parcelas_pagas || 0) + 1}).eq('cpf', btn.dataset.cpf);
+            const novaQtd = (p.parcelas_pagas || 0) + 1;
+            if(novaQtd > p.qtd_parcelas) return alert('Todas já estão pagas!');
+            await supabase.from('propostas').update({parcelas_pagas: novaQtd}).eq('cpf', btn.dataset.cpf);
+            mostrarNotificacao(`✅ Parcela registrada! ${novaQtd} de ${p.qtd_parcelas}`, 'sucesso');
         });
     });
 }
