@@ -51,6 +51,7 @@
         .esconder { display: none !important; }
         .barra-topo { display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: white; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
         .caixa-login { max-width: 420px; margin: 80px auto 0; padding: 30px; }
+        .sem-proposta { text-align: center; padding: 40px; color: #64748B; }
     </style>
 </head>
 <body>
@@ -104,38 +105,43 @@
             <button class="btn btn-principal w-full" onclick="salvarConfiguracao()">💾 Salvar Configuração</button>
         </div>
 
+        <div id="areaSemProposta" class="card sem-proposta esconder">
+            <h3 class="text-xl font-semibold mb-2">Nenhuma proposta selecionada</h3>
+            <p>Acesse a proposta pela lista ou pelo link recebido para poder editar.</p>
+        </div>
+
         <div class="card" id="areaEdicao">
             <div class="dados-cliente mb-4">
-                <h4 class="text-xl font-bold text-primary" id="nomeCliente">Felipe Costa</h4>
-                <p><strong>CPF:</strong> <span id="cpfCliente">335.529.498-52</span></p>
-                <p><strong>Status:</strong> <span id="textoStatus" class="status-analise">Aguardando Análise</span></p>
-                <p><strong>Valor Solicitado:</strong> R$ <span id="valorSolicitado">4.000,00</span></p>
+                <h4 class="text-xl font-bold text-primary" id="nomeCliente">—</h4>
+                <p><strong>CPF:</strong> <span id="cpfCliente">—</span></p>
+                <p><strong>Status:</strong> <span id="textoStatus" class="status-analise">—</span></p>
+                <p><strong>Valor Solicitado:</strong> R$ <span id="valorSolicitado">—</span></p>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium mb-1">Qtd Parcelas (1 a 48):</label>
-                    <input type="number" id="qtdParcelas" min="1" max="48" value="24" class="input">
+                    <input type="number" id="qtdParcelas" min="1" max="48" class="input">
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Data da Aprovação:</label>
-                    <input type="date" id="dataAprovacao" value="2026-08-03" class="input">
+                    <input type="date" id="dataAprovacao" class="input">
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">1º Vencimento:</label>
-                    <input type="date" id="primeiroVencimento" value="2026-09-03" class="input">
+                    <input type="date" id="primeiroVencimento" class="input">
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Valor da Entrada:</label>
-                    <input type="text" id="valorEntrada" value="1560.00" class="input">
+                    <input type="text" id="valorEntrada" class="input">
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Total das Parcelas:</label>
-                    <input type="text" id="totalParcelas" value="2680.00" readonly class="input bg-gray-50">
+                    <input type="text" id="totalParcelas" readonly class="input bg-gray-50">
                 </div>
                 <div>
                     <label class="block text-sm font-medium mb-1">Valor de Cada Parcela:</label>
-                    <input type="text" id="valorCadaParcela" value="111.67" readonly class="input bg-gray-50">
+                    <input type="text" id="valorCadaParcela" readonly class="input bg-gray-50">
                 </div>
             </div>
 
@@ -169,18 +175,81 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let modoAtual = 'teste';
-let propostaAtual = { id: 'id-exemplo', nome: 'Felipe Costa', cpf: '33552949852', telefone: '11999999999' };
+let propostaAtual = null; // Sem ID fixo de exemplo
 let senhaCorreta = localStorage.getItem('senhaAdmin') || 'flashcred2026';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const logado = sessionStorage.getItem('adminLogado');
-    logado === 'sim' ? mostrarPainel() : mostrarLogin();
+    if(logado === 'sim') {
+        mostrarPainel();
+        await carregarPropostaDaURL();
+    } else {
+        mostrarLogin();
+    }
     carregarConfiguracoes();
 });
 
+// Carrega a proposta real vinda da URL
+async function carregarPropostaDaURL() {
+    const params = new URLSearchParams(window.location.search);
+    const idProposta = params.get('id');
+    
+    if(!idProposta) {
+        areaEdicao.classList.add('esconder');
+        areaSemProposta.classList.remove('esconder');
+        return;
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('propostas')
+            .select('*')
+            .eq('id', idProposta)
+            .single();
+
+        if(error || !data) throw error || new Error('Proposta não encontrada');
+        
+        propostaAtual = data;
+        preencherDadosProposta(data);
+        areaEdicao.classList.remove('esconder');
+        areaSemProposta.classList.add('esconder');
+    } catch(e) {
+        alert('❌ Proposta não encontrada no sistema');
+        areaEdicao.classList.add('esconder');
+        areaSemProposta.classList.remove('esconder');
+    }
+    calcularTotaisFinanceiros();
+}
+
+function preencherDadosProposta(p) {
+    document.getElementById('nomeCliente').textContent = p.nome || '—';
+    document.getElementById('cpfCliente').textContent = p.cpf ? p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : '—';
+    document.getElementById('valorSolicitado').textContent = p.valor_solicitado ? `R$ ${Number(p.valor_solicitado).toFixed(2).replace('.',',')}` : '—';
+    
+    // Status
+    if(p.status === 'Aprovada') {
+        document.getElementById('textoStatus').textContent = '✅ Aprovada';
+        document.getElementById('textoStatus').className = 'status-aprovado';
+    } else if(p.status === 'Reprovada') {
+        document.getElementById('textoStatus').textContent = '❌ Reprovada';
+        document.getElementById('textoStatus').className = 'status-reprovado';
+    } else {
+        document.getElementById('textoStatus').textContent = '⏳ Aguardando Análise';
+        document.getElementById('textoStatus').className = 'status-analise';
+    }
+
+    // Campos de edição
+    document.getElementById('qtdParcelas').value = p.qtd_parcelas_escolhida || '';
+    document.getElementById('dataAprovacao').value = p.data_aprovacao || '';
+    document.getElementById('primeiroVencimento').value = p.primeiro_vencimento || '';
+    document.getElementById('valorEntrada').value = p.valor_entrada || '';
+    document.getElementById('totalParcelas').value = p.total_parcelas || '';
+    document.getElementById('valorCadaParcela').value = p.valor_parcela || '';
+}
+
 function mostrarLogin() { document.getElementById('telaLogin').classList.remove('esconder'); document.getElementById('painelPrincipal').classList.add('esconder'); }
-function mostrarPainel() { document.getElementById('telaLogin').classList.add('esconder'); document.getElementById('painelPrincipal').classList.remove('esconder'); calcularTotaisFinanceiros(); }
-function fazerLogin() { const s = document.getElementById('senhaLogin').value.trim(); s === senhaCorreta ? (sessionStorage.setItem('adminLogado','sim'), mostrarPainel()) : (alert('❌ Senha incorreta'), document.getElementById('senhaLogin').value=''); }
+function mostrarPainel() { document.getElementById('telaLogin').classList.add('esconder'); document.getElementById('painelPrincipal').classList.remove('esconder'); }
+function fazerLogin() { const s = document.getElementById('senhaLogin').value.trim(); s === senhaCorreta ? (sessionStorage.setItem('adminLogado','sim'), mostrarPainel(), carregarPropostaDaURL()) : (alert('❌ Senha incorreta'), document.getElementById('senhaLogin').value=''); }
 function abrirAlterarSenha() { const n = prompt('Nova senha:'); if(n?.length>=4) { senhaCorreta=n; localStorage.setItem('senhaAdmin',n); alert('✅ Senha alterada'); } }
 function sairDoPainel() { if(confirm('Sair?')) { sessionStorage.removeItem('adminLogado'); mostrarLogin(); document.getElementById('senhaLogin').value=''; } }
 
@@ -192,25 +261,25 @@ function gerarCodigoPix() { const c=document.getElementById('chavePagamento').va
 
 async function calcularTotaisFinanceiros() { try { const {data}=await supabase.from('propostas').select('valor_entrada,valor_parcela,status_pagamento'); let tE=0,tR=0,p=0; data.forEach(x=>{if(x.status_pagamento==='entrada_paga')tE+=Number(x.valor_entrada)||0; tR+=Number(x.valor_parcela)||0; if(x.status_pagamento!=='pago')p++; }); document.getElementById('totalEntradas').textContent=`R$ ${tE.toFixed(2).replace('.',',')}`; document.getElementById('totalReceber').textContent=`R$ ${tR.toFixed(2).replace('.',',')}`; document.getElementById('totalPendentes').textContent=p; } catch(e) { console.log('Sem dados'); } }
 
-// ✅ SALVAR E APROVAR - AGORA ATUALIZA NO BANCO E RECARREGA
+// ✅ SALVAR E APROVAR - AGORA USA O ID REAL DA PROPOSTA
 async function salvarEAprovar() {
+    if(!propostaAtual) { alert('❌ Nenhuma proposta selecionada'); return; }
     try {
         const qtdParc = parseInt(document.getElementById('qtdParcelas').value);
-        const valorTotal = 4000;
+        const valorSolicitado = Number(propostaAtual.valor_solicitado) || 0;
         const valorEntrada = parseFloat(document.getElementById('valorEntrada').value) || 0;
-        const valorComJuros = valorTotal * 1.06;
+        const valorComJuros = valorSolicitado * 1.06;
         const valorRestante = valorComJuros - valorEntrada;
-        const valorParcela = valorRestante / qtdParc;
+        const valorParcela = qtdParc ? (valorRestante / qtdParc).toFixed(2) : '';
         const codigoPixGerado = gerarCodigoPix();
 
         const dados = {
             status: 'Aprovada',
             data_aprovacao: document.getElementById('dataAprovacao').value,
             primeiro_vencimento: document.getElementById('primeiroVencimento').value,
-            qtd_parcelas_escolhida: qtdParc,
-            valor_aprovado: valorTotal,
+            qtd_parcelas_escolhida: qtdParc || null,
             valor_entrada: valorEntrada,
-            total_parcelas: valorComJuros,
+            total_parcelas: valorComJuros.toFixed(2),
             valor_parcela: valorParcela,
             codigo_pix: codigoPixGerado,
             modo_pagamento: modoAtual,
@@ -220,15 +289,16 @@ async function salvarEAprovar() {
         const { error } = await supabase.from('propostas').update(dados).eq('id', propostaAtual.id);
         if(error) throw error;
         
-        alert('✅ PROPOSTA APROVADA!\nJá está visível para o cliente.\nA página vai atualizar agora.');
-        window.location.reload(); // ✅ Recarrega para mostrar a alteração real
+        alert('✅ PROPOSTA APROVADA!\nJá atualizada no sistema e visível para o cliente.');
+        window.location.reload();
     } catch(e) {
-        alert('❌ Erro ao aprovar: ' + e.message);
+        alert('❌ Erro ao gravar: ' + e.message);
     }
 }
 
 // ✅ REPROVAR
 async function marcarReprovado() {
+    if(!propostaAtual) { alert('❌ Nenhuma proposta selecionada'); return; }
     if(confirm('Deseja REPROVAR essa proposta?')) {
         try {
             await supabase.from('propostas').update({status:'Reprovada', atualizado_em: new Date().toISOString()}).eq('id', propostaAtual.id);
@@ -240,12 +310,13 @@ async function marcarReprovado() {
 
 // ✅ EXCLUIR DEFINITIVAMENTE
 async function excluirProposta() {
-    if(confirm('⚠️ ATENÇÃO!\nEssa proposta será APAGADA DEFINITIVAMENTE do sistema.\nNão importa se está aprovada ou não, não tem volta!')) {
+    if(!propostaAtual) { alert('❌ Nenhuma proposta selecionada'); return; }
+    if(confirm('⚠️ ATENÇÃO!\nEssa proposta será APAGADA DEFINITIVAMENTE do sistema.\nNão tem volta!')) {
         try {
             const { error } = await supabase.from('propostas').delete().eq('id', propostaAtual.id);
             if(error) throw error;
             alert('✅ Proposta EXCLUÍDA com sucesso!');
-            window.location.reload(); // ✅ Recarrega e some da lista
+            window.location.href = window.location.pathname;
         } catch(e) {
             alert('❌ Erro ao excluir: ' + e.message);
             console.error('Erro exclusão:', e);
@@ -254,10 +325,14 @@ async function excluirProposta() {
 }
 
 function enviarWhatsApp() {
-    const msg = `Olá ${propostaAtual.nome}! Sua proposta foi APROVADA ✅\nValor Total: R$ 4.000,00\nEntrada: R$ ${parseFloat(document.getElementById('valorEntrada').value).toFixed(2).replace('.',',')}\nParcelamento: até ${document.getElementById('qtdParcelas').value}x\nAcesse: ${window.location.origin}/consultar.html`;
-    window.open(`https://wa.me/55${propostaAtual.telefone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`);
+    if(!propostaAtual) return;
+    const msg = `Olá ${propostaAtual.nome}! Sua proposta foi APROVADA ✅\nValor Total: R$ ${Number(propostaAtual.valor_solicitado).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(document.getElementById('valorEntrada').value).toFixed(2).replace('.',',')}\nParcelamento: até ${document.getElementById('qtdParcelas').value}x\nAcesse: ${window.location.origin}/consultar.html?cpf=${propostaAtual.cpf}`;
+    window.open(`https://wa.me/55${propostaAtual.telefone?.replace(/\D/g,'')||''}?text=${encodeURIComponent(msg)}`);
 }
-function copiarDados() { navigator.clipboard.writeText(`Nome: ${propostaAtual.nome}\nCPF: ${propostaAtual.cpf}\nValor: R$ 4.000,00\nEntrada: R$ ${parseFloat(document.getElementById('valorEntrada').value).toFixed(2).replace('.',',')}`).then(()=>alert('✅ Copiado!')); }
+function copiarDados() { 
+    if(!propostaAtual) return;
+    navigator.clipboard.writeText(`Nome: ${propostaAtual.nome}\nCPF: ${propostaAtual.cpf}\nValor Solicitado: R$ ${Number(propostaAtual.valor_solicitado).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(document.getElementById('valorEntrada').value).toFixed(2).replace('.',',')}`).then(()=>alert('✅ Copiado!')); 
+}
 function imprimirProposta() { window.print(); }
 function cancelarEdicao() { alert('✅ Edição cancelada.'); }
 </script>
