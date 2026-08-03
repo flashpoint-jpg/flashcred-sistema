@@ -23,7 +23,7 @@
         }
     </script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
         body { background: #F8FAFC; padding: 20px 16px; min-height: 100vh; }
         
         .caixa {
@@ -149,10 +149,42 @@
             max-height: 220px;
             overflow-y: auto;
             font-size: 13px;
-            line-height: 1.5;
+            line-height: 1.6;
         }
-        .area-contrato h5 { color: #0A2463; font-weight: 700; margin-bottom: 8px; text-align: center; }
+        .area-contrato h5 { color: #0A2463; font-weight: 700; margin-bottom: 8px; text-align: center; font-size: 15px; }
         .check-aceito { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-weight: 500; font-size: 15px; }
+
+        /* ÁREA DE IMPRESSÃO EXCLUSIVA */
+        .area-impressao { display: none; }
+        @media print {
+            * { visibility: hidden; background: white; color: black; }
+            .area-impressao {
+                visibility: visible;
+                display: block;
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 30px;
+                font-family: 'Times New Roman', serif;
+                font-size: 12pt;
+                line-height: 1.5;
+            }
+            .cabecalho-contrato { text-align: center; margin-bottom: 30px; border-bottom: 1px solid #333; padding-bottom: 15px; }
+            .cabecalho-contrato h1 { font-size: 16pt; font-weight: bold; margin-bottom: 5px; }
+            .cabecalho-contrato p { font-size: 11pt; color: #333; }
+            .dados-contrato { margin: 20px 0; }
+            .dados-contrato p { margin: 5px 0; }
+            .clausulas { margin: 25px 0; text-align: justify; }
+            .clausulas h4 { font-weight: bold; margin: 10px 0 5px; }
+            .assinaturas { display: flex; justify-content: space-between; margin-top: 60px; }
+            .linha-assinatura { border-top: 1px solid #333; width: 220px; text-align: center; padding-top: 8px; font-size: 11pt; }
+            .data-local { text-align: center; margin-top: 40px; font-size: 11pt; }
+            .area-pagamento, .btn, .titulo, .areaBusca, .status, .dados, .destaque-entrada, .destaque-parcelas, .area-escolha-parcelas, .check-aceito, .consultar-outro { display: none !important; }
+            @page { size: A4; margin: 2cm; }
+        }
 
         .area-pagamento {
             text-align: center;
@@ -202,6 +234,9 @@
     <div id="resultado" class="esconder"></div>
 </div>
 
+<!-- ÁREA EXCLUSIVA PARA IMPRESSÃO DO CONTRATO -->
+<div class="area-impressao" id="contratoImpressao"></div>
+
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
@@ -232,6 +267,61 @@ function atualizarValorParcela() {
     document.getElementById('valorParcelaEscolhida').textContent = `R$ ${valorParcela.toFixed(2).replace('.',',')}`;
     propostaAtual.qtd_escolhida = qtdEscolhida;
     propostaAtual.valor_parcela_final = valorParcela;
+    atualizarContratoImpressao();
+}
+
+function atualizarContratoImpressao() {
+    if(!propostaAtual) return;
+    const dataAtual = new Date();
+    const dataFormatada = `${String(dataAtual.getDate()).padStart(2,'0')}/${String(dataAtual.getMonth()+1).padStart(2,'0')}/${dataAtual.getFullYear()}`;
+    const qtd = propostaAtual.qtd_escolhida || '___';
+    const valorParc = propostaAtual.valor_parcela_final ? propostaAtual.valor_parcela_final.toFixed(2).replace('.',',') : '___';
+
+    document.getElementById('contratoImpressao').innerHTML = `
+        <div class="cabecalho-contrato">
+            <h1>CONTRATO DE COMPRA E PARCELAMENTO</h1>
+            <p>Distribuidora Flash Point - Sistema FlashCred</p>
+        </div>
+
+        <div class="dados-contrato">
+            <p><strong>CONTRATANTE (VENDEDOR):</strong> Distribuidora Flash Point</p>
+            <p><strong>CONTRATADO (COMPRADOR):</strong> ${propostaAtual.nome}</p>
+            <p><strong>CPF/CNPJ:</strong> ${propostaAtual.cpf}</p>
+            <p><strong>VALOR TOTAL APROVADO:</strong> R$ ${parseFloat(propostaAtual.valor_aprovado||0).toFixed(2).replace('.',',')}</p>
+            <p><strong>VALOR DA ENTRADA:</strong> R$ ${parseFloat(propostaAtual.valor_entrada||0).toFixed(2).replace('.',',')}</p>
+            <p><strong>PARCELAMENTO:</strong> ${qtd} parcelas de R$ ${valorParc}</p>
+        </div>
+
+        <div class="clausulas">
+            <h4>CLÁUSULA 1 - OBJETO</h4>
+            <p>O Contratado adquire o(s) móvel(is) descrito(s) na proposta aprovada, comprometendo-se a pagar o valor total nas condições aqui estabelecidas.</p>
+            <br>
+            <h4>CLÁUSULA 2 - FORMA DE PAGAMENTO</h4>
+            <p>O Contratado efetuará o pagamento da entrada via Pix, e o saldo restante será pago em ${qtd} parcelas mensais e sucessivas de R$ ${valorParc}, já com juros legais inclusos, com vencimento no dia acordado.</p>
+            <br>
+            <h4>CLÁUSULA 3 - ATRASO E ENCARGOS</h4>
+            <p>O não pagamento de qualquer parcela no vencimento implicará em multa de 2% sobre o valor devido, acrescida de juros de mora de 1% ao mês, além de registro do débito nos órgãos de proteção ao crédito (SPC/Serasa).</p>
+            <br>
+            <h4>CLÁUSULA 4 - ENTREGA E DEVOLUÇÃO</h4>
+            <p>A entrega do produto será realizada imediatamente após a confirmação do pagamento da entrada. Em caso de inadimplemento de qualquer obrigação, a Distribuidora poderá requerer a devolução do produto e a execução do débito, sem prejuízo das demais medidas legais cabíveis.</p>
+            <br>
+            <h4>CLÁUSULA 5 - ACEITE E VINCULAÇÃO</h4>
+            <p>Ao concordar com os termos deste instrumento, o Contratado declara que leu, compreendeu e aceita todas as cláusulas, assumindo total responsabilidade pelo cumprimento integral das obrigações aqui assumidas, para todos os fins de direito.</p>
+        </div>
+
+        <div class="data-local">
+            <p>Muzambinho/MG, ${dataFormatada}</p>
+        </div>
+
+        <div class="assinaturas">
+            <div class="linha-assinatura">
+                <p>Contratado (Comprador)</p>
+            </div>
+            <div class="linha-assinatura">
+                <p>Distribuidora Flash Point</p>
+            </div>
+        </div>
+    `;
 }
 
 async function buscar() {
@@ -302,30 +392,30 @@ async function buscar() {
                 </div>
 
                 <div class="area-contrato">
-                    <h5>📄 CONTRATO DE COMPRA E PARCELAMENTO</h5>
+                    <h5>📄 RESUMO DO CONTRATO</h5>
                     <p>Distribuidora Flash Point - FlashCred</p>
                     <br>
-                    <p><strong>1. OBJETO:</strong> O Cliente adquire o(s) móvel(is) conforme proposta aprovada, comprometendo-se a pagar o valor total nas condições escolhidas.</p>
+                    <p><strong>1. OBJETO:</strong> Compra de móveis nas condições aprovadas.</p>
                     <br>
-                    <p><strong>2. PAGAMENTO:</strong> O Cliente pagará a entrada via Pix imediatamente após aceite deste contrato. O restante será pago nas parcelas escolhidas, com vencimento todo mês na data combinada.</p>
+                    <p><strong>2. PAGAMENTO:</strong> Entrada via Pix, restante nas parcelas escolhidas.</p>
                     <br>
-                    <p><strong>3. JUROS E ENCARGOS:</strong> Os valores já incluem juros pré-definidos. Atraso gera multa de 2% + juros de mora de 1% ao mês, além de registro nos órgãos de proteção ao crédito (SPC/Serasa).</p>
+                    <p><strong>3. JUROS E ENCARGOS:</strong> Valores já incluem juros. Atraso gera multa de 2% + juros de mora de 1% ao mês e registro no SPC/Serasa.</p>
                     <br>
-                    <p><strong>4. ENTREGA:</strong> A entrega será feita após confirmação do pagamento da entrada. Se houver atraso ou não pagamento de qualquer parcela, a Distribuidora poderá requerer a devolução do produto e o registro do débito.</p>
+                    <p><strong>4. ENTREGA:</strong> Após confirmação do pagamento da entrada. Inadimplemento gera devolução do produto.</p>
                     <br>
-                    <p><strong>5. ACEITE:</strong> Ao marcar "Li e Concordo" e confirmar, o Cliente declara que leu, entendeu e aceita todas as cláusulas, assumindo total responsabilidade pelo pagamento integral.</p>
+                    <p><strong>5. ACEITE:</strong> Ao concordar, declara que leu e aceita todas as condições.</p>
                 </div>
 
-                <button class="btn btn-imprimir" onclick="window.print()">🖨️ Imprimir Contrato</button>
+                <button class="btn btn-imprimir" onclick="atualizarContratoImpressao(); window.print()">🖨️ Imprimir Contrato Completo</button>
                 
                 <label class="check-aceito">
                     <input type="checkbox" id="aceitoContrato" onchange="aceitarContrato()">
-                    Li e concordo com todos os termos do contrato acima
+                    Li e concordo com todos os termos do contrato
                 </label>
 
                 <div id="areaPagamento" class="esconder">
                     <div class="destaque-parcelas">
-                        <p class="font-semibold">📋 Resumo Final das Parcelas:</p>
+                        <p class="font-semibold">📋 Resumo Final:</p>
                         <div class="valor" id="resumoParcelas"></div>
                     </div>
 
@@ -340,7 +430,7 @@ async function buscar() {
                         </button>
                         <p class="aviso-pagamento">✅ Assim que o pagamento for confirmado, avisamos e enviamos seu móvel!</p>
                     </div>
-                    ` : ''}
+                    ` : '<p class="text-center text-alerta py-3">QR Code e chave Pix serão liberados após confirmação do contrato.</p>'}
                 </div>
             `;
         }
@@ -348,7 +438,7 @@ async function buscar() {
         document.getElementById('resultado').innerHTML = `
             <h3 class="text-xl font-bold text-primary text-center mb-3">Olá ${propostaAtual.nome}!</h3>
             ${conteudo}
-            <button class="btn btn-alerta mt-4" onclick="voltar()">🔙 Consultar outro CPF</button>
+            <button class="btn btn-alerta mt-4 consultar-outro" onclick="voltar()">🔙 Consultar outro CPF</button>
         `;
         document.getElementById('resultado').classList.remove('esconder');
 
@@ -376,16 +466,7 @@ function aceitarContrato() {
         const valorParc = propostaAtual.valor_parcela_final.toFixed(2).replace('.',',');
         document.getElementById('resumoParcelas').textContent = `${qtd}x de R$ ${valorParc}`;
         document.getElementById('areaPagamento').classList.remove('esconder');
-        
-        if(propostaAtual.codigo_pix) {
-            new QRCode(document.getElementById('qrcode'), { 
-                text: propostaAtual.codigo_pix, 
-                width: 180, 
-                height: 180,
-                colorDark : "#0A2463",
-                colorLight : "#ffffff"
-            });
-        }
+        atualizarContratoImpressao();
     } else {
         document.getElementById('areaPagamento').classList.add('esconder');
     }
