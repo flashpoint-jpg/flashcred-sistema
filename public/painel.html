@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Administrativo | FlashCred</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --primary: #0A2463;
@@ -16,24 +15,38 @@
             --sucesso: #10B981;
             --alerta: #F59E0B;
             --perigo: #EF4444;
-            --modo-teste: #3B82F6;
-            --modo-producao: #10B981;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
         body { background: var(--bg-body); color: var(--text-main); min-height: 100vh; }
 
+        /* Cabeçalho */
         header { background: #FFFFFF; border-bottom: 1px solid var(--border-color); padding: 16px 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); position: sticky; top:0; z-index: 50; }
-        .logo-area { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; flex-wrap: wrap; gap: 12px; }
+        .logo-area { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; }
         .logo-nome { font-size: 20px; font-weight: 800; color: var(--primary); text-decoration: none; }
         .logo-slogan { font-size: 13px; color: var(--text-muted); font-weight: 500; }
-        .badge-modo { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px; color: white; }
-        .modo-teste { background: var(--modo-teste); }
-        .modo-producao { background: var(--modo-producao); }
-        .btn-sair { font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 10px; border: none; background: #FEE2E2; color: #B91C1C; cursor: pointer; transition: 0.2s; }
-        .btn-sair:hover { background: #FECACA; }
+
+        /* 🔔 NOTIFICAÇÃO EM TEMPO REAL */
+        .notificacao-pagamento {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--sucesso);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.25);
+            z-index: 9999;
+            transform: translateX(120%);
+            transition: transform 0.4s ease;
+            max-width: 380px;
+        }
+        .notificacao-pagamento.ativa { transform: translateX(0); }
+        .notificacao-pagamento h4 { font-size: 15px; margin-bottom: 4px; }
+        .notificacao-pagamento p { font-size: 13px; opacity: 0.95; }
 
         .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
 
+        /* 📊 PAINEL DE ENTRADA E RECEBÍVEIS */
         .painel-financeiro {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -67,35 +80,41 @@
         .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         @media(max-width: 900px) { .grade { grid-template-columns: 1fr; } }
 
+        /* Cards */
         .card { background: #FFFFFF; border-radius: 20px; padding: 24px; box-shadow: 0 4px 16px rgba(10,36,99,0.08); border: 1px solid var(--border-color); margin-bottom: 20px; }
         .card-titulo { font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid #F1F5F9; display: flex; justify-content: space-between; align-items: center; }
 
+        /* Configuração API Pagamento */
         .config-api { background: #F8FAFC; border-radius: 14px; padding: 16px; margin-bottom: 16px; border: 1px dashed var(--primary); }
-        .grupo-modo { display: flex; gap: 12px; margin-bottom: 12px; }
-        .opcao-modo { flex: 1; padding: 10px; border: 2px solid var(--border-color); border-radius: 10px; text-align: center; cursor: pointer; font-weight: 600; font-size: 13px; transition: 0.2s; }
-        .opcao-modo.ativo { border-color: var(--primary); background: #E2E8F0; }
-        .opcao-modo.teste.ativo { border-color: var(--modo-teste); background: #EFF6FF; color: var(--modo-teste); }
-        .opcao-modo.producao.ativo { border-color: var(--modo-producao); background: #ECFDF5; color: var(--modo-producao); }
+        .config-api input { background: white; }
 
+        /* Lista de Propostas */
         .lista-propostas { max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .item-proposta { padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 14px; cursor: pointer; transition: 0.2s; background: #FAFBFC; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+        .item-proposta { padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 14px; cursor: pointer; transition: 0.2s; background: #FAFBFC; display: flex; justify-content: space-between; align-items: center; }
         .item-proposta:hover { border-color: var(--primary); background: #FFF; }
         .item-proposta.ativo { border-color: var(--primary); background: #F0F4FF; }
+        .item-proposta.pago-entrada { border-left: 4px solid var(--sucesso); }
         .prop-topo { font-weight: 700; font-size: 15px; color: var(--primary); }
         .prop-detalhes { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
-        .status-badge { padding: 4px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
-        .status-nova { background: #FFFBEB; color: #92400E; }
-        .status-aprovada { background: #ECFDF5; color: #065F46; }
-        .status-recusada { background: #FEF2F2; color: #991B1B; }
 
+        /* Dados Cliente e Parcelas */
         .cliente-nome { font-size: 20px; font-weight: 800; color: var(--primary); margin-bottom: 12px; }
         .dado-linha { padding: 8px 0; border-bottom: 1px solid #F8FAFC; font-size: 14px; }
         .dado-linha:last-child { border: none; }
-        .dado-rotulo { font-weight: 600; color: var(--text-muted); display: inline-block; width: 180px; }
+        .dado-rotulo { font-weight: 600; color: var(--text-muted); display: inline-block; width: 140px; }
         .dado-valor { font-weight: 500; color: var(--text-main); }
 
-        .grupo-linha { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-        .grupo-item { flex: 1; min-width: 180px; }
+        .area-parcelas { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+        .titulo-parcelas { font-weight: 600; font-size: 15px; color: var(--primary); margin-bottom: 10px; }
+        .linha-parcela { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        .linha-parcela input { flex: 1; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 13px; }
+        .btn-add-parcela { background: var(--pix-green); color: white; border: none; border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 500; cursor: pointer; margin-top: 8px; }
+        .btn-add-parcela:hover { background: #239e91; }
+        .btn-remover-parcela { background: #FEE2E2; color: #B91C1C; border: none; border-radius: 8px; padding: 6px 8px; font-size: 12px; cursor: pointer; }
+
+        /* Formulários e Botões */
+        .grupo-linha { display: flex; gap: 12px; margin-bottom: 12px; }
+        .grupo-item { flex: 1; }
         label { font-weight: 600; font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 4px; text-transform: uppercase; }
         .input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border-color); border-radius: 12px; font-size: 15px; background: #FAFBFC; }
         .input:focus { outline: none; border-color: var(--primary); background: #FFF; }
@@ -115,185 +134,138 @@
         .btn-manual { background: #F59E0B; color: white; width: 100%; margin-top: 8px; }
         .btn-copiar { background: #3B82F6; color: white; }
         .btn-api { background: #8B5CF6; color: white; }
-        .btn-alterar-senha { background: var(--primary); color: white; width: 100%; margin-top: 12px; }
 
         .codigo-pix { background: #F8FAFC; border: 1px dashed var(--primary); border-radius: 12px; padding: 14px; margin-top: 12px; font-family: monospace; font-size: 13px; word-break: break-all; display: none; }
-        .aviso-sucesso { background: #ECFDF5; color: #065F46; padding: 12px; border-radius: 10px; text-align: center; margin-top: 12px; display: none; font-weight: 600; font-size: 14px; }
-        .aviso-erro { background: #FEF2F2; color: #DC2626; padding: 12px; border-radius: 10px; text-align: center; margin-top: 12px; display: none; font-weight: 500; font-size: 14px; }
-        .area-alterar-senha { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color); }
-        .sem-dados { text-align: center; padding: 40px; color: var(--text-muted); }
+        .aviso-sucesso { background: #ECFDF5; color: #065F46; padding: 10px; border-radius: 10px; text-align: center; margin-top: 12px; display: none; font-weight: 600; font-size: 14px; }
     </style>
 </head>
 <body>
 
-<!-- 🔒 PROTEÇÃO DE ACESSO -->
-<script>
-if(localStorage.getItem('logado_flashcred') !== 'sim') {
-    window.location.href = 'login.html';
-}
-</script>
-
-<div id="avisoGeral" class="aviso-sucesso"></div>
+<!-- 🔔 NOTIFICAÇÃO DE PAGAMENTO EM TEMPO REAL -->
+<div id="notifPagamento" class="notificacao-pagamento">
+    <h4>✅ Pagamento Confirmado!</h4>
+    <p id="textoNotif">Entrada paga por <strong>—</strong> no valor de R$ —</p>
+</div>
 
 <header>
     <div class="logo-area">
         <div>
-            <a href="painel.html" class="logo-nome">FlashCred | Painel Administrativo</a>
+            <a href="/" class="logo-nome">FlashCred | Painel Administrativo</a>
             <div class="logo-slogan">Limite Pix Parcelado - Distribuidora Flash Point</div>
-        </div>
-        <div style="display:flex; align-items:center; gap:12px;">
-            <span id="indicadorModo" class="badge-modo modo-teste">🧪 MODO TESTE</span>
-            <button onclick="deslogar()" class="btn-sair">🚪 Sair</button>
         </div>
     </div>
 </header>
 
 <div class="container">
 
+    <!-- 📊 PAINEL FINANCEIRO GERAL -->
     <div class="painel-financeiro">
         <div class="card-financeiro entrada">
             <div class="rotulo">Total de Entradas Recebidas</div>
             <div class="valor" id="totalEntradas">R$ 0,00</div>
         </div>
         <div class="card-financeiro parcelas">
-            <div class="rotulo">Propostas Recebidas</div>
-            <div class="valor" id="qtdParcelasCard">—</div>
+            <div class="rotulo">Total de Parcelas Ativas</div>
+            <div class="valor" id="qtdParcelasCard">12</div>
         </div>
         <div class="card-financeiro areceber">
-            <div class="rotulo">Total a Receber</div>
+            <div class="rotulo">Valor Total a Receber</div>
             <div class="valor" id="totalReceber">R$ 0,00</div>
         </div>
         <div class="card-financeiro pago">
-            <div class="rotulo">Total Já Recebido</div>
+            <div class="rotulo">Valor Já Recebido</div>
             <div class="valor" id="totalPago">R$ 0,00</div>
         </div>
     </div>
 
     <div class="grade">
         
+        <!-- COLUNA ESQUERDA -->
         <div>
             <div class="card">
-                <h2 class="card-titulo">📋 Solicitações Recebidas</h2>
+                <h2 class="card-titulo">📋 Solicitações e Pagamentos</h2>
                 <div class="lista-propostas" id="listaPropostas">
                     <div style="text-align: center; color: var(--text-muted); padding: 20px;">Carregando propostas...</div>
                 </div>
-                <div id="semDados" class="sem-dados" style="display:none;">Nenhuma proposta recebida ainda.</div>
             </div>
 
             <div class="card" id="cardDetalhes" style="display:none;">
-                <h2 class="card-titulo">👤 Dados Completos do Cliente</h2>
+                <h2 class="card-titulo">👤 Cliente Selecionado</h2>
                 <div class="cliente-nome" id="cliNome">—</div>
                 <div class="dado-linha"><span class="dado-rotulo">CPF:</span><span class="dado-valor" id="cliCpf">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Data de Nascimento:</span><span class="dado-valor" id="cliNascimento">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Idade:</span><span class="dado-valor" id="cliIdade">—</span></div>
                 <div class="dado-linha"><span class="dado-rotulo">WhatsApp:</span><span class="dado-valor" id="cliWhatsapp">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">CEP:</span><span class="dado-valor" id="cliCep">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Endereço Completo:</span><span class="dado-valor" id="cliEndereco">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Valor Solicitado:</span><span class="dado-valor" id="cliValor">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Status:</span><span class="dado-valor" id="cliStatus">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Status Entrada:</span><span class="dado-valor" id="statusEntrada">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Valor da Entrada:</span><span class="dado-valor" id="valorEntradaCli">—</span></div>
 
-                <button class="btn btn-manual" onclick="darBaixaManualEntrada()">💵 Dar Baixa Manual</button>
+                <!-- 💵 OPÇÃO DE BAIXA MANUAL DE ENTRADA (DINHEIRO / PIX MANUAL) -->
+                <button class="btn btn-manual" onclick="darBaixaManualEntrada()">💵 Dar Baixa Manual (Dinheiro / Pix Direto)</button>
 
                 <div class="area-botoes" style="margin-top: 12px;">
-                    <button class="btn btn-copiar" onclick="copiarDadosCliente()">📋 Copiar Dados</button>
+                    <button class="btn btn-copiar" onclick="copiarDadosCliente()">📋 Copiar</button>
                     <button class="btn btn-excluir" onclick="excluirProposta()">🗑️ Excluir</button>
                 </div>
             </div>
 
+            <!-- 🔑 CONFIGURAÇÃO API DE PAGAMENTO (MERCADO PAGO) -->
             <div class="card">
-                <h2 class="card-titulo">⚙️ Configurações do Sistema</h2>
+                <h2 class="card-titulo">⚙️ API Pagamento Produção</h2>
                 <div class="config-api">
-                    <div class="grupo-modo">
-                        <div class="opcao-modo teste" id="btnModoTeste" onclick="definirModo('teste')">🧪 Teste</div>
-                        <div class="opcao-modo producao" id="btnModoProducao" onclick="definirModo('producao')">✅ Produção</div>
-                    </div>
-                    
-                    <label>Token API Mercado Pago</label>
-                    <input type="text" id="tokenApi" class="input" placeholder="Cole seu token aqui">
-                    
-                    <button class="btn btn-api" onclick="salvarTokenApi()" style="margin-top: 10px;">💾 Salvar Token</button>
-                </div>
-
-                <!-- 🔐 ALTERAR SENHA -->
-                <div class="area-alterar-senha">
-                    <h3 style="font-size:16px; font-weight:700; color:var(--primary); margin-bottom:15px;">🔐 Alterar Senha de Acesso</h3>
-                    
-                    <div style="margin-bottom:12px;">
-                        <label>Senha Atual</label>
-                        <input type="password" id="senhaAtual" class="input" placeholder="Digite sua senha atual">
-                    </div>
-                    <div style="margin-bottom:12px;">
-                        <label>Nova Senha</label>
-                        <input type="password" id="novaSenha" class="input" placeholder="Digite a nova senha">
-                    </div>
-                    <div style="margin-bottom:12px;">
-                        <label>Repetir Nova Senha</label>
-                        <input type="password" id="confirmaNovaSenha" class="input" placeholder="Digite a nova senha novamente">
-                    </div>
-
-                    <button class="btn btn-alterar-senha" onclick="alterarSenha()">🔄 Atualizar Senha</button>
-                    <div id="avisoSenha" class="aviso-erro"></div>
+                    <label>Token Mercado Pago / API Pix</label>
+                    <input type="text" id="tokenApi" class="input" placeholder="Cole seu token de produção aqui" value="APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471">
+                    <button class="btn btn-api" style="margin-top:10px;" onclick="salvarTokenApi()">💾 Salvar e Ativar API</button>
+                    <p style="font-size:12px; margin-top:8px; color:var(--text-muted);">Após salvar, os códigos Pix gerados serão oficiais via API do Mercado Pago na sua conta.</p>
                 </div>
             </div>
         </div>
 
+        <!-- COLUNA DIREITA -->
         <div class="card">
-            <h2 class="card-titulo">📝 Definir Proposta e Parcelas</h2>
+            <h2 class="card-titulo">⚙️ Proposta e Parcelas</h2>
 
             <div class="grupo-linha">
                 <div class="grupo-item">
-                    <label>Valor Total da Compra (R$)</label>
-                    <input type="number" id="valorTotal" class="input" min="100" step="0.01" placeholder="0,00" oninput="atualizarCalculo()">
+                    <label>Valor Total Compra (R$)</label>
+                    <input type="number" id="valorTotal" class="input" min="100" step="0.01" value="2100.00" oninput="atualizarCalculo()">
                 </div>
             </div>
             <div class="grupo-linha">
-                <div class="grupo-item"><label>Entrada (%)</label><input type="number" id="porcEntrada" class="input" min="2" max="90" placeholder="%" oninput="atualizarCalculo()"></div>
-                <div class="grupo-item"><label>Juros ao Mês (%)</label><input type="number" id="porcJuros" class="input" min="0" max="20" step="0.1" placeholder="%" oninput="atualizarCalculo()"></div>
+                <div class="grupo-item"><label>Entrada (%)</label><input type="number" id="porcEntrada" class="input" min="2" max="90" value="39" oninput="atualizarCalculo()"></div>
+                <div class="grupo-item"><label>Juros ao mês (%)</label><input type="number" id="porcJuros" class="input" min="0" max="20" step="0.1" value="6" oninput="atualizarCalculo()"></div>
             </div>
             <div class="grupo-linha">
                 <div class="grupo-item">
-                    <label>Quantidade de Parcelas (1 a 48x)</label>
+                    <label>Quantidade de Parcelas</label>
                     <select id="qtdParcelas" class="input" onchange="atualizarCalculo()">
-                        <option value="" disabled selected>Escolha a quantidade...</option>
-                        <option value="1">1x</option>
-                        <option value="2">2x</option>
-                        <option value="3">3x</option>
-                        <option value="4">4x</option>
-                        <option value="5">5x</option>
-                        <option value="6">6x</option>
-                        <option value="7">7x</option>
-                        <option value="8">8x</option>
-                        <option value="9">9x</option>
-                        <option value="10">10x</option>
-                        <option value="11">11x</option>
-                        <option value="12">12x</option>
-                        <option value="13">13x</option>
-                        <option value="14">14x</option>
-                        <option value="15">15x</option>
-                        <option value="18">18x</option>
-                        <option value="24">24x</option>
-                        <option value="30">30x</option>
-                        <option value="36">36x</option>
-                        <option value="42">42x</option>
-                        <option value="48">48x</option>
+                        <option value="3">3x</option><option value="4">4x</option><option value="5">5x</option><option value="6">6x</option>
+                        <option value="8">8x</option><option value="10">10x</option><option value="12" selected>12x</option>
+                        <option value="18">18x</option><option value="24">24x</option><option value="36">36x</option><option value="48">48x</option>
                     </select>
                 </div>
             </div>
 
             <div class="resumo-valor">
-                <div class="resumo-linha"><span>Valor da Entrada:</span><span id="resEntrada">—</span></div>
-                <div class="resumo-linha"><span>Valor Financiado:</span><span id="resFinanciado">—</span></div>
-                <div class="resumo-linha"><span>Valor de Cada Parcela:</span><span id="resParcela">—</span></div>
-                <div class="resumo-total"><span>Valor Total Final:</span><span id="resTotal">—</span></div>
+                <div class="resumo-linha"><span>Valor da Entrada:</span><span id="resEntrada">R$ 819,00</span></div>
+                <div class="resumo-linha"><span>Valor Financiado:</span><span id="resFinanciado">R$ 1.281,00</span></div>
+                <div class="resumo-linha"><span>Valor por Parcela:</span><span id="resParcela">R$ 127,79</span></div>
+                <div class="resumo-total"><span>Total Final:</span><span id="resTotal">R$ 2.312,48</span></div>
             </div>
 
-            <button class="btn btn-pix" onclick="gerarPixApi()">🔑 Gerar Pix de Entrada</button>
-            <div id="codigoPix" class="codigo-pix"></div>
+            <div class="area-parcelas">
+                <div class="titulo-parcelas">📝 Parcelas (Edição Manual)</div>
+                <div id="listaParcelasManual"></div>
+                <button class="btn-add-parcela" onclick="adicionarLinhaParcela()">+ Adicionar Parcela</button>
+            </div>
+
+            <button class="btn btn-pix" onclick="gerarPixApi()">🔑 Gerar Código Pix Oficial API</button>
+            <div id="codigoPix" class="codigo-pix">
+                Código Pix Copia e Cola:<br>
+                <span id="pixCodigo">—</span>
+            </div>
 
             <div class="area-botoes">
-                <button class="btn btn-aprovar" onclick="alterarStatus('Aprovada')">✅ Aprovar Proposta</button>
-                <button class="btn btn-reprovar" onclick="alterarStatus('Recusada')">❌ Recusar</button>
-                <button class="btn btn-whats" onclick="enviarWhatsApp()">📲 Enviar por WhatsApp</button>
+                <button class="btn btn-aprovar" onclick="alterarStatus('Aprovada')">✅ Aprovar</button>
+                <button class="btn btn-reprovar" onclick="alterarStatus('Recusada')">❌ Reprovar</button>
+                <button class="btn btn-whats" onclick="enviarWhatsApp()">📤 WhatsApp</button>
             </div>
             <div id="aviso" class="aviso-sucesso"></div>
         </div>
@@ -301,281 +273,268 @@ if(localStorage.getItem('logado_flashcred') !== 'sim') {
 </div>
 
 <script>
-// CONEXÃO COM O BANCO DE DADOS
-const supabaseUrl = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const supabaseKey = 'sb_publishable_g5Tcimge2aiMX8JE3mlU3W55Y2s0CjZtxXkT2VjR3K9Rz0NnI2s1M3p5X7z6bX7kY5aQ3dF2gH9jK8lL7mN6bV8cX7z9';
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
-
 let propostasGlobal = [];
 let clienteSelecionado = null;
-let modoAtual = 'teste';
+let totalEntradas = 0;
+let totalReceber = 0;
+let totalPago = 0;
 
-// 🚪 DESLOGAR
-function deslogar() {
-    if(confirm('Deseja realmente sair do painel?')) {
-        localStorage.removeItem('logado_flashcred');
-        window.location.href = 'login.html';
+window.addEventListener('load', () => {
+    // Carregar token salvo se existir
+    const tokenSalvo = localStorage.getItem('token_mp_producao');
+    if(tokenSalvo) {
+        document.getElementById('tokenApi').value = tokenSalvo;
     }
+    atualizarCalculo();
+    gerarLinhasParcelas();
+    atualizarPainelFinanceiro();
+    carregarPropostas();
+});
+
+// 📊 ATUALIZA PAINEL FINANCEIRO
+function atualizarPainelFinanceiro() {
+    document.getElementById('totalEntradas').textContent = totalEntradas.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+    document.getElementById('qtdParcelasCard').textContent = document.getElementById('qtdParcelas').value;
+    document.getElementById('totalReceber').textContent = totalReceber.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+    document.getElementById('totalPago').textContent = totalPago.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
 }
 
-// 🔐 ALTERAR SENHA
-function alterarSenha() {
-    const senhaAtual = document.getElementById('senhaAtual').value.trim();
-    const novaSenha = document.getElementById('novaSenha').value.trim();
-    const confirmaSenha = document.getElementById('confirmaNovaSenha').value.trim();
-    const aviso = document.getElementById('avisoSenha');
-    const senhaPadrao = 'flashcred2026';
-    const senhaSalva = localStorage.getItem('senha_admin') || senhaPadrao;
-
-    aviso.style.display = 'none';
-
-    if(!senhaAtual || !novaSenha || !confirmaSenha) {
-        aviso.textContent = 'Preencha todos os campos!';
-        aviso.className = 'aviso-erro';
-        aviso.style.display = 'block';
-        return;
-    }
-    if(senhaAtual !== senhaSalva) {
-        aviso.textContent = 'Senha atual incorreta!';
-        aviso.className = 'aviso-erro';
-        aviso.style.display = 'block';
-        return;
-    }
-    if(novaSenha.length < 4) {
-        aviso.textContent = 'Nova senha deve ter pelo menos 4 caracteres!';
-        aviso.className = 'aviso-erro';
-        aviso.style.display = 'block';
-        return;
-    }
-    if(novaSenha !== confirmaSenha) {
-        aviso.textContent = 'As senhas não coincidem!';
-        aviso.className = 'aviso-erro';
-        aviso.style.display = 'block';
-        return;
-    }
-
-    localStorage.setItem('senha_admin', novaSenha);
-    aviso.className = 'aviso-sucesso';
-    aviso.textContent = '✅ Senha alterada com sucesso!';
-    aviso.style.display = 'block';
-
-    document.getElementById('senhaAtual').value = '';
-    document.getElementById('novaSenha').value = '';
-    document.getElementById('confirmaNovaSenha').value = '';
-
-    setTimeout(() => aviso.style.display = 'none', 3000);
-}
-
-// 📌 CALCULAR IDADE
-function calcularIdade(dataNascimento) {
-    if(!dataNascimento) return '—';
-    const nasc = new Date(dataNascimento);
-    const hoje = new Date();
-    let idade = hoje.getFullYear() - nasc.getFullYear();
-    const mes = hoje.getMonth() - nasc.getMonth();
-    if (mes < 0 || (mes === 0 && hoje.getDate() < nasc.getDate())) idade--;
-    return `${idade} anos`;
-}
-
-// ⚙️ DEFINIR MODO
-function definirModo(modo) {
-    modoAtual = modo;
-    localStorage.setItem('modo_api', modo);
-    
-    document.getElementById('btnModoTeste').classList.remove('ativo');
-    document.getElementById('btnModoProducao').classList.remove('ativo');
-    document.getElementById('indicadorModo').textContent = modo === 'teste' ? '🧪 MODO TESTE' : '✅ MODO PRODUÇÃO';
-    document.getElementById('indicadorModo').className = `badge-modo modo-${modo}`;
-    document.getElementById(`btnModo${modo.charAt(0).toUpperCase() + modo.slice(1)}`).classList.add('ativo');
-
-    const tokenSalvo = localStorage.getItem(`token_mp_${modo}`) || '';
-    document.getElementById('tokenApi').value = tokenSalvo;
-}
-
+// 🔑 SALVAR TOKEN API
 function salvarTokenApi() {
     const token = document.getElementById('tokenApi').value.trim();
-    localStorage.setItem(`token_mp_${modoAtual}`, token);
-    mostrarAviso('Token salvo com sucesso!', 'sucesso');
+    if(!token) { alert("Informe o token de produção da API."); return; }
+    localStorage.setItem('token_mp_producao', token);
+    mostrarAviso("✅ Token salvo com sucesso!");
 }
 
-function mostrarAviso(texto, tipo = 'sucesso') {
-    const aviso = document.getElementById('avisoGeral');
-    aviso.textContent = texto;
-    aviso.className = tipo === 'sucesso' ? 'aviso-sucesso' : 'aviso-erro';
-    aviso.style.display = 'block';
-    setTimeout(() => aviso.style.display = 'none', 3000);
-}
+// 🧾 GERAR PIX VIA API DE PRODUÇÃO (MERCADO PAGO)
+function gerarPixApi() {
+    const token = localStorage.getItem('token_mp_producao') || document.getElementById('tokenApi').value.trim();
+    if(!token) { alert("Salve o token da API primeiro nas configurações."); return; }
 
-// 📊 CARREGAR PROPOSTAS DO BANCO
-async function carregarPropostas() {
-    const { data, error } = await supabase
-        .from('propostas')
-        .select('*')
-        .order('data_solicitacao', { ascending: false });
+    const valorEntradaStr = document.getElementById('resEntrada').textContent.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+    const valorEntrada = parseFloat(valorEntradaStr) || 100.00;
 
-    const lista = document.getElementById('listaPropostas');
-    const semDados = document.getElementById('semDados');
-    
-    if(error || !data || data.length === 0) {
-        lista.innerHTML = '';
-        semDados.style.display = 'block';
-        propostasGlobal = [];
-        atualizarPainelFinanceiro();
-        return;
-    }
+    mostrarAviso("⏳ Gerando Pix oficial no Mercado Pago...");
 
-    semDados.style.display = 'none';
-    propostasGlobal = data;
-    lista.innerHTML = '';
-
-    data.forEach(proposta => {
-        const item = document.createElement('div');
-        item.className = 'item-proposta';
-        item.onclick = () => selecionarProposta(proposta);
-        
-        const statusClass = `status-${proposta.status.toLowerCase()}`;
-        item.innerHTML = `
-            <div>
-                <div class="prop-topo">${proposta.nome}</div>
-                <div class="prop-detalhes">CPF: ${proposta.cpf} | Valor: R$ ${parseFloat(proposta.valor_solicitado).toFixed(2)}</div>
-            </div>
-            <span class="status-badge ${statusClass}">${proposta.status}</span>
-        `;
-        lista.appendChild(item);
+    fetch('https://api.mercadopago.com/v1/payments', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': Date.now().toString()
+        },
+        body: JSON.stringify({
+            transaction_amount: valorEntrada,
+            description: clienteSelecionado ? `Entrada FlashCred - ${clienteSelecionado.nome}` : 'Entrada FlashCred',
+            payment_method_id: 'pix',
+            payer: {
+                email: clienteSelecionado ? `${clienteSelecionado.cpf.replace(/\D/g,'')}@flashcred.com` : 'cliente@flashcred.com'
+            }
+        })
+    })
+    .then(async res => {
+        const data = await res.json();
+        if(res.ok && data.point_of_interaction) {
+            const qrCode = data.point_of_interaction.transaction_data.qr_code;
+            document.getElementById('codigoPix').style.display = 'block';
+            document.getElementById('pixCodigo').textContent = qrCode;
+            mostrarAviso("✅ Código Pix oficial gerado com sucesso!");
+        } else {
+            console.error(data);
+            alert("Erro ao gerar Pix no Mercado Pago. Verifique se o Token de Produção está correto.");
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Falha de comunicação ao gerar o Pix via API.");
     });
+}
 
+// 💵 BAIXA MANUAL DE ENTRADA (DINHEIRO / PIX DIRETO)
+function darBaixaManualEntrada() {
+    if(!clienteSelecionado) { alert("Selecione um cliente na lista."); return; }
+    const valorStr = document.getElementById('resEntrada').textContent;
+    if(!confirm(`Confirmar recebimento da entrada de ${valorStr} em dinheiro/pix manual para ${clienteSelecionado.nome}?`)) return;
+
+    const valNum = parseFloat(document.getElementById('resEntrada').textContent.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) || 0;
+    
+    totalEntradas += valNum;
+    totalPago += valNum;
     atualizarPainelFinanceiro();
+
+    document.getElementById('statusEntrada').textContent = 'Pago (Manual / Dinheiro)';
+    mostrarAviso(`✅ Entrada de ${valorStr} baixada manualmente com sucesso!`);
 }
 
-function selecionarProposta(proposta) {
-    clienteSelecionado = proposta;
-    document.getElementById('cardDetalhes').style.display = 'block';
-
-    document.getElementById('cliNome').textContent = proposta.nome;
-    document.getElementById('cliCpf').textContent = proposta.cpf;
-    document.getElementById('cliNascimento').textContent = proposta.nascimento;
-    document.getElementById('cliIdade').textContent = calcularIdade(proposta.nascimento);
-    document.getElementById('cliWhatsapp').textContent = proposta.telefone;
-    document.getElementById('cliCep').textContent = proposta.cep;
-    document.getElementById('cliEndereco').textContent = proposta.endereco;
-    document.getElementById('cliValor').textContent = `R$ ${parseFloat(proposta.valor_solicitado).toFixed(2)}`;
-    document.getElementById('cliStatus').textContent = proposta.status;
-
-    document.getElementById('valorTotal').value = proposta.valor_solicitado;
-    atualizarCalculo();
-}
-
-async function alterarStatus(novoStatus) {
-    if(!clienteSelecionado) {
-        mostrarAviso('Selecione uma proposta primeiro!', 'erro');
-        return;
-    }
-
-    const { error } = await supabase
-        .from('propostas')
-        .update({ status: novoStatus })
-        .eq('cpf', clienteSelecionado.cpf);
-
-    if(error) {
-        mostrarAviso('Erro ao alterar status: ' + error.message, 'erro');
-        return;
-    }
-
-    mostrarAviso(`Proposta ${novoStatus.toLowerCase()} com sucesso!`);
-    carregarPropostas();
-    document.getElementById('cardDetalhes').style.display = 'none';
-    clienteSelecionado = null;
-}
-
+// CÁLCULOS E PARCELAS
 function atualizarCalculo() {
     const valorTotal = parseFloat(document.getElementById('valorTotal').value) || 0;
     const porcEntrada = parseFloat(document.getElementById('porcEntrada').value) || 0;
     const porcJuros = parseFloat(document.getElementById('porcJuros').value) || 0;
-    const qtdParcelas = parseInt(document.getElementById('qtdParcelas').value) || 0;
-
-    if(!valorTotal || !porcEntrada || !qtdParcelas) {
-        document.getElementById('resEntrada').textContent = '—';
-        document.getElementById('resFinanciado').textContent = '—';
-        document.getElementById('resParcela').textContent = '—';
-        document.getElementById('resTotal').textContent = '—';
-        return;
-    }
+    const qtd = parseInt(document.getElementById('qtdParcelas').value) || 1;
 
     const valorEntrada = valorTotal * (porcEntrada / 100);
     const valorFinanciado = valorTotal - valorEntrada;
-    const fatorJuros = Math.pow(1 + (porcJuros / 100), qtdParcelas);
-    const valorParcela = valorFinanciado * (fatorJuros / qtdParcelas);
-    const valorTotalFinal = valorEntrada + (valorParcela * qtdParcelas);
+    const fatorJuros = Math.pow((1 + (porcJuros / 100)), qtd);
+    const parcela = (valorFinanciado * fatorJuros) / qtd;
+    const totalFinal = valorEntrada + (parcela * qtd);
 
-    document.getElementById('resEntrada').textContent = `R$ ${valorEntrada.toFixed(2)}`;
-    document.getElementById('resFinanciado').textContent = `R$ ${valorFinanciado.toFixed(2)}`;
-    document.getElementById('resParcela').textContent = `R$ ${valorParcela.toFixed(2)}`;
-    document.getElementById('resTotal').textContent = `R$ ${valorTotalFinal.toFixed(2)}`;
+    document.getElementById('resEntrada').textContent = `R$ ${valorEntrada.toFixed(2).replace('.', ',')}`;
+    document.getElementById('resFinanciado').textContent = `R$ ${valorFinanciado.toFixed(2).replace('.', ',')}`;
+    document.getElementById('resParcela').textContent = `R$ ${parcela.toFixed(2).replace('.', ',')}`;
+    document.getElementById('resTotal').textContent = `R$ ${totalFinal.toFixed(2).replace('.', ',')}`;
+    
+    totalReceber = totalFinal;
+    gerarLinhasParcelas();
+    atualizarPainelFinanceiro();
 }
 
-function enviarWhatsApp() {
-    if(!clienteSelecionado) {
-        mostrarAviso('Selecione uma proposta primeiro!', 'erro');
-        return;
+function gerarLinhasParcelas() {
+    const qtd = parseInt(document.getElementById('qtdParcelas').value) || 1;
+    const valorParcela = document.getElementById('resParcela').textContent;
+    const lista = document.getElementById('listaParcelasManual');
+    lista.innerHTML = '';
+    for(let i = 1; i <= qtd; i++) {
+        const dataVenc = new Date();
+        dataVenc.setMonth(dataVenc.getMonth() + i);
+        lista.innerHTML += `
+            <div class="linha-parcela">
+                <span style="font-size:13px; font-weight:600; width:30px;">#${i}</span>
+                <input type="text" value="${valorParcela}">
+                <input type="date" value="${dataVenc.toISOString().split('T')[0]}">
+                <button class="btn-remover-parcela" onclick="this.parentElement.remove()">X</button>
+            </div>
+        `;
     }
-    const telefone = clienteSelecionado.telefone.replace(/\D/g, '');
-    const texto = `Olá ${clienteSelecionado.nome}! Tudo bem? Sou da FlashCred. Recebemos sua solicitação de crédito. Acesse o link para acompanhar: https://flashcred-sistema.onrender.com/consultar.html?cpf=${clienteSelecionado.cpf.replace(/\D/g, '')}`;
-    window.open(`https://wa.me/${telefone}?text=${encodeURIComponent(texto)}`, '_blank');
+}
+
+function adicionarLinhaParcela() {
+    const lista = document.getElementById('listaParcelasManual');
+    const i = lista.children.length + 1;
+    const dataVenc = new Date();
+    dataVenc.setMonth(dataVenc.getMonth() + i);
+    const valorParcela = document.getElementById('resParcela').textContent;
+    lista.innerHTML += `
+        <div class="linha-parcela">
+            <span style="font-size:13px; font-weight:600; width:30px;">#${i}</span>
+            <input type="text" value="${valorParcela}">
+            <input type="date" value="${dataVenc.toISOString().split('T')[0]}">
+            <button class="btn-remover-parcela" onclick="this.parentElement.remove()">X</button>
+        </div>
+    `;
+}
+
+function carregarPropostas() {
+    fetch('/api/propostas')
+        .then(res => res.json())
+        .then(resJson => {
+            const lista = document.getElementById('listaPropostas');
+            lista.innerHTML = '';
+            if(resJson.success && resJson.data.length > 0) {
+                propostasGlobal = resJson.data;
+                resJson.data.forEach((p, index) => {
+                    lista.innerHTML += `
+                        <div class="item-proposta" onclick="selecionarProposta(${index})">
+                            <div>
+                                <div class="prop-topo">${p.nome}</div>
+                                <div class="prop-detalhes">CPF: ${p.cpf} | Valor: R$ ${parseFloat(p.valor_desejado || 0).toFixed(2)}</div>
+                            </div>
+                            <span style="font-size:12px; font-weight:700; color:var(--primary); background:#E2E8F0; padding:4px 8px; border-radius:8px;">${p.status || 'Em Análise'}</span>
+                        </div>
+                    `;
+                });
+                selecionarProposta(resJson.data.length - 1);
+            } else {
+                lista.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhuma proposta encontrada.</div>`;
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('listaPropostas').innerHTML = `<div style="text-align: center; color: var(--perigo); padding: 20px;">Erro ao carregar propostas.</div>`;
+        });
+}
+
+function selecionarProposta(index) {
+    document.querySelectorAll('.item-proposta').forEach(el => el.classList.remove('ativo'));
+    const itens = document.querySelectorAll('.item-proposta');
+    if(itens[index]) itens[index].classList.add('ativo');
+
+    clienteSelecionado = propostasGlobal[index];
+    if(!clienteSelecionado) return;
+
+    document.getElementById('cardDetalhes').style.display = 'block';
+    document.getElementById('cliNome').textContent = clienteSelecionado.nome;
+    document.getElementById('cliCpf').textContent = clienteSelecionado.cpf;
+    document.getElementById('cliWhatsapp').textContent = clienteSelecionado.telefone;
+    document.getElementById('statusEntrada').textContent = clienteSelecionado.status || 'Em Análise';
+    document.getElementById('valorEntradaCli').textContent = document.getElementById('resEntrada').textContent;
+}
+
+function alterarStatus(novoStatus) {
+    if(!clienteSelecionado) { alert("Selecione uma proposta na lista."); return; }
+    
+    fetch(`/api/proposta/${clienteSelecionado.id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: novoStatus })
+    })
+    .then(res => res.json())
+    .then(result => {
+        if(result.success) {
+            mostrarAviso(`✅ Status alterado para: ${novoStatus}`);
+            carregarPropostas();
+        } else {
+            alert("Erro ao atualizar status.");
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Erro de conexão com o servidor.");
+    });
+}
+
+function excluirProposta() {
+    if(!clienteSelecionado) { alert("Selecione uma proposta."); return; }
+    if(!confirm(`Deseja realmente excluir a proposta de ${clienteSelecionado.nome}?`)) return;
+
+    fetch(`/api/proposta/${clienteSelecionado.id}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(result => {
+            if(result.success) {
+                mostrarAviso("🗑️ Proposta excluída com sucesso!");
+                document.getElementById('cardDetalhes').style.display = 'none';
+                carregarPropostas();
+            } else {
+                alert("Erro ao excluir proposta.");
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert("Erro de conexão com o servidor.");
+        });
 }
 
 function copiarDadosCliente() {
     if(!clienteSelecionado) return;
-    const texto = `
-Nome: ${clienteSelecionado.nome}
-CPF: ${clienteSelecionado.cpf}
-Nascimento: ${clienteSelecionado.nascimento}
-WhatsApp: ${clienteSelecionado.telefone}
-Endereço: ${clienteSelecionado.endereco} - CEP: ${clienteSelecionado.cep}
-Valor Solicitado: R$ ${parseFloat(clienteSelecionado.valor_solicitado).toFixed(2)}
-Status: ${clienteSelecionado.status}
-    `.trim();
+    const texto = `Nome: ${clienteSelecionado.nome}\nCPF: ${clienteSelecionado.cpf}\nTelefone: ${clienteSelecionado.telefone}\nValor Desejado: R$ ${parseFloat(clienteSelecionado.valor_desejado || 0).toFixed(2)}`;
     navigator.clipboard.writeText(texto);
-    mostrarAviso('Dados copiados!');
+    mostrarAviso("📋 Dados copiados para a área de transferência!");
 }
 
-async function excluirProposta() {
-    if(!clienteSelecionado) return;
-    if(!confirm('Deseja realmente excluir esta proposta? Essa ação não pode ser desfeita.')) return;
-
-    const { error } = await supabase
-        .from('propostas')
-        .delete()
-        .eq('cpf', clienteSelecionado.cpf);
-
-    if(error) {
-        mostrarAviso('Erro ao excluir: ' + error.message, 'erro');
-        return;
-    }
-
-    mostrarAviso('Proposta excluída!');
-    carregarPropostas();
-    document.getElementById('cardDetalhes').style.display = 'none';
-    clienteSelecionado = null;
+function enviarWhatsApp() {
+    if(!clienteSelecionado) { alert("Selecione um cliente."); return; }
+    const tel = clienteSelecionado.telefone.replace(/\D/g, '');
+    const msg = encodeURIComponent(`Olá ${clienteSelecionado.nome}, entramos em contato referente à sua análise de crédito na Distribuidora Flash Point.`);
+    window.open(`https://wa.me/55${tel}?text=${msg}`, '_blank');
 }
 
-function darBaixaManualEntrada() {
-    mostrarAviso('Baixa manual registrada!', 'sucesso');
+function mostrarAviso(texto) {
+    const aviso = document.getElementById('aviso');
+    aviso.textContent = texto;
+    aviso.style.display = 'block';
+    setTimeout(() => { aviso.style.display = 'none'; }, 4000);
 }
-
-function gerarPixApi() {
-    mostrarAviso('Função de geração Pix integrada com Mercado Pago!', 'sucesso');
-}
-
-function atualizarPainelFinanceiro() {
-    document.getElementById('qtdParcelasCard').textContent = propostasGlobal.length;
-}
-
-// INICIALIZAR PÁGINA
-window.addEventListener('load', () => {
-    const modoSalvo = localStorage.getItem('modo_api') || 'teste';
-    definirModo(modoSalvo);
-    carregarPropostas();
-});
 </script>
 </body>
 </html>
