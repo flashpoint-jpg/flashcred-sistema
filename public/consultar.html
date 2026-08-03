@@ -26,21 +26,40 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
         body { background: #F8FAFC; min-height: 100vh; padding: 20px 16px; }
         .card { background: white; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 24px; max-width: 480px; margin: 0 auto; }
-        .btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: 600; border: none; cursor: pointer; transition: 0.2s; font-size: 16px; }
+        .btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: 600; border: none; cursor: pointer; transition: 0.2s; font-size: 16px; margin: 6px 0; }
         .btn:hover { opacity: 0.95; transform: translateY(-1px); }
         .btn-primary { background: #0A2463; color: white; }
-        .btn-sucesso { background: #10B981; color: white; margin-top: 12px; }
+        .btn-sucesso { background: #10B981; color: white; }
+        .btn-alerta { background: #F59E0B; color: white; }
+        .btn-imprimir { background: #6366F1; color: white; margin-top: 8px; }
         .input { width: 100%; padding: 14px; border: 1px solid #CBD5E1; border-radius: 12px; font-size: 16px; margin-bottom: 16px; }
         .status-aprovado { background: #D1FAE5; color: #065F46; padding: 10px; border-radius: 10px; text-align: center; font-weight: 600; margin: 16px 0; }
         .status-analise { background: #FEF3C7; color: #92400E; padding: 10px; border-radius: 10px; text-align: center; font-weight: 600; margin: 16px 0; }
         .linha-dado { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1F5F9; font-size: 15px; }
         .linha-dado strong { color: #1E293B; }
         .area-qrcode { display: flex; flex-direction: column; align-items: center; margin: 20px 0; padding: 16px; background: #FAFBFC; border-radius: 12px; }
-        .area-contrato { margin-top: 24px; padding: 16px; background: #F8FAFC; border-radius: 12px; max-height: 300px; overflow-y: auto; border: 1px solid #E2E8F0; font-size: 14px; line-height: 1.6; }
+        .area-contrato { margin-top: 24px; padding: 20px; background: #FFFFFF; border-radius: 12px; max-height: 320px; overflow-y: auto; border: 1px solid #E2E8F0; font-size: 14px; line-height: 1.7; }
         .selecionar-parcelas { margin: 16px 0; }
         select.input { cursor: pointer; }
         .aviso { font-size: 13px; color: #64748B; text-align: center; margin-top: 8px; }
         .hidden { display: none !important; }
+        .pix-aguardando { color: #92400E; font-style: italic; }
+        .pix-liberado { color: #065F46; font-weight: 500; }
+        .area-camera { background: #111827; border-radius: 12px; padding: 12px; margin: 16px 0; text-align: center; }
+        video, #previewSelfie { width: 100%; max-height: 320px; border-radius: 8px; object-fit: cover; }
+        .etapa { border-top: 1px solid #E2E8F0; padding-top: 16px; margin-top: 16px; }
+        .cabecalho-contrato { text-align: center; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #0A2463; }
+        .cabecalho-contrato h4 { font-size: 17px; font-weight: 700; color: #0A2463; }
+        .cabecalho-contrato p { font-size: 13px; color: #64748B; }
+
+        /* Estilo para impressão */
+        @media print {
+            body { background: white; padding: 0; }
+            .card { box-shadow: none; max-width: 100%; padding: 10px; }
+            .btn, .area-camera, .selecionar-parcelas, #resultado > div:nth-child(-n+5) { display: none !important; }
+            .area-contrato { max-height: unset; overflow: visible; border: none; }
+            .etapa { border: none; }
+        }
     </style>
 </head>
 <body>
@@ -62,6 +81,8 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 let dadosProposta = null;
+let streamCamera = null;
+let selfieBase64 = null;
 
 async function buscarProposta() {
     const cpf = limparCpf(document.getElementById('cpfBusca').value);
@@ -95,14 +116,15 @@ function renderizarResultado(p) {
     } else if(p.status === 'Reprovada') {
         conteudo += `<div class="text-center p-4 bg-red-50 text-red-700 rounded-xl font-semibold">❌ Proposta Reprovada</div>`;
     } else if(p.status === 'Aprovada') {
+        const jaAutorizado = p.selfie_contrato && p.contrato_aceito;
         conteudo += `
             <div class="status-aprovado">✅ Proposta Aprovada!</div>
-            <div class="linha-dado"><strong>Valor Total:</strong> R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}</div>
+            <div class="linha-dado"><strong>Valor Total dos Móveis:</strong> R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}</div>
             <div class="linha-dado"><strong>Valor da Entrada:</strong> R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}</div>
             
             <div class="selecionar-parcelas">
                 <label class="font-medium mb-2 block">Escolha a quantidade de parcelas:</label>
-                <select id="qtdParcelasEscolhida" class="input" onchange="atualizarValorParcela()">
+                <select id="qtdParcelasEscolhida" class="input" onchange="atualizarValorParcela()" ${jaAutorizado ? 'disabled' : ''}>
                     <option value="">Selecione</option>
                     ${Array.from({length: parseInt(p.qtd_parcelas||0)}, (_,i) => `<option value="${i+1}">${i+1} vezes</option>`).join('')}
                 </select>
@@ -111,47 +133,111 @@ function renderizarResultado(p) {
             <div class="linha-dado"><strong>Valor de Cada Parcela:</strong> R$ <span id="valorParcelaMostrar">0,00</span></div>
             <div class="linha-dado"><strong>Status da Entrada:</strong> ${p.pago ? '✅ Paga' : '⏳ Pendente'}</div>
 
-            <div class="area-qrcode" id="areaPix">
-                <p class="font-semibold text-center mb-2">Pagamento via Pix</p>
-                <div id="qrcodePix"></div>
-                <p class="text-sm text-center mt-2 font-mono bg-gray-100 p-2 rounded-lg break-all">${p.chave_pix || 'Chave Pix será liberada após confirmação'}</p>
-                <p class="aviso">Escaneie o código ou copie a chave para pagar a entrada</p>
-            </div>
-
-            <div class="area-contrato">
-                <h4 class="font-bold mb-2">📄 Termo de Contrato e Compromisso</h4>
-                <p>Pelo presente instrumento, o(a) cliente acima identificado(a) declara estar ciente e concordar com todas as condições do parcelamento oferecido pela Distribuidora Flash Point / FlashCred:</p>
-                <ul class="list-disc pl-5 mt-2 space-y-1">
+            <div class="area-contrato" id="areaContrato">
+                <div class="cabecalho-contrato">
+                    <h4>📄 TERMO DE CONTRATO DE COMPRA E PARCELAMENTO DE MÓVEIS</h4>
+                    <p>Distribuidora Flash Point - FlashCred</p>
+                </div>
+                <p>Pelo presente instrumento, as partes abaixo identificadas firmam contrato de compra e venda de móveis, nas seguintes condições:</p>
+                
+                <p class="font-semibold mt-3">1. DO COMPROMISSO DE ENTREGA</p>
+                <p><strong>A Distribuidora Flash Point se responsabiliza pela entrega dos móveis solicitados, exatamente conforme combinado, dentro do prazo e condições acordadas, logo após a confirmação do pagamento da entrada.</strong> Garantimos que os produtos serão entregues em perfeito estado, sem defeitos, conforme modelo e especificação escolhida.</p>
+                
+                <p class="font-semibold mt-3">2. DAS CONDIÇÕES DE PAGAMENTO</p>
+                <ul class="list-disc pl-5 mt-1 space-y-1">
                     <li>O valor da entrada deverá ser pago integralmente via Pix no prazo máximo de 24 horas após aprovação;</li>
                     <li>O não pagamento da entrada no prazo estipulado cancelará automaticamente a proposta;</li>
                     <li>As parcelas deverão ser pagas nas datas acordadas, com multa de 2% + juros de mora de 1% ao mês em caso de atraso;</li>
-                    <li>Após 3 parcelas consecutivas não pagas, o contrato poderá ser rescindido, o produto recolhido e o nome do cliente incluído nos órgãos de proteção ao crédito (SPC/Serasa);</li>
-                    <li>A entrega do móvel será feita após confirmação do pagamento da entrada;</li>
+                    <li>Após 3 parcelas consecutivas não pagas, o contrato poderá ser rescindido, os móveis poderão ser recolhidos e o nome do cliente incluído nos órgãos de proteção ao crédito (SPC/Serasa);</li>
                     <li>Todas as condições foram explicadas e o cliente declara aceitar o valor total, juros e quantidade de parcelas escolhida.</li>
                 </ul>
-                <p class="font-semibold mt-3">Ao clicar em "Li e Concordo com o Contrato", o cliente aceita todos os termos acima.</p>
+
+                <p class="font-semibold mt-3">3. DA ACEITAÇÃO</p>
+                <p>Ao tirar a selfie e clicar em confirmar, o cliente declara que leu, entendeu e concorda com TODAS as regras e compromissos acima, inclusive com a garantia de entrega dos móveis prestada pela Distribuidora Flash Point.</p>
             </div>
 
-            <button class="btn btn-sucesso mt-4" onclick="confirmarContrato()">✅ Li e Concordo com o Contrato</button>
+            <button type="button" class="btn btn-imprimir" onclick="window.print()">🖨️ Imprimir / Salvar Contrato em PDF</button>
+
+            <div class="etapa">
+                ${!jaAutorizado ? `
+                <h4 class="font-semibold mb-2">📸 Tirar Foto para Autorização do Contrato</h4>
+                <div class="area-camera">
+                    <video id="camera" autoplay playsinline class="hidden"></video>
+                    <img id="previewSelfie" class="hidden" alt="Sua foto para contrato">
+                    <button type="button" id="btnAbrirCamera" class="btn btn-alerta" onclick="abrirCamera()">📷 Abrir Câmera</button>
+                    <button type="button" id="btnCapturar" class="btn btn-sucesso hidden" onclick="capturarSelfie()">✅ Tirar Foto</button>
+                    <button type="button" id="btnRepetir" class="btn btn-alerta hidden" onclick="repetirFoto()">🔄 Tirar Novamente</button>
+                </div>
+                ` : `<p class="text-center text-sucesso font-semibold">✅ Foto de autorização já enviada e contrato aceito</p>`}
+            </div>
+
+            <button id="btnFinalizar" class="btn btn-sucesso mt-4" onclick="confirmarContrato()" ${jaAutorizado ? 'disabled' : ''}>
+                ${jaAutorizado ? '✅ Contrato Autorizado' : '📌 Li, Concordo e Autorizo com a Foto'}
+            </button>
+
+            <div class="etapa ${!jaAutorizado ? 'hidden' : ''}" id="areaPagamento">
+                <div class="area-qrcode">
+                    <p class="font-semibold text-center mb-2">Pagamento da Entrada via Pix</p>
+                    <div id="qrcodePix" class=""></div>
+                    <p class="text-sm text-center mt-2 font-mono bg-gray-100 p-2 rounded-lg break-all">
+                        ${p.chave_pix ? `<span class="pix-liberado">${p.chave_pix}</span>` : `<span class="pix-aguardando">Chave Pix será liberada após confirmação da loja</span>`}
+                    </p>
+                    <p class="aviso">Escaneie o código ou copie a chave para pagar a entrada e liberar a entrega dos móveis</p>
+                </div>
+            </div>
         `;
     }
 
     resultado.innerHTML = conteudo;
     resultado.classList.remove('hidden');
 
-    // Gerar QR Code se aprovado
-    if(p.status === 'Aprovada' && p.chave_pix) {
-        setTimeout(() => {
-            new QRCode(document.getElementById("qrcodePix"), {
-                text: p.chave_pix,
-                width: 180,
-                height: 180
-            });
-        }, 300);
+    if(p.status === 'Aprovada' && jaAutorizado && p.chave_pix) {
+        setTimeout(() => gerarQrCode(p.chave_pix), 300);
     }
 }
 
+async function abrirCamera() {
+    try {
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } });
+        const video = document.getElementById('camera');
+        video.srcObject = streamCamera;
+        video.classList.remove('hidden');
+        document.getElementById('btnAbrirCamera').classList.add('hidden');
+        document.getElementById('btnCapturar').classList.remove('hidden');
+        document.getElementById('previewSelfie').classList.add('hidden');
+        selfieBase64 = null;
+    } catch(e) {
+        alert('❌ Não foi possível acessar a câmera! Permita o acesso e tente novamente.');
+        console.error(e);
+    }
+}
+
+function capturarSelfie() {
+    const video = document.getElementById('camera');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    
+    selfieBase64 = canvas.toDataURL('image/jpeg', 0.8);
+    
+    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
+    
+    video.classList.add('hidden');
+    document.getElementById('previewSelfie').src = selfieBase64;
+    document.getElementById('previewSelfie').classList.remove('hidden');
+    document.getElementById('btnCapturar').classList.add('hidden');
+    document.getElementById('btnRepetir').classList.remove('hidden');
+}
+
+function repetirFoto() {
+    document.getElementById('previewSelfie').classList.add('hidden');
+    document.getElementById('btnRepetir').classList.add('hidden');
+    abrirCamera();
+}
+
 function atualizarValorParcela() {
+    if(!dadosProposta) return;
     const qtd = parseInt(document.getElementById('qtdParcelasEscolhida').value) || 0;
     const valorTotal = parseFloat(dadosProposta.valor_aprovado || 0);
     const valorEntrada = parseFloat(dadosProposta.valor_entrada || 0);
@@ -159,11 +245,40 @@ function atualizarValorParcela() {
     document.getElementById('valorParcelaMostrar').textContent = valorParcela.toFixed(2).replace('.', ',');
 }
 
-function confirmarContrato() {
-    alert('✅ Contrato aceito! Agora basta efetuar o pagamento da entrada para liberarmos o seu produto. Obrigado pela confiança!');
+function gerarQrCode(texto) {
+    const container = document.getElementById("qrcodePix");
+    container.innerHTML = '';
+    new QRCode(container, { text: texto, width: 180, height: 180 });
 }
 
-// Carregar por link direto
+async function confirmarContrato() {
+    if(!selfieBase64 && !dadosProposta.selfie_contrato) {
+        return alert('📸 É obrigatório tirar a selfie para autorizar o contrato!');
+    }
+    const qtdEscolhida = parseInt(document.getElementById('qtdParcelasEscolhida').value) || 0;
+    if(qtdEscolhida < 1) {
+        return alert('⚠️ Escolha a quantidade de parcelas primeiro!');
+    }
+
+    const atualizacao = {
+        contrato_aceito: true,
+        qtd_parcelas_escolhida: qtdEscolhida
+    };
+    if(selfieBase64) atualizacao.selfie_contrato = selfieBase64;
+
+    const { error } = await supabase
+        .from('propostas')
+        .update(atualizacao)
+        .eq('cpf', dadosProposta.cpf);
+
+    if(error) {
+        alert('❌ Erro ao confirmar: ' + error.message);
+    } else {
+        alert('✅ Contrato autorizado com sucesso! Agora já pode efetuar o pagamento da entrada para liberarmos a entrega dos seus móveis.');
+        renderizarResultado({...dadosProposta, ...atualizacao});
+    }
+}
+
 window.addEventListener('load', () => {
     const params = new URLSearchParams(window.location.search);
     const cpfParam = params.get('cpf');
