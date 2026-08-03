@@ -176,7 +176,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let senhaCorreta = 'flashcred2026';
 let listaPropostas = [];
-const LINK_SISTEMA = 'https://flashcred-sistema.onrender.com/acompanhar.html';
+const LINK_SISTEMA = 'https://flashcred-sistema.onrender.com/consultar.html';
 
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('chavePixGlobal').value = localStorage.getItem('chavePixGlobal') || '';
@@ -324,7 +324,7 @@ function abrirModalEditar(cpf) {
         </div>
         <div class="linha-calculo">
             <label>Qtd Parcelas (1-48):</label>
-            <input type="number" min="1" max="48" id="qtdParc" class="input input-pequeno" value="${proposta.qtd_parcelas_escolhida || 0}" oninput="atualizarCalculo()">
+            <input type="number" min="1" max="48" id="qtdParc" class="input input-pequeno" value="${proposta.qtd_parcelas_escolhida || ''}" placeholder="Defina o total" oninput="atualizarCalculo()">
         </div>
         <hr class="my-3">
         <div class="linha-calculo font-medium">
@@ -348,13 +348,16 @@ function fecharModalEditar() {
 async function salvarAprovar(cpf) {
     const chavePix = localStorage.getItem('chavePixGlobal') || '';
     const valorEntrada = parseFloat(document.getElementById('valorEntrada').value);
+    const qtdParc = parseInt(document.getElementById('qtdParc').value);
+    if(!qtdParc || qtdParc < 1) return alert('Informe a quantidade de parcelas de 1 até 48!');
+    
     const codigoPix = gerarPixCodigo(valorEntrada);
     
     const dados = {
         valor_aprovado: parseFloat(document.getElementById('valorTotal').value),
         valor_entrada: valorEntrada,
         valor_parcela: parseFloat(document.getElementById('valorParcela').value),
-        qtd_parcelas_escolhida: parseInt(document.getElementById('qtdParc').value),
+        qtd_parcelas_escolhida: qtdParc,
         status: 'Aprovada',
         chave_pix: chavePix,
         codigo_pix: codigoPix,
@@ -430,15 +433,17 @@ function imprimirContrato(proposta) {
 
 function abrirWhatsappProposta(proposta) {
     const cpfLimpo = limparCpf(proposta.cpf);
+    const cpfFmt = cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     const linkAcompanhamento = `${LINK_SISTEMA}?cpf=${cpfLimpo}`;
-    let mensagem = `Olá ${proposta.nome}! Tudo bem?\n\nSua proposta na FlashPoint/FlashCred foi: *${proposta.status || 'Em análise'}*`;
+    
+    let mensagem = `✨ *RESULTADO DA SUA PROPOSTA - FLASHCRED* ✨\n\nOlá *${proposta.nome}*! Tudo bem?\n\nSua proposta na Distribuidora Flash Point está:\n`;
 
     if(proposta.status === 'Aprovada') {
-        mensagem += `\n\n✅ Valor Aprovado: R$ ${parseFloat(proposta.valor_aprovado||0).toFixed(2).replace('.',',')}\n💸 Entrada: R$ ${parseFloat(proposta.valor_entrada||0).toFixed(2).replace('.',',')}\n📦 ${proposta.qtd_parcelas_escolhida || 0}x de R$ ${parseFloat(proposta.valor_parcela||0).toFixed(2).replace('.',',')}\n\n👉 Clique aqui para ver os detalhes, Pix e contrato: ${linkAcompanhamento}`;
+        mensagem += `✅ *APROVADA!*\n\n🎉 *PARABÉNS!*\n\n📋 *Dados do seu pedido:*\n💳 Valor Aprovado: *R$ ${parseFloat(proposta.valor_aprovado||0).toFixed(2).replace('.',',')}*\n💸 Entrada: *R$ ${parseFloat(proposta.valor_entrada||0).toFixed(2).replace('.',',')}*\n📦 Parcelas: *${proposta.qtd_parcelas_escolhida || 0}x de R$ ${parseFloat(proposta.valor_parcela||0).toFixed(2).replace('.',',')}*\n\n👉 *Clique aqui para ver detalhes, Pix e contrato:*\n${linkAcompanhamento}\n\n*Agradecemos pela confiança!* ✨`;
     } else if(proposta.status === 'Reprovada') {
-        mensagem += `\n\nInfelizmente não foi aprovada dessa vez, mas você pode fazer uma nova solicitação quando quiser pelo nosso site.\n${linkAcompanhamento}`;
+        mensagem += `❌ *REPROVADA*\n\nInfelizmente não foi possível aprovar dessa vez 😔\nMas você pode fazer uma nova solicitação quando quiser!\n\n👉 *Acesse para mais informações:*\n${linkAcompanhamento}\n\nEstamos à disposição! 🤝`;
     } else {
-        mensagem += `\n\nEstamos analisando, logo você terá o retorno. Acompanhe aqui: ${linkAcompanhamento}`;
+        mensagem += `⏳ *EM ANÁLISE*\n\nAinda estamos analisando sua solicitação.\nEm breve você receberá o retorno aqui mesmo.\n\n👉 *Acompanhe pelo link:*\n${linkAcompanhamento}\n\nAgradecemos a paciência! 🤍`;
     }
 
     const numero = limparCpf(proposta.telefone || '');
