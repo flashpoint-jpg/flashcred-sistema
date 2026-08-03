@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Administrativo | FlashCred</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1/dist/supabase.min.js"></script>
+    <!-- BIBLIOTECA CARREGADA CORRETAMENTE -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <style>
         :root {
             --primary: #0A2463;
@@ -87,43 +88,59 @@
 </div>
 
 <script>
-// ⚙️ CONFIGURAÇÃO CORRETA
+// ⚙️ CONFIGURAÇÃO
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3mlU3W55Y2s0CjZtxXkT2VjR3K9Rz0NnI2s1M3p5X7z6bX7kY5aQ3dF2gH9jK8lL7mN6bV8cX7z9';
 
-let supabase;
+let supabase = null;
 let propostaSelecionada = null;
 
-// 🚀 INICIO AUTOMÁTICO
-window.addEventListener('load', async () => {
+// 🚀 INICIA SOMENTE DEPOIS QUE A BIBLIOTECA CARREGOU
+function iniciarSistema() {
     try {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        console.log('✅ Conectado ao Supabase!');
-        await carregarDados();
-        setInterval(carregarDados, 10000); // Atualiza a cada 10s
-    } catch (erro) {
-        console.error('❌ Erro ao iniciar:', erro);
-        document.getElementById('listaPropostas').innerHTML = `<div class="aviso erro">Erro ao carregar sistema: ${erro.message}</div>`;
-    }
-});
+        // Verifica se a biblioteca existe
+        if (typeof window.supabase === 'undefined') {
+            throw new Error('Biblioteca do Supabase não carregou');
+        }
 
-// 📋 BUSCAR DADOS
+        // Cria a conexão corretamente
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        console.log('✅ Conectado com sucesso!');
+        
+        // Carrega os dados e atualiza automaticamente
+        carregarDados();
+        setInterval(carregarDados, 10000);
+    } catch (erro) {
+        console.error('❌ Erro:', erro);
+        document.getElementById('listaPropostas').innerHTML = `
+            <div class="aviso erro">
+                ❌ Erro ao iniciar: ${erro.message}<br>
+                Atualize a página e tente novamente.
+            </div>`;
+    }
+}
+
+// Chama a função quando a página estiver 100% pronta
+window.addEventListener('load', iniciarSistema);
+
+// 📋 BUSCAR PROPOSTAS
 async function carregarDados() {
-    if(!supabase) return;
+    if (!supabase) return;
+    
     try {
         const { data, error } = await supabase
             .from('propostas')
             .select('*')
             .order('id', { ascending: false });
 
-        if(error) throw error;
+        if (error) throw error;
         renderizarLista(data || []);
     } catch (erro) {
-        console.error('❌ Erro ao buscar propostas:', erro);
+        console.error('❌ Erro ao buscar:', erro);
         document.getElementById('listaPropostas').innerHTML = `
-            <div class="aviso erro" style="margin:10px;">
-                ❌ Não foi possível carregar<br>
-                <strong>Mensagem:</strong> ${erro.message || 'Verifique permissões no Supabase'}
+            <div class="aviso erro">
+                ❌ Não foi possível carregar as propostas<br>
+                Motivo: ${erro.message}
             </div>`;
     }
 }
@@ -132,7 +149,7 @@ function renderizarLista(lista) {
     const el = document.getElementById('listaPropostas');
     el.innerHTML = '';
 
-    if(lista.length === 0) {
+    if (lista.length === 0) {
         el.innerHTML = '<div style="padding:20px;text-align:center;color:#64748B;">Nenhuma solicitação recebida ainda.</div>';
         return;
     }
@@ -161,9 +178,9 @@ function selecionar(p) {
     document.getElementById('dStatus').textContent = p.status || 'Nova';
 }
 
-// ALTERAR STATUS
+// ✅ ALTERAR STATUS
 async function mudarStatus(novo) {
-    if(!propostaSelecionada) {
+    if (!propostaSelecionada) {
         mostrarAviso('Selecione uma proposta primeiro!', 'erro');
         return;
     }
@@ -174,16 +191,16 @@ async function mudarStatus(novo) {
             .update({ status: novo })
             .eq('id', propostaSelecionada.id);
 
-        if(error) throw error;
+        if (error) throw error;
         mostrarAviso(`Proposta ${novo} com sucesso!`, 'ok');
         await carregarDados();
-    } catch(e) {
+    } catch (e) {
         mostrarAviso('Erro: ' + e.message, 'erro');
     }
 }
 
 function enviarWhats() {
-    if(!propostaSelecionada) return;
+    if (!propostaSelecionada) return;
     const msg = encodeURIComponent(`Olá ${propostaSelecionada.nome}! Recebemos sua solicitação. Acesse: https://flashcred-sistema.onrender.com/consultar`);
     window.open(`https://wa.me/${propostaSelecionada.telefone.replace(/\D/g,'')}?text=${msg}`, '_blank');
 }
