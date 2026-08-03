@@ -328,7 +328,6 @@ async function salvarAprovacao(cpfOriginal) {
     const qtdParc = parseInt(document.getElementById('qtdParc').value) || 0;
     const valorParcela = parseFloat(document.getElementById('valorParcela').value) || 0;
     const chavePix = document.getElementById('chavePix').value.trim();
-
     const cpfLimpo = limparCpf(cpfOriginal);
 
     const { error } = await supabase.from('propostas').update({
@@ -337,7 +336,8 @@ async function salvarAprovacao(cpfOriginal) {
         valor_entrada: valorEntrada,
         qtd_parcelas: qtdParc,
         valor_parcela: valorParcela,
-        chave_pix: chavePix
+        chave_pix: chavePix,
+        pago: false
     }).eq('cpf', cpfLimpo);
     
     if(error) {
@@ -345,7 +345,6 @@ async function salvarAprovacao(cpfOriginal) {
     } else {
         mostrarNotificacao('✅ PROPOSTA APROVADA! Atualizado para o cliente.', 'sucesso');
         fecharModalEditar();
-        carregarPropostas();
     }
 }
 
@@ -380,17 +379,16 @@ async function registrarParcela(cpf) {
 
 function enviarWhatsApp(cpf) {
     const p = listaPropostas.find(x => limparCpf(x.cpf) === limparCpf(cpf));
-    if(!p) return alert('Cliente não encontrado.');
-    const cpfLimpo = limparCpf(p.cpf);
-    const link = `${window.location.origin}/acompanhar.html?cpf=${cpfLimpo}`;
-    const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\nAcesse aqui para ver o Pix: ${link}`;
+    if(!p) return;
+    const link = `${window.location.origin}/consultar.html?cpf=${limparCpf(p.cpf)}`;
+    const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\nAcesse aqui para ver o Pix e detalhes: ${link}`;
     window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
     mostrarNotificacao('Mensagem enviada!', 'sucesso');
 }
 
 function cobrarParcela(cpf) {
     const p = listaPropostas.find(x => limparCpf(x.cpf) === limparCpf(cpf));
-    if(!p) return alert('Cliente não encontrado.');
+    if(!p) return;
     const restante = parseInt(p.qtd_parcelas||0) - parseInt(p.parcelas_pagas||0);
     const msg = `Olá ${p.nome}! Tudo bem?\nLembrete de parcela: R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\nFaltam ${restante} parcelas. Contamos com seu pagamento!`;
     window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
