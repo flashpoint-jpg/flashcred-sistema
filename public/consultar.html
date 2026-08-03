@@ -23,159 +23,152 @@
         }
     </script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
-        body { background: #F8FAFC; min-height: 100vh; padding: 20px 15px; }
-        .card { background: white; border-radius: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 24px; max-width: 480px; margin: 0 auto; }
-        .btn { padding: 12px; border-radius: 10px; font-weight: 600; border: none; cursor: pointer; width: 100%; margin-top: 10px; transition: 0.2s; }
-        .btn:hover { opacity: 0.9; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
+        body { background: #F8FAFC; min-height: 100vh; padding: 20px 16px; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 24px; max-width: 480px; margin: 0 auto; }
+        .btn { width: 100%; padding: 14px; border-radius: 12px; font-weight: 600; border: none; cursor: pointer; transition: 0.2s; font-size: 16px; }
+        .btn:hover { opacity: 0.95; transform: translateY(-1px); }
         .btn-primary { background: #0A2463; color: white; }
-        .btn-sucesso { background: #10B981; color: white; }
-        .input { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 15px; margin: 8px 0 16px; }
-        .status-card { padding: 12px; border-radius: 10px; margin: 16px 0; text-align: center; font-weight: 500; }
-        .status-analise { background: #FEF3C7; color: #92400E; }
-        .status-aprovada { background: #D1FAE5; color: #065F46; }
-        .status-reprovada { background: #FEE2E2; color: #991B1B; }
-        .dado { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1F5F9; flex-wrap: wrap; gap: 4px; }
-        .qrcode { margin: 20px auto; display: flex; justify-content: center; }
+        .btn-sucesso { background: #10B981; color: white; margin-top: 12px; }
+        .input { width: 100%; padding: 14px; border: 1px solid #CBD5E1; border-radius: 12px; font-size: 16px; margin-bottom: 16px; }
+        .status-aprovado { background: #D1FAE5; color: #065F46; padding: 10px; border-radius: 10px; text-align: center; font-weight: 600; margin: 16px 0; }
+        .status-analise { background: #FEF3C7; color: #92400E; padding: 10px; border-radius: 10px; text-align: center; font-weight: 600; margin: 16px 0; }
+        .linha-dado { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1F5F9; font-size: 15px; }
+        .linha-dado strong { color: #1E293B; }
+        .area-qrcode { display: flex; flex-direction: column; align-items: center; margin: 20px 0; padding: 16px; background: #FAFBFC; border-radius: 12px; }
+        .area-contrato { margin-top: 24px; padding: 16px; background: #F8FAFC; border-radius: 12px; max-height: 300px; overflow-y: auto; border: 1px solid #E2E8F0; font-size: 14px; line-height: 1.6; }
+        .selecionar-parcelas { margin: 16px 0; }
+        select.input { cursor: pointer; }
+        .aviso { font-size: 13px; color: #64748B; text-align: center; margin-top: 8px; }
         .hidden { display: none !important; }
-        .bolinha-carregando { display: inline-block; width: 16px; height: 16px; border: 2px solid #92400E; border-top-color: transparent; border-radius: 50%; animation: rodar 1s linear infinite; margin-right: 8px; }
-        @keyframes rodar { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
+
 <div class="card">
     <h2 class="text-xl font-bold text-center text-primary mb-2">Acompanhar Minha Proposta</h2>
-    <p class="text-sm text-gray-600 text-center mb-4">Digite o seu CPF para ver o status</p>
+    <p class="text-center text-sm text-gray-500 mb-6">Digite o seu CPF para ver o status</p>
 
     <input type="text" id="cpfBusca" class="input" placeholder="Digite seu CPF" maxlength="14">
     <button class="btn btn-primary" onclick="buscarProposta()">Verificar Status</button>
 
-    <div id="resultadoBusca" class="hidden"></div>
+    <div id="resultado" class="hidden mt-6"></div>
 </div>
 
 <script>
-// Dados do Supabase IGUAIS os do painel
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { enabled: true } });
-
-let cpfAtual = null;
-let inscricaoTempoReal = null;
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
+let dadosProposta = null;
 
 async function buscarProposta() {
     const cpf = limparCpf(document.getElementById('cpfBusca').value);
-    if(!cpf || cpf.length !== 11) return alert('Digite um CPF válido!');
-    
-    // Cancela inscrição antiga se existir
-    if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
-    
-    cpfAtual = cpf;
-    document.getElementById('resultadoBusca').innerHTML = `
-        <div class="status-card status-analise">
-            <span class="bolinha-carregando"></span> Buscando proposta...
-        </div>
-    `;
-    document.getElementById('resultadoBusca').classList.remove('hidden');
+    if(cpf.length !== 11) return alert('Digite um CPF válido!');
 
-    // Carrega dados pela primeira vez
-    await carregarDadosProposta();
-
-    // LIGA A ATUALIZAÇÃO EM TEMPO REAL PARA ESSE CPF
-    inscricaoTempoReal = supabase.channel(`proposta-${cpfAtual}`)
-        .on('postgres_changes', { 
-            event: 'UPDATE', 
-            schema: 'public', 
-            table: 'propostas', 
-            filter: `cpf=eq.${cpfAtual}` 
-        }, () => {
-            // Atualiza automaticamente quando você aprovar no painel
-            carregarDadosProposta();
-        })
-        .subscribe();
-}
-
-async function carregarDadosProposta() {
-    if(!cpfAtual) return;
-    
     const { data, error } = await supabase
         .from('propostas')
         .select('*')
-        .eq('cpf', cpfAtual)
+        .eq('cpf', cpf)
         .single();
-    
+
     if(error || !data) {
-        document.getElementById('resultadoBusca').innerHTML = `<p class="text-center text-red-500 py-4">Nenhuma proposta encontrada para este CPF.</p>`;
+        document.getElementById('resultado').innerHTML = `<p class="text-center text-red-500 mt-4">Proposta não encontrada!</p>`;
+        document.getElementById('resultado').classList.remove('hidden');
         return;
     }
 
+    dadosProposta = data;
+    renderizarResultado(data);
+}
+
+function renderizarResultado(p) {
+    const resultado = document.getElementById('resultado');
     let conteudo = `
-        <div class="dado"><strong>Nome:</strong> <span>${data.nome || '-'}</span></div>
-        <div class="dado"><strong>CPF:</strong> <span>${limparCpf(data.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span></div>
+        <div class="linha-dado"><strong>Nome:</strong> ${p.nome || '-'}</div>
+        <div class="linha-dado"><strong>CPF:</strong> ${limparCpf(p.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</div>
     `;
 
-    // Status NOVA / EM ANÁLISE
-    if(!data.status || data.status === 'Nova') {
+    if(p.status === 'Nova') {
+        conteudo += `<div class="status-analise">🔄 Em análise, aguarde a aprovação!</div>`;
+    } else if(p.status === 'Reprovada') {
+        conteudo += `<div class="text-center p-4 bg-red-50 text-red-700 rounded-xl font-semibold">❌ Proposta Reprovada</div>`;
+    } else if(p.status === 'Aprovada') {
         conteudo += `
-            <div class="status-card status-analise mt-4">
-                <span class="bolinha-carregando"></span> Em análise, aguarde...
+            <div class="status-aprovado">✅ Proposta Aprovada!</div>
+            <div class="linha-dado"><strong>Valor Total:</strong> R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}</div>
+            <div class="linha-dado"><strong>Valor da Entrada:</strong> R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}</div>
+            
+            <div class="selecionar-parcelas">
+                <label class="font-medium mb-2 block">Escolha a quantidade de parcelas:</label>
+                <select id="qtdParcelasEscolhida" class="input" onchange="atualizarValorParcela()">
+                    <option value="">Selecione</option>
+                    ${Array.from({length: parseInt(p.qtd_parcelas||0)}, (_,i) => `<option value="${i+1}">${i+1} vezes</option>`).join('')}
+                </select>
             </div>
-            <p class="text-center text-gray-600 text-sm mt-2">A atualização é automática, você não precisa recarregar a página.</p>
-        `;
-    } 
-    // Status REPROVADA
-    else if(data.status === 'Reprovada') {
-        conteudo += `
-            <div class="status-card status-reprovada mt-4">❌ Proposta Reprovada</div>
-            <p class="text-center text-gray-600 text-sm mt-2">Entre em contato com a FlashPoint para mais informações.</p>
-        `;
-    } 
-    // Status APROVADA - AQUI VAI APARECER TUDO QUANDO VOCÊ APROVAR
-    else if(data.status === 'Aprovada') {
-        conteudo += `
-            <div class="status-card status-aprovada mt-4">✅ Proposta Aprovada!</div>
-            <div class="mt-4">
-                <div class="dado"><strong>Valor Total:</strong> <span>R$ ${parseFloat(data.valor_aprovado||0).toFixed(2).replace('.',',')}</span></div>
-                <div class="dado"><strong>Valor da Entrada:</strong> <span>R$ ${parseFloat(data.valor_entrada||0).toFixed(2).replace('.',',')}</span></div>
-                <div class="dado"><strong>Quantidade de Parcelas:</strong> <span>${data.qtd_parcelas || 0} vezes</span></div>
-                <div class="dado"><strong>Valor de Cada Parcela:</strong> <span>R$ ${parseFloat(data.valor_parcela||0).toFixed(2).replace('.',',')}</span></div>
-            </div>
-        `;
+            
+            <div class="linha-dado"><strong>Valor de Cada Parcela:</strong> R$ <span id="valorParcelaMostrar">0,00</span></div>
+            <div class="linha-dado"><strong>Status da Entrada:</strong> ${p.pago ? '✅ Paga' : '⏳ Pendente'}</div>
 
-        // Mostra Pix se tiver chave cadastrada
-        if(data.chave_pix) {
-            conteudo += `
-                <div class="mt-4 p-4 bg-green-50 rounded-xl">
-                    <p class="text-center font-semibold text-green-800 mb-2">Pague a entrada via Pix:</p>
-                    <p class="text-center text-sm mb-2">Chave Pix: <code class="bg-white p-1 rounded break-all">${data.chave_pix}</code></p>
-                    <div id="qrcode-pix" class="qrcode"></div>
-                    <p class="text-center text-xs text-gray-500 mt-2">Após o pagamento, envie o comprovante para o WhatsApp</p>
-                </div>
-            `;
-        }
+            <div class="area-qrcode" id="areaPix">
+                <p class="font-semibold text-center mb-2">Pagamento via Pix</p>
+                <div id="qrcodePix"></div>
+                <p class="text-sm text-center mt-2 font-mono bg-gray-100 p-2 rounded-lg break-all">${p.chave_pix || 'Chave Pix será liberada após confirmação'}</p>
+                <p class="aviso">Escaneie o código ou copie a chave para pagar a entrada</p>
+            </div>
+
+            <div class="area-contrato">
+                <h4 class="font-bold mb-2">📄 Termo de Contrato e Compromisso</h4>
+                <p>Pelo presente instrumento, o(a) cliente acima identificado(a) declara estar ciente e concordar com todas as condições do parcelamento oferecido pela Distribuidora Flash Point / FlashCred:</p>
+                <ul class="list-disc pl-5 mt-2 space-y-1">
+                    <li>O valor da entrada deverá ser pago integralmente via Pix no prazo máximo de 24 horas após aprovação;</li>
+                    <li>O não pagamento da entrada no prazo estipulado cancelará automaticamente a proposta;</li>
+                    <li>As parcelas deverão ser pagas nas datas acordadas, com multa de 2% + juros de mora de 1% ao mês em caso de atraso;</li>
+                    <li>Após 3 parcelas consecutivas não pagas, o contrato poderá ser rescindido, o produto recolhido e o nome do cliente incluído nos órgãos de proteção ao crédito (SPC/Serasa);</li>
+                    <li>A entrega do móvel será feita após confirmação do pagamento da entrada;</li>
+                    <li>Todas as condições foram explicadas e o cliente declara aceitar o valor total, juros e quantidade de parcelas escolhida.</li>
+                </ul>
+                <p class="font-semibold mt-3">Ao clicar em "Li e Concordo com o Contrato", o cliente aceita todos os termos acima.</p>
+            </div>
+
+            <button class="btn btn-sucesso mt-4" onclick="confirmarContrato()">✅ Li e Concordo com o Contrato</button>
+        `;
     }
 
-    document.getElementById('resultadoBusca').innerHTML = conteudo;
+    resultado.innerHTML = conteudo;
+    resultado.classList.remove('hidden');
 
-    // Gera QR Code depois de inserir o conteúdo
-    if(data?.chave_pix && data.status === 'Aprovada') {
-        new QRCode(document.getElementById('qrcode-pix'), { 
-            text: data.chave_pix, 
-            width: 180, 
-            height: 180,
-            colorDark : "#0A2463",
-            colorLight : "#ffffff"
-        });
+    // Gerar QR Code se aprovado
+    if(p.status === 'Aprovada' && p.chave_pix) {
+        setTimeout(() => {
+            new QRCode(document.getElementById("qrcodePix"), {
+                text: p.chave_pix,
+                width: 180,
+                height: 180
+            });
+        }, 300);
     }
 }
 
-// Carrega automaticamente se acessar por link com o CPF
+function atualizarValorParcela() {
+    const qtd = parseInt(document.getElementById('qtdParcelasEscolhida').value) || 0;
+    const valorTotal = parseFloat(dadosProposta.valor_aprovado || 0);
+    const valorEntrada = parseFloat(dadosProposta.valor_entrada || 0);
+    const valorParcela = qtd > 0 ? (valorTotal - valorEntrada) / qtd : 0;
+    document.getElementById('valorParcelaMostrar').textContent = valorParcela.toFixed(2).replace('.', ',');
+}
+
+function confirmarContrato() {
+    alert('✅ Contrato aceito! Agora basta efetuar o pagamento da entrada para liberarmos o seu produto. Obrigado pela confiança!');
+}
+
+// Carregar por link direto
 window.addEventListener('load', () => {
-    const parametros = new URLSearchParams(window.location.search);
-    const cpfLink = limparCpf(parametros.get('cpf'));
-    if(cpfLink && cpfLink.length === 11) {
-        document.getElementById('cpfBusca').value = cpfLink;
+    const params = new URLSearchParams(window.location.search);
+    const cpfParam = params.get('cpf');
+    if(cpfParam) {
+        document.getElementById('cpfBusca').value = limparCpf(cpfParam);
         buscarProposta();
     }
 });
