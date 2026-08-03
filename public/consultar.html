@@ -6,6 +6,7 @@
     <title>Acompanhar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -28,6 +29,7 @@
         .btn { width: 100%; padding: 14px; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 16px; transition: 0.2s; }
         .btn-primary { background: #0A2463; color: white; }
         .btn-primary:hover { background: #081d45; }
+        .btn-whatsapp { background: #25D366; color: white; margin-top: 10px; }
         .status { padding: 10px 16px; border-radius: 10px; font-weight: 600; display: inline-block; margin: 12px 0; font-size: 15px; }
         .status.Nova { background: #FEF3C7; color: #92400E; }
         .status.Aprovada { background: #D1FAE5; color: #065F46; }
@@ -38,13 +40,14 @@
         .carregando { display: none; text-align: center; padding: 20px; }
         .spinner { width: 28px; height: 28px; border: 3px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: girar 0.8s linear infinite; margin: 0 auto; }
         @keyframes girar { to { transform: rotate(360deg); } }
+        .qrcode { display: flex; justify-content: center; margin: 16px 0; padding: 12px; background: white; border-radius: 12px; }
     </style>
 </head>
 <body>
 
 <div class="card">
     <h2 class="text-2xl font-bold text-center text-primary mb-2">Acompanhar Minha Proposta</h2>
-    <p class="text-center text-gray-500 mb-6">Digite o CPF que usou para se cadastrar</p>
+    <p class="text-center text-gray-500 mb-6">Digite o CPF que usou para se cadastrar ou clique no link que recebemos</p>
     
     <label class="font-medium text-gray-700">Seu CPF</label>
     <input type="text" id="cpfBusca" class="input" placeholder="Ex: 123.456.789-00 ou 12345678900" maxlength="18">
@@ -67,6 +70,16 @@ function limpar(cpf) {
     return cpf.replace(/\D/g, '');
 }
 
+// ✅ CARREGA AUTOMÁTICO SE VIAR PELO LINK
+window.addEventListener('load', () => {
+    const parametros = new URLSearchParams(window.location.search);
+    const cpfLink = parametros.get('cpf');
+    if(cpfLink && limpar(cpfLink).length === 11) {
+        document.getElementById('cpfBusca').value = cpfLink;
+        document.getElementById('btnBuscar').click();
+    }
+});
+
 document.getElementById('btnBuscar').addEventListener('click', async () => {
     const cpfDigitado = limpar(document.getElementById('cpfBusca').value);
     
@@ -79,7 +92,6 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
     document.getElementById('resultado').style.display = 'none';
 
     try {
-        // ✅ REMOVIDO O ORDER POR created_at QUE NÃO EXISTE
         const { data, error } = await supabase
             .from('propostas')
             .select('*')
@@ -95,7 +107,7 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
             document.getElementById('resultado').innerHTML = `
                 <div class="p-4 bg-red-50 text-red-700 rounded-xl text-center">
                     ❌ Nenhuma proposta encontrada.<br>
-                    Se acabou de enviar, aguarde alguns instantes ou confira o número do CPF.
+                    Verifique o CPF ou aguarde o envio da solicitação.
                 </div>
             `;
             return;
@@ -126,7 +138,12 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
             <div class="mt-4 p-4 bg-green-50 rounded-xl border border-green-200">
                 <p class="font-semibold text-green-800 mb-2">💳 Chave Pix para Pagamento:</p>
                 <p class="font-mono text-sm bg-white p-3 rounded-lg break-all">${p.chave_pix || 'Aguardando geração...'}</p>
+                <div id="qrcode-pix" class="qrcode"></div>
             </div>
+
+            <button class="btn btn-whatsapp" onclick="window.open('https://wa.me/${p.telefone}?text=${encodeURIComponent(`Olá ${p.nome}, segue o link com os detalhes da sua proposta: ${window.location.href}`)}', '_blank')">
+                <i class="fa-brands fa-whatsapp"></i> Enviar por WhatsApp
+            </button>
             ` : p.status === 'Nova' ? `
             <div class="resumo text-center">
                 <p class="text-gray-700 mb-2">✅ Sua proposta foi recebida!</p>
@@ -139,6 +156,15 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
             </div>
             `}
         `;
+
+        // Gera QR Code se tiver chave Pix
+        if(p.chave_pix && p.status === 'Aprovada') {
+            new QRCode(document.getElementById("qrcode-pix"), {
+                text: p.chave_pix,
+                width: 180,
+                height: 180
+            });
+        }
 
     } catch (erro) {
         document.getElementById('carregando').style.display = 'none';
