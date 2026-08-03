@@ -24,7 +24,7 @@
     </script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #F8FAFC; padding: 16px; min-height: 100vh; }
+        body { background: #F8FAFC; padding: 16px; min-height: 100vh; font-family: Arial, sans-serif; }
         
         .caixa {
             background: white;
@@ -44,7 +44,7 @@
         }
         .input, .select {
             width: 100%;
-            padding: 10px 14px;
+            padding: 12px 14px;
             border: 1px solid #CBD5E1;
             border-radius: 8px;
             font-size: 15px;
@@ -54,7 +54,7 @@
         .input:focus, .select:focus { outline: none; border-color: #0A2463; box-shadow: 0 0 0 2px rgba(10, 36, 99, 0.1); }
         .btn {
             width: 100%;
-            padding: 10px 16px;
+            padding: 12px 16px;
             border: none;
             border-radius: 8px;
             font-size: 15px;
@@ -83,7 +83,7 @@
         
         .status {
             text-align: center;
-            padding: 10px;
+            padding: 12px;
             border-radius: 8px;
             font-weight: 600;
             margin: 16px 0;
@@ -117,7 +117,7 @@
             color: #065F46;
             margin: 6px 0;
         }
-        .destaque-parcelas {
+        .resumo-final {
             background: #FFFBEB;
             border: 1px solid #F59E0B;
             padding: 16px;
@@ -125,7 +125,7 @@
             text-align: center;
             margin: 16px 0;
         }
-        .destaque-parcelas .valor {
+        .resumo-final .valor {
             font-size: 20px;
             font-weight: 600;
             color: #92400E;
@@ -220,7 +220,7 @@
             .assinaturas { display: flex; justify-content: space-between; margin-top: 60px; }
             .linha-assinatura { border-top: 1px solid #333; width: 220px; text-align: center; padding-top: 8px; font-size: 11pt; }
             .data-local { text-align: center; margin-top: 40px; font-size: 11pt; }
-            .btn, .titulo, .areaBusca, .status, .dados, .destaque-entrada, .destaque-parcelas, .area-escolha-parcelas, .check-aceito, .area-camera, .area-pagamento, .consultar-outro { display: none !important; }
+            .btn, .titulo, .areaBusca, .status, .dados, .destaque-entrada, .resumo-final, .area-escolha-parcelas, .check-aceito, .area-camera, .area-pagamento, .consultar-outro { display: none !important; }
             @page { size: A4; margin: 2cm; }
         }
     </style>
@@ -231,8 +231,8 @@
     <h2 class="titulo">📋 Acompanhe sua Proposta</h2>
 
     <div id="areaBusca">
-        <input type="text" id="cpfBusca" class="input" placeholder="Digite seu CPF" maxlength="18">
-        <button class="btn btn-principal" onclick="buscar()">
+        <input type="text" id="cpfBusca" class="input" placeholder="Digite seu CPF (apenas números)" maxlength="14">
+        <button class="btn btn-principal" onclick="buscarProposta()">
             <i class="fa-solid fa-magnifying-glass"></i> Consultar
         </button>
     </div>
@@ -241,7 +241,7 @@
         <span class="bolinha-carregando"></span> Buscando sua proposta...
     </div>
 
-    <div id="resultado" class="esconder"></div>
+    <div id="resultadoBusca" class="esconder"></div>
 </div>
 
 <!-- ÁREA EXCLUSIVA PARA IMPRESSÃO -->
@@ -256,9 +256,11 @@ let propostaAtual = null;
 let streamCamera = null;
 let fotoBase64 = null;
 
-function limparNumeros(v) { return String(v||'').replace(/\D/g,''); }
+function limparApenasNumeros(valor) {
+    return String(valor || '').replace(/\D/g, '');
+}
 
-function gerarOpcoesParcelas(maximo) {
+function gerarListaParcelas(maximo) {
     let opcoes = '';
     for(let i = 1; i <= maximo; i++) {
         opcoes += `<option value="${i}">${i}x</option>`;
@@ -266,17 +268,18 @@ function gerarOpcoesParcelas(maximo) {
     return opcoes;
 }
 
-function atualizarValorParcela() {
+function calcularEAtualizarValores() {
     if(!propostaAtual) return;
-    const qtdEscolhida = parseInt(document.getElementById('parcelasEscolhidas').value);
-    const valorTotal = parseFloat(propostaAtual.valor_aprovado);
-    const valorEntrada = parseFloat(propostaAtual.valor_entrada);
+    const qtdEscolhida = parseInt(document.getElementById('parcelasEscolha').value);
+    const valorTotal = parseFloat(propostaAtual.valor_aprovado || 0);
+    const valorEntrada = parseFloat(propostaAtual.valor_entrada || 0);
     const valorComJuros = valorTotal * 1.06;
     const valorRestante = valorComJuros - valorEntrada;
     const valorParcela = valorRestante / qtdEscolhida;
     
-    document.getElementById('valorParcelaEscolhida').textContent = `R$ ${valorParcela.toFixed(2).replace('.',',')}`;
-    document.getElementById('resumoParcelas').textContent = `${qtdEscolhida}x de R$ ${valorParcela.toFixed(2).replace('.',',')}`;
+    document.getElementById('valorParcela').textContent = `R$ ${valorParcela.toFixed(2).replace('.', ',')}`;
+    document.getElementById('resumoParcelas').textContent = `${qtdEscolhida}x de R$ ${valorParcela.toFixed(2).replace('.', ',')}`;
+    
     propostaAtual.qtd_escolhida = qtdEscolhida;
     propostaAtual.valor_parcela_final = valorParcela;
     atualizarContratoImpressao();
@@ -297,7 +300,7 @@ function atualizarContratoImpressao() {
         <div class="dados-contrato">
             <p><strong>CONTRATANTE:</strong> Distribuidora Flash Point</p>
             <p><strong>CONTRATADO:</strong> ${propostaAtual.nome}</p>
-            <p><strong>CPF:</strong> ${propostaAtual.cpf}</p>
+            <p><strong>CPF:</strong> ${propostaAtual.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
             <p><strong>VALOR TOTAL:</strong> R$ ${parseFloat(propostaAtual.valor_aprovado||0).toFixed(2).replace('.',',')}</p>
             <p><strong>ENTRADA:</strong> R$ ${parseFloat(propostaAtual.valor_entrada||0).toFixed(2).replace('.',',')}</p>
             <p><strong>PARCELAMENTO:</strong> ${qtd}x de R$ ${valorParc}</p>
@@ -360,10 +363,10 @@ function tirarFoto() {
     document.getElementById('btnProsseguir').classList.remove('esconder');
 }
 
-async function salvarConfirmacao() {
+async function salvarConfirmacaoNoSistema() {
     if(!propostaAtual) return;
     try {
-        const dadosAtualizacao = {
+        const dadosAtualizar = {
             contrato_aceito: true,
             data_aceite: new Date().toISOString(),
             parcelas_escolhidas: propostaAtual.qtd_escolhida,
@@ -371,32 +374,30 @@ async function salvarConfirmacao() {
         };
         
         if(fotoBase64) {
-            dadosAtualizacao.foto_confirmacao = fotoBase64;
+            dadosAtualizar.foto_confirmacao = fotoBase64;
         }
         
         const { error } = await supabase
             .from('propostas')
-            .update(dadosAtualizacao)
+            .update(dadosAtualizar)
             .eq('id', propostaAtual.id);
         
-        if(error) console.error('Erro ao salvar:', error);
-    } catch (e) {
-        console.error('Erro:', e);
+        if(error) console.error('Erro ao salvar confirmação:', error);
+    } catch (erro) {
+        console.error('Erro geral:', erro);
     }
 }
 
-async function aceitarContrato() {
+function aoAceitarContrato() {
     const aceito = document.getElementById('aceitoContrato').checked;
-    if(aceito) {
-        document.getElementById('areaCamera').classList.remove('esconder');
-    } else {
-        document.getElementById('areaCamera').classList.add('esconder');
+    document.getElementById('areaCamera').classList.toggle('esconder', !aceito);
+    if(!aceito) {
         document.getElementById('areaPagamento').classList.add('esconder');
     }
 }
 
-async function liberarPagamento() {
-    await salvarConfirmacao();
+async function liberarPagamentoPix() {
+    await salvarConfirmacaoNoSistema();
     document.getElementById('areaCamera').classList.add('esconder');
     document.getElementById('areaPagamento').classList.remove('esconder');
     
@@ -412,26 +413,156 @@ async function liberarPagamento() {
     }
 }
 
-async function buscar() {
-    const cpf = limparNumeros(document.getElementById('cpfBusca').value);
-    if(!cpf || cpf.length !== 11) { alert('Digite um CPF válido!'); return; }
+async function buscarProposta() {
+    const cpfInformado = limparApenasNumeros(document.getElementById('cpfBusca').value);
+    if(!cpfInformado || cpfInformado.length !== 11) {
+        alert('Por favor, digite um CPF válido com 11 números!');
+        return;
+    }
 
     document.getElementById('areaBusca').classList.add('esconder');
-    document.getElementById('resultado').classList.add('esconder');
+    document.getElementById('resultadoBusca').classList.add('esconder');
     document.getElementById('carregando').classList.remove('esconder');
 
     try {
         const { data, error } = await supabase
             .from('propostas')
             .select('*')
-            .eq('cpf', cpf)
+            .eq('cpf', cpfInformado)
             .order('created_at', { ascending: false })
             .limit(1);
 
         document.getElementById('carregando').classList.add('esconder');
 
         if(error || !data || data.length === 0) {
-            document.getElementById('resultado').innerHTML = `
+            document.getElementById('resultadoBusca').innerHTML = `
                 <div class="text-center py-4">
                     <p class="text-lg font-semibold text-red-600">Proposta não encontrada</p>
-                    <p class="text-sm mt-2">Verifiqu
+                    <p class="text-sm mt-2">Verifique o CPF ou aguarde alguns minutos se acabou de enviar a solicitação.</p>
+                    <button class="btn btn-alerta mt-4" onclick="voltarParaBusca()">🔙 Consultar outro CPF</button>
+                </div>
+            `;
+            document.getElementById('resultadoBusca').classList.remove('esconder');
+            return;
+        }
+
+        propostaAtual = data[0];
+        let conteudoTela = '';
+
+        if(!propostaAtual.status || propostaAtual.status === 'Nova') {
+            conteudoTela = `
+                <div class="status status-nova"><span class="bolinha-carregando"></span> EM ANÁLISE</div>
+                <p class="text-center text-sm mt-3">Estamos analisando sua solicitação. Em breve retornaremos com o resultado.</p>
+            `;
+        } else if(propostaAtual.status === 'Reprovada') {
+            conteudoTela = `
+                <div class="status status-reprovada">❌ REPROVADA</div>
+                <p class="text-center text-sm mt-3">Infelizmente não foi possível aprovar no momento. Você pode tentar novamente depois.</p>
+            `;
+        } else if(propostaAtual.status === 'Aprovada') {
+            const maxParcelasPermitidas = parseInt(propostaAtual.qtd_parcelas_escolhida) || 12;
+            conteudoTela = `
+                <div class="status status-aprovada">✅ APROVADA COM SUCESSO!</div>
+                
+                <div class="dados">
+                    <p><strong>Valor Total Aprovado:</strong> R$ ${parseFloat(propostaAtual.valor_aprovado||0).toFixed(2).replace('.',',')}</p>
+                </div>
+
+                <div class="destaque-entrada">
+                    <p class="font-medium">💳 Valor da Entrada:</p>
+                    <div class="valor">R$ ${parseFloat(propostaAtual.valor_entrada||0).toFixed(2).replace('.',',')}</div>
+                </div>
+
+                <div class="area-escolha-parcelas">
+                    <p>📌 Escolha a quantidade de parcelas que cabe no seu bolso:</p>
+                    <select id="parcelasEscolha" class="select" onchange="calcularEAtualizarValores()">
+                        ${gerarListaParcelas(maxParcelasPermitidas)}
+                    </select>
+                    <p class="mt-2"><strong>Valor da parcela:</strong> <span id="valorParcela">R$ 0,00</span></p>
+                </div>
+
+                <div class="resumo-final">
+                    <p class="font-medium">📋 Resumo Final:</p>
+                    <div class="valor" id="resumoParcelas">___x de R$ ___</div>
+                </div>
+
+                <div class="area-contrato">
+                    <h5>📄 RESUMO DO CONTRATO</h5>
+                    <p>Distribuidora Flash Point - FlashCred</p>
+                    <br>
+                    <p>1. Compra de móveis nas condições aprovadas.</p>
+                    <p>2. Entrada via Pix, restante nas parcelas escolhidas.</p>
+                    <p>3. Atraso gera multa de 2% + juros de mora e registro no SPC/Serasa.</p>
+                    <p>4. Entrega após confirmação do pagamento da entrada.</p>
+                    <p>5. Ao concordar, você aceita todas as condições legais e confirma com foto.</p>
+                </div>
+
+                <button class="btn btn-secundario" onclick="atualizarContratoImpressao(); window.print()">🖨️ Imprimir Contrato Completo</button>
+                
+                <label class="check-aceito">
+                    <input type="checkbox" id="aceitoContrato" onchange="aoAceitarContrato()">
+                    Li e concordo com todos os termos do contrato
+                </label>
+
+                <div id="areaCamera" class="area-camera esconder">
+                    <p class="font-medium mb-2">📸 Confirme sua identificação com uma foto:</p>
+                    <video id="cameraPreview" autoplay playsinline></video>
+                    <img id="fotoConfirmacao" alt="Foto de confirmação">
+                    <button type="button" id="btnAbrirCamera" class="btn btn-principal" onclick="abrirCamera()">📷 Abrir Câmera</button>
+                    <button type="button" id="btnTirarFoto" class="btn btn-sucesso esconder" onclick="tirarFoto()">✅ Tirar Foto</button>
+                    <button type="button" id="btnProsseguir" class="btn btn-sucesso esconder" onclick="liberarPagamentoPix()">✅ Prosseguir para Pagamento</button>
+                </div>
+
+                <div id="areaPagamento" class="esconder">
+                    ${propostaAtual.codigo_pix ? `
+                    <div class="area-pagamento">
+                        <h4>💳 Pagamento da Entrada via Pix</h4>
+                        <div id="qrcode"></div>
+                        <p class="text-sm mb-2">Ou use o código abaixo:</p>
+                        <div class="codigo-pix" id="codigoPix">${propostaAtual.codigo_pix}</div>
+                        <button class="btn btn-sucesso" onclick="navigator.clipboard.writeText('${propostaAtual.codigo_pix}').then(() => alert('✅ Código Pix copiado com sucesso!'))">
+                            <i class="fa-solid fa-copy"></i> Copiar Código Pix
+                        </button>
+                        <p class="aviso-pagamento">✅ Assim que confirmarmos o pagamento, enviamos seu pedido imediatamente!</p>
+                    </div>
+                    ` : '<p class="text-center text-amber-600 py-3">Código Pix será liberado após confirmação do contrato.</p>'}
+                </div>
+            `;
+        }
+
+        document.getElementById('resultadoBusca').innerHTML = `
+            <h3 class="text-xl font-semibold text-primary text-center mb-3">Olá ${propostaAtual.nome}!</h3>
+            ${conteudoTela}
+            <button class="btn btn-alerta mt-4 consultar-outro" onclick="voltarParaBusca()">🔙 Consultar outro CPF</button>
+        `;
+        document.getElementById('resultadoBusca').classList.remove('esconder');
+
+        // JÁ CALCULA OS VALORES AUTOMATICAMENTE AO CARREGAR
+        if(propostaAtual && propostaAtual.status === 'Aprovada') {
+            setTimeout(() => calcularEAtualizarValores(), 100);
+        }
+
+    } catch(erro) {
+        document.getElementById('carregando').classList.add('esconder');
+        document.getElementById('resultadoBusca').innerHTML = `
+            <div class="text-center py-4">
+                <p class="text-lg font-semibold text-red-600">Erro ao buscar proposta</p>
+                <p class="text-sm mt-2">Verifique sua conexão e tente novamente.</p>
+                <button class="btn btn-alerta mt-4" onclick="voltarParaBusca()">🔙 Tentar novamente</button>
+            </div>
+        `;
+        document.getElementById('resultadoBusca').classList.remove('esconder');
+    }
+}
+
+function voltarParaBusca() {
+    document.getElementById('resultadoBusca').classList.add('esconder');
+    document.getElementById('areaBusca').classList.remove('esconder');
+    document.getElementById('cpfBusca').value = '';
+    propostaAtual = null;
+    fotoBase64 = null;
+    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
+}
+</script>
+</body>
+</html>
