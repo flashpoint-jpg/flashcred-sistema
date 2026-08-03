@@ -6,6 +6,7 @@
     <title>Acompanhar Minha Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -23,17 +24,14 @@
     </script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
-        body { background: #F8FAFC; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 28px; width: 100%; max-width: 480px; }
+        body { background: #F8FAFC; min-height: 100vh; padding: 20px; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 28px; max-width: 520px; margin: 0 auto; }
         .titulo { font-size: 22px; font-weight: 700; color: #0A2463; text-align: center; margin-bottom: 8px; }
-        .subtitulo { font-size: 14px; color: #64748B; text-align: center; margin-bottom: 24px; line-height: 1.5; }
         .input { width: 100%; padding: 14px 16px; border: 1px solid #CBD5E1; border-radius: 12px; font-size: 16px; margin-bottom: 16px; }
-        .input:focus { outline: none; border-color: #0A2463; box-shadow: 0 0 0 3px rgba(10, 36, 99, 0.1); }
         .btn { width: 100%; padding: 14px; border-radius: 12px; border: none; font-weight: 600; font-size: 16px; cursor: pointer; transition: 0.2s; }
         .btn-primary { background: #0A2463; color: white; }
-        .btn-primary:hover { background: #081d45; }
-        .btn:disabled { opacity: 0.7; cursor: not-allowed; }
-        .alerta { margin-top: 16px; padding: 12px; border-radius: 10px; text-align: center; font-size: 14px; }
+        .btn-sucesso { background: #10B981; color: white; margin-top: 10px; }
+        .alerta { padding: 12px; border-radius: 10px; text-align: center; font-size: 14px; margin: 16px 0; }
         .alerta.perigo { background: #FEE2E2; color: #991B1B; }
         .alerta.sucesso { background: #D1FAE5; color: #065F46; }
         .alerta.alerta { background: #FEF3C7; color: #92400E; }
@@ -41,29 +39,29 @@
         .carregando.mostrar { display: flex; }
         .bolinha { width: 16px; height: 16px; border: 2px solid #0A2463; border-top-color: transparent; border-radius: 50%; animation: rodar 0.8s linear infinite; }
         @keyframes rodar { to { transform: rotate(360deg); } }
-        .resultado { margin-top: 20px; }
         .dado { padding: 10px 0; border-bottom: 1px solid #F1F5F9; font-size: 14px; }
         .dado strong { color: #0A2463; display: inline-block; width: 140px; }
+        .pix-area { text-align: center; padding: 16px; background: #ECFDF5; border-radius: 12px; margin: 16px 0; }
+        .contrato { max-height: 300px; overflow-y: auto; padding: 16px; background: #F8FAFC; border-radius: 12px; margin: 16px 0; font-size: 13px; line-height: 1.6; border: 1px solid #E2E8F0; }
+        .selfie-area { margin: 16px 0; text-align: center; }
+        #camera { width: 100%; max-width: 400px; border-radius: 12px; display: none; }
+        #fotoTirada { max-width: 100%; border-radius: 12px; display: none; margin: 10px auto; }
         .hidden { display: none !important; }
     </style>
 </head>
 <body>
-
 <div class="card">
     <h1 class="titulo">Acompanhar Minha Proposta</h1>
-    <p class="subtitulo">Digite o CPF que usou para se cadastrar ou clique no link que recebemos</p>
+    <p class="text-center text-gray-500 mb-4">Digite seu CPF para ver os detalhes</p>
 
     <input type="text" id="cpfCliente" class="input" placeholder="Seu CPF" maxlength="18">
-    
     <button id="btnVerificar" class="btn btn-primary" onclick="verificarProposta()">Verificar Status</button>
 
     <div id="carregando" class="carregando">
-        <div class="bolinha"></div>
-        Verificando...
+        <div class="bolinha"></div> Verificando...
     </div>
-
     <div id="mensagem" class="alerta hidden"></div>
-    <div id="resultado" class="resultado hidden"></div>
+    <div id="resultado" class="hidden"></div>
 </div>
 
 <script>
@@ -71,10 +69,7 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ✅ Normaliza CPF: tira pontos, traços e espaços antes de comparar
-function limparCpf(cpf) {
-    return String(cpf || '').replace(/\D/g, '');
-}
+function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 
 async function verificarProposta() {
     const cpfDigitado = limparCpf(document.getElementById('cpfCliente').value);
@@ -99,14 +94,11 @@ async function verificarProposta() {
 
     try {
         const { data, error } = await supabase.from('propostas').select('*');
-        
         if(error) throw error;
-
-        // Compara só os números, funciona com ou sem formatação
         const proposta = data?.find(item => limparCpf(item.cpf) === cpfDigitado);
 
         if(!proposta) {
-            mensagem.textContent = '❌ Nenhuma proposta encontrada. Verifique o CPF ou aguarde o envio da solicitação.';
+            mensagem.textContent = '❌ Nenhuma proposta encontrada. Verifique o CPF ou aguarde a análise.';
             mensagem.className = 'alerta perigo';
             mensagem.classList.remove('hidden');
             return;
@@ -129,30 +121,91 @@ async function verificarProposta() {
 
         resultado.innerHTML = `
             <div class="alerta ${statusClasse} mb-4">${statusTexto}</div>
-            
-            <div class="dado"><strong>Nome:</strong> ${proposta.nome || '-'}</div>
+            <div class="dado"><strong>Nome:</strong> ${proposta.nome}</div>
             <div class="dado"><strong>CPF:</strong> ${limparCpf(proposta.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</div>
-            <div class="dado"><strong>Status:</strong> ${proposta.status || 'Nova'}</div>
+            <div class="dado"><strong>Status:</strong> ${proposta.status}</div>
+
             ${proposta.status === 'Aprovada' ? `
-            <div class="dado"><strong>Valor Aprovado:</strong> R$ ${parseFloat(proposta.valor_aprovado||0).toFixed(2).replace('.',',')}</div>
+            <div class="dado"><strong>Valor Total:</strong> R$ ${parseFloat(proposta.valor_aprovado||0).toFixed(2).replace('.',',')}</div>
             <div class="dado"><strong>Entrada:</strong> R$ ${parseFloat(proposta.valor_entrada||0).toFixed(2).replace('.',',')}</div>
-            <div class="dado"><strong>Parcelas:</strong> ${proposta.qtd_parcelas || 0}x de R$ ${parseFloat(proposta.valor_parcela||0).toFixed(2).replace('.',',')}</div>
-            <div class="dado"><strong>Chave Pix:</strong> ${proposta.chave_pix || 'Aguardando geração'}</div>
+            <div class="dado"><strong>Parcelas:</strong> ${proposta.qtd_parcelas}x de R$ ${parseFloat(proposta.valor_parcela||0).toFixed(2).replace('.',',')}</div>
+
+            <div class="pix-area">
+                <h4 class="font-bold text-lg mb-2">💳 Pague a Entrada via Pix</h4>
+                <p class="text-sm mb-2">Chave Pix: <strong>${proposta.chave_pix || 'Aguardando'}</strong></p>
+                <div id="qrcode" class="flex justify-center my-3"></div>
+                <button class="btn btn-sucesso" onclick="navigator.clipboard.writeText('${proposta.chave_pix}').then(() => alert('Chave copiada!'))">Copiar Chave Pix</button>
+            </div>
+
+            <div class="contrato">
+                <h4 class="font-bold mb-2 text-center">📄 CONTRATO DE COMPRA PARCELADA</h4>
+                <p>Distribuidora Flash Point, inscrita sob CNPJ, apresenta o presente contrato:</p>
+                <p><br>1. O CLIENTE ${proposta.nome} se compromete a pagar o valor total acordado, sendo entrada de R$ ${parseFloat(proposta.valor_entrada||0).toFixed(2).replace('.',',')} e ${proposta.qtd_parcelas} parcelas de R$ ${parseFloat(proposta.valor_parcela||0).toFixed(2).replace('.',',')}.</p>
+                <p><br>2. O não pagamento implicará em multa de 2% ao mês, inclusão nos órgãos de proteção ao crédito (SPC/Serasa) e recolhimento do produto.</p>
+                <p><br>3. Após confirmação do pagamento da entrada, a Flash Point fará a entrega do móvel no endereço cadastrado.</p>
+                <p><br>4. O cliente declara ter lido e concordado com todas as cláusulas acima.</p>
+            </div>
+
+            <div class="selfie-area">
+                <h4 class="font-bold mb-2">📸 Confirme sua identidade</h4>
+                <p class="text-sm mb-3">Tire uma selfie ou assine para confirmar que concorda com o contrato</p>
+                <button class="btn btn-primary mb-2" onclick="iniciarCamera()">Abrir Câmera</button>
+                <video id="camera" autoplay playsinline></video>
+                <button id="btnTirarFoto" class="btn btn-sucesso hidden" onclick="tirarSelfie()">Tirar Foto</button>
+                <img id="fotoTirada" alt="Selfie">
+                <button id="btnEnviarSelfie" class="btn btn-sucesso hidden" onclick="confirmarAceite()">Confirmar e Enviar</button>
+            </div>
             ` : ''}
         `;
 
+        if(proposta.chave_pix && proposta.status === 'Aprovada') {
+            new QRCode(document.getElementById('qrcode'), { text: proposta.chave_pix, width: 180, height: 180 });
+        }
+
     } catch (erro) {
-        mensagem.textContent = '⚠️ Erro ao buscar, tente novamente mais tarde!';
+        mensagem.textContent = '⚠️ Erro ao buscar, tente novamente!';
         mensagem.className = 'alerta perigo';
         mensagem.classList.remove('hidden');
-        console.error(erro);
     } finally {
         btn.disabled = false;
         carregando.classList.remove('mostrar');
     }
 }
 
-// ✅ Se acessar com link direto: consultar.html?cpf=33552949852 já preenche e busca
+let streamCamera = null;
+async function iniciarCamera() {
+    try {
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        const cam = document.getElementById('camera');
+        cam.srcObject = streamCamera;
+        cam.style.display = 'block';
+        document.getElementById('btnTirarFoto').classList.remove('hidden');
+    } catch {
+        alert('Não foi possível acessar a câmera. Você pode confirmar o contrato digitando seu nome abaixo.');
+    }
+}
+
+function tirarSelfie() {
+    const cam = document.getElementById('camera');
+    const canvas = document.createElement('canvas');
+    canvas.width = cam.videoWidth;
+    canvas.height = cam.videoHeight;
+    canvas.getContext('2d').drawImage(cam, 0, 0);
+    const foto = document.getElementById('fotoTirada');
+    foto.src = canvas.toDataURL('image/png');
+    foto.style.display = 'block';
+    cam.style.display = 'none';
+    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
+    document.getElementById('btnTirarFoto').classList.add('hidden');
+    document.getElementById('btnEnviarSelfie').classList.remove('hidden');
+}
+
+async function confirmarAceite() {
+    const cpf = limparCpf(document.getElementById('cpfCliente').value);
+    await supabase.from('propostas').update({ contrato_assinado: true }).eq('cpf', cpf);
+    alert('✅ Contrato aceito! Agora é só efetuar o pagamento da entrada para liberarmos seu pedido. Obrigado!');
+}
+
 window.addEventListener('load', () => {
     const params = new URLSearchParams(window.location.search);
     const cpfUrl = params.get('cpf');
