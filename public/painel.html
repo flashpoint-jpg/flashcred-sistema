@@ -31,10 +31,11 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
         body { background: #F8FAFC; color: #1E293B; min-height: 100vh; }
         .card { background: white; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); padding: 20px; margin-bottom: 16px; border: 1px solid #E2E8F0; }
-        .btn { padding: 10px 12px; border-radius: 10px; font-weight: 500; border: none; cursor: pointer; transition: 0.2s; font-size: 14px; margin: 2px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: fit-content; }
+        .btn { padding: 10px 12px; border-radius: 10px; font-weight: 500; border: none; cursor: pointer; transition: 0.2s; font-size: 13px; margin: 2px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: fit-content; }
         .btn:hover { opacity: 0.9; transform: translateY(-1px); }
         .btn-primary { background: #0A2463; color: white; width: 100%; }
         .btn-editar { background: #3B82F6; color: white; }
+        .btn-copiar { background: #6366F1; color: white; }
         .btn-sucesso { background: #10B981; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
         .btn-perigo { background: #EF4444; color: white; }
@@ -219,6 +220,18 @@ function filtrarPropostas() {
     renderizarLista(termo ? listaPropostas.filter(p => limparCpf(p.cpf).includes(termo)) : listaPropostas);
 }
 
+function copiarDadosCliente(proposta) {
+    const cpfFmt = limparCpf(proposta.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    const dados = `Nome: ${proposta.nome}
+CPF: ${cpfFmt}
+Nascimento: ${proposta.nascimento}
+WhatsApp: ${proposta.telefone}
+CEP: ${proposta.cep}
+Endereço: ${proposta.endereco}
+Valor Solicitado: R$ ${parseFloat(proposta.valor_desejado||0).toFixed(2).replace('.',',')}`;
+    navigator.clipboard.writeText(dados).then(() => mostrarNotificacao('Dados copiados!', 'sucesso'));
+}
+
 function renderizarLista(lista = listaPropostas) {
     const container = document.getElementById('listaPropostas');
     container.innerHTML = '';
@@ -253,6 +266,7 @@ function renderizarLista(lista = listaPropostas) {
             </div>
 
             <div class="flex flex-wrap gap-2 mt-3">
+                <button class="btn btn-copiar" onclick="copiarDadosCliente(${JSON.stringify(proposta).replace(/"/g, '&quot;')})"><i class="fa-solid fa-copy"></i> Copiar Dados</button>
                 <button class="btn btn-editar" onclick="abrirModalEditar('${proposta.cpf}')"><i class="fa-solid fa-pen"></i> Editar/Aprovar</button>
                 <button class="btn btn-perigo" onclick="reprovarProposta('${proposta.cpf}')"><i class="fa-solid fa-x"></i> Reprovar</button>
                 
@@ -277,7 +291,7 @@ async function abrirModalEditar(cpf) {
     const proposta = listaPropostas.find(p => p.cpf === cpf);
     document.getElementById('formModal').innerHTML = `
         <label>Valor Total do Produto (R$)</label>
-        <input type="number" step="0.01" id="valorTotal" class="input" value="${proposta.valor_aprovado || ''}" oninput="atualizarCalculo()">
+        <input type="number" step="0.01" id="valorTotal" class="input" value="${proposta.valor_aprovado || proposta.valor_desejado || ''}" oninput="atualizarCalculo()">
 
         <div class="linha-calculo">
             <div><label>% Entrada</label><input type="number" id="percEntrada" class="input input-pequeno" min="2" max="70" value="39" oninput="atualizarCalculo()"></div>
@@ -309,16 +323,22 @@ async function abrirModalEditar(cpf) {
 function fecharModalEditar() { document.getElementById('modalEditar').style.display = 'none'; }
 
 async function salvarAprovacao(cpf) {
+    const valorTotal = parseFloat(document.getElementById('valorTotal').value) || 0;
+    const valorEntrada = parseFloat(document.getElementById('valorEntrada').value) || 0;
+    const qtdParc = parseInt(document.getElementById('qtdParc').value) || 0;
+    const valorParcela = parseFloat(document.getElementById('valorParcela').value) || 0;
+    const chavePix = document.getElementById('chavePix').value.trim();
+
     await supabase.from('propostas').update({
         status: 'Aprovada',
-        valor_aprovado: parseFloat(document.getElementById('valorTotal').value) || 0,
-        valor_entrada: parseFloat(document.getElementById('valorEntrada').value) || 0,
-        qtd_parcelas: parseInt(document.getElementById('qtdParc').value) || 0,
-        valor_parcela: parseFloat(document.getElementById('valorParcela').value) || 0,
-        chave_pix: document.getElementById('chavePix').value.trim()
+        valor_aprovado: valorTotal,
+        valor_entrada: valorEntrada,
+        qtd_parcelas: qtdParc,
+        valor_parcela: valorParcela,
+        chave_pix: chavePix
     }).eq('cpf', cpf);
     
-    mostrarNotificacao('✅ PROPOSTA APROVADA! Já atualizada para o cliente.', 'sucesso');
+    mostrarNotificacao('✅ PROPOSTA APROVADA! Dados atualizados e enviados para o cliente.', 'sucesso');
     fecharModalEditar();
 }
 
@@ -354,7 +374,7 @@ async function registrarParcela(cpf) {
 function enviarWhatsApp(cpf) {
     const p = listaPropostas.find(x => x.cpf === cpf);
     const link = `${window.location.origin}/acompanhar.html?cpf=${limparCpf(p.cpf)}`;
-    const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\nAcesse aqui: ${link}`;
+    const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\nAcesse aqui para ver o Pix: ${link}`;
     window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
     mostrarNotificacao('Mensagem enviada!', 'sucesso');
 }
@@ -362,7 +382,7 @@ function enviarWhatsApp(cpf) {
 function cobrarParcela(cpf) {
     const p = listaPropostas.find(x => x.cpf === cpf);
     const restante = parseInt(p.qtd_parcelas||0) - parseInt(p.parcelas_pagas||0);
-    const msg = `Olá ${p.nome}! Lembrete de parcela: R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\nFaltam ${restante} parcelas. Contamos com seu pagamento!`;
+    const msg = `Olá ${p.nome}! Tudo bem?\nLembrete de parcela: R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\nFaltam ${restante} parcelas. Contamos com seu pagamento!`;
     window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
