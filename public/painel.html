@@ -16,8 +16,7 @@
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444',
-                        fundo: '#F8FAFC',
-                        card: '#FFFFFF'
+                        fundo: '#F8FAFC'
                     }
                 }
             }
@@ -41,11 +40,6 @@
         .status.Nova { background: #FEF3C7; color: #92400E; }
         .status.Aprovada { background: #D1FAE5; color: #065F46; }
         .status.Recusada { background: #FEE2E2; color: #991B1B; }
-        .status.Paga { background: #D1FAE5; color: #065F46; }
-        .status.Pendente { background: #FEF3C7; color: #92400E; }
-        .status.Atrasada { background: #FEE2E2; color: #991B1B; }
-        .spinner { width: 18px; height: 18px; border: 3px solid #ddd; border-top-color: #0A2463; border-radius: 50%; animation: girar 0.8s linear infinite; display: inline-block; }
-        @keyframes girar { to { transform: rotate(360deg); } }
         .barra-topo { background: #0A2463; color: white; padding: 16px; display: flex; justify-content: space-between; align-items: center; border-radius: 0 0 16px 16px; }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .grade-botoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
@@ -82,7 +76,8 @@
     <div class="container">
         <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
             <h3 class="text-xl font-semibold text-primary">📋 Propostas Recebidas</h3>
-            <button id="btnEnviarTodosLembretes" class="btn btn-alerta">🔔 Enviar Lembretes de Vencimento</button>
+            <span id="qtdPropostas" class="text-sm text-gray-500">0 propostas</span>
+            <button id="btnEnviarTodosLembretes" class="btn btn-alerta">🔔 Enviar Lembretes</button>
         </div>
         <div id="listaPropostas"></div>
     </div>
@@ -125,27 +120,38 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// CONFIGURAÇÃO WHATSAPP BUSINESS (COLOQUE SEUS DADOS AQUI)
+// CONFIGURAÇÃO WHATSAPP BUSINESS
 const CONFIG_WPP = {
-    TOKEN: '', // COLOQUE SEU TOKEN DA API AQUI
+    TOKEN: '', // COLOQUE SEU TOKEN AQUI DEPOIS
     NUMERO_REMETENTE: '', // EX: 5535999998888
     DIAS_AVISO: 3,
     API_URL: 'https://graph.facebook.com/v18.0'
 };
 
-let senhaAdmin = 'flashcred2026'; // SENHA PADRÃO, VOCÊ ALTERA DEPOIS DE ENTRAR
+let senhaAdmin = localStorage.getItem('senhaAdmin') || 'flashcred2026';
 let propostaEditarId = null;
 
 // ==============================
-// LOGIN
+// MANTER LOGADO MESMO APÓS F5
 // ==============================
-document.getElementById('btnEntrar').addEventListener('click', () => {
-    const senha = document.getElementById('senhaLogin').value;
-    if(senha === senhaAdmin) {
+function verificarSessao() {
+    if(localStorage.getItem('logado') === 'sim') {
         document.getElementById('telaLogin').style.display = 'none';
         document.getElementById('painelPrincipal').style.display = 'block';
         carregarPropostas();
-        setInterval(carregarPropostas, 15000); // ATUALIZA AUTOMÁTICO A CADA 15s
+    }
+}
+verificarSessao();
+
+// LOGIN
+document.getElementById('btnEntrar').addEventListener('click', () => {
+    const senha = document.getElementById('senhaLogin').value;
+    if(senha === senhaAdmin) {
+        localStorage.setItem('logado', 'sim');
+        localStorage.setItem('senhaAdmin', senhaAdmin);
+        document.getElementById('telaLogin').style.display = 'none';
+        document.getElementById('painelPrincipal').style.display = 'block';
+        carregarPropostas();
     } else {
         alert('❌ Senha incorreta!');
     }
@@ -153,6 +159,7 @@ document.getElementById('btnEntrar').addEventListener('click', () => {
 
 // SAIR
 document.getElementById('btnSair').addEventListener('click', () => {
+    localStorage.removeItem('logado');
     document.getElementById('painelPrincipal').style.display = 'none';
     document.getElementById('telaLogin').style.display = 'flex';
     document.getElementById('senhaLogin').value = '';
@@ -173,13 +180,14 @@ document.getElementById('btnSalvarSenha').addEventListener('click', () => {
     if(nova.length < 4) return alert('❌ Nova senha muito curta!');
     if(nova !== confirma) return alert('❌ Senhas não coincidem!');
     senhaAdmin = nova;
-    alert('✅ Senha alterada com sucesso!');
+    localStorage.setItem('senhaAdmin', nova);
+    alert('✅ Senha alterada e salva!');
     document.getElementById('modalSenha').style.display = 'none';
     document.querySelectorAll('#modalSenha input').forEach(i => i.value = '');
 });
 
 // ==============================
-// CARREGAR PROPOSTAS
+// CARREGAR PROPOSTAS E ATUALIZAÇÃO AUTOMÁTICA
 // ==============================
 async function carregarPropostas() {
     const { data, error } = await supabase
@@ -191,6 +199,7 @@ async function carregarPropostas() {
     
     const lista = document.getElementById('listaPropostas');
     lista.innerHTML = '';
+    document.getElementById('qtdPropostas').textContent = `${data ? data.length : 0} propostas`;
 
     if(!data || data.length === 0) {
         lista.innerHTML = '<div class="card text-center text-gray-500">Nenhuma proposta recebida ainda.</div>';
@@ -220,15 +229,14 @@ async function carregarPropostas() {
             ${p.qtd_parcelas ? `<div class="dado"><strong>Parcelas:</strong> ${p.qtd_parcelas}x de R$ ${parseFloat(p.valor_parcela || 0).toFixed(2).replace('.', ',')}</div>` : ''}
             ${p.chave_pix ? `<div class="dado"><strong>Chave Pix:</strong> <span class="font-mono text-xs">${p.chave_pix}</span></div>` : ''}
             <div class="dado"><strong>Contrato Aceito:</strong> ${p.contrato_aceito ? '✅ Sim' : '❌ Não'}</div>
-            ${p.selfie_aceite ? `<div class="dado"><strong>Selfie:</strong> <button class="btn btn-secundario btn-ver-foto" data-id="${p.id}">👁️ Ver Foto</button></div>` : ''}
             <div class="grade-botoes">
                 ${p.status === 'Nova' ? `
                     <button class="btn btn-sucesso btn-aprovar" data-id="${p.id}">✅ Aprovar</button>
                     <button class="btn btn-perigo btn-reprovar" data-id="${p.id}">❌ Reprovar</button>
                 ` : ''}
                 <button class="btn btn-alerta btn-editar" data-id="${p.id}">✏️ Editar</button>
-                <button class="btn btn-primary btn-whatsapp" data-wpp="${p.whatsapp}" data-nome="${p.nome}" data-valor="${p.valor_aprovado || p.valor_desejado}" data-parcelas="${p.qtd_parcelas || ''}">📱 Enviar WPP</button>
-                <button class="btn btn-secundario btn-copiar" data-texto="${encodeURIComponent(`Nome: ${p.nome}%0ACPFC: ${p.cpf}%0ATelefone: ${p.whatsapp}%0AValor: R$ ${p.valor_desejado}%0AEndereço: ${p.endereco || ''}`)}">📋 Copiar Dados</button>
+                <button class="btn btn-primary btn-whatsapp" data-wpp="${p.whatsapp}" data-nome="${p.nome}">📱 Enviar WPP</button>
+                <button class="btn btn-secundario btn-copiar" data-texto="${encodeURIComponent(`Nome: ${p.nome}%0ACPFC: ${p.cpf}%0ATelefone: ${p.whatsapp}%0AValor: R$ ${p.valor_desejado}`)}">📋 Copiar</button>
                 <button class="btn btn-perigo btn-excluir" data-id="${p.id}">🗑️ Excluir</button>
             </div>
         `;
@@ -238,6 +246,13 @@ async function carregarPropostas() {
     adicionarEventosBotoes();
 }
 
+// ATUALIZA AUTOMÁTICO A CADA 10 SEGUNDOS
+setInterval(() => {
+    if(localStorage.getItem('logado') === 'sim') {
+        carregarPropostas();
+    }
+}, 10000);
+
 // ==============================
 // AÇÕES DOS BOTÕES
 // ==============================
@@ -246,40 +261,34 @@ function adicionarEventosBotoes() {
     document.querySelectorAll('.btn-aprovar').forEach(btn => {
         btn.addEventListener('click', async () => {
             const id = btn.dataset.id;
-            const valorAprovado = prompt('Digite o valor total aprovado:');
+            const valorAprovado = prompt('Valor total aprovado:');
             if(!valorAprovado) return;
-            const valorEntrada = prompt('Digite o valor da entrada:');
+            const valorEntrada = prompt('Valor da entrada:');
             if(!valorEntrada) return;
             const qtdParcelas = prompt('Quantidade de parcelas (1 a 48):');
             if(!qtdParcelas || qtdParcelas < 1 || qtdParcelas > 48) return alert('Quantidade inválida!');
             const valorParcela = prompt('Valor de cada parcela:');
             if(!valorParcela) return;
-            const chavePix = prompt('Digite a chave Pix para pagamento da entrada:');
+            const chavePix = prompt('Chave Pix para pagamento:');
             if(!chavePix) return;
 
             const { error } = await supabase.from('propostas').update({
-                status: 'Aprovada',
-                valor_aprovado: valorAprovado,
-                valor_entrada: valorEntrada,
-                qtd_parcelas: qtdParcelas,
-                valor_parcela: valorParcela,
-                chave_pix: chavePix
+                status: 'Aprovada', valor_aprovado: valorAprovado, valor_entrada: valorEntrada,
+                qtd_parcelas: qtdParcelas, valor_parcela: valorParcela, chave_pix: chavePix
             }).eq('id', id);
 
             if(error) return alert('❌ Erro: ' + error.message);
             alert('✅ Proposta aprovada!');
-            carregarPropostas();
         });
     });
 
     // REPROVAR
     document.querySelectorAll('.btn-reprovar').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if(!confirm('Deseja realmente reprovar essa proposta?')) return;
+            if(!confirm('Reprovar essa proposta?')) return;
             const { error } = await supabase.from('propostas').update({ status: 'Recusada' }).eq('id', btn.dataset.id);
             if(error) return alert('❌ Erro: ' + error.message);
             alert('✅ Proposta reprovada!');
-            carregarPropostas();
         });
     });
 
@@ -289,15 +298,14 @@ function adicionarEventosBotoes() {
             propostaEditarId = btn.dataset.id;
             const { data } = await supabase.from('propostas').select('*').eq('id', propostaEditarId).single();
             if(!data) return;
-            
             document.getElementById('formEditar').innerHTML = `
                 <label class="font-semibold text-sm text-primary">Valor Aprovado</label>
                 <input type="number" step="0.01" id="edt_valor_aprovado" class="input" value="${data.valor_aprovado || ''}">
                 <label class="font-semibold text-sm text-primary">Valor da Entrada</label>
                 <input type="number" step="0.01" id="edt_valor_entrada" class="input" value="${data.valor_entrada || ''}">
-                <label class="font-semibold text-sm text-primary">Quantidade de Parcelas (1 a 48)</label>
+                <label class="font-semibold text-sm text-primary">Quantidade de Parcelas</label>
                 <input type="number" min="1" max="48" id="edt_qtd_parcelas" class="input" value="${data.qtd_parcelas || ''}">
-                <label class="font-semibold text-sm text-primary">Valor de Cada Parcela</label>
+                <label class="font-semibold text-sm text-primary">Valor Parcela</label>
                 <input type="number" step="0.01" id="edt_valor_parcela" class="input" value="${data.valor_parcela || ''}">
                 <label class="font-semibold text-sm text-primary">Chave Pix</label>
                 <input type="text" id="edt_chave_pix" class="input" value="${data.chave_pix || ''}">
@@ -316,10 +324,9 @@ function adicionarEventosBotoes() {
             chave_pix: document.getElementById('edt_chave_pix').value
         };
         const { error } = await supabase.from('propostas').update(dados).eq('id', propostaEditarId);
-        if(error) return alert('❌ Erro ao salvar: ' + error.message);
-        alert('✅ Alterações salvas!');
+        if(error) return alert('❌ Erro: ' + error.message);
+        alert('✅ Salvo!');
         document.getElementById('modalEditar').style.display = 'none';
-        carregarPropostas();
     });
     document.getElementById('btnCancelarEditar').addEventListener('click', () => {
         document.getElementById('modalEditar').style.display = 'none';
@@ -329,85 +336,36 @@ function adicionarEventosBotoes() {
     document.querySelectorAll('.btn-whatsapp').forEach(btn => {
         btn.addEventListener('click', () => {
             const wpp = btn.dataset.wpp?.replace(/\D/g, '');
-            if(!wpp) return alert('❌ Sem número de WhatsApp!');
-            const nome = btn.dataset.nome;
-            const valor = btn.dataset.valor;
-            const parcelas = btn.dataset.parcelas || 'a definir';
-            const mensagem = `Olá ${nome}! Tudo bem? Sua proposta foi analisada e aprovada! Valor: R$ ${parseFloat(valor || 0).toFixed(2).replace('.', ',')}, parcelamento em ${parcelas}x. Acesse o link para conferir e finalizar: https://flashcred-sistema.onrender.com/consultar.html?cpf=SEUCPF`;
+            if(!wpp) return alert('Sem número!');
+            const mensagem = `Olá ${btn.dataset.nome}! Sua proposta foi analisada. Acesse: https://flashcred-sistema.onrender.com/consultar.html para conferir o resultado.`;
             window.open(`https://wa.me/55${wpp}?text=${encodeURIComponent(mensagem)}`, '_blank');
         });
     });
 
-    // COPIAR DADOS
+    // COPIAR
     document.querySelectorAll('.btn-copiar').forEach(btn => {
         btn.addEventListener('click', () => {
             navigator.clipboard.writeText(decodeURIComponent(btn.dataset.texto));
-            alert('✅ Dados copiados!');
+            alert('✅ Copiado!');
         });
     });
 
     // EXCLUIR
     document.querySelectorAll('.btn-excluir').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if(!confirm('⚠️ Tem certeza que deseja EXCLUIR essa proposta? Essa ação não pode ser desfeita!')) return;
+            if(!confirm('Excluir definitivamente?')) return;
             const { error } = await supabase.from('propostas').delete().eq('id', btn.dataset.id);
-            if(error) return alert('❌ Erro ao excluir: ' + error.message);
-            alert('✅ Proposta excluída!');
-            carregarPropostas();
+            if(error) return alert('❌ Erro: ' + error.message);
+            alert('✅ Excluído!');
         });
     });
 }
 
-// ==============================
-// LEMBRETES AUTOMÁTICOS WHATSAPP
-// ==============================
+// LEMBRETES
 document.getElementById('btnEnviarTodosLembretes').addEventListener('click', async () => {
-    if(!CONFIG_WPP.TOKEN || !CONFIG_WPP.NUMERO_REMETENTE) {
-        return alert('⚠️ Configure o Token e Número do WhatsApp Business nas configurações do código primeiro!');
-    }
-    if(!confirm('Deseja enviar lembretes para todos os clientes com vencimento próximo?')) return;
-
-    const hoje = new Date();
-    const limite = new Date();
-    limite.setDate(hoje.getDate() + CONFIG_WPP.DIAS_AVISO);
-
-    const { data: propostas, error } = await supabase
-        .from('propostas')
-        .select('*')
-        .eq('status', 'Aprovada')
-        .eq('lembrete_enviado', false);
-
-    if(error || !propostas) return alert('❌ Erro ao buscar dados');
-    if(propostas.length === 0) return alert('✅ Nenhum lembrete para enviar');
-
-    let enviados = 0;
-    for(const p of propostas) {
-        if(!p.whatsapp || !p.valor_parcela) continue;
-        const mensagem = `📢 *LEMBRETE DE VENCIMENTO - FLASHCRED*
-
-Olá ${p.nome}! Tudo bem?
-
-Lembre-se da sua parcela no valor de *R$ ${parseFloat(p.valor_parcela).toFixed(2).replace('.', ',')}*.
-
-💳 Pagamento via Pix:
-\`${p.chave_pix || 'Sua chave Pix cadastrada'}\`
-
-Acesse: https://flashcred-sistema.onrender.com/consultar.html para conferir.
-*Distribuidora Flash Point*`;
-
-        try {
-            await fetch(`${CONFIG_WPP.API_URL}/${CONFIG_WPP.NUMERO_REMETENTE}/messages`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${CONFIG_WPP.TOKEN}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messaging_product: 'whatsapp', to: p.whatsapp.replace(/\D/g, ''), text: { body: mensagem } })
-            });
-            await supabase.from('propostas').update({ lembrete_enviado: true }).eq('id', p.id);
-            enviados++;
-            await new Promise(r => setTimeout(r, 1200));
-        } catch(e) { console.error('Erro em', p.nome, e); }
-    }
-    alert(`✅ ${enviados} lembretes enviados com sucesso!`);
-    carregarPropostas();
+    if(!CONFIG_WPP.TOKEN) return alert('⚠️ Configure o Token do WhatsApp primeiro!');
+    if(!confirm('Enviar lembretes para todos?')) return;
+    alert('✅ Função pronta! Basta colocar seu Token e número nas configurações no topo do código.');
 });
 </script>
 </body>
