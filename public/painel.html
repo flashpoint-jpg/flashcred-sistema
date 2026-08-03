@@ -177,7 +177,7 @@
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { enabled: true } });
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: { enabled: true, retryAfter: 1000 } });
 
 let senhaCorreta = 'flashcred2026';
 let listaPropostas = [];
@@ -241,17 +241,24 @@ function alterarSenha() {
     }
 }
 
-// --- ATUALIZAÇÃO EM TEMPO REAL (PAINEL) ---
+// --- ATUALIZAÇÃO EM TEMPO REAL (CORRIGIDO) ---
 function iniciarTempoReal() {
-    inscricaoTempoReal = supabase.channel('atualizacoes')
+    if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
+    
+    inscricaoTempoReal = supabase.channel('atualizacoes_painel')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'propostas' }, (mudanca) => {
-            mostrarNotificacao(`📩 NOVA PROPOSTA: ${mudanca.new.nome}`, 'alerta');
+            mostrarNotificacao(`📩 NOVA PROPOSTA RECEBIDA: ${mudanca.new.nome}`, 'alerta');
             carregarPropostas();
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas' }, () => {
             carregarPropostas();
         })
-        .subscribe();
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'propostas' }, () => {
+            carregarPropostas();
+        })
+        .subscribe((status) => {
+            console.log('Conexão tempo real:', status);
+        });
 }
 
 // --- CÁLCULO ---
@@ -272,7 +279,9 @@ function atualizarCalculo() {
 // --- CARREGAR DADOS ---
 async function carregarPropostas() {
     try {
-        const { data } = await supabase.from('propostas').select('*').order('created_at', {ascending: false});
+        const { data, error } = await supabase.from('propostas').select('*').order('created_at', {ascending: false});
+        if(error) throw error;
+        
         listaPropostas = data || [];
         listaFiltrada = listaPropostas;
         
@@ -323,6 +332,8 @@ function renderizarLista() {
 
         const cpfFmt = limparCpf(proposta.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
         const cepFmt = proposta.cep ? limparCpf(proposta.cep).replace(/(\d{5})(\d{3})/, '$1-$3') : '-';
+        const telLimpo = limparCpf(proposta.telefone);
+        const linkCliente = `${window.location.origin}/consultar.html?cpf=${limparCpf(proposta.cpf)}`;
 
         const card = document.createElement('div');
         card.className = 'card';
@@ -333,9 +344,9 @@ function renderizarLista() {
                     <span class="badge badge-${(proposta.status || 'Nova').toLowerCase()}">${proposta.status || 'Nova'}</span>
                 </div>
                 <div class="flex gap-1">
-                    <button class="btn btn-imprimir" onclick="window.print()"><i class="fa-solid fa-print"></i></button>
-                    <button class="btn btn-copiar" data-cpf="${proposta.cpf}"><i class="fa-solid fa-copy"></i></button>
-                    <button class="btn btn-excluir btn-excluir-proposta" data-cpf="${proposta.cpf}"><i class="fa-solid fa-trash"></i></button>
+                    <button class="btn btn-imprimir" onclick="window.print()" title="Imprimir"><i class="fa-solid fa-print"></i></button>
+                    <button class="btn btn-copiar" data-cpf="${proposta.cpf}" title="Copiar Dados"><i class="fa-solid fa-copy"></i></button>
+                    <button class="btn btn-excluir btn-excluir-proposta" data-cpf="${proposta.cpf}" title="Excluir"><i class="fa-solid fa-trash"></i></button>
                 </div>
             </div>
             
@@ -356,6 +367,8 @@ function renderizarLista() {
                 
                 ${proposta.status === 'Aprovada' ? `
                 <button class="btn btn-whatsapp btn-wpp-proposta" data-cpf="${proposta.cpf}"><i class="fa-brands fa-whatsapp"></i> Enviar Proposta</button>
+                <button class="btn btn-whatsapp btn-wpp-cobranca" data-cpf="${proposta.cpf}"><i class="fa-brands fa-whatsapp"></i> Cobrar Parcela</button>
+                
                 ${!proposta.pago ? `
                 <button class="btn btn-sucesso btn-marcar-entrada" data-cpf="${proposta.cpf}"><i class="fa-solid fa-hand-holding-dollar"></i> Entrada Paga</button>
                 ` : `
@@ -367,14 +380,14 @@ function renderizarLista() {
         container.appendChild(card);
     });
 
-    // --- BOTÕES ---
+    // --- TODOS OS BOTÕES VOLTARAM ---
     document.querySelectorAll('.btn-wpp-proposta').forEach(btn => {
         btn.addEventListener('click', () => {
             const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
             const link = `${window.location.origin}/consultar.html?cpf=${limparCpf(p.cpf)}`;
-            const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\nAcesse para ver o Pix e detalhes: ${link}`;
+            const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\n📋 Dados da compra:\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas || 0}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\n🔗 Acesse para ver o Pix, contrato e detalhes: ${link}\n\nAguardamos o pagamento da entrada para liberar seu móvel! 🚚`;
             window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
-            mostrarNotificacao('Mensagem enviada!', 'sucesso');
+            mostrarNotificacao('✅ Mensagem enviada no WhatsApp!', 'sucesso');
         });
     });
 
@@ -386,8 +399,43 @@ function renderizarLista() {
         btn.addEventListener('click', async () => {
             if(confirm('Confirmar entrada paga?')) {
                 await supabase.from('propostas').update({pago: true}).eq('cpf', btn.dataset.cpf);
-                mostrarNotificacao('Entrada marcada como paga!', 'sucesso');
+                mostrarNotificacao('✅ Entrada marcada como paga!', 'sucesso');
             }
+        });
+    });
+
+    document.querySelectorAll('.btn-wpp-cobranca').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
+            const restante = (parseInt(p.qtd_parcelas||0) - parseInt(p.parcelas_pagas||0));
+            const msg = `Olá ${p.nome}! Tudo bem?\nLembrete de parcela: R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\nFaltam ${restante} parcelas para quitar.\nContamos com seu pagamento! 😉`;
+            window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
+        });
+    });
+
+    document.querySelectorAll('.btn-excluir-proposta').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            if(confirm('Excluir essa proposta?')) {
+                await supabase.from('propostas').delete().eq('cpf', btn.dataset.cpf);
+                mostrarNotificacao('Proposta excluída!', 'alerta');
+            }
+        });
+    });
+
+    document.querySelectorAll('.btn-copiar').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
+            const texto = `
+NOME: ${p.nome}
+CPF: ${limparCpf(p.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}
+NASCIMENTO: ${p.nascimento || '-'}
+WHATSAPP: ${p.telefone}
+CEP: ${p.cep ? limparCpf(p.cep).replace(/(\d{5})(\d{3})/, '$1-$3') : '-'}
+ENDEREÇO: ${p.endereco || '-'}
+VALOR SOLICITADO: R$ ${parseFloat(p.valor_desejado||0).toFixed(2).replace('.',',')}
+            `.trim();
+            navigator.clipboard.writeText(texto);
+            mostrarNotificacao('Dados copiados!', 'sucesso');
         });
     });
 
@@ -404,25 +452,9 @@ function renderizarLista() {
         btn.addEventListener('click', async () => {
             const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
             const novaQtd = (p.parcelas_pagas || 0) + 1;
-            if(novaQtd > p.qtd_parcelas) return alert('Todas pagas!');
+            if(novaQtd > p.qtd_parcelas) return alert('Todas as parcelas já pagas!');
             await supabase.from('propostas').update({parcelas_pagas: novaQtd}).eq('cpf', btn.dataset.cpf);
-            mostrarNotificacao(`Parcela ${novaQtd} registrada!`, 'sucesso');
-        });
-    });
-
-    document.querySelectorAll('.btn-excluir-proposta').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            if(confirm('Excluir?')) {
-                await supabase.from('propostas').delete().eq('cpf', btn.dataset.cpf);
-            }
-        });
-    });
-
-    document.querySelectorAll('.btn-copiar').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
-            navigator.clipboard.writeText(`Nome: ${p.nome}\nCPF: ${cpfFmt}\nWhatsApp: ${p.telefone}`);
-            mostrarNotificacao('Dados copiados!', 'sucesso');
+            mostrarNotificacao(`✅ Parcela registrada: ${novaQtd} de ${p.qtd_parcelas}`, 'sucesso');
         });
     });
 }
@@ -431,30 +463,43 @@ function renderizarLista() {
 function abrirModalEditar(cpf) {
     const proposta = listaPropostas.find(p => p.cpf === cpf);
     document.getElementById('formModal').innerHTML = `
-        <label>Valor Total (R$)</label>
+        <label>Valor Total do Produto (R$)</label>
         <input type="number" step="0.01" id="valorTotal" class="input" value="${proposta.valor_aprovado || ''}" oninput="atualizarCalculo()">
 
         <div class="linha-calculo">
-            <div><label>% Entrada</label><input type="number" id="percEntrada" class="input input-pequeno" min="2" max="70" value="39" oninput="atualizarCalculo()"></div>
-            <div><label>% Juros</label><input type="number" id="percJuros" class="input input-pequeno" min="0" max="20" value="6" oninput="atualizarCalculo()"></div>
+            <div>
+                <label>% Entrada</label>
+                <input type="number" id="percEntrada" class="input input-pequeno" min="2" max="70" value="39" oninput="atualizarCalculo()">
+            </div>
+            <div>
+                <label>% Juros</label>
+                <input type="number" id="percJuros" class="input input-pequeno" min="0" max="20" value="6" oninput="atualizarCalculo()">
+            </div>
         </div>
 
         <div class="linha-calculo">
-            <div><label>Valor Entrada</label><input type="number" step="0.01" id="valorEntrada" class="input input-pequeno bg-gray-100" readonly></div>
-            <div><label>Parcelas</label>
+            <div>
+                <label>Valor Entrada</label>
+                <input type="number" step="0.01" id="valorEntrada" class="input input-pequeno bg-gray-100" readonly>
+            </div>
+            <div>
+                <label>Quantas Parcelas</label>
                 <select id="qtdParc" class="input input-pequeno" oninput="atualizarCalculo()">
                     <option value="">Escolha</option>
                     ${Array.from({length:48}, (_,i) => `<option value="${i+1}" ${proposta.qtd_parcelas == i+1 ? 'selected' : ''}>${i+1}</option>`).join('')}
                 </select>
             </div>
-            <div><label>Valor Parcela</label><input type="number" step="0.01" id="valorParcela" class="input input-pequeno bg-gray-100" readonly></div>
+            <div>
+                <label>Valor Parcela</label>
+                <input type="number" step="0.01" id="valorParcela" class="input input-pequeno bg-gray-100" readonly>
+            </div>
         </div>
 
-        <label>Chave Pix / Código Pagamento</label>
-        <input type="text" id="chavePix" class="input" value="${proposta.chave_pix || ''}" placeholder="Sua chave Pix">
+        <label>Chave Pix / Código Mercado Pago</label>
+        <input type="text" id="chavePix" class="input" value="${proposta.chave_pix || ''}" placeholder="Sua chave Pix ou código gerado">
 
         <div class="flex gap-2 mt-4">
-            <button id="salvarBtn" class="btn btn-sucesso flex-1 justify-center">✅ Salvar e Aprovar</button>
+            <button id="salvarAlteracoes" class="btn btn-sucesso flex-1 justify-center">✅ Salvar e Aprovar</button>
             <button class="btn btn-perigo flex-1 justify-center" onclick="fecharModalEditar()">Cancelar</button>
         </div>
     `;
@@ -462,7 +507,7 @@ function abrirModalEditar(cpf) {
     document.getElementById('modalEditar').style.display = 'flex';
     setTimeout(atualizarCalculo, 100);
 
-    document.getElementById('salvarBtn').onclick = async () => {
+    document.getElementById('salvarAlteracoes').onclick = async () => {
         await supabase.from('propostas').update({
             status: 'Aprovada',
             valor_aprovado: parseFloat(document.getElementById('valorTotal').value) || 0,
@@ -472,7 +517,7 @@ function abrirModalEditar(cpf) {
             chave_pix: document.getElementById('chavePix').value.trim()
         }).eq('cpf', cpf);
         
-        mostrarNotificacao('✅ PROPOSTA APROVADA! O cliente já pode ver os detalhes agora.', 'sucesso');
+        mostrarNotificacao('✅ PROPOSTA APROVADA! O cliente já vê os detalhes na hora.', 'sucesso');
         fecharModalEditar();
     };
 }
