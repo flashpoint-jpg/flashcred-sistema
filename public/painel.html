@@ -3,102 +3,262 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Controle | FlashCred</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Painel Administrativo | FlashCred</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0A2463',
-                        verdeLogo: '#10B981',
-                        neutro: '#475569',
-                        fundo: '#F8FAFC'
-                    }
-                }
-            }
-        }
-    </script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background-color: #F8FAFC; color: #1E293B; }
-        
-        nav { background: #FFFFFF; border-bottom: 1px solid #E2E8F0; position: sticky; top: 0; z-index: 50; }
-        .nav-link { font-weight: 500; color: #475569; padding: 8px 14px; border-radius: 12px; text-decoration: none; transition: 0.2s; }
-        .nav-link:hover { color: #0A2463; background: rgba(16, 185, 129, 0.08); }
+        :root {
+            --primary: #0A2463;
+            --pix-green: #32BCAD;
+            --bg-body: #F8FAFC;
+            --text-main: #1E293B;
+            --text-muted: #64748B;
+            --border-color: #E2E8F0;
+            --sucesso: #10B981;
+            --alerta: #F59E0B;
+            --perigo: #EF4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg-body); color: var(--text-main); min-height: 100vh; }
 
-        .card { background: #FFFFFF; border-radius: 20px; box-shadow: 0 4px 20px rgba(10, 36, 99, 0.06); padding: 24px; border: 1px solid #E2E8F0; }
+        /* Cabeçalho */
+        header { background: #FFFFFF; border-bottom: 1px solid var(--border-color); padding: 16px 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); position: sticky; top:0; z-index: 50; }
+        .logo-area { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; }
+        .logo-nome { font-size: 20px; font-weight: 800; color: var(--primary); text-decoration: none; }
+        .logo-slogan { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+        .nav-links { display: flex; gap: 15px; }
+        .nav-links a { color: var(--primary); font-weight: 600; text-decoration: none; font-size: 14px; padding: 6px 12px; border-radius: 8px; background: #F1F5F9; }
+        .nav-links a:hover { background: #E2E8F0; }
+
+        /* 🔔 NOTIFICAÇÃO EM TEMPO REAL */
+        .notificacao-pagamento {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--sucesso);
+            color: white;
+            padding: 16px 24px;
+            border-radius: 16px;
+            box-shadow: 0 8px 24px rgba(16, 185, 129, 0.25);
+            z-index: 9999;
+            transform: translateX(120%);
+            transition: transform 0.4s ease;
+            max-width: 380px;
+        }
+        .notificacao-pagamento.ativa { transform: translateX(0); }
+        .notificacao-pagamento h4 { font-size: 15px; margin-bottom: 4px; }
+        .notificacao-pagamento p { font-size: 13px; opacity: 0.95; }
+
+        .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+
+        /* 📊 PAINEL DE ENTRADA E RECEBÍVEIS */
+        .painel-financeiro {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .card-financeiro {
+            background: white;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 16px rgba(10,36,99,0.08);
+            border: 1px solid var(--border-color);
+            text-align: center;
+        }
+        .card-financeiro .valor { font-size: 26px; font-weight: 800; margin: 8px 0; }
+        .card-financeiro .rotulo { font-size: 13px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; }
+        .card-financeiro.entrada { border-top: 4px solid var(--pix-green); }
+        .card-financeiro.parcelas { border-top: 4px solid var(--alerta); }
+        .card-financeiro.areceber { border-top: 4px solid var(--primary); }
+        .card-financeiro.pago { border-top: 4px solid var(--sucesso); }
+
+        .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        @media(max-width: 900px) { .grade { grid-template-columns: 1fr; } }
+
+        /* Cards */
+        .card { background: #FFFFFF; border-radius: 20px; padding: 24px; box-shadow: 0 4px 16px rgba(10,36,99,0.08); border: 1px solid var(--border-color); margin-bottom: 20px; }
+        .card-titulo { font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid #F1F5F9; display: flex; justify-content: space-between; align-items: center; }
+
+        /* Configuração API Pagamento */
+        .config-api { background: #F8FAFC; border-radius: 14px; padding: 16px; margin-bottom: 16px; border: 1px dashed var(--primary); }
+        .config-api input { background: white; }
+
+        /* Lista de Propostas */
+        .lista-propostas { max-height: 380px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .item-proposta { padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 14px; cursor: pointer; transition: 0.2s; background: #FAFBFC; display: flex; justify-content: space-between; align-items: center; }
+        .item-proposta:hover { border-color: var(--primary); background: #FFF; }
+        .item-proposta.ativo { border-color: var(--primary); background: #F0F4FF; }
+        .prop-topo { font-weight: 700; font-size: 15px; color: var(--primary); }
+        .prop-detalhes { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
         .badge { padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; display: inline-block; }
         .badge-nova { background: #FEF3C7; color: #92400E; }
         .badge-aprovada { background: #ECFDF5; color: #065F46; }
         .badge-recusada { background: #FEF2F2; color: #DC2626; }
-        
-        table { width: 100%; border-collapse: collapse; text-align: left; }
-        th { background: #F1F5F9; color: #0A2463; font-weight: 600; font-size: 13px; padding: 12px 16px; text-transform: uppercase; }
-        td { padding: 14px 16px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
-        tr:hover td { background: #F8FAFC; cursor: pointer; }
+
+        /* Dados Cliente e Parcelas */
+        .cliente-nome { font-size: 20px; font-weight: 800; color: var(--primary); margin-bottom: 12px; }
+        .dado-linha { padding: 8px 0; border-bottom: 1px solid #F8FAFC; font-size: 14px; }
+        .dado-linha:last-child { border: none; }
+        .dado-rotulo { font-weight: 600; color: var(--text-muted); display: inline-block; width: 140px; }
+        .dado-valor { font-weight: 500; color: var(--text-main); }
+
+        .area-parcelas { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+        .titulo-parcelas { font-weight: 600; font-size: 15px; color: var(--primary); margin-bottom: 10px; }
+        .linha-parcela { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        .linha-parcela input { flex: 1; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 13px; }
+        .btn-add-parcela { background: var(--pix-green); color: white; border: none; border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 500; cursor: pointer; margin-top: 8px; }
+        .btn-add-parcela:hover { background: #239e91; }
+
+        /* Formulários e Botões */
+        .grupo-linha { display: flex; gap: 12px; margin-bottom: 12px; }
+        .grupo-item { flex: 1; }
+        label { font-weight: 600; font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 4px; text-transform: uppercase; }
+        .input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border-color); border-radius: 12px; font-size: 15px; background: #FAFBFC; }
+        .input:focus { outline: none; border-color: var(--primary); background: #FFF; }
+
+        .resumo-valor { background: #F8FAFC; border-radius: 14px; padding: 16px; margin: 16px 0; border: 1px solid var(--border-color); }
+        .resumo-linha { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+        .resumo-total { font-weight: 700; font-size: 16px; color: var(--primary); padding-top: 8px; border-top: 1px solid var(--border-color); margin-top: 6px; }
+
+        .area-botoes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+        .btn { padding: 12px 16px; border: none; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; transition: 0.2s; flex: 1; min-width: 130px; text-align: center; }
+        .btn:hover { transform: translateY(-1px); opacity: 0.95; }
+        .btn-aprovar { background: #10B981; color: white; }
+        .btn-reprovar { background: #EF4444; color: white; }
+        .btn-excluir { background: #DC2626; color: white; }
+        .btn-whats { background: #25D366; color: white; }
+        .btn-pix { background: var(--pix-green); color: #04203a; width: 100%; margin-top: 10px; }
+        .btn-manual { background: #F59E0B; color: white; width: 100%; margin-top: 8px; }
+        .btn-copiar { background: #3B82F6; color: white; }
+        .btn-api { background: #8B5CF6; color: white; }
+
+        .codigo-pix { background: #F8FAFC; border: 1px dashed var(--primary); border-radius: 12px; padding: 14px; margin-top: 12px; font-family: monospace; font-size: 13px; word-break: break-all; display: none; }
+        .aviso-sucesso { background: #ECFDF5; color: #065F46; padding: 10px; border-radius: 10px; text-align: center; margin-top: 12px; display: none; font-weight: 600; font-size: 14px; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body>
 
-<nav>
-    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-        <div class="flex items-center gap-3">
-            <span class="text-2xl font-extrabold text-primary">FlashCred</span>
-            <span class="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">Painel Administrativo</span>
-        </div>
-        <div class="flex gap-4">
-            <a href="/" class="nav-link">Nova Solicitação (Site)</a>
-            <a href="consultar.html" class="nav-link">Consulta Cliente</a>
-        </div>
-    </div>
-</nav>
+<div id="notifPagamento" class="notificacao-pagamento">
+    <h4>✅ Pagamento Confirmado!</h4>
+    <p id="textoNotif">Entrada paga por <strong>—</strong> no valor de R$ —</p>
+</div>
 
-<main class="flex-grow max-w-7xl w-full mx-auto p-4 md:p-8">
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+<header>
+    <div class="logo-area">
         <div>
-            <h1 class="text-2xl font-bold text-primary">Propostas Recebidas</h1>
-            <p class="text-neutro text-sm">Gerencie todas as solicitações de limite enviadas pelos clientes.</p>
+            <a href="/" class="logo-nome">FlashCred | Painel Administrativo</a>
+            <div class="logo-slogan">Limite Pix Parcelado - Distribuidora Flash Point</div>
         </div>
-        <button onclick="carregarPropostas()" class="bg-primary text-white px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition">
-            🔄 Atualizar Lista
-        </button>
+        <div class="nav-links">
+            <a href="index.html">Ir para o Site</a>
+            <a href="consultar.html">Acompanhamento</a>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+
+    <div class="painel-financeiro">
+        <div class="card-financeiro entrada">
+            <div class="rotulo">Total de Entradas Recebidas</div>
+            <div class="valor" id="totalEntradas">R$ 0,00</div>
+        </div>
+        <div class="card-financeiro parcelas">
+            <div class="rotulo">Parcelas Selecionadas</div>
+            <div class="valor" id="qtdParcelasCard">12x</div>
+        </div>
+        <div class="card-financeiro areceber">
+            <div class="rotulo">Valor Total a Receber</div>
+            <div class="valor" id="totalReceber">R$ 0,00</div>
+        </div>
+        <div class="card-financeiro pago">
+            <div class="rotulo">Valor Já Recebido</div>
+            <div class="valor" id="totalPago">R$ 0,00</div>
+        </div>
     </div>
 
-    <div class="card overflow-x-auto">
-        <table>
-            <thead>
-                <tr>
-                    <th>Data</th>
-                    <th>Cliente</th>
-                    <th>CPF</th>
-                    <th>Telefone</th>
-                    <th>CEP / Endereço</th>
-                    <th>Valor Solicitado</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody id="tabelaPropostas">
-                <tr>
-                    <td colspan="7" class="text-center py-6 text-neutro">Carregando propostas do banco de dados...</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
-</main>
+    <div class="grade">
+        
+        <!-- COLUNA ESQUERDA -->
+        <div>
+            <div class="card">
+                <h2 class="card-titulo">📋 Solicitações Recebidas</h2>
+                <div class="lista-propostas" id="listaPropostas">
+                    <div style="text-align: center; color: var(--text-muted); padding: 20px;">Carregando propostas do banco...</div>
+                </div>
+            </div>
 
-<!-- MODAL DE DETALHES -->
-<div id="modalDetalhes" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
-    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl">
-        <h3 class="text-xl font-bold text-primary mb-4">Detalhes da Proposta</h3>
-        <div id="conteudoModal" class="space-y-3 text-sm text-gray-700 mb-6">
-            <!-- Preenchido via script -->
+            <div class="card" id="cardDetalhes" style="display:none;">
+                <h2 class="card-titulo">👤 Cliente Selecionado</h2>
+                <div class="cliente-nome" id="cliNome">—</div>
+                <div class="dado-linha"><span class="dado-rotulo">CPF:</span><span class="dado-valor" id="cliCpf">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">WhatsApp:</span><span class="dado-valor" id="cliWhatsapp">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">CEP / Endereço:</span><span class="dado-valor" id="cliEndereco">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Valor Solicitado:</span><span class="dado-valor" id="cliValorDesejado">—</span></div>
+                <div class="dado-linha"><span class="dado-rotulo">Status Atual:</span><span class="dado-valor" id="cliStatus">—</span></div>
+
+                <button class="btn btn-manual" onclick="darBaixaManualEntrada()">💵 Dar Baixa Manual (Entrada Pix/Dinheiro)</button>
+
+                <div class="area-botoes" style="margin-top: 12px;">
+                    <button class="btn btn-copiar" onclick="copiarDadosCliente()">📋 Copiar Dados</button>
+                    <button class="btn btn-excluir" onclick="excluirProposta()">🗑️ Excluir Proposta</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="card-titulo">⚙️ API Pagamento Produção</h2>
+                <div class="config-api">
+                    <label>Token Mercado Pago / API Pix</label>
+                    <input type="text" id="tokenApi" class="input" placeholder="Cole seu token de produção aqui">
+                    <button class="btn btn-api" style="margin-top:10px;" onclick="salvarTokenApi()">💾 Salvar Token</button>
+                </div>
+            </div>
         </div>
-        <div class="flex gap-3 justify-end">
-            <button onclick="mudarStatus('Aprovada')" class="bg-emerald-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-emerald-700 transition">Aprovar</button>
-            <button onclick="mudarStatus('Recusada')" class="bg-red-600 text-white px-4 py-2 rounded-xl font-semibold hover:bg-red-700 transition">Recusar</button>
-            <button onclick="fecharModal()" class="bg-gray-200 text-gray-800 px-4 py-2 rounded-xl font-semibold hover:bg-gray-300 transition">Fechar</button>
+
+        <!-- COLUNA DIREITA -->
+        <div class="card">
+            <h2 class="card-titulo">⚙️ Simulação e Parcelas</h2>
+
+            <div class="grupo-linha">
+                <div class="grupo-item">
+                    <label>Valor Total Compra (R$)</label>
+                    <input type="number" id="valorTotal" class="input" min="100" step="0.01" value="2100.00" oninput="atualizarCalculo()">
+                </div>
+            </div>
+            <div class="grupo-linha">
+                <div class="grupo-item"><label>Entrada (%)</label><input type="number" id="porcEntrada" class="input" min="2" max="90" value="39" oninput="atualizarCalculo()"></div>
+                <div class="grupo-item"><label>Juros ao mês (%)</label><input type="number" id="porcJuros" class="input" min="0" max="20" step="0.1" value="6" oninput="atualizarCalculo()"></div>
+            </div>
+            <div class="grupo-linha">
+                <div class="grupo-item">
+                    <label>Quantidade de Parcelas</label>
+                    <select id="qtdParcelas" class="input" onchange="atualizarCalculo()">
+                        <option value="3">3x</option><option value="4">4x</option><option value="5">5x</option><option value="6">6x</option>
+                        <option value="8">8x</option><option value="10">10x</option><option value="12" selected>12x</option>
+                        <option value="18">18x</option><option value="24">24x</option><option value="36">36x</option><option value="48">48x</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="resumo-valor">
+                <div class="resumo-linha"><span>Valor da Entrada:</span><span id="resEntrada">R$ 0,00</span></div>
+                <div class="resumo-linha"><span>Valor Financiado:</span><span id="resFinanciado">R$ 0,00</span></div>
+                <div class="resumo-linha"><span>Valor por Parcela:</span><span id="resParcela">R$ 0,00</span></div>
+                <div class="resumo-total"><span>Total Final:</span><span id="resTotal">R$ 0,00</span></div>
+            </div>
+
+            <button class="btn btn-pix" onclick="gerarPixApi()">🔑 Gerar Código Pix Oficial API</button>
+            <div id="codigoPix" class="codigo-pix">
+                Código Pix Copia e Cola:<br>
+                <span id="pixCodigo">—</span>
+            </div>
+
+            <div class="area-botoes">
+                <button class="btn btn-aprovar" onclick="alterarStatus('Aprovada')">✅ Aprovar</button>
+                <button class="btn btn-reprovar" onclick="alterarStatus('Recusada')">❌ Reprovar</button>
+                <button class="btn btn-whats" onclick="enviarWhatsApp()">📤 WhatsApp</button>
+            </div>
+            <div id="aviso" class="aviso-sucesso"></div>
         </div>
     </div>
 </div>
@@ -109,102 +269,237 @@ const supabaseKey = 'sb_publishable_g5Tcimge2aiMX8JE3mlU3W55Y2s0CjZtxXkT2VjR3K9R
 const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 let propostasGlobal = [];
-let propostaSelecionadaId = null;
+let clienteSelecionado = null;
+let totalEntradas = 0;
+let totalReceber = 0;
+let totalPago = 0;
 
-async function carregarPropostas() {
-    const tbody = document.getElementById('tabelaPropostas');
-    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-neutro">Buscando propostas...</td></tr>`;
+window.addEventListener('load', () => {
+    const tokenSalvo = localStorage.getItem('token_mp_producao');
+    if(tokenSalvo) {
+        document.getElementById('tokenApi').value = tokenSalvo;
+    }
+    atualizarCalculo();
+    carregarPropostasDoBanco();
+});
 
+async function carregarPropostasDoBanco() {
+    const lista = document.getElementById('listaPropostas');
     const { data, error } = await supabase
         .from('propostas')
         .select('*')
         .order('id', { ascending: false });
 
-    if (error) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-red-600">Erro ao carregar: ${error.message}</td></tr>`;
+    if(error) {
+        console.error("Erro ao carregar propostas:", error);
+        lista.innerHTML = `<div style="text-align: center; color: var(--perigo); padding: 20px;">Erro ao carregar do banco.</div>`;
         return;
     }
 
     propostasGlobal = data || [];
-    renderizarTabela();
+    renderizarListaPropostas();
+    atualizarPainelFinanceiro();
 }
 
-function renderizarTabela() {
-    const tbody = document.getElementById('tabelaPropostas');
-    tbody.innerHTML = '';
-
-    if (propostasGlobal.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-neutro">Nenhuma proposta encontrada no sistema.</td></tr>`;
+function renderizarListaPropostas() {
+    const lista = document.getElementById('listaPropostas');
+    lista.innerHTML = '';
+    
+    if(propostasGlobal.length === 0) {
+        lista.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 20px;">Nenhuma solicitação recebida ainda...</div>`;
         return;
     }
 
-    propostasGlobal.forEach(p => {
-        const tr = document.createElement('tr');
-        tr.onclick = () => abrirDetalhes(p.id);
+    propostasGlobal.forEach(proposta => {
+        const item = document.createElement('div');
+        item.className = `item-proposta ${clienteSelecionado && clienteSelecionado.id === proposta.id ? 'ativo' : ''}`;
+        item.onclick = () => selecionarCliente(proposta);
 
         let badgeClass = 'badge-nova';
-        if (p.status === 'Aprovada') badgeClass = 'badge-aprovada';
-        if (p.status === 'Recusada') badgeClass = 'badge-recusada';
+        if (proposta.status === 'Aprovada') badgeClass = 'badge-aprovada';
+        if (proposta.status === 'Recusada') badgeClass = 'badge-recusada';
 
-        tr.innerHTML = `
-            <td>${p.data_solicitacao || '---'}</td>
-            <td class="font-semibold text-primary">${p.nome || '---'}</td>
-            <td>${p.cpf || '---'}</td>
-            <td>${p.telefone || '---'}</td>
-            <td>${p.cep || ''} - ${p.endereco || '---'}</td>
-            <td class="font-bold text-emerald-600">R$ ${p.valor_solicitado || '0,00'}</td>
-            <td><span class="badge ${badgeClass}">${p.status || 'Nova'}</span></td>
+        item.innerHTML = `
+            <div>
+                <div class="prop-topo">${proposta.nome || 'Sem nome'}</div>
+                <div class="prop-detalhes">CPF: ${proposta.cpf || '---'} | R$ ${proposta.valor_solicitado || '0,00'}</div>
+            </div>
+            <span class="badge ${badgeClass}">${proposta.status || 'Nova'}</span>
         `;
-        tbody.appendChild(tr);
+        lista.appendChild(item);
     });
 }
 
-function abrirDetalhes(id) {
-    const p = propostasGlobal.find(item => item.id === id);
-    if (!p) return;
+function selecionarCliente(proposta) {
+    clienteSelecionado = proposta;
+    document.getElementById('cardDetalhes').style.display = 'block';
+    document.getElementById('cliNome').textContent = proposta.nome || '---';
+    document.getElementById('cliCpf').textContent = proposta.cpf || '---';
+    document.getElementById('cliWhatsapp').textContent = proposta.telefone || '---';
+    document.getElementById('cliEndereco').textContent = `${proposta.cep || ''} - ${proposta.endereco || '---'}`;
+    document.getElementById('cliValorDesejado').textContent = `R$ ${proposta.valor_solicitado || '0,00'}`;
+    document.getElementById('cliStatus').textContent = proposta.status || 'Nova';
 
-    propostaSelecionadaId = id;
-    const conteudo = document.getElementById('conteudoModal');
-    conteudo.innerHTML = `
-        <p><strong>Nome:</strong> ${p.nome}</p>
-        <p><strong>CPF:</strong> ${p.cpf}</p>
-        <p><strong>Data de Nascimento:</strong> ${p.nascimento || '---'}</p>
-        <p><strong>Telefone:</strong> ${p.telefone}</p>
-        <p><strong>CEP:</strong> ${p.cep}</p>
-        <p><strong>Endereço:</strong> ${p.endereco}</p>
-        <p><strong>Valor Solicitado:</strong> R$ ${p.valor_solicitado}</p>
-        <p><strong>Status Atual:</strong> ${p.status}</p>
-    `;
-    document.getElementById('modalDetalhes').classList.remove('hidden');
-    document.getElementById('modalDetalhes').classList.add('flex');
+    if(proposta.valor_solicitado) {
+        const valNum = parseFloat(proposta.valor_solicitado.toString().replace(/\./g, '').replace(',', '.')) || 0;
+        if(valNum > 0) {
+            document.getElementById('valorTotal').value = valNum;
+            atualizarCalculo();
+        }
+    }
+    renderizarListaPropostas();
 }
 
-function fecharModal() {
-    document.getElementById('modalDetalhes').classList.remove('flex');
-    document.getElementById('modalDetalhes').classList.add('hidden');
-}
-
-async function mudarStatus(novoStatus) {
-    if (!propostaSelecionadaId) return;
+async function alterarStatus(novoStatus) {
+    if(!clienteSelecionado) { alert("Selecione um cliente na lista."); return; }
 
     const { error } = await supabase
         .from('propostas')
         .update({ status: novoStatus })
-        .eq('id', propostaSelecionadaId);
+        .eq('id', clienteSelecionado.id);
 
-    if (error) {
-        alert('Erro ao atualizar status: ' + error.message);
+    if(error) {
+        alert("Erro ao atualizar status: " + error.message);
     } else {
-        fecharModal();
-        carregarPropostas();
+        clienteSelecionado.status = novoStatus;
+        document.getElementById('cliStatus').textContent = novoStatus;
+        mostrarAviso(`✅ Status alterado para ${novoStatus} com sucesso!`);
+        carregarPropostasDoBanco();
     }
 }
 
-// Carregar ao iniciar
-window.addEventListener('load', carregarPropostas);
+async function excluirProposta() {
+    if(!clienteSelecionado) return;
+    if(!confirm(`Deseja realmente excluir a proposta de ${clienteSelecionado.nome}?`)) return;
 
-// Atualizar automaticamente a cada 15 segundos
-setInterval(carregarPropostas, 15000);
+    const { error } = await supabase
+        .from('propostas')
+        .delete()
+        .eq('id', clienteSelecionado.id);
+
+    if(error) {
+        alert("Erro ao excluir: " + error.message);
+    } else {
+        document.getElementById('cardDetalhes').style.display = 'none';
+        clienteSelecionado = null;
+        mostrarAviso("🗑️ Proposta excluída com sucesso!");
+        carregarPropostasDoBanco();
+    }
+}
+
+function atualizarPainelFinanceiro() {
+    let tEntradas = 0;
+    let tReceber = 0;
+    
+    propostasGlobal.forEach(p => {
+        const val = parseFloat(p.valor_solicitado?.toString().replace(/\./g, '').replace(',', '.')) || 0;
+        tReceber += val;
+    });
+
+    document.getElementById('totalEntradas').textContent = totalEntradas.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+    document.getElementById('qtdParcelasCard').textContent = document.getElementById('qtdParcelas').value + 'x';
+    document.getElementById('totalReceber').textContent = tReceber.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+    document.getElementById('totalPago').textContent = totalPago.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+}
+
+function salvarTokenApi() {
+    const token = document.getElementById('tokenApi').value.trim();
+    if(!token) { alert("Informe o token."); return; }
+    localStorage.setItem('token_mp_producao', token);
+    mostrarAviso("✅ Token salvo com sucesso!");
+}
+
+function gerarPixApi() {
+    const token = localStorage.getItem('token_mp_producao') || document.getElementById('tokenApi').value.trim();
+    if(!token) { alert("Salve o token da API primeiro."); return; }
+
+    const valorEntradaStr = document.getElementById('resEntrada').textContent.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
+    const valorEntrada = parseFloat(valorEntradaStr) || 100.00;
+
+    mostrarAviso("⏳ Gerando Pix oficial no Mercado Pago...");
+
+    fetch('https://api.mercadopago.com/v1/payments', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': Date.now().toString()
+        },
+        body: JSON.stringify({
+            transaction_amount: valorEntrada,
+            description: clienteSelecionado ? `Entrada FlashCred - ${clienteSelecionado.nome}` : 'Entrada FlashCred',
+            payment_method_id: 'pix',
+            payer: { email: clienteSelecionado ? `${clienteSelecionado.cpf.replace(/\D/g,'')}@flashcred.com` : 'cliente@flashcred.com' }
+        })
+    })
+    .then(async res => {
+        const data = await res.json();
+        if(res.ok && data.point_of_interaction) {
+            const qrCode = data.point_of_interaction.transaction_data.qr_code;
+            document.getElementById('codigoPix').style.display = 'block';
+            document.getElementById('pixCodigo').textContent = qrCode;
+            mostrarAviso("✅ Código Pix oficial gerado!");
+        } else {
+            alert("Erro ao gerar Pix via API. Verifique o token.");
+        }
+    })
+    .catch(() => alert("Falha de conexão com a API do Mercado Pago."));
+}
+
+function darBaixaManualEntrada() {
+    if(!clienteSelecionado) return;
+    const valorStr = document.getElementById('resEntrada').textContent;
+    if(!confirm(`Dar baixa manual na entrada de ${valorStr}?`)) return;
+
+    const valNum = parseFloat(valorStr.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) || 0;
+    totalEntradas += valNum;
+    totalPago += valNum;
+    atualizarPainelFinanceiro();
+    mostrarAviso(`✅ Entrada de ${valorStr} confirmada manualmente!`);
+}
+
+function atualizarCalculo() {
+    const valorTotal = parseFloat(document.getElementById('valorTotal').value) || 0;
+    const porcEntrada = parseFloat(document.getElementById('porcEntrada').value) || 0;
+    const porcJuros = parseFloat(document.getElementById('porcJuros').value) || 0;
+    const qtd = parseInt(document.getElementById('qtdParcelas').value) || 1;
+
+    const valorEntrada = valorTotal * (porcEntrada / 100);
+    const valorFinanciado = valorTotal - valorEntrada;
+    const fatorJuros = Math.pow((1 + (porcJuros / 100)), qtd);
+    const valorParcela = (valorFinanciado * fatorJuros) / qtd;
+    const valorTotalFinal = valorEntrada + (valorParcela * qtd);
+
+    document.getElementById('resEntrada').textContent = valorEntrada.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+    document.getElementById('resFinanciado').textContent = valorFinanciado.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+    document.getElementById('resParcela').textContent = valorParcela.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+    document.getElementById('resTotal').textContent = valorTotalFinal.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+    atualizarPainelFinanceiro();
+}
+
+function copiarDadosCliente() {
+    if(!clienteSelecionado) return;
+    const texto = `Cliente: ${clienteSelecionado.nome}\nCPF: ${clienteSelecionado.cpf}\nWhatsApp: ${clienteSelecionado.telefone}\nEndereço: ${clienteSelecionado.endereco}\nValor: R$ ${clienteSelecionado.valor_solicitado}`;
+    navigator.clipboard.writeText(texto);
+    mostrarAviso("📋 Dados copiados com sucesso!");
+}
+
+function enviarWhatsApp() {
+    if(!clienteSelecionado) { alert("Selecione um cliente."); return; }
+    const tel = clienteSelecionado.telefone.replace(/\D/g, '');
+    const msg = encodeURIComponent(`Olá ${clienteSelecionado.nome}, sua proposta no FlashCred foi analisada e o status atual é: *${clienteSelecionado.status}*. Entre em contato com a Distribuidora Flash Point para finalizar.`);
+    window.open(`https://wa.me/55${tel}?text=${msg}`, '_blank');
+}
+
+function mostrarAviso(msg) {
+    const aviso = document.getElementById('aviso');
+    aviso.textContent = msg;
+    aviso.style.display = 'block';
+    setTimeout(() => { aviso.style.display = 'none'; }, 3500);
+}
+
+// Atualização automática em tempo real a cada 15 segundos
+setInterval(carregarPropostasDoBanco, 15000);
 </script>
 </body>
 </html>
