@@ -4,83 +4,59 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Administrativo | FlashCred</title>
+    <!-- BIBLIOTECA FIXA E CONFIÁVEL -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1/dist/supabase.min.js"></script>
     <style>
         :root {
             --primary: #0A2463;
-            --pix-green: #32BCAD;
             --bg-body: #F8FAFC;
             --text-main: #1E293B;
-            --text-muted: #64748B;
             --border-color: #E2E8F0;
             --sucesso: #10B981;
             --alerta: #F59E0B;
             --perigo: #EF4444;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
         body { background: var(--bg-body); color: var(--text-main); min-height: 100vh; }
 
-        @keyframes girar {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        @keyframes girar { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .bolinha { width: 18px; height: 18px; border: 2px solid #ddd; border-top: 2px solid var(--primary); border-radius: 50%; animation: girar 0.8s linear infinite; display: inline-block; margin-right: 6px; }
 
-        .tela-login { position: fixed; inset: 0; background: linear-gradient(135deg, #0A2463, #153A8C); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px; }
-        .card-login { background: white; padding: 32px; border-radius: 24px; width: 100%; max-width: 420px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
+        .tela-login { position: fixed; inset: 0; background: linear-gradient(135deg, #0A2463, #153A8C); display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .card-login { background: white; padding: 32px; border-radius: 20px; width: 100%; max-width: 400px; }
         .card-login h2 { text-align: center; color: var(--primary); margin-bottom: 20px; }
-        .erro-login { color: var(--perigo); text-align: center; margin-top: 10px; display: none; font-size: 14px; }
+        .input { width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 10px; font-size: 15px; margin-bottom: 12px; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 15px; }
+        .btn-entrar { background: var(--primary); color: white; }
+        .erro { color: var(--perigo); text-align: center; display: none; margin-top: 8px; }
 
-        header { background: #FFFFFF; border-bottom: 1px solid var(--border-color); padding: 16px 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); position: sticky; top:0; z-index: 50; display: none; }
-        .logo-area { display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; flex-wrap: wrap; gap: 12px; }
-        .logo-nome { font-size: 20px; font-weight: 800; color: var(--primary); text-decoration: none; }
-        .btn-sair { background: var(--perigo); color: white; padding: 8px 16px; border-radius: 10px; border: none; font-weight: 600; cursor: pointer; }
+        header { background: white; border-bottom: 1px solid var(--border-color); padding: 16px; display: none; }
+        .cab { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; }
+        .btn-sair { background: var(--perigo); color: white; padding: 8px 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
 
-        .container { max-width: 1200px; margin: 24px auto; padding: 0 16px; display: none; }
+        .container { max-width: 1200px; margin: 20px auto; padding: 0 16px; display: none; }
+        .card { background: white; border-radius: 16px; padding: 20px; margin-bottom: 20px; border: 1px solid var(--border-color); }
+        .card h3 { color: var(--primary); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color); }
 
-        .painel-financeiro { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .card-financeiro { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 16px rgba(10,36,99,0.08); border: 1px solid var(--border-color); text-align: center; }
-        .card-financeiro .valor { font-size: 26px; font-weight: 800; margin: 8px 0; }
-        .card-financeiro .rotulo { font-size: 13px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; }
+        .lista { max-height: 350px; overflow-y: auto; }
+        .item { padding: 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+        .item:hover, .item.ativo { background: #f0f4ff; border-left: 4px solid var(--primary); }
+        .item.nova { border-left: 4px solid var(--alerta); }
+        .item.aprovada { border-left: 4px solid var(--sucesso); }
+        .item.recusada { border-left: 4px solid var(--perigo); }
 
-        .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        @media(max-width: 900px) { .grade { grid-template-columns: 1fr; } }
+        .dado { padding: 8px 0; border-bottom: 1px solid #f8fafc; }
+        .dado strong { color: var(--primary); width: 120px; display: inline-block; }
 
-        .card { background: #FFFFFF; border-radius: 20px; padding: 24px; box-shadow: 0 4px 16px rgba(10,36,99,0.08); border: 1px solid var(--border-color); margin-bottom: 20px; }
-        .card-titulo { font-size: 18px; font-weight: 700; color: var(--primary); margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid #F1F5F9; }
-
-        .lista-propostas { max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .item-proposta { padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 14px; cursor: pointer; transition: 0.2s; background: #FAFBFC; }
-        .item-proposta:hover, .item-proposta.ativo { border-color: var(--primary); background: #F0F4FF; }
-        .item-proposta.nova { border-left: 4px solid var(--alerta); }
-        .item-proposta.aprovada { border-left: 4px solid var(--sucesso); }
-        .item-proposta.recusada { border-left: 4px solid var(--perigo); }
-
-        .cliente-nome { font-size: 20px; font-weight: 800; color: var(--primary); margin-bottom: 12px; }
-        .dado-linha { padding: 8px 0; border-bottom: 1px solid #F8FAFC; font-size: 14px; }
-        .dado-rotulo { font-weight: 600; color: var(--text-muted); display: inline-block; width: 140px; }
-
-        .grupo-linha { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-        .grupo-item { flex: 1; min-width: 140px; }
-        label { font-weight: 600; font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 4px; text-transform: uppercase; }
-        .input { width: 100%; padding: 12px 14px; border: 1.5px solid var(--border-color); border-radius: 12px; font-size: 15px; background: #FAFBFC; }
-        .input:focus { outline: none; border-color: var(--primary); background: #FFF; }
-
-        .resumo-valor { background: #F8FAFC; border-radius: 14px; padding: 16px; margin: 16px 0; border: 1px solid var(--border-color); }
-        .resumo-linha { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
-        .resumo-total { font-weight: 700; font-size: 16px; color: var(--primary); padding-top: 8px; border-top: 1px solid var(--border-color); margin-top: 6px; }
-
-        .area-botoes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
-        .btn { padding: 12px 16px; border: none; border-radius: 12px; font-weight: 600; font-size: 14px; cursor: pointer; transition: 0.2s; flex: 1; min-width: 120px; text-align: center; }
-        .btn:hover { opacity: 0.9; }
-        .btn-aprovar { background: #10B981; color: white; }
-        .btn-reprovar { background: #EF4444; color: white; }
+        .btn-group { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+        .btn-pequeno { flex: 1; min-width: 120px; padding: 10px; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; }
+        .btn-ap { background: var(--sucesso); color: white; }
+        .btn-rec { background: var(--perigo); color: white; }
         .btn-whats { background: #25D366; color: white; }
-        .btn-copiar { background: #3B82F6; color: white; }
-        .btn-manual { background: #F59E0B; color: white; width: 100%; margin-top: 8px; }
-        .aviso { padding: 12px; border-radius: 12px; margin-top: 12px; text-align: center; display: none; font-weight: 600; }
-        .aviso.sucesso { background: #ECFDF5; color: #065F46; }
-        .aviso.erro { background: #FEE2E2; color: #B91C1C; }
+
+        .aviso { padding: 12px; border-radius: 10px; margin-top: 12px; text-align: center; display: none; font-weight: 600; }
+        .aviso.ok { background: #d1fae5; color: #065f46; }
+        .aviso.erro { background: #fee2e2; color: #b91c1c; }
     </style>
 </head>
 <body>
@@ -88,136 +64,106 @@
 <!-- TELA DE LOGIN -->
 <div id="telaLogin" class="tela-login">
     <div class="card-login">
-        <h2>Acesso Administrativo</h2>
-        <input type="password" id="senhaAdmin" class="input" placeholder="Digite sua senha">
-        <button class="btn btn-aprovar" style="width:100%; margin-top:10px;" onclick="verificarLogin()">Entrar</button>
-        <div id="erroLogin" class="erro-login">Senha incorreta!</div>
+        <h2>Acesso FlashCred</h2>
+        <input type="password" id="senha" class="input" placeholder="Digite a senha">
+        <button class="btn btn-entrar" onclick="logar()">Entrar</button>
+        <div id="msgErro" class="erro">Senha incorreta ou erro de conexão</div>
     </div>
 </div>
 
 <header id="topo">
-    <div class="logo-area">
-        <div><span class="logo-nome">FlashCred - Painel</span></div>
+    <div class="cab">
+        <strong style="color: var(--primary); font-size: 18px;">FlashCred - Painel Administrativo</strong>
         <button class="btn-sair" onclick="sair()">Sair</button>
     </div>
 </header>
 
 <div class="container" id="conteudo">
-    <div class="painel-financeiro">
-        <div class="card-financeiro"><div class="rotulo">Entradas Recebidas</div><div class="valor" id="valEntradas">R$ 0,00</div></div>
-        <div class="card-financeiro"><div class="rotulo">Parcelas Ativas</div><div class="valor" id="qtdParc">0</div></div>
-        <div class="card-financeiro"><div class="rotulo">Total a Receber</div><div class="valor" id="valReceber">R$ 0,00</div></div>
-        <div class="card-financeiro"><div class="rotulo">Já Recebido</div><div class="valor" id="valPago">R$ 0,00</div></div>
+    <div class="card">
+        <h3>📋 Propostas Recebidas</h3>
+        <div id="listaPropostas" class="lista">
+            <div style="padding:20px;text-align:center;"><span class="bolinha"></span>Carregando dados...</div>
+        </div>
     </div>
 
-    <div class="grade">
-        <div>
-            <div class="card">
-                <h2 class="card-titulo">📋 Propostas Recebidas</h2>
-                <div class="lista-propostas" id="listaPropostas">
-                    <div style="text-align:center;padding:20px;"><span class="bolinha"></span>Carregando...</div>
-                </div>
-            </div>
+    <div class="card" id="detalhes" style="display:none;">
+        <h3>👤 Dados do Cliente</h3>
+        <div class="dado"><strong>Nome:</strong> <span id="dNome">—</span></div>
+        <div class="dado"><strong>CPF:</strong> <span id="dCpf">—</span></div>
+        <div class="dado"><strong>Nascimento:</strong> <span id="dNasc">—</span></div>
+        <div class="dado"><strong>WhatsApp:</strong> <span id="dTel">—</span></div>
+        <div class="dado"><strong>CEP / Endereço:</strong> <span id="dEnd">—</span></div>
+        <div class="dado"><strong>Valor Solicitado:</strong> <span id="dValor">—</span></div>
+        <div class="dado"><strong>Status:</strong> <span id="dStatus">—</span></div>
 
-            <div class="card" id="dadosCliente" style="display:none;">
-                <h2 class="card-titulo">👤 Dados do Cliente</h2>
-                <div class="cliente-nome" id="cliNome">—</div>
-                <div class="dado-linha"><span class="dado-rotulo">CPF:</span><span id="cliCpf">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Nascimento:</span><span id="cliNasc">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">WhatsApp:</span><span id="cliTel">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Endereço:</span><span id="cliEnd">—</span></div>
-                <div class="dado-linha"><span class="dado-rotulo">Status:</span><span id="cliStatus">—</span></div>
-                <button class="btn btn-manual" onclick="darBaixa()">💵 Dar Baixa Manual</button>
-                <div class="area-botoes">
-                    <button class="btn btn-copiar" onclick="copiarDados()">📋 Copiar</button>
-                </div>
-            </div>
+        <div class="btn-group">
+            <button class="btn-pequeno btn-ap" onclick="mudarStatus('Aprovada')">✅ Aprovar</button>
+            <button class="btn-pequeno btn-rec" onclick="mudarStatus('Recusada')">❌ Recusar</button>
+            <button class="btn-pequeno btn-whats" onclick="enviarWhats()">📤 WhatsApp</button>
         </div>
-
-        <div class="card">
-            <h2 class="card-titulo">⚙️ Cálculo e Proposta</h2>
-            <div class="grupo-linha">
-                <div class="grupo-item"><label>Valor Total (R$)</label><input type="number" id="valTotal" class="input" min="100" step="0.01" oninput="calcular()"></div>
-            </div>
-            <div class="grupo-linha">
-                <div class="grupo-item"><label>Entrada (%)</label><input type="number" id="porcEnt" class="input" min="2" max="90" value="39" oninput="calcular()"></div>
-                <div class="grupo-item"><label>Juros Mês (%)</label><input type="number" id="porcJur" class="input" min="0" max="20" step="0.1" value="6" oninput="calcular()"></div>
-            </div>
-            <div class="grupo-linha">
-                <div class="grupo-item">
-                    <label>Quantidade de Parcelas</label>
-                    <select id="qtdParcelas" class="input" onchange="calcular()">
-                        <option value="">Selecione</option>
-                        <option value="3">3x</option><option value="4">4x</option><option value="5">5x</option><option value="6">6x</option>
-                        <option value="12">12x</option><option value="24">24x</option><option value="36">36x</option><option value="48">48x</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="resumo-valor">
-                <div class="resumo-linha"><span>Valor da Entrada:</span><span id="resEntrada">R$ 0,00</span></div>
-                <div class="resumo-linha"><span>Valor Financiado:</span><span id="resFinan">R$ 0,00</span></div>
-                <div class="resumo-linha"><span>Valor por Parcela:</span><span id="resParc">R$ 0,00</span></div>
-                <div class="resumo-total"><span>Total Final:</span><span id="resTotal">R$ 0,00</span></div>
-            </div>
-
-            <div class="area-botoes">
-                <button class="btn btn-aprovar" onclick="mudarStatus('Aprovada')">✅ Aprovar</button>
-                <button class="btn btn-reprovar" onclick="mudarStatus('Recusada')">❌ Recusar</button>
-                <button class="btn btn-whats" onclick="enviarWhats()">📤 WhatsApp</button>
-            </div>
-            <div id="avisoGeral" class="aviso"></div>
-        </div>
+        <div id="aviso" class="aviso"></div>
     </div>
 </div>
 
 <script>
-// 🔑 CONFIGURAÇÃO - NÃO ALTERE A MENOS QUE SAIBA O QUE FAZ
+// ⚙️ CONFIGURAÇÃO EXATA - NÃO ALTERE A MENOS QUE TENHA CERTEZA
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3mlU3W55Y2s0CjZtxXkT2VjR3K9Rz0NnI2s1M3p5X7z6bX7kY5aQ3dF2gH9jK8lL7mN6bV8cX7z9';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const SENHA = 'flashcred2026'; // ALTERE AQUI SE QUISER
 
-const SENHA_CORRETA = 'flashcred2026'; // ALTERE AQUI SUA SENHA
-let listaPropostas = [];
-let propostaAtual = null;
+// INICIA CONEXÃO COM O BANCO
+let supabase;
+try {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { persistSession: false },
+        global: { headers: { 'Access-Control-Allow-Origin': '*' } }
+    });
+} catch(e) {
+    console.error('Erro ao iniciar Supabase:', e);
+    document.getElementById('msgErro').textContent = 'Erro ao carregar sistema: ' + e.message;
+    document.getElementById('msgErro').style.display = 'block';
+}
 
-// 🚀 INICIO
-window.addEventListener('load', async () => {
-    const logado = localStorage.getItem('admin_logado_flash');
-    if(logado === 'sim') await mostrarPainel();
-    calcular();
+let propostaSelecionada = null;
+
+// VERIFICA SE JÁ ESTAVA LOGADO
+window.addEventListener('load', () => {
+    if(localStorage.getItem('logado_flash') === 'sim') {
+        mostrarSistema();
+    }
 });
 
-// 🔐 LOGIN
-function verificarLogin() {
-    const senha = document.getElementById('senhaAdmin').value.trim();
-    if(senha === SENHA_CORRETA) {
-        localStorage.setItem('admin_logado_flash', 'sim');
-        document.getElementById('erroLogin').style.display = 'none';
-        mostrarPainel();
+// LOGIN
+function logar() {
+    const s = document.getElementById('senha').value.trim();
+    if(s === SENHA) {
+        localStorage.setItem('logado_flash', 'sim');
+        document.getElementById('msgErro').style.display = 'none';
+        mostrarSistema();
     } else {
-        document.getElementById('erroLogin').style.display = 'block';
+        document.getElementById('msgErro').style.display = 'block';
     }
 }
 
 function sair() {
-    localStorage.removeItem('admin_logado_flash');
+    localStorage.removeItem('logado_flash');
     document.getElementById('telaLogin').style.display = 'flex';
     document.getElementById('topo').style.display = 'none';
     document.getElementById('conteudo').style.display = 'none';
-    document.getElementById('senhaAdmin').value = '';
+    document.getElementById('senha').value = '';
 }
 
-async function mostrarPainel() {
+async function mostrarSistema() {
     document.getElementById('telaLogin').style.display = 'none';
     document.getElementById('topo').style.display = 'block';
     document.getElementById('conteudo').style.display = 'block';
-    await carregarPropostas();
-    setInterval(carregarPropostas, 12000); // Atualiza a cada 12s automaticamente
+    await carregarDados();
+    setInterval(carregarDados, 10000); // ATUALIZA A CADA 10 SEGUNDOS
 }
 
-// 📋 CARREGAR PROPOSTAS DO BANCO
-async function carregarPropostas() {
+// CARREGAR PROPOSTAS DO BANCO
+async function carregarDados() {
+    if(!supabase) return;
     try {
         const { data, error } = await supabase
             .from('propostas')
@@ -225,114 +171,79 @@ async function carregarPropostas() {
             .order('id', { ascending: false });
 
         if(error) throw error;
-        
-        listaPropostas = data || [];
-        renderizarLista();
-    } catch (erro) {
-        console.error('Erro ao carregar:', erro);
-        document.getElementById('listaPropostas').innerHTML = `<div style="color:var(--perigo);text-align:center;padding:20px;">Erro ao conectar. Verifique permissões no Supabase.</div>`;
+        renderizarLista(data || []);
+    } catch(e) {
+        console.error('Erro ao buscar:', e);
+        document.getElementById('listaPropostas').innerHTML = `<div style="padding:20px;text-align:center;color:var(--perigo);">Erro: ${e.message}<br>Verifique as permissões no Supabase!</div>`;
     }
 }
 
-function renderizarLista() {
+function renderizarLista(lista) {
     const el = document.getElementById('listaPropostas');
     el.innerHTML = '';
 
-    if(listaPropostas.length === 0) {
-        el.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:20px;">Nenhuma solicitação recebida.</div>';
+    if(lista.length === 0) {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:#64748B;">Nenhuma solicitação recebida ainda.</div>';
         return;
     }
 
-    listaPropostas.forEach(p => {
+    lista.forEach(item => {
         const div = document.createElement('div');
-        div.className = `item-proposta ${p.status === 'Nova' ? 'nova' : p.status === 'Aprovada' ? 'aprovada' : 'recusada'}`;
-        div.onclick = () => selecionarProposta(p);
-        div.innerHTML = `<strong>${p.nome}</strong><br><small>${p.cpf} | R$ ${Number(p.valor_solicitado||0).toLocaleString('pt-BR')} | ${p.status||'Nova'}</small>`;
+        div.className = `item ${item.status === 'Nova' ? 'nova' : item.status === 'Aprovada' ? 'aprovada' : 'recusada'}`;
+        div.onclick = () => selecionar(item);
+        div.innerHTML = `<strong>${item.nome}</strong><br><small>${item.cpf} | R$ ${Number(item.valor_solicitado||0).toLocaleString('pt-BR')} | ${item.status||'Nova'}</small>`;
         el.appendChild(div);
     });
 }
 
-function selecionarProposta(p) {
-    propostaAtual = p;
-    document.querySelectorAll('.item-proposta').forEach(i => i.classList.remove('ativo'));
+function selecionar(p) {
+    propostaSelecionada = p;
+    document.querySelectorAll('.item').forEach(i => i.classList.remove('ativo'));
     event.currentTarget.classList.add('ativo');
 
-    document.getElementById('dadosCliente').style.display = 'block';
-    document.getElementById('cliNome').textContent = p.nome || '—';
-    document.getElementById('cliCpf').textContent = p.cpf || '—';
-    document.getElementById('cliNasc').textContent = p.nascimento || '—';
-    document.getElementById('cliTel').textContent = p.telefone || '—';
-    document.getElementById('cliEnd').textContent = `${p.cep||''} - ${p.endereco||'—'}`;
-    document.getElementById('cliStatus').textContent = p.status || 'Nova';
-    document.getElementById('valTotal').value = p.valor_solicitado || 0;
-    calcular();
+    document.getElementById('detalhes').style.display = 'block';
+    document.getElementById('dNome').textContent = p.nome || '—';
+    document.getElementById('dCpf').textContent = p.cpf || '—';
+    document.getElementById('dNasc').textContent = p.nascimento || '—';
+    document.getElementById('dTel').textContent = p.telefone || '—';
+    document.getElementById('dEnd').textContent = `${p.cep||''} - ${p.endereco||'—'}`;
+    document.getElementById('dValor').textContent = Number(p.valor_solicitado||0).toLocaleString('pt-BR', {style:'currency',currency:'BRL'});
+    document.getElementById('dStatus').textContent = p.status || 'Nova';
 }
 
-// 🧮 CÁLCULOS
-function calcular() {
-    const valTotal = parseFloat(document.getElementById('valTotal').value) || 0;
-    const percEnt = parseFloat(document.getElementById('porcEnt').value) || 0;
-    const percJur = parseFloat(document.getElementById('porcJur').value) || 0;
-    const qtd = parseInt(document.getElementById('qtdParcelas').value) || 0;
-
-    const valEnt = valTotal * (percEnt / 100);
-    const valFin = valTotal - valEnt;
-    const parc = qtd > 0 ? (valFin * Math.pow((1 + percJur/100), qtd)) / qtd : 0;
-    const totalF = valEnt + (parc * qtd);
-
-    document.getElementById('resEntrada').textContent = valEnt.toLocaleString('pt-BR', {style:'currency',currency:'BRL'});
-    document.getElementById('resFinan').textContent = valFin.toLocaleString('pt-BR', {style:'currency',currency:'BRL'});
-    document.getElementById('resParc').textContent = parc.toLocaleString('pt-BR', {style:'currency',currency:'BRL'});
-    document.getElementById('resTotal').textContent = totalF.toLocaleString('pt-BR', {style:'currency',currency:'BRL'});
-    document.getElementById('qtdParc').textContent = qtd;
-}
-
-// ✅ ALTERAR STATUS
-async function mudarStatus(novoStatus) {
-    if(!propostaAtual) { mostrarAviso('Selecione uma proposta!', 'erro'); return; }
-
-    const att = {
-        status: novoStatus,
-        valor_entrada: document.getElementById('resEntrada').textContent,
-        quantidade_parcelas: document.getElementById('qtdParcelas').value,
-        valor_parcela: document.getElementById('resParc').textContent
-    };
+// ALTERAR STATUS
+async function mudarStatus(novo) {
+    if(!propostaSelecionada) {
+        mostrarAviso('Selecione uma proposta primeiro!', 'erro');
+        return;
+    }
 
     try {
-        const { error } = await supabase.from('propostas').update(att).eq('id', propostaAtual.id);
+        const { error } = await supabase
+            .from('propostas')
+            .update({ status: novo })
+            .eq('id', propostaSelecionada.id);
+
         if(error) throw error;
-        mostrarAviso(`Proposta ${novoStatus} com sucesso!`, 'sucesso');
-        await carregarPropostas();
+        mostrarAviso(`Proposta ${novo} com sucesso!`, 'ok');
+        await carregarDados();
     } catch(e) {
-        mostrarAviso('Erro ao atualizar: ' + e.message, 'erro');
+        mostrarAviso('Erro: ' + e.message, 'erro');
     }
 }
 
-function mostrarAviso(texto, tipo='sucesso') {
-    const av = document.getElementById('avisoGeral');
+function enviarWhats() {
+    if(!propostaSelecionada) return;
+    const msg = encodeURIComponent(`Olá ${propostaSelecionada.nome}! Recebemos sua solicitação. Acesse: https://flashcred-sistema.onrender.com/consultar`);
+    window.open(`https://wa.me/${propostaSelecionada.telefone.replace(/\D/g,'')}?text=${msg}`, '_blank');
+}
+
+function mostrarAviso(texto, tipo='ok') {
+    const av = document.getElementById('aviso');
     av.textContent = texto;
     av.className = `aviso ${tipo}`;
     av.style.display = 'block';
     setTimeout(() => av.style.display = 'none', 4000);
-}
-
-function darBaixa() {
-    if(!propostaAtual) return;
-    if(confirm('Confirmar recebimento manual da entrada?')) {
-        mostrarAviso('Baixa registrada!', 'sucesso');
-    }
-}
-
-function copiarDados() {
-    if(!propostaAtual) return;
-    const txt = `Nome: ${propostaAtual.nome}\nCPF: ${propostaAtual.cpf}\nWhatsApp: ${propostaAtual.telefone}\nEndereço: ${propostaAtual.endereco}`;
-    navigator.clipboard.writeText(txt).then(() => mostrarAviso('Copiado!', 'sucesso'));
-}
-
-function enviarWhats() {
-    if(!propostaAtual) return;
-    const msg = encodeURIComponent(`Olá ${propostaAtual.nome}! Sua proposta foi analisada. Acesse: https://flashcred-sistema.onrender.com/consultar`);
-    window.open(`https://wa.me/${propostaAtual.telefone.replace(/\D/g,'')}?text=${msg}`, '_blank');
 }
 </script>
 </body>
