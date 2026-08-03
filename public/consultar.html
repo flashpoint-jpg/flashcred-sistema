@@ -16,7 +16,6 @@
                         primary: '#0A2463',
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
-                        perigo: '#EF4444',
                         fundo: '#F8FAFC'
                     }
                 }
@@ -43,30 +42,30 @@
             color: #0A2463;
             margin-bottom: 20px;
         }
-        .input {
+        .input, .select {
             width: 100%;
             padding: 12px 14px;
             border: 1px solid #CBD5E1;
             border-radius: 10px;
             font-size: 15px;
             margin-bottom: 12px;
+            background: white;
         }
-        .input:focus { outline: none; border-color: #0A2463; }
+        .input:focus, .select:focus { outline: none; border-color: #0A2463; }
         .btn {
             width: 100%;
             padding: 12px;
             border: none;
             border-radius: 10px;
-            background: #0A2463;
-            color: white;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
             transition: 0.2s;
         }
         .btn:hover { opacity: 0.92; }
-        .btn-alerta { background: #F59E0B; margin-top: 10px; }
-        .btn-sucesso { background: #10B981; margin-top: 10px; }
+        .btn-principal { background: #0A2463; color: white; }
+        .btn-alerta { background: #F59E0B; color: white; margin-top: 10px; }
+        .btn-sucesso { background: #10B981; color: white; margin-top: 10px; }
         
         .bolinha-carregando {
             display: inline-block;
@@ -86,6 +85,7 @@
             border-radius: 10px;
             font-weight: 600;
             margin: 15px 0;
+            font-size: 18px;
         }
         .status-nova { background: #FEF3C7; color: #92400E; }
         .status-aprovada { background: #D1FAE5; color: #065F46; }
@@ -98,16 +98,40 @@
             margin: 15px 0;
             border-left: 3px solid #0A2463;
         }
-        .dados p { padding: 5px 0; font-size: 14px; border-bottom: 1px dashed #ddd; }
+        .dados p { padding: 6px 0; font-size: 15px; }
         .dados strong { color: #0A2463; }
-        
-        .area-qr {
-            text-align: center;
-            padding: 15px;
-            background: white;
+
+        .area-escolha-parcelas {
+            background: #FFFBEB;
+            padding: 16px;
             border-radius: 10px;
-            border: 1px solid #ddd;
             margin: 15px 0;
+            border-left: 3px solid #F59E0B;
+        }
+        
+        .area-pix {
+            text-align: center;
+            padding: 20px;
+            background: #ECFDF5;
+            border-radius: 12px;
+            border: 2px solid #10B981;
+            margin: 18px 0;
+        }
+        .area-pix h4 { color: #065F46; font-weight: 700; margin-bottom: 12px; font-size: 17px; }
+        #qrcode { margin: 12px auto; display: inline-block; padding: 8px; background: white; border-radius: 8px; }
+        .codigo-pix {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            word-break: break-all;
+            margin: 10px 0;
+            font-family: monospace;
+        }
+        .aviso-pagamento {
+            font-size: 13px;
+            color: #065F46;
+            margin-top: 8px;
         }
         .esconder { display: none !important; }
     </style>
@@ -119,13 +143,13 @@
 
     <div id="areaBusca">
         <input type="text" id="cpfBusca" class="input" placeholder="Digite seu CPF" maxlength="18">
-        <button class="btn" onclick="buscar()">
+        <button class="btn btn-principal" onclick="buscar()">
             <i class="fa-solid fa-magnifying-glass"></i> Consultar
         </button>
     </div>
 
     <div id="carregando" class="esconder text-center py-4">
-        <span class="bolinha-carregando"></span> Buscando proposta...
+        <span class="bolinha-carregando"></span> Buscando sua proposta...
     </div>
 
     <div id="resultado" class="esconder"></div>
@@ -136,7 +160,27 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+let propostaAtual = null;
+
 function limparNumeros(v) { return String(v||'').replace(/\D/g,''); }
+
+function gerarOpcoesParcelas(maximo) {
+    let opcoes = '';
+    for(let i = 1; i <= maximo; i++) {
+        opcoes += `<option value="${i}">${i}x</option>`;
+    }
+    return opcoes;
+}
+
+function atualizarValorParcela() {
+    if(!propostaAtual) return;
+    const qtdEscolhida = parseInt(document.getElementById('parcelasEscolhidas').value);
+    const valorTotalComJuros = parseFloat(propostaAtual.valor_aprovado) * 1.06;
+    const valorRestante = valorTotalComJuros - parseFloat(propostaAtual.valor_entrada);
+    const valorParcela = valorRestante / qtdEscolhida;
+    
+    document.getElementById('valorParcelaEscolhida').textContent = `R$ ${valorParcela.toFixed(2).replace('.',',')}`;
+}
 
 async function buscar() {
     const cpf = limparNumeros(document.getElementById('cpfBusca').value);
@@ -159,66 +203,89 @@ async function buscar() {
         if(error || !data || data.length === 0) {
             document.getElementById('resultado').innerHTML = `
                 <div class="text-center py-4">
-                    <p class="text-lg font-semibold text-perigo">Proposta não encontrada</p>
+                    <p class="text-lg font-semibold text-red-600">Proposta não encontrada</p>
                     <p class="text-sm mt-2">Verifique o CPF ou aguarde alguns minutos se acabou de enviar.</p>
-                    <button class="btn btn-alerta mt-4" onclick="voltar()">🔙 Tentar novamente</button>
+                    <button class="btn btn-alerta mt-4" onclick="voltar()">🔙 Consultar outro CPF</button>
                 </div>
             `;
             document.getElementById('resultado').classList.remove('esconder');
             return;
         }
 
-        const prop = data[0];
+        propostaAtual = data[0];
         let conteudo = '';
 
-        if(!prop.status || prop.status === 'Nova') {
+        if(!propostaAtual.status || propostaAtual.status === 'Nova') {
             conteudo = `
                 <div class="status status-nova">
                     <span class="bolinha-carregando"></span> EM ANÁLISE
                 </div>
                 <p class="text-center text-sm mt-3">Estamos analisando sua solicitação. Em breve você receberá o retorno.</p>
             `;
-        } else if(prop.status === 'Reprovada') {
+        } else if(propostaAtual.status === 'Reprovada') {
             conteudo = `
                 <div class="status status-reprovada">❌ REPROVADA</div>
                 <p class="text-center text-sm mt-3">Infelizmente não foi possível aprovar dessa vez. Você pode tentar novamente depois.</p>
             `;
-        } else if(prop.status === 'Aprovada') {
+        } else if(propostaAtual.status === 'Aprovada') {
+            const maxParcelas = parseInt(propostaAtual.qtd_parcelas_escolhida) || 12;
             conteudo = `
                 <div class="status status-aprovada">✅ APROVADA!</div>
+                
                 <div class="dados">
-                    <p><strong>Valor Aprovado:</strong> R$ ${parseFloat(prop.valor_aprovado||0).toFixed(2).replace('.',',')}</p>
-                    <p><strong>Entrada:</strong> R$ ${parseFloat(prop.valor_entrada||0).toFixed(2).replace('.',',')}</p>
-                    <p><strong>Parcelas:</strong> ${prop.qtd_parcelas_escolhida||0}x de R$ ${parseFloat(prop.valor_parcela||0).toFixed(2).replace('.',',')}</p>
+                    <p><strong>Valor Total Aprovado:</strong> R$ ${parseFloat(propostaAtual.valor_aprovado||0).toFixed(2).replace('.',',')}</p>
+                    <p><strong>Entrada para Pagamento:</strong> R$ ${parseFloat(propostaAtual.valor_entrada||0).toFixed(2).replace('.',',')}</p>
                 </div>
-                ${prop.codigo_pix ? `
-                <div class="area-qr">
-                    <p class="font-semibold mb-3">Pagamento da Entrada via Pix</p>
-                    <div id="qrcode" class="mx-auto mb-3"></div>
-                    <button class="btn btn-sucesso" onclick="copiarPix('${prop.codigo_pix}')">
+
+                <div class="area-escolha-parcelas">
+                    <p class="font-semibold mb-2">📌 Escolha em quantas vezes quer pagar:</p>
+                    <select id="parcelasEscolhidas" class="select" onchange="atualizarValorParcela()">
+                        ${gerarOpcoesParcelas(maxParcelas)}
+                    </select>
+                    <p class="mt-2"><strong>Valor da parcela:</strong> <span id="valorParcelaEscolhida">R$ 0,00</span></p>
+                </div>
+
+                ${propostaAtual.codigo_pix ? `
+                <div class="area-pix">
+                    <h4>💳 Pague a Entrada via Pix</h4>
+                    <div id="qrcode"></div>
+                    <p class="text-sm mb-2">Ou copie o código abaixo:</p>
+                    <div class="codigo-pix" id="codigoPix">${propostaAtual.codigo_pix}</div>
+                    <button class="btn btn-sucesso" onclick="copiarPix()">
                         <i class="fa-solid fa-copy"></i> Copiar Código Pix
                     </button>
+                    <p class="aviso-pagamento">✅ Assim que o pagamento for confirmado, avisamos e enviamos seu móvel!</p>
                 </div>
                 ` : ''}
             `;
         }
 
         document.getElementById('resultado').innerHTML = `
-            <h3 class="text-xl font-bold text-primary text-center mb-3">Olá ${prop.nome}!</h3>
+            <h3 class="text-xl font-bold text-primary text-center mb-3">Olá ${propostaAtual.nome}!</h3>
             ${conteudo}
             <button class="btn btn-alerta mt-4" onclick="voltar()">🔙 Consultar outro CPF</button>
         `;
         document.getElementById('resultado').classList.remove('esconder');
 
-        if(prop.codigo_pix && prop.status === 'Aprovada') {
-            new QRCode(document.getElementById('qrcode'), { text: prop.codigo_pix, width: 160, height: 160 });
+        // Atualiza o valor da parcela com a 1ª opção já selecionada
+        if(propostaAtual && propostaAtual.status === 'Aprovada') {
+            atualizarValorParcela();
+            if(propostaAtual.codigo_pix) {
+                new QRCode(document.getElementById('qrcode'), { 
+                    text: propostaAtual.codigo_pix, 
+                    width: 180, 
+                    height: 180,
+                    colorDark : "#0A2463",
+                    colorLight : "#ffffff"
+                });
+            }
         }
 
     } catch(erro) {
         document.getElementById('carregando').classList.add('esconder');
         document.getElementById('resultado').innerHTML = `
             <div class="text-center py-4">
-                <p class="text-lg font-semibold text-perigo">Erro ao buscar</p>
+                <p class="text-lg font-semibold text-red-600">Erro ao buscar</p>
                 <p class="text-sm mt-2">Tente novamente em instantes.</p>
                 <button class="btn btn-alerta mt-4" onclick="voltar()">🔙 Tentar novamente</button>
             </div>
@@ -231,11 +298,12 @@ function voltar() {
     document.getElementById('resultado').classList.add('esconder');
     document.getElementById('cpfBusca').value = '';
     document.getElementById('areaBusca').classList.remove('esconder');
+    propostaAtual = null;
 }
 
-function copiarPix(cod) {
-    navigator.clipboard.writeText(cod);
-    alert('✅ Código copiado! Basta colar no app do banco.');
+function copiarPix() {
+    navigator.clipboard.writeText(propostaAtual.codigo_pix);
+    alert('✅ Código Pix copiado! Basta colar no app do seu banco.');
 }
 </script>
 </body>
