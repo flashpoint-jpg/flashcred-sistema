@@ -77,7 +77,7 @@ async function buscarProposta() {
         const proposta = data?.find(item => limparCpf(item.cpf) === cpfAtual);
 
         if(!proposta) {
-            document.getElementById('mensagem').textContent = '❌ Proposta não encontrada ou ainda em análise.';
+            document.getElementById('mensagem').textContent = '⏳ Proposta ainda em análise, aguarde...';
             document.getElementById('mensagem').className = 'alerta alerta';
             document.getElementById('mensagem').classList.remove('hidden');
             return;
@@ -123,10 +123,12 @@ async function buscarProposta() {
             ` : ''}
         `;
 
+        // GERA QR CODE SE TIVER CHAVE PIX
         if(proposta.chave_pix && proposta.status === 'Aprovada') {
             setTimeout(() => {
+                document.getElementById('qrcode').innerHTML = '';
                 new QRCode(document.getElementById('qrcode'), { text: proposta.chave_pix, width: 180, height: 180 });
-            }, 200);
+            }, 300);
         }
 
     } catch {
@@ -138,10 +140,15 @@ async function buscarProposta() {
     }
 }
 
-// --- ATUALIZA AUTOMÁTICO ASSIM QUE VOCÊ APROVAR ---
+// --- ATUALIZA AUTOMÁTICO ASSIM QUE VOCÊ APROVAR/EDITAR/EXCLUIR ---
 function iniciarAtualizacaoAutomatica() {
     supabase.channel('atualizacoes_cliente')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpfAtual}` }, () => {
+        .on('postgres_changes', { 
+            event: '*', 
+            schema: 'public', 
+            table: 'propostas', 
+            filter: `cpf=eq.${cpfAtual}` 
+        }, () => {
             buscarProposta();
         })
         .subscribe();
