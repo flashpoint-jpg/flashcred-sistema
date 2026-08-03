@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FlashCred | Limite no Pix - Distribuidora Flash Point</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -182,9 +182,25 @@
 </footer>
 
 <script>
-const supabaseUrl = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const supabaseKey = 'sb_publishable_g5Tcimge2aiMX8JE3mlU3W55Y2s0CjZtxXkT2VjR3K9Rz0NnI2s1M3p5X7z6bX7kY5aQ3dF2gH9jK8lL7mN6bV8cX7z9';
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+// ⚙️ CONFIGURAÇÃO CORRIGIDA
+const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+let supabase = null;
+
+// INICIA SOMENTE DEPOIS QUE A BIBLIOTECA CARREGA
+window.addEventListener('load', iniciarSistema);
+
+function iniciarSistema() {
+    try {
+        if (typeof window.supabase === 'undefined') {
+            throw new Error('Biblioteca não carregou');
+        }
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        console.log('✅ Sistema conectado com sucesso!');
+    } catch (erro) {
+        console.error('❌ Erro de conexão:', erro.message);
+    }
+}
 
 function validarCPF(cpf) {
     cpf = cpf.replace(/\D/g, '');
@@ -216,13 +232,14 @@ async function buscarCep() {
         const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
         const dados = await res.json();
         if(!dados.erro) {
-            document.getElementById('endereco').value = `${dados.logradouro}, ${dados.bairro}, ${dados.localidade} - ${dados.uf}`;
+            document.getElementById('endereco').value = `${dados.logradouro || ''}, ${dados.bairro || ''}, ${dados.localidade} - ${dados.uf}`;
         }
     } catch(e) {
         console.error("Erro ao buscar CEP");
     }
 }
 
+// MÁSCARAS DOS CAMPOS
 document.getElementById('cpf').addEventListener('input', e => {
     e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
 });
@@ -233,6 +250,7 @@ document.getElementById('telefone').addEventListener('input', e => {
     e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
 });
 
+// ENVIO DO FORMULÁRIO
 document.getElementById('formSolicitacao').addEventListener('submit', async e => {
     e.preventDefault();
     let valido = true;
@@ -247,14 +265,17 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
         valido = false;
     }
 
-    if (!valido) return;
+    if (!valido || !supabase) {
+        if(!supabase) alert('Aguarde o sistema carregar completamente antes de enviar.');
+        return;
+    }
 
     const btn = document.getElementById('btnEnviar');
     const textoBtn = document.getElementById('textoBtn');
     const carregando = document.getElementById('carregando');
 
     btn.disabled = true;
-    textoBtn.textContent = 'Enviando...';
+    textoBtn.textContent = 'Enviando solicitação...';
     carregando.style.display = 'block';
 
     const dadosProposta = {
@@ -264,7 +285,7 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
         telefone: document.getElementById('telefone').value.trim(),
         cep: document.getElementById('cep').value.trim(),
         endereco: document.getElementById('endereco').value.trim(),
-        valor_solicitado: document.getElementById('valor').value,
+        valor_solicitado: parseFloat(document.getElementById('valor').value),
         status: 'Nova',
         data_solicitacao: new Date().toLocaleDateString('pt-BR')
     };
@@ -272,13 +293,13 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
     const { error } = await supabase.from('propostas').insert([dadosProposta]);
 
     if (error) {
-        alert('Erro ao enviar: ' + error.message);
+        alert('❌ Erro ao enviar: ' + error.message);
         btn.disabled = false;
         textoBtn.textContent = 'Enviar Solicitação';
         carregando.style.display = 'none';
     } else {
         alert('✅ Solicitação enviada com sucesso! Você será redirecionado para acompanhar o resultado.');
-        setTimeout(() => window.location.href = 'consultar.html', 1200);
+        setTimeout(() => window.location.href = 'consultar.html', 1500);
     }
 });
 </script>
