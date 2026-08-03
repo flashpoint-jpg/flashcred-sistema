@@ -66,6 +66,7 @@
         .linha-calculo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; padding: 8px; background: #F8FAFC; border-radius: 8px; }
         .area-busca { margin-bottom: 16px; display: flex; gap: 8px; align-items: center; }
         .area-busca input { max-width: 280px; margin: 0; }
+        .area-config { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 999; padding: 15px; }
         .modal-conteudo { background: white; border-radius: 16px; max-width: 580px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 24px; }
         .cabecalho { background: white; padding: 16px 20px; border-bottom: 1px solid #E2E8F0; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
@@ -76,7 +77,7 @@
             body * { visibility: hidden; }
             .card, .card * { visibility: visible; }
             .card { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; border: none; }
-            .btn, .area-modo, .notificacao, .area-busca, .cabecalho, .area-login { display: none !important; }
+            .btn, .area-modo, .notificacao, .area-busca, .cabecalho, .area-login, .area-config { display: none !important; }
         }
     </style>
 </head>
@@ -112,12 +113,32 @@
             </div>
         </div>
         <div>
+            <button id="btnConfig" class="btn btn-alerta text-xs" onclick="abrirConfigPagamento()"><i class="fa-solid fa-gear"></i> Mercado Pago</button>
             <button id="btnAlterarSenha" class="btn btn-alerta text-xs" onclick="alterarSenha()">Alterar Senha</button>
             <button id="btnSair" class="btn btn-perigo text-xs" onclick="sair()">Sair</button>
         </div>
     </div>
 
     <div class="p-4 max-w-6xl mx-auto">
+        <!-- CONFIGURAÇÃO MERCADO PAGO -->
+        <div id="areaConfigPagamento" class="area-config hidden">
+            <h3 class="font-bold text-primary mb-3">⚙️ Configuração API Mercado Pago</h3>
+            <div class="linha-calculo">
+                <div class="flex-1">
+                    <label>Token Produção</label>
+                    <input type="text" id="tokenProducao" class="input" placeholder="APP_USR-0000000000000000-000000-00000000000000000000000000000000-000000000" value="localStorage.getItem('tokenProducao') || ''">
+                </div>
+            </div>
+            <div class="linha-calculo">
+                <div class="flex-1">
+                    <label>Token Teste</label>
+                    <input type="text" id="tokenTeste" class="input" placeholder="APP_TEST-0000000000000000-000000-00000000000000000000000000000000-000000000" value="localStorage.getItem('tokenTeste') || ''">
+                </div>
+            </div>
+            <button class="btn btn-sucesso" onclick="salvarTokens()">💾 Salvar Configurações</button>
+            <p class="text-xs text-textoClaro mt-2">Os tokens ficam salvos no seu navegador e são usados conforme o modo selecionado.</p>
+        </div>
+
         <!-- BUSCA -->
         <div class="area-busca">
             <input type="text" id="buscaCpf" class="input" placeholder="Buscar por CPF" oninput="filtrarPropostas()">
@@ -147,7 +168,7 @@
 <div id="modalEditar" class="modal">
     <div class="modal-conteudo">
         <div class="flex justify-between items-center mb-4">
-            <h3 class="text-lg font-bold text-primary">Editar Proposta</h3>
+            <h3 class="text-lg font-bold text-primary">Editar e Aprovar Proposta</h3>
             <button id="fecharModal" class="text-xl text-textoClaro" onclick="fecharModalEditar()">&times;</button>
         </div>
         <div id="formModal"></div>
@@ -171,6 +192,24 @@ function mostrarNotificacao(texto, tipo = 'sucesso') {
     document.getElementById('textoNotif').textContent = texto;
     el.className = `notificacao ${tipo} mostrar`;
     setTimeout(() => el.classList.remove('mostrar'), 5000);
+}
+
+function abrirConfigPagamento() {
+    document.getElementById('areaConfigPagamento').classList.toggle('hidden');
+}
+
+function salvarTokens() {
+    const tokenP = document.getElementById('tokenProducao').value.trim();
+    const tokenT = document.getElementById('tokenTeste').value.trim();
+    localStorage.setItem('tokenProducao', tokenP);
+    localStorage.setItem('tokenTeste', tokenT);
+    mostrarNotificacao('✅ Tokens do Mercado Pago salvos com sucesso!', 'sucesso');
+}
+
+function obterTokenAtual() {
+    if(modoAtual === 'producao') return localStorage.getItem('tokenProducao') || '';
+    if(modoAtual === 'teste') return localStorage.getItem('tokenTeste') || '';
+    return '';
 }
 
 function alterarModo(modo) {
@@ -263,17 +302,12 @@ function atualizarCalculo() {
 // --- CARREGAR E MOSTRAR DADOS ---
 async function carregarPropostas() {
     try {
-        console.log('Buscando propostas...');
         const { data, error } = await supabase
             .from('propostas')
             .select('*')
             .order('created_at', {ascending: false});
         
-        console.log('Resposta:', { data, error });
-
-        if(error) {
-            throw new Error(`Erro: ${error.message} (Código: ${error.code})`);
-        }
+        if(error) throw error;
         
         listaPropostas = data || [];
         listaFiltrada = listaPropostas;
@@ -292,12 +326,8 @@ async function carregarPropostas() {
         renderizarLista();
 
     } catch (erro) {
-        console.error('❌ Erro completo:', erro);
-        document.getElementById('listaPropostas').innerHTML = `
-            <p class="text-center text-perigo py-6">
-                ⚠️ ${erro.message}<br>
-                Verifique as permissões no Supabase!
-            </p>`;
+        console.error('❌ Erro:', erro);
+        document.getElementById('listaPropostas').innerHTML = `<p class="text-center text-perigo py-6">Erro: ${erro.message}</p>`;
     }
 }
 
@@ -317,11 +347,9 @@ function renderizarLista() {
     }
 
     listaFiltrada.forEach(proposta => {
-        // Status entrada
         let statusEntrada = `<span class="bolinha-status bolinha-amarela"></span>Entrada Pendente`;
         if(proposta.pago) statusEntrada = `<span class="bolinha-status bolinha-verde"></span>Entrada Paga`;
 
-        // Status parcelas
         let statusParc = '';
         if(proposta.status === 'Aprovada' && proposta.qtd_parcelas > 0) {
             const pagas = proposta.parcelas_pagas || 0;
@@ -331,10 +359,10 @@ function renderizarLista() {
             statusParc = `<p class="mt-1"><span class="bolinha-status ${bolinha}"></span>Parcelas: ${pagas} de ${proposta.qtd_parcelas}</p>`;
         }
 
-        // Formata dados
         const cpfFmt = limparCpf(proposta.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
         const cepFmt = proposta.cep ? limparCpf(proposta.cep).replace(/(\d{5})(\d{3})/, '$1-$3') : '-';
         const telLimpo = limparCpf(proposta.telefone);
+        const linkCliente = `${window.location.origin}/consultar.html?cpf=${limparCpf(proposta.cpf)}`;
 
         const card = document.createElement('div');
         card.className = 'card';
@@ -382,26 +410,28 @@ function renderizarLista() {
         container.appendChild(card);
     });
 
-    // AÇÕES DOS BOTÕES
-    document.querySelectorAll('.btn-editar-proposta, .btn-aprovar').forEach(btn => {
+    // --- BOTÃO ENVIAR PROPOSTA WHATSAPP ---
+    document.querySelectorAll('.btn-wpp-proposta').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
+            const link = `${window.location.origin}/consultar.html?cpf=${limparCpf(p.cpf)}`;
+            const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\n📋 Dados da compra:\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas || 0}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\n🔗 Acesse para ver o Pix, contrato e detalhes: ${link}\n\nAguardamos o pagamento da entrada para liberar seu móvel! 🚚`;
+            window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
+            mostrarNotificacao('✅ Mensagem enviada no WhatsApp!', 'sucesso');
+        });
+    });
+
+    // --- BOTÃO APROVAR ---
+    document.querySelectorAll('.btn-aprovar').forEach(btn => {
         btn.addEventListener('click', () => abrirModalEditar(btn.dataset.cpf));
     });
 
     document.querySelectorAll('.btn-marcar-entrada').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if(confirm('Confirmar entrada paga (dinheiro/Pix)?')) {
+            if(confirm('Confirmar entrada paga?')) {
                 await supabase.from('propostas').update({pago: true}).eq('cpf', btn.dataset.cpf);
                 mostrarNotificacao('✅ Entrada marcada como paga!', 'sucesso');
             }
-        });
-    });
-
-    document.querySelectorAll('.btn-wpp-proposta').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
-            const link = `${window.location.origin}/consultar.html?cpf=${limparCpf(p.cpf)}`;
-            const msg = `✅ Olá ${p.nome}! Sua proposta foi APROVADA 🎉\n\nValor Total: R$ ${parseFloat(p.valor_aprovado||0).toFixed(2).replace('.',',')}\nEntrada: R$ ${parseFloat(p.valor_entrada||0).toFixed(2).replace('.',',')}\n${p.qtd_parcelas || 0}x de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\n\nAcesse para ver o Pix e detalhes: ${link}`;
-            window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
         });
     });
 
@@ -409,14 +439,14 @@ function renderizarLista() {
         btn.addEventListener('click', () => {
             const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
             const restante = (parseInt(p.qtd_parcelas||0) - parseInt(p.parcelas_pagas||0));
-            const msg = `Olá ${p.nome}! Tudo bem?\nPassando para lembrar do pagamento da parcela de R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}.\nFaltam ${restante} parcelas para quitar.\nPodemos contar com o pagamento? 😉`;
+            const msg = `Olá ${p.nome}! Tudo bem?\nLembrete de parcela: R$ ${parseFloat(p.valor_parcela||0).toFixed(2).replace('.',',')}\nFaltam ${restante} parcelas para quitar.\nContamos com seu pagamento! 😉`;
             window.open(`https://wa.me/${limparCpf(p.telefone)}?text=${encodeURIComponent(msg)}`, '_blank');
         });
     });
 
     document.querySelectorAll('.btn-excluir-proposta').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if(confirm('Tem certeza que deseja EXCLUIR? Essa ação não pode ser desfeita!')) {
+            if(confirm('Excluir essa proposta?')) {
                 await supabase.from('propostas').delete().eq('cpf', btn.dataset.cpf);
                 mostrarNotificacao('Proposta excluída!', 'alerta');
             }
@@ -442,7 +472,7 @@ VALOR SOLICITADO: R$ ${parseFloat(p.valor_desejado||0).toFixed(2).replace('.',',
 
     document.querySelectorAll('.btn-reprovar').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if(confirm('Reprovar esta proposta?')) {
+            if(confirm('Reprovar proposta?')) {
                 await supabase.from('propostas').update({status: 'Reprovada'}).eq('cpf', btn.dataset.cpf);
                 mostrarNotificacao('Proposta reprovada!', 'perigo');
             }
@@ -453,14 +483,14 @@ VALOR SOLICITADO: R$ ${parseFloat(p.valor_desejado||0).toFixed(2).replace('.',',
         btn.addEventListener('click', async () => {
             const p = listaPropostas.find(x => x.cpf === btn.dataset.cpf);
             const novaQtd = (p.parcelas_pagas || 0) + 1;
-            if(novaQtd > p.qtd_parcelas) return alert('Todas as parcelas já estão pagas!');
+            if(novaQtd > p.qtd_parcelas) return alert('Todas as parcelas já pagas!');
             await supabase.from('propostas').update({parcelas_pagas: novaQtd}).eq('cpf', btn.dataset.cpf);
-            mostrarNotificacao(`✅ Parcela registrada! ${novaQtd} de ${p.qtd_parcelas}`, 'sucesso');
+            mostrarNotificacao(`✅ Parcela registrada: ${novaQtd} de ${p.qtd_parcelas}`, 'sucesso');
         });
     });
 }
 
-// --- MODAL EDITAR ---
+// --- MODAL EDITAR / APROVAR ---
 function abrirModalEditar(cpf) {
     const proposta = listaPropostas.find(p => p.cpf === cpf);
     const modal = document.getElementById('modalEditar');
@@ -497,8 +527,8 @@ function abrirModalEditar(cpf) {
             </div>
         </div>
 
-        <label>Chave Pix para Pagamento</label>
-        <input type="text" id="chavePix" class="input" value="${proposta.chave_pix || ''}">
+        <label>Chave Pix / Código Mercado Pago</label>
+        <input type="text" id="chavePix" class="input" value="${proposta.chave_pix || ''}" placeholder="Chave Pix ou código gerado pela API">
 
         <div class="flex gap-2 mt-4">
             <button id="salvarAlteracoes" class="btn btn-sucesso flex-1 justify-center">Salvar e Aprovar</button>
@@ -519,7 +549,7 @@ function abrirModalEditar(cpf) {
             chave_pix: document.getElementById('chavePix').value.trim()
         };
         await supabase.from('propostas').update(dados).eq('cpf', cpf);
-        mostrarNotificacao('Alterações salvas e proposta aprovada!', 'sucesso');
+        mostrarNotificacao('✅ Proposta aprovada e liberada para o cliente!', 'sucesso');
         fecharModalEditar();
     };
 }
