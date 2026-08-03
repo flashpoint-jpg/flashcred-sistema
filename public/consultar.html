@@ -6,6 +6,7 @@
     <title>Acompanhar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -24,13 +25,15 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
         body { background: #F8FAFC; min-height: 100vh; padding: 20px; }
-        .card { background: white; border-radius: 20px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 500px; margin: 0 auto; }
+        .card { background: white; border-radius: 20px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); max-width: 580px; margin: 0 auto; }
         .input { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 12px; margin: 8px 0 16px; font-size: 15px; }
         .btn { width: 100%; padding: 14px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; }
         .btn-primary { background: #0A2463; color: white; }
         .btn-primary:hover { background: #081d45; }
+        .btn-sucesso { background: #10B981; color: white; margin-top: 12px; }
+        .btn-secundario { background: #E2E8F0; color: #0A2463; margin-top: 8px; }
         .dado { padding: 10px 0; border-bottom: 1px solid #E2E8F0; font-size: 15px; }
-        .dado strong { color: #0A2463; min-width: 140px; display: inline-block; }
+        .dado strong { color: #0A2463; min-width: 160px; display: inline-block; }
         .status { padding: 8px 12px; border-radius: 8px; font-weight: 600; display: inline-block; margin: 12px 0; }
         .status.Nova { background: #FEF3C7; color: #92400E; }
         .status.Aprovada { background: #D1FAE5; color: #065F46; }
@@ -39,9 +42,48 @@
         @keyframes girar { to { transform: rotate(360deg); } }
         .resultado { margin-top: 20px; }
         .voltar { display: block; text-align: center; margin-top: 20px; color: #0A2463; font-weight: 500; text-decoration: none; }
-        .analisando { color: #92400E; font-weight: 500; margin: 12px 0; display: flex; align-items: center; gap: 8px; }
-        .bolinha-analise { width: 16px; height: 16px; background: #0A2463; border-radius: 50%; animation: pulsar 1s infinite; }
-        @keyframes pulsar { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        
+        /* Animação de aguardando análise */
+        .analisando { padding: 24px; text-align: center; color: #0A2463; }
+        .bolinha-carregando { width: 50px; height: 50px; border: 4px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: girar 1s linear infinite; margin: 0 auto 16px; }
+        .texto-analise { font-size: 16px; font-weight: 500; }
+        .subtexto-analise { font-size: 14px; color: #64748B; margin-top: 8px; }
+
+        /* Área do Contrato */
+        .modal-contrato { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 999; padding: 16px; }
+        .caixa-contrato { background: white; border-radius: 20px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 28px; }
+        .cabecalho-contrato { text-align: center; border-bottom: 2px solid #0A2463; padding-bottom: 16px; margin-bottom: 20px; }
+        .cabecalho-contrato h3 { font-size: 20px; color: #0A2463; font-weight: 700; }
+        .corpo-contrato { font-size: 14px; line-height: 1.7; color: #374151; text-align: justify; }
+        .corpo-contrato p { margin-bottom: 12px; }
+        .corpo-contrato strong { color: #0A2463; }
+        .aviso-leitura { background: #FFFBEB; border: 1px solid #F59E0B; border-radius: 12px; padding: 14px; margin: 16px 0; font-weight: 500; color: #92400E; }
+        .botoes-contrato { display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+
+        /* Área de Assinatura / Selfie */
+        .area-aceite { margin-top: 20px; padding: 16px; background: #F8FAFC; border-radius: 12px; display: none; }
+        .abas-aceite { display: flex; gap: 8px; margin-bottom: 16px; }
+        .aba { flex: 1; padding: 10px; border: 1px solid #CBD5E1; border-radius: 10px; text-align: center; cursor: pointer; font-weight: 500; font-size: 14px; background: white; }
+        .aba.ativa { background: #0A2463; color: white; border-color: #0A2463; }
+        .camera-area { text-align: center; }
+        #videoCamera { width: 100%; max-width: 400px; border-radius: 12px; display: none; border: 2px solid #CBD5E1; }
+        #fotoSelfie { max-width: 100%; border-radius: 12px; display: none; margin: 12px auto; }
+        .canvas-assinatura { border: 1px solid #CBD5E1; border-radius: 12px; background: white; width: 100%; height: 150px; cursor: crosshair; display: none; }
+        .aviso-aceite { font-size: 13px; color: #64748B; margin: 12px 0; text-align: center; }
+
+        /* Área do Pix e QR Code */
+        .pix-area { background: #ECFDF5; border: 1px solid #10B981; border-radius: 16px; padding: 20px; margin-top: 20px; text-align: center; display: none; }
+        .pix-area h4 { color: #065F46; margin-bottom: 12px; font-size: 17px; }
+        .qrcode-container { display: flex; justify-content: center; margin: 16px 0; }
+        #qrcode { padding: 12px; background: white; border-radius: 12px; display: inline-block; }
+        .codigo-pix { font-family: monospace; font-size: 13px; padding: 10px; background: white; border-radius: 8px; margin: 8px 0; word-break: break-all; border: 1px solid #D1FAE5; }
+        .btn-copiar { background: #059669; color: white; padding: 10px 16px; border-radius: 8px; border: none; font-weight: 500; cursor: pointer; font-size: 14px; margin-top: 6px; }
+
+        /* Lista de Parcelas */
+        .lista-parcelas { margin-top: 20px; padding: 16px; background: #F8FAFC; border-radius: 12px; display: none; }
+        .lista-parcelas h4 { color: #0A2463; margin-bottom: 12px; font-size: 16px; }
+        .item-parcela { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
+        .item-parcela:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
@@ -66,23 +108,100 @@
         <div class="dado"><strong>Valor Desejado:</strong> R$ <span id="resValor"></span></div>
         <div class="dado"><strong>Status:</strong> <span id="resStatus" class="status"></span></div>
 
+        <!-- Tela de Aguardando Análise -->
         <div id="msgAnalisando" class="analisando" style="display: none;">
-            <div class="bolinha-analise"></div>
-            <span>Proposta em análise, aguarde a avaliação. Em breve retornaremos pelo WhatsApp.</span>
+            <div class="bolinha-carregando"></div>
+            <div class="texto-analise">Aguarde aqui o resultado da sua proposta</div>
+            <div class="subtexto-analise">Estamos analisando seu cadastro, em breve atualizaremos o status aqui.</div>
         </div>
 
-        <div id="detalhesAprovado" style="display: none; margin-top: 16px;">
-            <h4 class="font-semibold text-lg text-sucesso mb-2">✅ Proposta Aprovada!</h4>
+        <!-- Tela de Proposta Aprovada -->
+        <div id="detalhesAprovado" style="display: none;">
+            <h4 class="font-semibold text-lg text-sucesso mb-3">✅ Proposta Aprovada!</h4>
             <div class="dado"><strong>Valor Aprovado:</strong> R$ <span id="resValorAprovado"></span></div>
-            <div class="dado"><strong>Entrada:</strong> R$ <span id="resEntrada"></span></div>
-            <div class="dado"><strong>Parcelas:</strong> <span id="resParcelas"></span>x de R$ <span id="resValorParcela"></span></div>
-            <div class="dado"><strong>Chave Pix Pagamento:</strong> <span id="resPix"></span></div>
+            <div class="dado"><strong>Valor da Entrada:</strong> R$ <span id="resEntrada"></span></div>
+
+            <button id="btnAbrirContrato" class="btn btn-primary">📄 Ler e Aceitar o Contrato</button>
+
+            <!-- Lista de Parcelas -->
+            <div class="lista-parcelas" id="areaParcelas">
+                <h4>📄 Parcelas a Pagar</h4>
+                <div id="listaParcelasCorpo"></div>
+            </div>
+
+            <!-- Área de Aceite -->
+            <div class="area-aceite" id="areaAceite">
+                <h4 class="font-semibold text-primary mb-3 text-center">Forma de Aceite do Contrato</h4>
+                <div class="abas-aceite">
+                    <div class="aba ativa" id="abaSelfie">📸 Selfie</div>
+                    <div class="aba" id="abaAssinatura">✍️ Assinatura</div>
+                </div>
+                <div class="camera-area">
+                    <video id="videoCamera" autoplay playsinline></video>
+                    <img id="fotoSelfie" alt="Selfie para aceite">
+                    <canvas id="canvasAssinatura" class="canvas-assinatura"></canvas>
+                    <div class="botoes-contrato">
+                        <button id="btnAbrirCamera" class="btn btn-secundario" style="flex:1;">📷 Abrir Câmera</button>
+                        <button id="btnTirarFoto" class="btn btn-sucesso" style="flex:1; display:none;">✅ Tirar Foto</button>
+                        <button id="btnLimparAssinatura" class="btn btn-secundario" style="flex:1; display:none;">🗑️ Limpar</button>
+                    </div>
+                </div>
+                <p class="aviso-aceite">Ao enviar, você confirma que leu, entendeu e concorda com todas as cláusulas do contrato.</p>
+                <button id="btnEnviarAceite" class="btn btn-primary" disabled>✅ Enviar Aceite e Liberar Pagamento</button>
+            </div>
+
+            <!-- Pagamento da Entrada com Pix e QR Code -->
+            <div class="pix-area" id="areaPagamento">
+                <h4>Pagamento da Entrada via Pix</h4>
+                <p style="font-size: 14px; color: #047857;">Escaneie o QR Code ou copie a chave abaixo para pagar</p>
+                <div class="qrcode-container">
+                    <div id="qrcode"></div>
+                </div>
+                <div class="codigo-pix" id="chavePixTexto">Aguardando geração...</div>
+                <button class="btn-copiar" id="btnCopiarPix" onclick="copiarPix()">📋 Copiar Chave Pix</button>
+                <p style="font-size: 13px; margin-top: 12px; color: #047857;">✅ Após confirmação do pagamento, agendaremos a entrega dos móveis imediatamente.</p>
+            </div>
         </div>
 
         <button id="btnNovaBusca" class="btn btn-primary mt-4">Consultar Outro CPF</button>
+        <a href="index.html" class="voltar">← Voltar para página inicial</a>
     </div>
+</div>
 
-    <a href="index.html" class="voltar">← Voltar para página inicial</a>
+<!-- Modal do Contrato -->
+<div id="modalContrato" class="modal-contrato">
+    <div class="caixa-contrato">
+        <div class="cabecalho-contrato">
+            <h3>CONTRATO DE PARCELAMENTO FLASHCRED</h3>
+            <p style="font-size: 14px; color: #64748B;">Distribuidora Flash Point - CNPJ: 00.000.000/0001-00</p>
+        </div>
+        <div class="corpo-contrato">
+            <p><strong>CLÁUSULA 1ª - OBJETO</strong><br>
+            O presente contrato regulamenta a compra de móveis pelo Cliente, com pagamento parcelado via Pix, operacionalizado pela FlashCred, serviço exclusivo da Distribuidora Flash Point.</p>
+
+            <p><strong>CLÁUSULA 2ª - VALORES E CONDIÇÕES</strong><br>
+            O Cliente declara estar ciente e de acordo com: o valor total aprovado, o valor da entrada, a quantidade de parcelas, o valor de cada parcela e os encargos aplicados, conforme informado na proposta aprovada. A entrada deverá ser paga integralmente via Pix antes da liberação da entrega.</p>
+
+            <p><strong>CLÁUSULA 3ª - OBRIGAÇÕES DO CLIENTE</strong><br>
+            O Cliente se compromete a efetuar o pagamento de todas as parcelas nas datas de vencimento estabelecidas. Em caso de atraso, incidirá multa de 2% sobre o valor devido mais juros de mora de 1% ao mês, além de atualização monetária. O não pagamento por mais de 30 dias autoriza a inscrição do nome do Cliente nos órgãos de proteção ao crédito (SPC, Serasa) e a busca e apreensão dos produtos, conforme legislação vigente.</p>
+
+            <p><strong>CLÁUSULA 4ª - ENTREGA E PROPRIEDADE</strong><br>
+            A propriedade dos móveis permanece pertencendo à Distribuidora Flash Point até o pagamento integral de todos os valores. A entrega será agendada imediatamente após a confirmação do pagamento da entrada.</p>
+
+            <p><strong>CLÁUSULA 5ª - ACEITE E VALIDADE</strong><br>
+            O aceite deste contrato se dará por meio de selfie com documento ou assinatura digital, tendo a mesma validade jurídica da assinatura física, conforme a Lei nº 14.063/2020.</p>
+
+            <p><strong>CLÁUSULA 6ª - FORO</strong><br>
+            Fica eleito o foro da comarca de Muzambinho / MG para dirimir quaisquer dúvidas ou ações oriundas deste contrato.</p>
+        </div>
+        <div class="aviso-leitura">
+            ✅ Declaro que li, compreendi e concordo integralmente com todas as cláusulas deste contrato.
+        </div>
+        <div class="botoes-contrato">
+            <button id="btnFecharContrato" class="btn btn-secundario" style="flex:1;">Voltar</button>
+            <button id="btnAceitarContrato" class="btn btn-sucesso" style="flex:1;">Li e Concordo</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -90,9 +209,193 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+let dadosProposta = null;
+let streamCamera = null;
+let desenhando = false;
+
 // Máscara CPF
 document.getElementById('cpfBusca').addEventListener('input', e => {
     e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+});
+
+// Copiar chave Pix
+function copiarPix() {
+    const chave = document.getElementById('chavePixTexto').textContent;
+    navigator.clipboard.writeText(chave).then(() => {
+        alert('✅ Chave Pix copiada com sucesso!');
+    }).catch(() => {
+        alert('Não foi possível copiar automaticamente, selecione e copie manualmente.');
+    });
+}
+
+// Controle do Contrato
+document.getElementById('btnAbrirContrato').addEventListener('click', () => {
+    document.getElementById('modalContrato').style.display = 'flex';
+});
+document.getElementById('btnFecharContrato').addEventListener('click', () => {
+    document.getElementById('modalContrato').style.display = 'none';
+});
+document.getElementById('btnAceitarContrato').addEventListener('click', () => {
+    document.getElementById('modalContrato').style.display = 'none';
+    document.getElementById('areaAceite').style.display = 'block';
+    document.getElementById('btnAbrirContrato').disabled = true;
+    document.getElementById('btnAbrirContrato').textContent = '✅ Contrato Aceito';
+});
+
+// Abas Selfie / Assinatura
+document.getElementById('abaSelfie').addEventListener('click', () => {
+    document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
+    document.getElementById('abaSelfie').classList.add('ativa');
+    document.getElementById('videoCamera').style.display = 'none';
+    document.getElementById('fotoSelfie').style.display = 'none';
+    document.getElementById('canvasAssinatura').style.display = 'none';
+    document.getElementById('btnAbrirCamera').style.display = 'block';
+    document.getElementById('btnTirarFoto').style.display = 'none';
+    document.getElementById('btnLimparAssinatura').style.display = 'none';
+    pararCamera();
+});
+document.getElementById('abaAssinatura').addEventListener('click', () => {
+    document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
+    document.getElementById('abaAssinatura').classList.add('ativa');
+    document.getElementById('videoCamera').style.display = 'none';
+    document.getElementById('fotoSelfie').style.display = 'none';
+    document.getElementById('canvasAssinatura').style.display = 'block';
+    document.getElementById('btnAbrirCamera').style.display = 'none';
+    document.getElementById('btnTirarFoto').style.display = 'none';
+    document.getElementById('btnLimparAssinatura').style.display = 'block';
+    pararCamera();
+    iniciarAssinatura();
+});
+
+// Câmera
+document.getElementById('btnAbrirCamera').addEventListener('click', async () => {
+    try {
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        document.getElementById('videoCamera').srcObject = streamCamera;
+        document.getElementById('videoCamera').style.display = 'block';
+        document.getElementById('btnAbrirCamera').style.display = 'none';
+        document.getElementById('btnTirarFoto').style.display = 'block';
+    } catch (erro) {
+        alert('❌ Não foi possível acessar a câmera. Permita o acesso ou use a opção de assinatura.');
+    }
+});
+document.getElementById('btnTirarFoto').addEventListener('click', () => {
+    const video = document.getElementById('videoCamera');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const dadosImagem = canvas.toDataURL('image/png');
+    document.getElementById('fotoSelfie').src = dadosImagem;
+    document.getElementById('fotoSelfie').style.display = 'block';
+    pararCamera();
+    document.getElementById('btnTirarFoto').style.display = 'none';
+    verificarAceitePronto();
+});
+function pararCamera() {
+    if(streamCamera) {
+        streamCamera.getTracks().forEach(track => track.stop());
+        streamCamera = null;
+    }
+    document.getElementById('videoCamera').style.display = 'none';
+}
+
+// Assinatura
+function iniciarAssinatura() {
+    const canvas = document.getElementById('canvasAssinatura');
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#0A2463';
+
+    function posicaoMouse(e) {
+        const rect = canvas.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+        desenhando = true;
+        ctx.beginPath();
+        ctx.moveTo(posicaoMouse(e).x, posicaoMouse(e).y);
+    });
+    canvas.addEventListener('mousemove', (e) => {
+        if(!desenhando) return;
+        ctx.lineTo(posicaoMouse(e).x, posicaoMouse(e).y);
+        ctx.stroke();
+    });
+    canvas.addEventListener('mouseup', () => { desenhando = false; verificarAceitePronto(); });
+    canvas.addEventListener('mouseout', () => { desenhando = false; });
+
+    // Suporte toque celular
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        desenhando = true;
+        const toque = e.touches[0];
+        ctx.beginPath();
+        ctx.moveTo(toque.clientX - canvas.getBoundingClientRect().left, toque.clientY - canvas.getBoundingClientRect().top);
+    });
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if(!desenhando) return;
+        const toque = e.touches[0];
+        ctx.lineTo(toque.clientX - canvas.getBoundingClientRect().left, toque.clientY - canvas.getBoundingClientRect().top);
+        ctx.stroke();
+    });
+    canvas.addEventListener('touchend', () => { desenhando = false; verificarAceitePronto(); });
+}
+document.getElementById('btnLimparAssinatura').addEventListener('click', () => {
+    const canvas = document.getElementById('canvasAssinatura');
+    canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById('btnEnviarAceite').disabled = true;
+});
+
+// Habilitar botão de envio
+function verificarAceitePronto() {
+    const temFoto = document.getElementById('fotoSelfie').style.display === 'block';
+    const temAssinatura = document.getElementById('canvasAssinatura').toDataURL() !== document.createElement('canvas').toDataURL();
+    if(temFoto || temAssinatura) {
+        document.getElementById('btnEnviarAceite').disabled = false;
+    }
+}
+
+// Enviar aceite e liberar pagamento
+document.getElementById('btnEnviarAceite').addEventListener('click', async () => {
+    if(!confirm('Confirma o envio do aceite do contrato? Essa ação é definitiva.')) return;
+    
+    let dadosAceite = {};
+    if(document.getElementById('fotoSelfie').style.display === 'block') {
+        dadosAceite.selfie_aceite = document.getElementById('fotoSelfie').src;
+    } else {
+        dadosAceite.assinatura_aceite = document.getElementById('canvasAssinatura').toDataURL();
+    }
+    dadosAceite.contrato_aceito = true;
+
+    const { error } = await supabase
+        .from('propostas')
+        .update(dadosAceite)
+        .eq('id', dadosProposta.id);
+
+    if(error) {
+        alert('❌ Erro ao registrar aceite: ' + error.message);
+        return;
+    }
+
+    alert('✅ Aceite registrado com sucesso! Agora você já pode efetuar o pagamento da entrada.');
+    document.getElementById('areaAceite').style.display = 'none';
+    document.getElementById('areaParcelas').style.display = 'block';
+    document.getElementById('areaPagamento').style.display = 'block';
+    
+    // Gerar QR Code
+    new QRCode(document.getElementById('qrcode'), {
+        text: dadosProposta.chave_pix || '',
+        width: 180,
+        height: 180,
+        colorDark: '#0A2463',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+    });
 });
 
 // Buscar proposta
@@ -113,7 +416,6 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
     textoBtn.textContent = 'Buscando...';
     carregando.style.display = 'block';
 
-    // Busca tanto com formatação quanto sem formatação
     const { data, error } = await supabase
         .from('propostas')
         .select('*')
@@ -128,29 +430,58 @@ document.getElementById('btnBuscar').addEventListener('click', async () => {
         return;
     }
 
-    const proposta = data[0];
-    // Preenche os dados
-    document.getElementById('resNome').textContent = proposta.nome;
-    document.getElementById('resCpf').textContent = proposta.cpf;
-    document.getElementById('resNascimento').textContent = new Date(proposta.nascimento).toLocaleDateString('pt-BR');
-    document.getElementById('resValor').textContent = parseFloat(proposta.valor_desejado).toFixed(2).replace('.', ',');
+    dadosProposta = data[0];
+    // Preenche os dados básicos
+    document.getElementById('resNome').textContent = dadosProposta.nome;
+    document.getElementById('resCpf').textContent = dadosProposta.cpf;
+    document.getElementById('resNascimento').textContent = new Date(dadosProposta.nascimento).toLocaleDateString('pt-BR');
+    document.getElementById('resValor').textContent = parseFloat(dadosProposta.valor_desejado).toFixed(2).replace('.', ',');
     
     const statusEl = document.getElementById('resStatus');
-    statusEl.textContent = proposta.status;
-    statusEl.className = `status ${proposta.status}`;
+    statusEl.textContent = dadosProposta.status;
+    statusEl.className = `status ${dadosProposta.status}`;
 
     // Mostra mensagem de análise ou detalhes aprovado
-    if (proposta.status === 'Nova') {
+    if (dadosProposta.status === 'Nova') {
         document.getElementById('msgAnalisando').style.display = 'flex';
         document.getElementById('detalhesAprovado').style.display = 'none';
-    } else if (proposta.status === 'Aprovada') {
+    } else if (dadosProposta.status === 'Aprovada') {
         document.getElementById('msgAnalisando').style.display = 'none';
         document.getElementById('detalhesAprovado').style.display = 'block';
-        document.getElementById('resValorAprovado').textContent = proposta.valor_aprovado ? parseFloat(proposta.valor_aprovado).toFixed(2).replace('.', ',') : '---';
-        document.getElementById('resEntrada').textContent = proposta.valor_entrada ? parseFloat(proposta.valor_entrada).toFixed(2).replace('.', ',') : '---';
-        document.getElementById('resParcelas').textContent = proposta.qtd_parcelas || '---';
-        document.getElementById('resValorParcela').textContent = proposta.valor_parcela ? parseFloat(proposta.valor_parcela).toFixed(2).replace('.', ',') : '---';
-        document.getElementById('resPix').textContent = proposta.chave_pix || 'Aguardando geração...';
+
+        // Preenche valores da aprovação
+        document.getElementById('resValorAprovado').textContent = dadosProposta.valor_aprovado ? parseFloat(dadosProposta.valor_aprovado).toFixed(2).replace('.', ',') : '---';
+        document.getElementById('resEntrada').textContent = dadosProposta.valor_entrada ? parseFloat(dadosProposta.valor_entrada).toFixed(2).replace('.', ',') : '---';
+        document.getElementById('chavePixTexto').textContent = dadosProposta.chave_pix || 'Aguardando geração...';
+
+        // Preenche lista de parcelas
+        const listaParcelas = document.getElementById('listaParcelasCorpo');
+        listaParcelas.innerHTML = '';
+        if(dadosProposta.qtd_parcelas && dadosProposta.qtd_parcelas > 0) {
+            const valorParc = dadosProposta.valor_parcela || 0;
+            for(let i = 1; i <= dadosProposta.qtd_parcelas; i++) {
+                const item = document.createElement('div');
+                item.className = 'item-parcela';
+                item.innerHTML = `<span>Parcela ${i}</span><span>R$ ${valorParc.toFixed(2).replace('.', ',')}</span>`;
+                listaParcelas.appendChild(item);
+            }
+        }
+
+        // Se já aceitou, mostra pagamento direto
+        if(dadosProposta.contrato_aceito) {
+            document.getElementById('btnAbrirContrato').style.display = 'none';
+            document.getElementById('areaAceite').style.display = 'none';
+            document.getElementById('areaParcelas').style.display = 'block';
+            document.getElementById('areaPagamento').style.display = 'block';
+            new QRCode(document.getElementById('qrcode'), {
+                text: dadosProposta.chave_pix || '',
+                width: 180,
+                height: 180,
+                colorDark: '#0A2463',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
     } else {
         document.getElementById('msgAnalisando').style.display = 'none';
         document.getElementById('detalhesAprovado').style.display = 'none';
@@ -165,6 +496,8 @@ document.getElementById('btnNovaBusca').addEventListener('click', () => {
     document.getElementById('cpfBusca').value = '';
     document.getElementById('resultadoBusca').style.display = 'none';
     document.getElementById('formBusca').style.display = 'block';
+    dadosProposta = null;
+    pararCamera();
 });
 </script>
 </body>
