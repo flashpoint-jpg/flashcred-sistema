@@ -39,6 +39,7 @@
         .btn-sucesso { background: #10B981; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
         .btn-perigo { background: #EF4444; color: white; }
+        .btn-excluir { background: #DC2626; color: white; }
         .btn-whatsapp { background: #25D366; color: white; }
         .input { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 15px; background: #FAFBFC; margin-bottom: 12px; }
         .input-pequeno { max-width: 90px; text-align: center; }
@@ -246,6 +247,13 @@ Valor Solicitado: R$ ${parseFloat(proposta.valor_desejado||0).toFixed(2).replace
     navigator.clipboard.writeText(dados).then(() => mostrarNotificacao('Dados copiados com sucesso!', 'sucesso'));
 }
 
+async function excluirProposta(cpf, nome) {
+    if(!confirm(`Tem certeza que deseja EXCLUIR a proposta de ${nome}? Essa ação não pode ser desfeita!`)) return;
+    await supabase.from('propostas').delete().eq('cpf', limparCpf(cpf));
+    mostrarNotificacao('Proposta excluída com sucesso!', 'perigo');
+    carregarPropostas();
+}
+
 function renderizarLista(lista = listaPropostas) {
     const container = document.getElementById('listaPropostas');
     container.innerHTML = '';
@@ -281,11 +289,12 @@ function renderizarLista(lista = listaPropostas) {
             </div>
 
             <div class="flex flex-wrap gap-2 mt-3">
-                <button class="btn btn-copiar" onclick='copiarDadosCliente(${JSON.stringify(proposta).replace(/'/g, "&#39;")})'><i class="fa-solid fa-copy"></i> Copiar Dados</button>
-                <button class="btn btn-editar" onclick="abrirModalEditar('${limparCpf(proposta.cpf)}')"><i class="fa-solid fa-pen"></i> Editar/Aprovar</button>
+                <button class="btn btn-copiar" onclick='copiarDadosCliente(${JSON.stringify(proposta).replace(/'/g, "&#39;")})'><i class="fa-solid fa-copy"></i> Copiar</button>
+                <button class="btn btn-editar" onclick="abrirModalEditar('${limparCpf(proposta.cpf)}')"><i class="fa-solid fa-pen"></i> Editar</button>
                 <button class="btn btn-sucesso" onclick="alterarStatus('${limparCpf(proposta.cpf)}', 'Aprovada')"><i class="fa-solid fa-check"></i> Aprovar</button>
                 <button class="btn btn-perigo" onclick="alterarStatus('${limparCpf(proposta.cpf)}', 'Reprovada')"><i class="fa-solid fa-times"></i> Reprovar</button>
                 <button class="btn btn-whatsapp" onclick="enviarWhatsapp('${limparCpf(proposta.telefone)}', '${proposta.nome}')"><i class="fa-brands fa-whatsapp"></i> WhatsApp</button>
+                <button class="btn btn-excluir" onclick="excluirProposta('${limparCpf(proposta.cpf)}', '${proposta.nome}')"><i class="fa-solid fa-trash"></i> Excluir</button>
             </div>
         `;
         container.appendChild(card);
@@ -362,6 +371,20 @@ async function salvarEdicao(cpf) {
 
     mostrarNotificacao('Proposta atualizada e aprovada!', 'sucesso');
     fecharModalEditar();
+}
+
+function atualizarCalculo() {
+    const valorTotal = parseFloat(document.getElementById('valorTotal')?.value) || 0;
+    const percEntrada = parseFloat(document.getElementById('percEntrada')?.value) || 0;
+    const percJuros = parseFloat(document.getElementById('percJuros')?.value) || 0;
+    const qtdParc = parseInt(document.getElementById('qtdParc')?.value) || 0;
+
+    const valorEntrada = valorTotal * (percEntrada / 100);
+    const valorComJuros = valorTotal * (1 + (percJuros / 100));
+    const valorParcela = qtdParc > 0 ? (valorComJuros - valorEntrada) / qtdParc : 0;
+
+    if(document.getElementById('valorEntrada')) document.getElementById('valorEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
+    if(document.getElementById('valorParcela')) document.getElementById('valorParcela').textContent = valorParcela.toFixed(2).replace('.', ',');
 }
 </script>
 </body>
