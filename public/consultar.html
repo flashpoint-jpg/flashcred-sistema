@@ -6,6 +6,7 @@
     <title>Acompanhar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -22,9 +23,9 @@
         }
     </script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Inter', sans-serif; background: #F8FAFC; min-height: 100vh; padding: 20px; }
-        .card { background: white; border-radius: 20px; padding: 28px; max-width: 520px; margin: 0 auto; box-shadow: 0 4px 20px rgba(10,36,99,0.1); }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background: #F8FAFC; min-height: 100vh; padding: 20px 12px; }
+        .card { background: white; border-radius: 20px; padding: 28px; max-width: 580px; margin: 0 auto; box-shadow: 0 4px 20px rgba(10,36,99,0.1); }
         .titulo { text-align: center; color: #0A2463; margin-bottom: 20px; font-size: 24px; font-weight: 700; }
         .input { width: 100%; padding: 14px; border: 1px solid #CBD5E1; border-radius: 12px; margin-bottom: 16px; font-size: 16px; }
         .input:focus { outline: none; border-color: #0A2463; box-shadow: 0 0 0 3px rgba(10,36,99,0.15); }
@@ -33,12 +34,21 @@
         .btn-primary:hover { background: #081C4A; }
         .btn:disabled { opacity: 0.7; cursor: not-allowed; }
         .resultado { margin-top: 20px; padding: 16px; border-radius: 12px; display: none; }
-        .status { font-weight: 700; font-size: 18px; text-align: center; margin-bottom: 12px; }
+        .status { font-weight: 700; font-size: 20px; text-align: center; margin-bottom: 16px; padding: 12px; border-radius: 12px; }
         .carregando { display: inline-block; width: 18px; height: 18px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: rodar 0.8s linear infinite; margin-right: 8px; }
         @keyframes rodar { to { transform: rotate(360deg); } }
-        .dado { margin: 8px 0; font-size: 15px; }
+        .dado { margin: 10px 0; font-size: 15px; }
         .dado strong { color: #0A2463; }
         .aviso-erro { background: #FEF2F2; color: #DC2626; padding: 14px; border-radius: 12px; text-align: center; display: none; }
+        .bloco-aprovado { display: none; margin-top: 20px; }
+        .valor-destaque { font-size: 22px; font-weight: 700; color: #10B981; text-align: center; margin: 12px 0; }
+        .selecionar-parcelas { margin: 16px 0; padding: 16px; background: #F0F7FF; border-radius: 12px; }
+        .selecionar-parcelas select { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #93C5FD; font-size: 15px; margin-top: 8px; }
+        .contrato { max-height: 300px; overflow-y: auto; padding: 16px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; margin: 16px 0; font-size: 14px; line-height: 1.6; }
+        .checkbox-contrato { display: flex; align-items: center; gap: 8px; margin: 12px 0; font-weight: 500; }
+        .area-pix { margin-top: 20px; text-align: center; display: none; }
+        #qrcode { display: inline-block; margin: 12px auto; padding: 12px; background: white; border-radius: 8px; }
+        .aviso-sucesso { background: #ECFDF5; color: #065F46; padding: 14px; border-radius: 12px; text-align: center; margin-top: 16px; display: none; }
     </style>
 </head>
 <body>
@@ -66,6 +76,56 @@
         <div class="dado"><strong>Data de Nascimento:</strong> <span id="resNascimento"></span></div>
         <div class="dado"><strong>Valor Solicitado:</strong> R$ <span id="resValor"></span></div>
         <div class="dado"><strong>Data de Envio:</strong> <span id="resData"></span></div>
+
+        <!-- 🟦 TUDO O QUE APARECE QUANDO É APROVADA -->
+        <div id="blocoAprovado" class="bloco-aprovado">
+            <div class="valor-destaque">✅ Proposta Aprovada!</div>
+
+            <div class="dado"><strong>Valor Total Aprovado:</strong> R$ <span id="valorTotalAprovado"></span></div>
+            <div class="dado"><strong>Entrada Mínima:</strong> R$ <span id="valorEntrada"></span> (<span id="percEntrada"></span>%)</div>
+            <div class="dado"><strong>Taxa de Juros:</strong> <span id="percJuros"></span>% ao mês</div>
+
+            <div class="selecionar-parcelas">
+                <label for="qtdParcelasCliente"><strong>Escolha a quantidade de parcelas (até <span id="maxParcelas"></span>x):</strong></label>
+                <select id="qtdParcelasCliente" onchange="atualizarValorParcela()">
+                    <!-- Carrega automaticamente de 1 até o máximo definido por você -->
+                </select>
+                <div class="valor-destaque" style="font-size: 18px; margin-top: 12px;">
+                    Valor de cada parcela: R$ <span id="valorParcela">0,00</span>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 20px; color: #0A2463;">📄 Termos e Contrato</h3>
+            <div class="contrato">
+                <p><strong>CONTRATO DE CRÉDITO E PARCELAMENTO - FLASHPOINT / FLASHCRED</strong></p>
+                <br>
+                <p>1️⃣ <strong>OBJETO:</strong> Ao aceitar, você confirma a compra do produto solicitado, com as condições de pagamento acima.</p>
+                <p>2️⃣ <strong>PAGAMENTO:</strong> Você paga a entrada via Pix e o restante dividido nas parcelas que escolher. O não pagamento acarretará multa de 2% + juros de mora de 1% ao mês, registro nos órgãos de proteção ao crédito (SPC/Serasa) e recolhimento do produto.</p>
+                <p>3️⃣ <strong>ENTREGA:</strong> A entrega será liberada imediatamente após a confirmação do pagamento da entrada.</p>
+                <p>4️⃣ <strong>CONCORDÂNCIA:</strong> Ao marcar a opção abaixo, você declara que leu, entendeu e concorda com TODOS os termos deste contrato, se comprometendo a efetuar todos os pagamentos nas datas combinadas.</p>
+                <br>
+                <p style="text-align: right;">Distribuidora Flash Point - Crédito Facilitado</p>
+            </div>
+
+            <label class="checkbox-contrato">
+                <input type="checkbox" id="aceitoContrato" onchange="liberarPagamento()">
+                Li e concordo com todos os termos do contrato acima
+            </label>
+
+            <button id="btnGerarPix" class="btn btn-primary" style="margin-top: 12px; display: none;" onclick="mostrarPix()">
+                Gerar Pix para Pagamento da Entrada
+            </button>
+
+            <div id="areaPix" class="area-pix">
+                <p style="font-weight: 600;">Escaneie ou copie o código Pix:</p>
+                <div id="qrcode"></div>
+                <p style="font-size: 14px; color: #64748B;">Valor da entrada: R$ <span id="valorEntradaPix"></span></p>
+                <button class="btn btn-sucesso" style="margin-top: 8px;" onclick="copiarChavePix()">Copiar Chave Pix</button>
+                <div id="avisoPago" class="aviso-sucesso">
+                    ✅ Assim que o pagamento for confirmado, você receberá a confirmação e os dados de entrega no seu WhatsApp!
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -74,12 +134,16 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Máscara e remoção de caracteres para busca
+let propostaAtual = null;
+
+function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
+
+// Máscara de CPF
 document.getElementById('cpfConsulta').addEventListener('input', e => {
     e.target.value = e.target.value.replace(/\D/g,'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
 });
 
-// Pega CPF que veio pelo link direto do formulário
+// Carrega se vier o CPF no link
 window.addEventListener('load', () => {
     const parametros = new URLSearchParams(window.location.search);
     const cpfUrl = parametros.get('cpf');
@@ -91,7 +155,7 @@ window.addEventListener('load', () => {
 
 document.getElementById('formConsultar').addEventListener('submit', async e => {
     e.preventDefault();
-    const cpfLimpo = document.getElementById('cpfConsulta').value.replace(/\D/g, '');
+    const cpfLimpo = limparCpf(document.getElementById('cpfConsulta').value);
     buscarProposta(cpfLimpo);
 });
 
@@ -101,15 +165,16 @@ async function buscarProposta(cpfSemMascara) {
     const spinner = document.getElementById('spinnerConsultar');
     const avisoErro = document.getElementById('avisoErro');
     const resultado = document.getElementById('resultadoProposta');
+    const blocoAprovado = document.getElementById('blocoAprovado');
 
     btn.disabled = true;
     textoBtn.textContent = 'Buscando...';
     spinner.style.display = 'inline-block';
     avisoErro.style.display = 'none';
     resultado.style.display = 'none';
+    blocoAprovado.style.display = 'none';
 
     try {
-        // BUSCA EXATA PELO CPF SEM MÁSCARA, IGUAL FOI SALVO
         const { data, error } = await supabase
             .from('propostas')
             .select('*')
@@ -124,22 +189,8 @@ async function buscarProposta(cpfSemMascara) {
             return;
         }
 
-        const proposta = data[0];
-        // PREENCHE OS DADOS
-        document.getElementById('resNome').textContent = proposta.nome;
-        document.getElementById('resCpf').textContent = proposta.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-        document.getElementById('resNascimento').textContent = new Date(proposta.nascimento).toLocaleDateString('pt-BR');
-        document.getElementById('resValor').textContent = parseFloat(proposta.valor_desejado).toFixed(2).replace('.', ',');
-        document.getElementById('resData').textContent = new Date(proposta.created_at || new Date()).toLocaleDateString('pt-BR');
-
-        // COR DO STATUS
-        const statusEl = document.getElementById('statusProposta');
-        statusEl.textContent = `📋 ${proposta.status || 'Nova'}`;
-        if(proposta.status === 'Aprovada') statusEl.style.color = '#10B981';
-        else if(proposta.status === 'Reprovada') statusEl.style.color = '#EF4444';
-        else statusEl.style.color = '#F59E0B';
-
-        resultado.style.display = 'block';
+        propostaAtual = data[0];
+        preencherDados(propostaAtual);
 
     } catch(erro) {
         avisoErro.textContent = '⚠️ Erro ao buscar: ' + erro.message;
@@ -149,6 +200,113 @@ async function buscarProposta(cpfSemMascara) {
         textoBtn.textContent = 'Verificar Situação';
         spinner.style.display = 'none';
     }
+}
+
+function preencherDados(p) {
+    const resultado = document.getElementById('resultadoProposta');
+    const statusEl = document.getElementById('statusProposta');
+    const blocoAprovado = document.getElementById('blocoAprovado');
+
+    document.getElementById('resNome').textContent = p.nome;
+    document.getElementById('resCpf').textContent = limparCpf(p.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    document.getElementById('resNascimento').textContent = new Date(p.nascimento).toLocaleDateString('pt-BR');
+    document.getElementById('resValor').textContent = parseFloat(p.valor_desejado).toFixed(2).replace('.', ',');
+    document.getElementById('resData').textContent = new Date(p.created_at || new Date()).toLocaleDateString('pt-BR');
+
+    // Status
+    const status = p.status || 'Nova';
+    statusEl.textContent = `📋 ${status}`;
+    if(status === 'Aprovada') {
+        statusEl.style.background = '#D1FAE5';
+        statusEl.style.color = '#065F46';
+        blocoAprovado.style.display = 'block';
+        carregarDadosAprovado(p);
+    } else if(status === 'Reprovada') {
+        statusEl.style.background = '#FEE2E2';
+        statusEl.style.color = '#991B1B';
+    } else {
+        statusEl.style.background = '#FEF3C7';
+        statusEl.style.color = '#92400E';
+        statusEl.innerHTML = `<span class="carregando" style="border-color: #92400e; border-top: transparent;"></span> Em análise, aguarde...`;
+    }
+
+    resultado.style.display = 'block';
+}
+
+function carregarDadosAprovado(p) {
+    // Pega os valores que VOCÊ definiu no painel
+    const valorTotal = parseFloat(p.valor_total || p.valor_desejado);
+    const percEntrada = parseFloat(p.perc_entrada || 39);
+    const percJuros = parseFloat(p.perc_juros || 6);
+    const maxParc = parseInt(p.qtd_parcelas || 12);
+
+    const valorEntrada = valorTotal * (percEntrada / 100);
+
+    // Preenche os dados
+    document.getElementById('valorTotalAprovado').textContent = valorTotal.toFixed(2).replace('.', ',');
+    document.getElementById('valorEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
+    document.getElementById('percEntrada').textContent = percEntrada;
+    document.getElementById('percJuros').textContent = percJuros;
+    document.getElementById('maxParcelas').textContent = maxParc;
+    document.getElementById('valorEntradaPix').textContent = valorEntrada.toFixed(2).replace('.', ',');
+
+    // Preenche o select de 1 até o máximo que VOCÊ escolheu
+    const select = document.getElementById('qtdParcelasCliente');
+    select.innerHTML = '';
+    for(let i = 1; i <= maxParc; i++) {
+        const opcao = document.createElement('option');
+        opcao.value = i;
+        opcao.textContent = `${i}x de R$ 0,00`;
+        select.appendChild(opcao);
+    }
+    atualizarValorParcela();
+}
+
+function atualizarValorParcela() {
+    if(!propostaAtual) return;
+    const valorTotal = parseFloat(propostaAtual.valor_total || propostaAtual.valor_desejado);
+    const percEntrada = parseFloat(propostaAtual.perc_entrada || 39);
+    const percJuros = parseFloat(propostaAtual.perc_juros || 6);
+    const qtd = parseInt(document.getElementById('qtdParcelasCliente').value);
+
+    const valorEntrada = valorTotal * (percEntrada / 100);
+    const valorComJuros = valorTotal * (1 + (percJuros / 100));
+    const valorParcela = (valorComJuros - valorEntrada) / qtd;
+
+    document.getElementById('valorParcela').textContent = valorParcela.toFixed(2).replace('.', ',');
+    
+    // Atualiza o texto da opção selecionada
+    const select = document.getElementById('qtdParcelasCliente');
+    select.options[select.selectedIndex].textContent = `${qtd}x de R$ ${valorParcela.toFixed(2).replace('.', ',')}`;
+}
+
+function liberarPagamento() {
+    const aceito = document.getElementById('aceitoContrato').checked;
+    document.getElementById('btnGerarPix').style.display = aceito ? 'block' : 'none';
+}
+
+function mostrarPix() {
+    const valorEntrada = parseFloat(propostaAtual.valor_total || propostaAtual.valor_desejado) * (parseFloat(propostaAtual.perc_entrada || 39) / 100);
+    const chavePix = '33552949852'; // Sua chave Pix fixa
+    const areaPix = document.getElementById('areaPix');
+    
+    // Gera QR Code
+    document.getElementById('qrcode').innerHTML = '';
+    new QRCode(document.getElementById('qrcode'), {
+        text: `00020126580014br.gov.bcb.pix0136${chavePix}5204000053039865802BR5925FLASHPOINT DISTRIBUIDORA6009SAO PAULO62070503***6304`,
+        width: 180,
+        height: 180
+    });
+
+    areaPix.style.display = 'block';
+    document.getElementById('btnGerarPix').disabled = true;
+    document.getElementById('btnGerarPix').textContent = 'Pix Gerado ✅';
+}
+
+function copiarChavePix() {
+    navigator.clipboard.writeText('33552949852').then(() => {
+        alert('Chave Pix copiada!');
+    });
 }
 </script>
 </body>
