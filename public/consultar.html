@@ -83,7 +83,7 @@
                 <p style="text-align: center; font-weight: bold;">CONTRATADA: FLASH POINT COMÉRCIO DE MÓVEIS LTDA</p>
                 <hr>
                 <p><strong>CLÁUSULA 1 - OBJETO:</strong> A Contratada se compromete a entregar os móveis solicitados, e o Cliente se compromete a efetuar o pagamento nas condições abaixo.</p>
-                <p><strong>CLÁUSULA 2 - VALORES:</strong> Valor total: R$ <span id="valorTotalContrato"></span> • Entrada: R$ <span id="valorEntradaContrato"></span> • <span id="qtdParcelaContrato"></span> parcelas de R$ <span id="valorParcelaContrato"></span>.</p>
+                <p><strong>CLÁUSULA 2 - VALORES:</strong> Valor total: R$ <span id="valorTotalContrato"></span> • Entrada: R$ <span id="valorEntradaContrato"></span> • Até <span id="maxParcelaContrato"></span> parcelas de R$ <span id="valorParcelaContrato"></span>.</p>
                 <p><strong>CLÁUSULA 3 - OBRIGAÇÕES:</strong> O Cliente se compromete a pagar todas as parcelas nas datas acordadas. O atraso superior a 3 parcelas causará vencimento antecipado, perda da entrada, não entrega dos produtos e registro nos órgãos de proteção ao crédito, conforme legislação vigente.</p>
                 <p><strong>CLÁUSULA 4 - ENTREGA:</strong> Será realizada após confirmação do pagamento da entrada, no endereço cadastrado.</p>
                 <p><strong>CLÁUSULA 5 - ACEITE:</strong> Ao marcar a opção e assinar, o Cliente declara que leu, entendeu e aceita todos os termos.</p>
@@ -220,12 +220,24 @@ function atualizarDadosTela() {
     `;
 
     if(dadosProposta.status === 'Aprovada' && !dadosProposta.pago) {
+        // ✅ PEGA O VALOR EXATO QUE VOCÊ COLOCOU NO PAINEL
         let maxParcelas = parseInt(dadosProposta.qtd_parcelas_max);
+        let valorParcelaPadrao = parseFloat(dadosProposta.valor_parcela || 0);
+        let valorEntradaPadrao = parseFloat(dadosProposta.valor_entrada || 0);
+        let valorTotal = parseFloat(dadosProposta.valor_total || dadosProposta.valor_desejado || 0);
+
         if(isNaN(maxParcelas) || maxParcelas < 1) maxParcelas = 3;
         if(maxParcelas > 48) maxParcelas = 48;
-        
+        if(isNaN(valorParcelaPadrao) || valorParcelaPadrao <=0) valorParcelaPadrao = valorTotal / maxParcelas;
+        if(isNaN(valorEntradaPadrao) || valorEntradaPadrao <=0) valorEntradaPadrao = valorTotal * 0.5;
+
         document.getElementById('maxParcelasPermitidas').textContent = maxParcelas;
-        preencherOpcoesParcelas(maxParcelas, parseFloat(dadosProposta.valor_desejado), parseFloat(dadosProposta.perc_juros || 6), parseFloat(dadosProposta.perc_entrada || 39));
+        document.getElementById('maxParcelaContrato').textContent = maxParcelas;
+        document.getElementById('valorParcelaContrato').textContent = valorParcelaPadrao.toFixed(2).replace('.', ',');
+        document.getElementById('valorEntradaContrato').textContent = valorEntradaPadrao.toFixed(2).replace('.', ',');
+        document.getElementById('valorTotalContrato').textContent = valorTotal.toFixed(2).replace('.', ',');
+
+        preencherOpcoesParcelas(maxParcelas, valorTotal, valorParcelaPadrao, valorEntradaPadrao);
         document.getElementById('escolhaParcelas').classList.remove('hidden');
     } else {
         document.getElementById('escolhaParcelas').classList.add('hidden');
@@ -250,30 +262,31 @@ async function consultarProposta() {
     atualizarDadosTela();
 }
 
-function preencherOpcoesParcelas(maxParcelas, valorTotal, juros, percEntrada) {
+function preencherOpcoesParcelas(maxParcelas, valorTotal, valorParcelaPadrao, valorEntradaPadrao) {
     const container = document.getElementById('listaParcelas');
     container.innerHTML = '';
+    // ✅ MOSTRA O VALOR EXATO DE CADA OPÇÃO, IGUAL VOCÊ CONFIGUROU
     for(let i = 1; i <= maxParcelas; i++) {
-        const valorParc = (valorTotal * (1 + (juros/100))) / i;
+        const valorParc = i === maxParcelas ? valorParcelaPadrao : (valorTotal / i);
         const item = document.createElement('div');
         item.className = 'item-parcela';
-        item.onclick = () => selecionarParcela(i, valorParc, valorTotal, percEntrada);
+        item.onclick = () => selecionarParcela(i, valorParc, valorTotal, valorEntradaPadrao);
         item.innerHTML = `<span>${i}x</span><span>R$ ${valorParc.toFixed(2).replace('.', ',')}</span>`;
         container.appendChild(item);
     }
 }
 
-function selecionarParcela(qtd, valor, valorTotal, percEntrada) {
+function selecionarParcela(qtd, valor, valorTotal, valorEntradaPadrao) {
     document.querySelectorAll('.item-parcela').forEach(el => el.classList.remove('selecionada'));
     event.currentTarget.classList.add('selecionada');
     
     dadosProposta.qtd_parcelas = qtd;
     dadosProposta.valor_parcela = valor;
-    dadosProposta.valor_entrada = valorTotal * (percEntrada / 100);
+    dadosProposta.valor_entrada = valorEntradaPadrao;
     
     document.getElementById('qtdParcelaContrato').textContent = qtd + 'x';
     document.getElementById('valorParcelaContrato').textContent = valor.toFixed(2).replace('.', ',');
-    document.getElementById('valorEntradaContrato').textContent = dadosProposta.valor_entrada.toFixed(2).replace('.', ',');
+    document.getElementById('valorEntradaContrato').textContent = valorEntradaPadrao.toFixed(2).replace('.', ',');
     document.getElementById('valorTotalContrato').textContent = valorTotal.toFixed(2).replace('.', ',');
     document.getElementById('nomeClienteContrato').textContent = dadosProposta.nome;
     document.getElementById('cpfClienteContrato').textContent = formatarCpf(dadosProposta.cpf);
