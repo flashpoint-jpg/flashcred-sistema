@@ -83,6 +83,7 @@
         .area-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
         .hidden { display: none !important; }
         label { font-weight: 500; margin-bottom: 4px; display: inline-block; }
+        .card-config { background: #F0FDF4; border: 1px solid #A7F3D0; }
     </style>
 </head>
 <body>
@@ -115,6 +116,30 @@
     </div>
 
     <div class="p-4 max-w-6xl mx-auto">
+        <!-- 🟩 ÁREA DE CONFIGURAÇÕES DE PAGAMENTO COM TOKEN JÁ PREENCHIDO -->
+        <div class="card card-config">
+            <h3 class="font-bold text-primary mb-3"><i class="fa-solid fa-gear"></i> Configurações de Pagamento</h3>
+            <div class="grid md:grid-cols-2 gap-3">
+                <div>
+                    <label>Chave Pix Recebedor (Produção)</label>
+                    <input type="text" id="chavePixProducao" class="input" value="33552949852" readonly>
+                </div>
+                <div>
+                    <label>Token Mercado Pago (Produção)</label>
+                    <input type="text" id="tokenMercadoPagoProducao" class="input" value="APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471">
+                </div>
+                <div>
+                    <label>Chave Pix Recebedor (Teste)</label>
+                    <input type="text" id="chavePixTeste" class="input" placeholder="Chave Pix para testes">
+                </div>
+                <div>
+                    <label>Token Mercado Pago (Teste)</label>
+                    <input type="text" id="tokenMercadoPagoTeste" class="input" placeholder="Token de ambiente de teste">
+                </div>
+            </div>
+            <button class="btn btn-sucesso" onclick="salvarConfiguracoes()"><i class="fa-solid fa-floppy-disk"></i> Salvar Configurações</button>
+        </div>
+
         <div class="area-busca">
             <input type="text" id="buscaCpf" class="input" placeholder="Buscar por CPF" oninput="filtrarPropostas()">
             <button class="btn btn-primary" onclick="filtrarPropostas()"><i class="fa-solid fa-magnifying-glass"></i> Buscar</button>
@@ -154,6 +179,23 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 let senhaCorreta = 'flashcred2026';
 let listaPropostas = [];
 
+// Carrega configurações salvas
+function carregarConfiguracoes() {
+    document.getElementById('chavePixProducao').value = localStorage.getItem('chavePixProducao') || '33552949852';
+    document.getElementById('tokenMercadoPagoProducao').value = localStorage.getItem('tokenMercadoPagoProducao') || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
+    document.getElementById('chavePixTeste').value = localStorage.getItem('chavePixTeste') || '';
+    document.getElementById('tokenMercadoPagoTeste').value = localStorage.getItem('tokenMercadoPagoTeste') || '';
+}
+
+// Salva configurações
+function salvarConfiguracoes() {
+    localStorage.setItem('chavePixProducao', document.getElementById('chavePixProducao').value.trim());
+    localStorage.setItem('tokenMercadoPagoProducao', document.getElementById('tokenMercadoPagoProducao').value.trim());
+    localStorage.setItem('chavePixTeste', document.getElementById('chavePixTeste').value.trim());
+    localStorage.setItem('tokenMercadoPagoTeste', document.getElementById('tokenMercadoPagoTeste').value.trim());
+    mostrarNotificacao('✅ Configurações salvas! Token Mercado Pago já configurado.', 'sucesso');
+}
+
 function definirModo(modo) {
     localStorage.setItem('modoSistema', modo);
     mostrarNotificacao(`Modo alterado para ${modo}`, 'alerta');
@@ -173,6 +215,7 @@ function fazerLogin() {
         sessionStorage.setItem('logado', 'sim');
         document.getElementById('telaLogin').classList.add('hidden');
         document.getElementById('painel').classList.remove('hidden');
+        carregarConfiguracoes();
         carregarPropostas();
         iniciarTempoReal();
     } else {
@@ -197,7 +240,7 @@ function alterarSenha() {
 function iniciarTempoReal() {
     supabase.channel('atualizacoes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas' }, () => {
-            mostrarNotificacao('Nova proposta recebida ou alterada!', 'alerta');
+            mostrarNotificacao('Nova proposta ou atualização recebida!', 'alerta');
             carregarPropostas();
         })
         .subscribe();
@@ -244,13 +287,13 @@ WhatsApp: ${proposta.telefone || '-'}
 CEP: ${proposta.cep ? limparCpf(proposta.cep).replace(/(\d{5})(\d{3})/, '$1-$3') : '-'}
 Endereço: ${proposta.endereco || '-'}
 Valor Solicitado: R$ ${parseFloat(proposta.valor_desejado||0).toFixed(2).replace('.',',')}`;
-    navigator.clipboard.writeText(dados).then(() => mostrarNotificacao('Dados copiados com sucesso!', 'sucesso'));
+    navigator.clipboard.writeText(dados).then(() => mostrarNotificacao('Dados copiados!', 'sucesso'));
 }
 
 async function excluirProposta(cpf, nome) {
-    if(!confirm(`Tem certeza que deseja EXCLUIR a proposta de ${nome}? Essa ação não pode ser desfeita!`)) return;
+    if(!confirm(`Excluir proposta de ${nome}? Ação irreversível!`)) return;
     await supabase.from('propostas').delete().eq('cpf', limparCpf(cpf));
-    mostrarNotificacao('Proposta excluída com sucesso!', 'perigo');
+    mostrarNotificacao('Proposta excluída!', 'perigo');
     carregarPropostas();
 }
 
@@ -302,14 +345,14 @@ function renderizarLista(lista = listaPropostas) {
 }
 
 async function alterarStatus(cpf, novoStatus) {
-    if(!confirm(`Deseja marcar como ${novoStatus}?`)) return;
+    if(!confirm(`Marcar como ${novoStatus}?`)) return;
     await supabase.from('propostas').update({ status: novoStatus }).eq('cpf', cpf);
     mostrarNotificacao(`Proposta ${novoStatus}!`, 'sucesso');
 }
 
 function enviarWhatsapp(numero, nome) {
     const num = numero.replace(/\D/g, '');
-    const msg = `Olá ${nome}! Recebemos sua solicitação de crédito.`;
+    const msg = `Olá ${nome}! Sua proposta já foi analisada, acesse o link para conferir: ${window.location.origin}/consultar.html?cpf=${limparCpf(numero)}`;
     window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
@@ -330,7 +373,7 @@ function abrirModalEditar(cpf) {
                 <input type="number" id="percJuros" class="input input-pequeno" min="0" max="30" value="6" oninput="atualizarCalculo()">
             </div>
             <div>
-                <label>Qtd Parcelas</label>
+                <label>Qtd Parcelas (até 48)</label>
                 <input type="number" id="qtdParc" class="input input-pequeno" min="1" max="48" value="12" oninput="atualizarCalculo()">
             </div>
         </div>
