@@ -59,10 +59,10 @@
         #canvasAssinatura { width: 100%; height: 180px; background: white; border: 2px solid #94A3B8; border-radius: 8px; cursor: crosshair; touch-action: none; }
         .area-pix { margin-top: 20px; text-align: center; display: none; }
         #qrcode { display: inline-block; margin: 12px auto; padding: 12px; background: white; border-radius: 8px; }
-        .codigo-pix-texto { background: #F8FAFC; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; margin: 8px 0; text-align: left; }
+        .codigo-pix-texto { background: #F8FAFC; padding: 12px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 11px; word-break: break-all; margin: 8px 0; text-align: left; border: 1px solid #E2E8F0; }
         .aviso-sucesso { background: #ECFDF5; color: #065F46; padding: 14px; border-radius: 12px; text-align: center; margin-top: 16px; display: none; }
         .flex { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
-        .aviso-atualizacao { background: #E0F2FE; color: #0369A1; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 12px; display: none; font-size: 14px; }
+        .aviso-atualizacao { background: #E0F2FE; color: #0369A1; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 12px; display: none; font-size: 14px; font-weight: 500; }
     </style>
 </head>
 <body>
@@ -84,7 +84,7 @@
     </div>
 
     <div id="resultadoProposta" class="resultado">
-        <div id="avisoAtualizacao" class="aviso-atualizacao">🔔 A proposta foi atualizada pela equipe!</div>
+        <div id="avisoAtualizacao" class="aviso-atualizacao">🔔 A proposta foi atualizada pela equipe! Os valores e parcelas já foram ajustados.</div>
         <div id="statusProposta" class="status"></div>
         <div class="dado"><strong>Nome:</strong> <span id="resNome"></span></div>
         <div class="dado"><strong>CPF:</strong> <span id="resCpf"></span></div>
@@ -366,7 +366,7 @@ function preencherDados(p) {
 }
 
 function carregarDadosAprovado(p) {
-    const valorTotal = parseFloat(p.valor_total || p.valor_desejado);
+    const valorTotal = parseFloat(p.valor_total || p.valor_desejado || 0);
     const percEntrada = parseFloat(p.perc_entrada || 39);
     const percJuros = parseFloat(p.perc_juros || 6);
     const maxParc = parseInt(p.qtd_parcelas || 12);
@@ -392,10 +392,10 @@ function carregarDadosAprovado(p) {
 
 function atualizarValorParcela() {
     if(!propostaAtual) return;
-    const valorTotal = parseFloat(propostaAtual.valor_total || propostaAtual.valor_desejado);
+    const valorTotal = parseFloat(propostaAtual.valor_total || propostaAtual.valor_desejado || 0);
     const percEntrada = parseFloat(propostaAtual.perc_entrada || 39);
     const percJuros = parseFloat(propostaAtual.perc_juros || 6);
-    const qtd = parseInt(document.getElementById('qtdParcelasCliente').value);
+    const qtd = parseInt(document.getElementById('qtdParcelasCliente').value || 0);
 
     const valorEntrada = valorTotal * (percEntrada / 100);
     const valorComJuros = valorTotal * (1 + (percJuros / 100));
@@ -478,15 +478,16 @@ async function mostrarPix() {
     }).eq('cpf', propostaAtual.cpf);
 
     const chavePix = localStorage.getItem('chavePixProducao') || '33552949852';
-    const valorTotal = parseFloat(propostaAtual.valor_total || propostaAtual.valor_desejado);
+    const valorTotal = parseFloat(propostaAtual.valor_total || propostaAtual.valor_desejado || 0);
     const percEntrada = parseFloat(propostaAtual.perc_entrada || 39);
-    const valorEntrada = (valorTotal * (percEntrada / 100)).toFixed(2).replace('.', '');
+    const valorEntrada = valorTotal * (percEntrada / 100);
+    const valorFormatado = valorEntrada.toFixed(2).replace('.', '');
     const nomeRecebedor = 'DISTRIBUIDORA FLASHPOINT';
     const cidade = 'SAO PAULO';
-    const descricao = `ENTRADA ${propostaAtual.id || ''}`;
+    const descricao = `ENTRADA PROPOSTA ${propostaAtual.id || ''}`.substring(0, 25);
 
-    // Código Pix válido conforme padrão BCB
-    const codigoPix = `00020126580014br.gov.bcb.pix0111${chavePix}0220${descricao}5204000053039865403${valorEntrada}5802BR5925${nomeRecebedor}6009${cidade}6304`;
+    // ✅ PIX NO PADRÃO OFICIAL BANCO CENTRAL
+    const codigoPix = `00020126580014br.gov.bcb.pix0111${chavePix}02${String(descricao.length).padStart(2,'0')}${descricao}5204000053039865403${valorFormatado}5802BR59${String(nomeRecebedor.length).padStart(2,'0')}${nomeRecebedor}60${String(cidade.length).padStart(2,'0')}${cidade}6304`;
     
     document.getElementById('qrcode').innerHTML = '';
     new QRCode(document.getElementById('qrcode'), { 
@@ -521,7 +522,7 @@ function iniciarAtualizacaoCliente() {
                 ultimaVersaoProposta = JSON.stringify(novaProposta);
                 propostaAtual = novaProposta;
                 document.getElementById('avisoAtualizacao').style.display = 'block';
-                setTimeout(() => document.getElementById('avisoAtualizacao').style.display = 'none', 5000);
+                setTimeout(() => document.getElementById('avisoAtualizacao').style.display = 'none', 6000);
                 preencherDados(novaProposta);
             }
         })
