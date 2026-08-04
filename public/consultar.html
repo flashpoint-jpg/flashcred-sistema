@@ -253,24 +253,29 @@ function atualizarDadosTela() {
     `;
 
     if(dadosProposta.status === 'Aprovada') {
+        // ✅ LÊ OS NOMES EXATOS DOS CAMPOS DO SEU PAINEL
         let valorTotal = parseFloat(dadosProposta.valor_total || dadosProposta.valor_desejado || 0);
-        if(valorTotal <= 0) valorTotal = 100;
-        
-        let maxParcelas = parseInt(dadosProposta.qtd_parcelas || dadosProposta.qtd_parcelas_max) || 12;
+        let percentualEntrada = parseFloat(dadosProposta["%_entrada"] || dadosProposta.percentual_entrada || 45);
+        let valorEntrada = parseFloat(dadosProposta.valor_entrada) || ((valorTotal * percentualEntrada) / 100);
+        let maxParcelas = parseInt(dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas || 2);
+        let valorParcela = parseFloat(dadosProposta.valor_de_cada_parcela || dadosProposta.valor_parcela) || ((valorTotal - valorEntrada) / maxParcelas);
+
+        // Garante valores válidos e não deixa zerar
+        if(valorTotal <= 0) valorTotal = 1.90;
+        if(valorEntrada <= 0) valorEntrada = (valorTotal * 0.45);
         maxParcelas = Math.min(Math.max(maxParcelas, 1), 48);
-        
-        let valorEntradaPadrao = parseFloat(dadosProposta.valor_entrada) || (valorTotal * 0.5);
-        let valorParcelaPadrao = parseFloat(dadosProposta.valor_parcela) || ((valorTotal - valorEntradaPadrao) / maxParcelas);
+        if(valorParcela <= 0) valorParcela = ((valorTotal - valorEntrada) / maxParcelas);
+
         let dataBaseVencimento = dadosProposta.data_base_vencimento ? new Date(dadosProposta.data_base_vencimento) : new Date();
 
         document.getElementById('maxParcelasPermitidas').textContent = maxParcelas;
         document.getElementById('maxParcelaContrato').textContent = maxParcelas;
-        document.getElementById('valorParcelaContrato').textContent = valorParcelaPadrao.toFixed(2).replace('.', ',');
-        document.getElementById('valorEntradaContrato').textContent = valorEntradaPadrao.toFixed(2).replace('.', ',');
+        document.getElementById('valorParcelaContrato').textContent = valorParcela.toFixed(2).replace('.', ',');
+        document.getElementById('valorEntradaContrato').textContent = valorEntrada.toFixed(2).replace('.', ',');
         document.getElementById('valorTotalContrato').textContent = valorTotal.toFixed(2).replace('.', ',');
 
         if(!dadosProposta.contrato_assinado) {
-            preencherOpcoesParcelas(maxParcelas, valorTotal, valorParcelaPadrao, valorEntradaPadrao);
+            preencherOpcoesParcelas(maxParcelas, valorTotal, valorParcela, valorEntrada);
             document.getElementById('escolhaParcelas').classList.remove('hidden');
             document.getElementById('contratoArea').classList.remove('hidden');
             document.getElementById('areaPagamentoEntrada').classList.add('hidden');
@@ -282,15 +287,15 @@ function atualizarDadosTela() {
             
             if(!dadosProposta.entrada_paga) {
                 document.getElementById('areaPagamentoEntrada').classList.remove('hidden');
-                document.getElementById('textoValorEntrada').textContent = `Valor da entrada: R$ ${valorEntradaPadrao.toFixed(2).replace('.', ',')}`;
-                gerarPagamentoEntrada(valorEntradaPadrao, dadosProposta.nome);
+                document.getElementById('textoValorEntrada').textContent = `Valor da entrada: R$ ${valorEntrada.toFixed(2).replace('.', ',')} (${percentualEntrada}%)`;
+                gerarPagamentoEntrada(valorEntrada, dadosProposta.nome);
                 document.getElementById('avisoEntradaPaga').classList.add('hidden');
                 document.getElementById('areaParcelasPagamento').classList.add('hidden');
             } else {
                 document.getElementById('areaPagamentoEntrada').classList.add('hidden');
                 document.getElementById('avisoEntradaPaga').classList.remove('hidden');
                 document.getElementById('areaParcelasPagamento').classList.remove('hidden');
-                gerarListaParcelasPagamento(maxParcelas, valorParcelaPadrao, dataBaseVencimento, dadosProposta.parcelas_pagas || []);
+                gerarListaParcelasPagamento(maxParcelas, valorParcela, dataBaseVencimento, dadosProposta.parcelas_pagas || []);
             }
         }
     } else {
@@ -360,7 +365,7 @@ async function abrirCamera() {
 
 async function capturarSelfie() {
     if(!document.getElementById('liContrato').checked) { alert('Primeiro marque "Li e concordo com os termos"!'); return; }
-    if(!dadosProposta.qtd_parcelas) { alert('Primeiro escolha a quantidade de parcelas!'); return; }
+    if(!dadosProposta.quantidade_parcelas && !dadosProposta.qtd_parcelas) { alert('Primeiro escolha a quantidade de parcelas!'); return; }
 
     const video = document.getElementById('videoCamera');
     const canvas = document.getElementById('canvasSelfie');
@@ -378,8 +383,8 @@ async function capturarSelfie() {
     await supabase.from('propostas').update({ 
         contrato_assinado: true, 
         selfie_assinatura: fotoBase64, 
-        qtd_parcelas: dadosProposta.qtd_parcelas, 
-        valor_parcela: dadosProposta.valor_parcela,
+        quantidade_parcelas: dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas, 
+        valor_de_cada_parcela: dadosProposta.valor_de_cada_parcela || dadosProposta.valor_parcela,
         valor_entrada: dadosProposta.valor_entrada,
         atualizado_em: new Date() 
     }).eq('cpf', dadosProposta.cpf);
@@ -394,11 +399,11 @@ async function gerarPagamentoEntrada(valor, nome) {
         if (valorTotal <= 0) {
             document.getElementById('loadingPixEntrada').innerHTML = `
                 <div class="aviso-erro">❌ Valor não definido</div>
-                <p class="text-sm mt-2">Volte ao painel, preencha o Valor Total e Valor da Entrada, salve e aprove novamente.</p>
+                <p class="text-sm mt-2">Volte ao painel, salve e aprove a proposta novamente.</p>
             `;
             return;
         }
-        valor = valorTotal * 0.5;
+        valor = valorTotal * 0.45;
         document.getElementById('textoValorEntrada').textContent = `Valor da entrada: R$ ${valor.toFixed(2).replace('.', ',')} (calculado automaticamente)`;
     }
 
