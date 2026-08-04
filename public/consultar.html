@@ -230,9 +230,14 @@ function limparValor(valor) {
 }
 function removerAcentos(texto) { return String(texto || '').normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
-function calcularValorParcelaFixa(qtdMax) {
-    if(qtdMax <= 0 || valorFinanciado <= 0 || taxaJurosMensal <= 0) return 0;
-    return (valorFinanciado * Math.pow(1 + taxaJurosMensal, qtdMax)) / qtdMax;
+// MESMA FÓRMULA EXATA DO PAINEL ADMINISTRATIVO
+function calcularValoresProposta(valorSolicitado, percEntrada, percJuros, qtdMaxParcelas) {
+    valorEntradaAtual = valorSolicitado * percEntrada / 100;
+    valorFinanciado = valorSolicitado - valorEntradaAtual;
+    taxaJurosMensal = percJuros / 100;
+    valorParcelaFixa = (valorFinanciado * Math.pow(1 + taxaJurosMensal, qtdMaxParcelas)) / qtdMaxParcelas;
+    const valorTotal = valorEntradaAtual + (valorParcelaFixa * qtdMaxParcelas);
+    return { valorEntradaAtual, valorFinanciado, taxaJurosMensal, valorParcelaFixa, valorTotal };
 }
 
 function gerarCodigoPix(valor, descricao = '') {
@@ -338,35 +343,30 @@ function carregarDadosProposta() {
     const status = (dadosProposta.status || 'pendente').toLowerCase();
     const valorSolicitado = limparValor(dadosProposta.valor_solicitado || dadosProposta.valor_desejado || 0);
     const percentualEntrada = Number(dadosProposta.percentual_entrada || dadosProposta.entrada_perc || 40);
-    valorEntradaAtual = valorSolicitado * percentualEntrada / 100;
-    valorFinanciado = valorSolicitado - valorEntradaAtual;
-    taxaJurosMensal = Number(dadosProposta.juros || dadosProposta.juros_perc || 6) / 100;
+    const percentualJuros = Number(dadosProposta.juros || dadosProposta.juros_perc || 6);
     const maxParcelas = Number(dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas || 4);
-    valorParcelaFixa = calcularValorParcelaFixa(maxParcelas);
-    const valorTotal = valorEntradaAtual + (valorParcelaFixa * maxParcelas);
+
+    // CALCULA TUDO COM A MESMA REGRA DO PAINEL
+    const valores = calcularValoresProposta(valorSolicitado, percentualEntrada, percentualJuros, maxParcelas);
 
     document.getElementById('dadosCliente').innerHTML = `
-        <p class="mb-2"><strong>CPF:</strong> ${formatarCpf(dadosProposta.cpf)}</p>
-        <p class="mb-2"><strong>Data de Nascimento:</strong> ${dadosProposta.nascimento || 'Não informado'}</p>
-        <p class="mb-2"><strong>WhatsApp:</strong> ${formatarTelefone(dadosProposta.whatsapp)}</p>
-        <p class="mb-2"><strong>CEP:</strong> ${formatarCep(dadosProposta.cep)}</p>
         <p class="mb-2"><strong>Endereço:</strong> ${dadosProposta.endereco || 'Não informado'}</p>
         <p class="mb-2"><strong>Valor Solicitado:</strong> R$ ${valorSolicitado.toFixed(2).replace('.', ',')}</p>
-        <p class="mb-2"><strong>Valor Total:</strong> R$ ${valorTotal.toFixed(2).replace('.', ',')}</p>
-        <p class="mb-2"><strong>% Entrada:</strong> ${percentualEntrada}% → R$ ${valorEntradaAtual.toFixed(2).replace('.', ',')}</p>
-        <p class="mb-2"><strong>% Juros:</strong> ${(taxaJurosMensal * 100).toFixed(0)}% ao mês</p>
+        <p class="mb-2"><strong>Valor Total:</strong> R$ ${valores.valorTotal.toFixed(2).replace('.', ',')}</p>
+        <p class="mb-2"><strong>% Entrada:</strong> ${percentualEntrada}% → R$ ${valores.valorEntradaAtual.toFixed(2).replace('.', ',')}</p>
+        <p class="mb-2"><strong>% Juros:</strong> ${percentualJuros}% ao mês</p>
         <p class="mb-2"><strong>Quantidade de Parcelas:</strong> Até ${maxParcelas}x</p>
-        <p class="mb-2"><strong>Valor de cada parcela:</strong> R$ ${valorParcelaFixa.toFixed(2).replace('.', ',')}</p>
+        <p class="mb-2"><strong>Valor de cada parcela:</strong> R$ ${valores.valorParcelaFixa.toFixed(2).replace('.', ',')}</p>
         <p><strong>Status:</strong> <span class="badge badge-${status}">${status.toUpperCase()}</span></p>
     `;
 
-    document.getElementById('valorTotalContrato').textContent = valorTotal.toFixed(2).replace('.', ',');
+    document.getElementById('valorTotalContrato').textContent = valores.valorTotal.toFixed(2).replace('.', ',');
     document.getElementById('percentualEntradaContrato').textContent = percentualEntrada;
-    document.getElementById('valorEntradaContrato').textContent = valorEntradaAtual.toFixed(2).replace('.', ',');
+    document.getElementById('valorEntradaContrato').textContent = valores.valorEntradaAtual.toFixed(2).replace('.', ',');
     document.getElementById('maxParcelasContrato').textContent = maxParcelas;
-    document.getElementById('valorParcelaContrato').textContent = valorParcelaFixa.toFixed(2).replace('.', ',');
-    document.getElementById('jurosContrato').textContent = (taxaJurosMensal * 100).toFixed(0);
-    document.getElementById('valorEntradaPagamento').textContent = valorEntradaAtual.toFixed(2).replace('.', ',');
+    document.getElementById('valorParcelaContrato').textContent = valores.valorParcelaFixa.toFixed(2).replace('.', ',');
+    document.getElementById('jurosContrato').textContent = percentualJuros;
+    document.getElementById('valorEntradaPagamento').textContent = valores.valorEntradaAtual.toFixed(2).replace('.', ',');
 
     if(status === 'aprovada') {
         document.getElementById('avisoAguardando').classList.add('hidden');
