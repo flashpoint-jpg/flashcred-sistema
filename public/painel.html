@@ -36,6 +36,7 @@
         .btn-primary { background: #0A2463; color: white; width: 100%; }
         .btn-editar { background: #3B82F6; color: white; }
         .btn-copiar { background: #6366F1; color: white; }
+        .btn-imprimir { background: #8B5CF6; color: white; }
         .btn-sucesso { background: #10B981; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
         .btn-perigo { background: #EF4444; color: white; }
@@ -123,19 +124,23 @@
 
     <div class="p-4 max-w-6xl mx-auto">
         <div class="card">
-            <h3 class="text-md font-semibold text-primary mb-3">⚙️ Chaves Pix para Pagamento</h3>
-            <div class="grid grid-cols-2 gap-4">
+            <h3 class="text-md font-semibold text-primary mb-3">⚙️ Configurações de Pagamento</h3>
+            <div class="grid grid-cols-2 gap-4 mb-3">
                 <div>
                     <label class="text-sm font-medium">🧪 Chave Pix - Modo Teste</label>
-                    <input type="text" id="chavePixTeste" class="input" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória">
+                    <input type="text" id="chavePixTeste" class="input" placeholder="CPF, e-mail, telefone...">
                 </div>
                 <div>
                     <label class="text-sm font-medium">✅ Chave Pix - Modo Produção</label>
-                    <input type="text" id="chavePixProducao" class="input" placeholder="Chave que recebe os pagamentos reais">
+                    <input type="text" id="chavePixProducao" class="input" placeholder="Sua chave Pix real">
                 </div>
             </div>
-            <button class="btn btn-sucesso mt-2" onclick="salvarChavesPix()">💾 Salvar Chaves</button>
-            <div id="avisoSalvoChaves" class="aviso-salvo-config">✅ Chaves salvas com sucesso!</div>
+            <div class="mb-3">
+                <label class="text-sm font-medium">🔑 Token Mercado Pago (Produção)</label>
+                <input type="text" id="tokenMercadoPago" class="input" placeholder="Token de acesso" value="APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471">
+            </div>
+            <button class="btn btn-sucesso mt-2" onclick="salvarTodasConfiguracoes()">💾 Salvar Todas Configurações</button>
+            <div id="avisoSalvoConfig" class="aviso-salvo-config">✅ Configurações salvas com sucesso!</div>
         </div>
 
         <div class="area-busca">
@@ -177,17 +182,19 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 let senhaCorreta = 'flashcred2026';
 let listaPropostas = [];
 
-function salvarChavesPix() {
+function salvarTodasConfiguracoes() {
     localStorage.setItem('chavePixTeste', document.getElementById('chavePixTeste').value.trim());
     localStorage.setItem('chavePixProducao', document.getElementById('chavePixProducao').value.trim());
-    const aviso = document.getElementById('avisoSalvoChaves');
+    localStorage.setItem('tokenMercadoPagoProducao', document.getElementById('tokenMercadoPago').value.trim());
+    const aviso = document.getElementById('avisoSalvoConfig');
     aviso.style.display = 'block';
     setTimeout(() => aviso.style.display = 'none', 3000);
 }
 
-function carregarChavesSalvas() {
+function carregarConfiguracoesSalvas() {
     document.getElementById('chavePixTeste').value = localStorage.getItem('chavePixTeste') || '';
     document.getElementById('chavePixProducao').value = localStorage.getItem('chavePixProducao') || '';
+    document.getElementById('tokenMercadoPago').value = localStorage.getItem('tokenMercadoPagoProducao') || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 }
 
 function definirModo(modo) {
@@ -209,7 +216,7 @@ function fazerLogin() {
         sessionStorage.setItem('logado', 'sim');
         document.getElementById('telaLogin').classList.add('hidden');
         document.getElementById('painel').classList.remove('hidden');
-        carregarChavesSalvas();
+        carregarConfiguracoesSalvas();
         carregarPropostas();
         iniciarTempoReal();
     } else {
@@ -224,17 +231,17 @@ function sair() {
 }
 
 function alterarSenha() {
-    const nova = prompt('Nova senha:');
+    const nova = prompt('Nova senha de acesso:');
     if(nova?.length >=4) {
         senhaCorreta = nova;
-        mostrarNotificacao('Senha alterada!', 'sucesso');
+        mostrarNotificacao('Senha alterada com sucesso!', 'sucesso');
     }
 }
 
 function iniciarTempoReal() {
     supabase.channel('atualizacoes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas' }, () => {
-            mostrarNotificacao('🔔 Atualização recebida! Lista já renovada.', 'alerta');
+            mostrarNotificacao('🔔 Atualização recebida! Lista renovada automaticamente.', 'alerta');
             carregarPropostas();
         })
         .subscribe();
@@ -292,24 +299,21 @@ async function excluirProposta(cpf, nome) {
 }
 
 async function alterarStatus(cpf, novoStatus) {
-    if(!confirm(`Marcar como ${novoStatus}?`)) return;
-    await supabase.from('propostas').update({ status: novoStatus }).eq('cpf', cpf);
+    if(!confirm(`Marcar proposta como ${novoStatus}?`)) return;
+    await supabase.from('propostas').update({ status: novoStatus, atualizado_em: new Date() }).eq('cpf', cpf);
     mostrarNotificacao(`Proposta ${novoStatus}!`, 'sucesso');
 }
 
 function enviarWhatsapp(numero, nome) {
     const num = numero.replace(/\D/g, '');
     const linkProposta = window.location.href.replace('painel.html', 'consultar.html?cpf=' + limparCpf(numero));
-    const msg = `Olá ${nome}! Sua proposta foi atualizada. Acesse aqui para ver detalhes e pagar: ${linkProposta}`;
+    const msg = `Olá ${nome}! Temos uma atualização na sua proposta de móveis ✅\nAcesse para ver valores, parcelas, contrato e pagamento:\n${linkProposta}\n\nQualquer dúvida estamos à disposição!`;
     window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
 function abrirModalEditar(cpf) {
     const prop = listaPropostas.find(p => limparCpf(p.cpf) === cpf);
-    if(!prop) {
-        alert('Proposta não encontrada!');
-        return;
-    }
+    if(!prop) { alert('Proposta não encontrada!'); return; }
     
     document.getElementById('formModal').innerHTML = `
         <p class="mb-3"><strong>Cliente:</strong> ${prop.nome}</p>
@@ -319,20 +323,20 @@ function abrirModalEditar(cpf) {
         <div class="grid grid-cols-2 gap-4 mb-3">
             <div>
                 <label>% Entrada</label>
-                <input type="number" id="percEntrada" class="input" min="2" max="70" value="39" oninput="atualizarCalculo()">
+                <input type="number" id="percEntrada" class="input" min="2" max="70" value="${prop.perc_entrada || 39}" oninput="atualizarCalculo()">
             </div>
             <div>
                 <label>% Juros ao Mês</label>
-                <input type="number" id="percJuros" class="input" min="0" max="30" value="6" oninput="atualizarCalculo()">
+                <input type="number" id="percJuros" class="input" min="0" max="30" value="${prop.perc_juros || 6}" oninput="atualizarCalculo()">
             </div>
         </div>
 
         <div class="mb-3">
             <label>Quantidade de Parcelas (1 até 48)</label>
-            <input type="number" id="qtdParc" class="input" min="1" max="48" placeholder="Digite a quantidade" value="2" oninput="atualizarCalculo()">
+            <input type="number" id="qtdParc" class="input" min="1" max="48" placeholder="Digite a quantidade" value="${prop.qtd_parcelas || 12}" oninput="atualizarCalculo()">
         </div>
 
-        <div class="bg-blue-50 p-3 rounded-lg">
+        <div class="bg-blue-50 p-3 rounded-lg mb-3">
             <div class="flex justify-between font-medium mb-1">
                 <span>Valor da Entrada:</span>
                 <span>R$ <span id="valorEntradaCalc">0,00</span></span>
@@ -383,15 +387,32 @@ async function salvarEdicao(cpf) {
             throw new Error('Preencha todos os valores corretamente!');
         }
 
-        // ✅ SALVA SOMENTE OS CAMPOS QUE EXISTEM NO BANCO
+        const valorEntrada = valorTotal * (percEntrada / 100);
+        const valorComJuros = valorTotal * (1 + (percJuros / 100));
+        const valorParcela = qtdParc > 0 ? (valorComJuros - valorEntrada) / qtdParc : 0;
+
+        const dadosFormatados = `VALOR TOTAL: R$ ${valorTotal.toFixed(2).replace('.',',')}
+% ENTRADA: ${percEntrada}% → R$ ${valorEntrada.toFixed(2).replace('.',',')}
+% JUROS: ${percJuros}% a.m.
+QUANTIDADE DE PARCELAS: ${qtdParc}x
+VALOR DE CADA PARCELA: R$ ${valorParcela.toFixed(2).replace('.',',')}`;
+
         const { error } = await supabase.from('propostas').update({
             valor_desejado: valorTotal,
-            status: 'Aprovada'
+            status: 'Aprovada',
+            perc_entrada: percEntrada,
+            perc_juros: percJuros,
+            qtd_parcelas: qtdParc,
+            valor_total: valorComJuros,
+            valor_entrada: valorEntrada,
+            valor_parcela: valorParcela,
+            observacoes: dadosFormatados,
+            atualizado_em: new Date()
         }).eq('cpf', cpf);
 
         if(error) throw error;
 
-        mostrarNotificacao('✅ Alteração salva com sucesso! Os valores calculados já estão prontos para enviar ao cliente.', 'sucesso');
+        mostrarNotificacao('✅ Alteração salva! O cliente já vê os valores atualizados.', 'sucesso');
         fecharModalEditar();
         await carregarPropostas();
 
@@ -438,11 +459,13 @@ function renderizarLista(lista = listaPropostas) {
                 <p><strong>CEP:</strong> ${cepFmt}</p>
                 <p><strong>Endereço:</strong> ${proposta.endereco || '-'}</p>
                 <p><strong>Valor Solicitado:</strong> R$ ${parseFloat(proposta.valor_desejado || 0).toFixed(2).replace('.', ',')}</p>
+                ${proposta.observacoes ? `<p class="text-sm text-textoClaro mt-2 whitespace-pre-line">${proposta.observacoes}</p>` : ''}
                 <p>${statusEntrada}</p>
             </div>
 
             <div class="flex flex-wrap gap-2 mt-3">
                 <button class="btn btn-copiar" onclick='copiarDadosCliente(${JSON.stringify(proposta).replace(/'/g, "&#39;")})'><i class="fa-solid fa-copy"></i> Copiar</button>
+                <button class="btn btn-imprimir" onclick="window.print()"><i class="fa-solid fa-print"></i> Imprimir</button>
                 <button class="btn btn-editar" onclick="abrirModalEditar('${limparCpf(proposta.cpf)}')"><i class="fa-solid fa-pen"></i> Editar</button>
                 <button class="btn btn-sucesso" onclick="alterarStatus('${limparCpf(proposta.cpf)}', 'Aprovada')"><i class="fa-solid fa-check"></i> Aprovar</button>
                 <button class="btn btn-perigo" onclick="alterarStatus('${limparCpf(proposta.cpf)}', 'Reprovada')"><i class="fa-solid fa-times"></i> Reprovar</button>
@@ -454,45 +477,39 @@ function renderizarLista(lista = listaPropostas) {
     });
 }
 
-function gerarCodigoPix(chavePix, valor, descricao, nomeRecebedor, cidade) {
-    const valorLimpo = String(valor.toFixed(2)).replace('.', '');
-    descricao = descricao.substring(0, 25);
-    nomeRecebedor = nomeRecebedor.substring(0, 25);
-    cidade = cidade.substring(0, 15);
+function gerarCodigoPix(chavePix, valor, descricao = 'Pagamento FlashCred', nomeRecebedor = 'FLASH POINT', cidade = 'SAO PAULO') {
+    if (!chavePix?.trim()) return '';
+    chavePix = chavePix.trim();
+    descricao = descricao.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü.,-]/g, '').substring(0, 25);
+    nomeRecebedor = nomeRecebedor.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü]/g, '').substring(0, 25).toUpperCase();
+    cidade = cidade.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü]/g, '').substring(0, 15).toUpperCase();
+    const valorStr = parseFloat(valor || 0).toFixed(2).replace('.', '');
 
     let pix = '000201';
-    pix += '26' + String(22 + chavePix.length).padStart(2, '0') + '0014br.gov.bcb.pix01' + String(chavePix.length).padStart(2, '0') + chavePix;
-    pix += '02' + String(descricao.length).padStart(2, '0') + descricao;
-    pix += '52040000';
-    pix += '5303986';
-    pix += '54' + String(valorLimpo.length).padStart(2, '0') + valorLimpo;
-    pix += '5802BR';
-    pix += '59' + String(nomeRecebedor.length).padStart(2, '0') + nomeRecebedor;
-    pix += '60' + String(cidade.length).padStart(2, '0') + cidade;
-    pix += '6304';
-
-    const crc = calcularCRC16(pix, 0xFFFF);
-    pix += crc.toString(16).toUpperCase().padStart(4, '0');
-    return pix;
-}
-
-function calcularCRC16(dados, valorInicial) {
-    let polinomio = 0x1021;
-    let resultado = valorInicial;
-    for (let i = 0; i < dados.length; i++) {
-        resultado ^= (dados.charCodeAt(i) << 8);
-        for (let j = 0; j < 8; j++) {
-            resultado = (resultado & 0x8000) ? (resultado << 1) ^ polinomio : resultado << 1;
+    pix += `26${String(22 + chavePix.length).padStart(2, '0')}0014br.gov.bcb.pix01${String(chavePix.length).padStart(2, '0')}${chavePix}`;
+    pix += `02${String(descricao.length).padStart(2, '0')}${descricao}`;
+    pix += '520400005303986';
+    pix += `54${String(valorStr.length).padStart(2, '0')}${valorStr}`;
+    pix += `5802BR59${String(nomeRecebedor.length).padStart(2, '0')}${nomeRecebedor}`;
+    pix += `60${String(cidade.length).padStart(2, '0')}${cidade}6304`;
+    
+    const crc = (() => {
+        let res = 0xFFFF;
+        for (let i = 0; i < pix.length; i++) {
+            res ^= pix.charCodeAt(i) << 8;
+            for (let j = 0; j < 8; j++) res = res & 0x8000 ? (res << 1) ^ 0x1021 : res << 1;
         }
-    }
-    return resultado & 0xFFFF;
+        return (res & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+    })();
+    
+    return pix + crc;
 }
 
 window.addEventListener('load', () => {
     if(sessionStorage.getItem('logado') === 'sim') {
         document.getElementById('telaLogin').classList.add('hidden');
         document.getElementById('painel').classList.remove('hidden');
-        carregarChavesSalvas();
+        carregarConfiguracoesSalvas();
         carregarPropostas();
         iniciarTempoReal();
     }
