@@ -10,16 +10,18 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
         body { background: #F8FAFC; color: #1E293B; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 25px; width: 100%; max-width: 520px; border: 1px solid #E2E8F0; }
+        .card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); padding: 25px; width: 100%; max-width: 580px; border: 1px solid #E2E8F0; }
         .btn { padding: 12px 20px; border-radius: 10px; font-weight: 600; border: none; cursor: pointer; transition: 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
         .btn-sucesso { background: #10B981; color: white; }
         .btn-sucesso:hover { background: #059669; }
         .btn-primary { background: #0A2463; color: white; margin-top: 8px; }
+        .btn-alerta { background: #F59E0B; color: white; }
         .input { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 10px; font-size: 15px; background: #FAFBFC; margin-bottom: 12px; }
         .hidden { display: none !important; }
         .text-primary { color: #0A2463; }
         .text-center { text-align: center; }
         .bg-gray-50 { background: #F9FAFB; }
+        .bg-gray-100 { background: #F3F4F6; }
         .p-4 { padding: 1rem; }
         .rounded-xl { border-radius: 0.75rem; }
         .space-y-2 > * + * { margin-top: 0.5rem; }
@@ -44,6 +46,15 @@
         .badge-aprovada { background: #D1FAE5; color: #065F46; }
         .badge-analise { background: #FEF3C7; color: #92400E; }
         .badge-reprovada { background: #FEE2E2; color: #991B1B; }
+        .lista-parcelas { display: grid; gap: 8px; margin: 12px 0; max-height: 220px; overflow-y: auto; padding-right: 4px; }
+        .item-parcela { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+        .item-parcela.selecionada { background: #EFF6FF; border-color: #0A2463; font-weight: 500; }
+        .caixa-contrato { max-height: 280px; overflow-y: auto; padding: 16px; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; margin: 12px 0; font-size: 13px; line-height: 1.6; color: #1E293B; }
+        .area-assinatura { margin-top: 16px; padding: 16px; background: #F8FAFC; border-radius: 10px; text-align: center; }
+        .preview-selfie { max-width: 220px; max-height: 220px; border-radius: 10px; margin: 10px auto; border: 2px solid #10B981; background: #E5E7EB; }
+        .assinatura-texto { color: #1E293B; font-weight: 600; margin-top: 8px; }
+        input[type="checkbox"] { width: 18px; height: 18px; margin-right: 8px; accent-color: #0A2463; }
+        .aviso { font-size: 12px; color: #475569; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -51,7 +62,7 @@
 <div class="card">
     <div id="secaoBusca">
         <h2 class="text-xl font-bold text-primary text-center mb-4">🔍 Acompanhar Proposta</h2>
-        <p class="text-sm text-gray-600 text-center mb-4">Digite seu CPF para consultar o status, ver parcelas e realizar o pagamento.</p>
+        <p class="text-sm text-gray-600 text-center mb-4">Digite seu CPF para consultar, escolher parcelas e formalizar o contrato.</p>
         <label class="font-medium text-sm">Seu CPF</label>
         <input type="text" id="cpfConsulta" class="input" placeholder="000.000.000-00" maxlength="14">
         <button class="btn btn-sucesso" onclick="consultarProposta()">Consultar Proposta</button>
@@ -60,8 +71,46 @@
     <div id="secaoDetalhes" class="hidden">
         <h2 class="text-xl font-bold text-primary text-center mb-4">📋 Detalhes da Proposta</h2>
         <div id="dadosCliente" class="mb-4 text-sm bg-gray-50 p-4 rounded-xl space-y-2"></div>
+
+        <div id="escolhaParcelas" class="hidden mb-4">
+            <h3 class="font-bold text-md text-primary mb-2">📅 Escolha a quantidade de parcelas</h3>
+            <p class="text-sm text-gray-600 mb-2">Selecione abaixo a quantidade que melhor cabe no seu orçamento:</p>
+            <div id="listaParcelas" class="lista-parcelas"></div>
+        </div>
+
+        <div id="contratoArea" class="hidden">
+            <h3 class="font-bold text-md text-primary mb-2">📄 Contrato de Compra e Parcelamento</h3>
+            <div class="caixa-contrato" id="textoContrato">
+                <p style="text-align: center; font-weight: bold; margin-bottom: 12px;">CONTRATO DE COMPRA E PARCELAMENTO DE MÓVEIS</p>
+                <p><strong>CONTRATANTE:</strong> <span id="nomeClienteContrato"></span>, CPF: <span id="cpfClienteContrato"></span></p>
+                <p><strong>CONTRATADA:</strong> FLASH POINT COMÉRCIO DE MÓVEIS LTDA, CNPJ 00.000.000/0001-00</p>
+                <br>
+                <p><strong>CLÁUSULA 1 - OBJETO:</strong> A Contratada se compromete a entregar os móveis solicitados mediante o pagamento conforme valores e condições abaixo.</p>
+                <p><strong>CLÁUSULA 2 - VALORES:</strong> Valor total do pedido: R$ <span id="valorTotalContrato"></span>; Entrada de R$ <span id="valorEntradaContrato"></span>; <span id="qtdParcelaContrato"></span> parcelas de R$ <span id="valorParcelaContrato"></span>.</p>
+                <p><strong>CLÁUSULA 3 - OBRIGAÇÕES DO CLIENTE:</strong> O Cliente se compromete a efetuar todos os pagamentos nas datas acordadas. O não pagamento por 3 parcelas consecutivas implicará no vencimento antecipado de todo o débito, bloqueio da entrega, inclusão do nome nos órgãos de proteção ao crédito e perda da entrada paga, conforme legislação vigente.</p>
+                <p><strong>CLÁUSULA 4 - ENTREGA:</strong> A entrega será realizada após a confirmação do pagamento da entrada, dentro do prazo combinado e para o endereço cadastrado.</p>
+                <p><strong>CLÁUSULA 5 - ACEITE:</strong> Ao assinar e concordar, o Cliente declara que leu, entendeu e aceita todas as condições deste contrato, estando ciente dos seus direitos e obrigações legais.</p>
+                <br>
+                <p style="text-align: center; font-weight: bold;">São Paulo, <span id="dataContrato"></span>.</p>
+            </div>
+
+            <div class="area-assinatura">
+                <label class="flex items-center justify-center gap-2 mb-3">
+                    <input type="checkbox" id="liContrato">
+                    <span class="font-medium text-sm">Li e concordo com todos os termos do contrato acima</span>
+                </label>
+
+                <p class="text-sm font-medium mb-2">📸 Tirar selfie para assinatura digital:</p>
+                <button type="button" class="btn btn-alerta mb-2" id="btnCamera" onclick="abrirCamera()">Abrir Câmera</button>
+                <video id="videoCamera" class="hidden rounded-lg mb-2 w-full max-w-[280px] mx-auto" autoplay playsinline></video>
+                <canvas id="canvasSelfie" class="hidden"></canvas>
+                <img id="previewAssinatura" class="preview-selfie hidden" alt="Assinatura digital">
+                <button type="button" class="btn btn-sucesso hidden" id="btnCapturar" onclick="capturarSelfie()">Capturar Foto e Assinar</button>
+                <p id="avisoAssinatura" class="assinatura-texto hidden">✅ Contrato assinado digitalmente com sucesso!</p>
+            </div>
+        </div>
         
-        <div id="areaPagamento" class="hidden text-center">
+        <div id="areaPagamento" class="hidden text-center mt-4">
             <h3 class="font-bold text-md text-primary mb-2">💳 Pagamento da Entrada via Pix</h3>
             <p class="text-sm text-gray-600 mb-3" id="textoValorEntrada"></p>
             
@@ -85,13 +134,15 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+let dadosProposta = null;
+let streamCamera = null;
+
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 function formatarCpf(cpf) { return limparCpf(cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
 
-// Função oficial de geração Pix padrão BACEN
+// Geração Pix padrão BACEN
 function gerarCodigoPix(chavePix, valor, descricao = 'Pagamento FlashCred', nomeRecebedor = 'FLASH POINT MOVEIS', cidade = 'SAO PAULO') {
     if (!chavePix?.trim()) return '';
-    
     chavePix = chavePix.trim();
     descricao = descricao.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü.,-]/g, '').substring(0, 25);
     nomeRecebedor = nomeRecebedor.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü]/g, '').substring(0, 25).toUpperCase();
@@ -120,22 +171,12 @@ function gerarCodigoPix(chavePix, valor, descricao = 'Pagamento FlashCred', nome
 
 async function consultarProposta() {
     const cpfInput = limparCpf(document.getElementById('cpfConsulta').value);
-    if(!cpfInput || cpfInput.length !== 11) {
-        alert('Digite um CPF válido com 11 números!');
-        return;
-    }
+    if(!cpfInput || cpfInput.length !== 11) { alert('Digite um CPF válido com 11 números!'); return; }
 
-    const { data, error } = await supabase
-        .from('propostas')
-        .select('*')
-        .eq('cpf', cpfInput)
-        .maybeSingle();
+    const { data, error } = await supabase.from('propostas').select('*').eq('cpf', cpfInput).maybeSingle();
+    if(error || !data) { alert('Proposta não encontrada para este CPF.'); return; }
     
-    if(error || !data) {
-        alert('Proposta não encontrada para este CPF. Verifique se digitou corretamente.');
-        return;
-    }
-
+    dadosProposta = data;
     document.getElementById('secaoBusca').classList.add('hidden');
     document.getElementById('secaoDetalhes').classList.remove('hidden');
 
@@ -143,36 +184,110 @@ async function consultarProposta() {
     if(data.status === 'Aprovada') classeStatus = 'badge-aprovada';
     if(data.status === 'Reprovada') classeStatus = 'badge-reprovada';
 
-    const htmlDados = `
+    document.getElementById('dadosCliente').innerHTML = `
         <p><strong>Nome:</strong> ${data.nome || 'Não informado'}</p>
         <p><strong>CPF:</strong> ${formatarCpf(data.cpf)}</p>
         <p><strong>Status:</strong> <span class="badge ${classeStatus}">${data.status || 'Em Análise'}</span></p>
         <p><strong>Valor Solicitado:</strong> R$ ${parseFloat(data.valor_desejado || 0).toFixed(2).replace('.', ',')}</p>
-        ${data.qtd_parcelas ? `<p><strong>Quantidade de Parcelas:</strong> ${data.qtd_parcelas}x</p>` : ''}
-        ${data.valor_parcela ? `<p><strong>Valor de Cada Parcela:</strong> R$ ${parseFloat(data.valor_parcela || 0).toFixed(2).replace('.', ',')}</p>` : ''}
-        ${data.valor_entrada ? `<p><strong>Valor da Entrada:</strong> R$ ${parseFloat(data.valor_entrada || 0).toFixed(2).replace('.', ',')}</p>` : ''}
-        ${data.pago ? `<p style="color: #10B981; font-weight: 600;">✅ Entrada já Paga!</p>` : ''}
     `;
-    document.getElementById('dadosCliente').innerHTML = htmlDados;
 
-    if(data.status === 'Aprovada' && !data.pago && data.valor_entrada > 0) {
-        document.getElementById('areaPagamento').classList.remove('hidden');
-        document.getElementById('textoValorEntrada').textContent = `Valor total para pagamento da entrada: R$ ${parseFloat(data.valor_entrada).toFixed(2).replace('.', ',')}`;
-        
-        // Pega chave salva no painel ou usa a padrão
-        const chavePix = localStorage.getItem('chavePixProducao') || 'COLOQUE_SUA_CHAVE_PIX_AQUI';
-        const codigoPix = gerarCodigoPix(chavePix, data.valor_entrada, `Entrada Proposta - ${data.nome}`);
-        
-        // Gera imagem QR Code via serviço público
-        const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codigoPix)}`;
-        
-        document.getElementById('imgQrCode').src = urlQrCode;
-        document.getElementById('copiaEColaPix').value = codigoPix;
-        document.getElementById('loadingPix').classList.add('hidden');
-        document.getElementById('conteudoPix').classList.remove('hidden');
-    } else {
-        document.getElementById('areaPagamento').classList.add('hidden');
+    if(data.status === 'Aprovada' && !data.pago) {
+        preencherOpcoesParcelas(parseInt(data.qtd_parcelas_max || 48), parseFloat(data.valor_desejado), parseFloat(data.perc_juros || 6));
+        preencherDadosContrato();
+        document.getElementById('escolhaParcelas').classList.remove('hidden');
     }
+}
+
+function preencherOpcoesParcelas(maxParcelas, valorTotal, juros) {
+    const container = document.getElementById('listaParcelas');
+    container.innerHTML = '';
+    for(let i = 1; i <= maxParcelas; i++) {
+        const valorParc = (valorTotal * (1 + (juros/100))) / i;
+        const item = document.createElement('div');
+        item.className = 'item-parcela';
+        item.onclick = () => selecionarParcela(i, valorParc);
+        item.innerHTML = `
+            <span>${i}x</span>
+            <span>R$ ${valorParc.toFixed(2).replace('.', ',')}</span>
+        `;
+        container.appendChild(item);
+    }
+}
+
+function selecionarParcela(qtd, valor) {
+    document.querySelectorAll('.item-parcela').forEach(el => el.classList.remove('selecionada'));
+    event.currentTarget.classList.add('selecionada');
+    
+    dadosProposta.qtd_parcelas = qtd;
+    dadosProposta.valor_parcela = valor;
+    dadosProposta.valor_entrada = dadosProposta.valor_desejado * (dadosProposta.perc_entrada / 100 || 0.39);
+    
+    document.getElementById('qtdParcelaContrato').textContent = qtd + 'x';
+    document.getElementById('valorParcelaContrato').textContent = valor.toFixed(2).replace('.', ',');
+    document.getElementById('valorEntradaContrato').textContent = dadosProposta.valor_entrada.toFixed(2).replace('.', ',');
+    
+    document.getElementById('contratoArea').classList.remove('hidden');
+}
+
+function preencherDadosContrato() {
+    document.getElementById('nomeClienteContrato').textContent = dadosProposta.nome;
+    document.getElementById('cpfClienteContrato').textContent = formatarCpf(dadosProposta.cpf);
+    document.getElementById('valorTotalContrato').textContent = parseFloat(dadosProposta.valor_desejado).toFixed(2).replace('.', ',');
+    document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
+}
+
+async function abrirCamera() {
+    try {
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        const video = document.getElementById('videoCamera');
+        video.srcObject = streamCamera;
+        video.classList.remove('hidden');
+        document.getElementById('btnCamera').classList.add('hidden');
+        document.getElementById('btnCapturar').classList.remove('hidden');
+    } catch (erro) {
+        alert('Não foi possível acessar a câmera. Permita o acesso para assinar o contrato.');
+    }
+}
+
+function capturarSelfie() {
+    const video = document.getElementById('videoCamera');
+    const canvas = document.getElementById('canvasSelfie');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    
+    const fotoBase64 = canvas.toDataURL('image/png');
+    document.getElementById('previewAssinatura').src = fotoBase64;
+    document.getElementById('previewAssinatura').classList.remove('hidden');
+    document.getElementById('avisoAssinatura').classList.remove('hidden');
+    
+    if(streamCamera) streamCamera.getTracks().forEach(track => track.stop());
+    document.getElementById('videoCamera').classList.add('hidden');
+    document.getElementById('btnCapturar').classList.add('hidden');
+    
+    habilitarPagamento();
+}
+
+async function habilitarPagamento() {
+    const chavePix = localStorage.getItem('chavePixProducao') || 'COLOQUE_SUA_CHAVE_PIX_AQUI';
+    const codigoPix = gerarCodigoPix(chavePix, dadosProposta.valor_entrada, `Entrada Proposta - ${dadosProposta.nome}`);
+    const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codigoPix)}`;
+    
+    document.getElementById('imgQrCode').src = urlQrCode;
+    document.getElementById('copiaEColaPix').value = codigoPix;
+    document.getElementById('textoValorEntrada').textContent = `Valor total para pagamento da entrada: R$ ${dadosProposta.valor_entrada.toFixed(2).replace('.', ',')}`;
+    document.getElementById('loadingPix').classList.add('hidden');
+    document.getElementById('conteudoPix').classList.remove('hidden');
+    document.getElementById('areaPagamento').classList.remove('hidden');
+
+    // Salva assinatura no banco
+    await supabase.from('propostas').update({
+        contrato_assinado: true,
+        selfie_assinatura: document.getElementById('previewAssinatura').src,
+        qtd_parcelas: dadosProposta.qtd_parcelas,
+        valor_parcela: dadosProposta.valor_parcela,
+        atualizado_em: new Date()
+    }).eq('cpf', dadosProposta.cpf);
 }
 
 function copiarPix() {
@@ -180,18 +295,14 @@ function copiarPix() {
     campo.select();
     navigator.clipboard.writeText(campo.value)
         .then(() => alert('✅ Código Pix copiado com sucesso!'))
-        .catch(() => alert('Não foi possível copiar. Selecione e copie manualmente o código.'));
+        .catch(() => alert('Copie manualmente o código.'));
 }
 
 function voltarBusca() {
-    document.getElementById('secaoDetalhes').classList.add('hidden');
-    document.getElementById('secaoBusca').classList.remove('hidden');
-    document.getElementById('cpfConsulta').value = '';
-    document.getElementById('loadingPix').classList.remove('hidden');
-    document.getElementById('conteudoPix').classList.add('hidden');
+    if(streamCamera) streamCamera.getTracks().forEach(track => track.stop());
+    location.reload();
 }
 
-// Carrega automaticamente se vier CPF no link (?cpf=00000000000)
 window.addEventListener('load', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const cpfUrl = urlParams.get('cpf');
