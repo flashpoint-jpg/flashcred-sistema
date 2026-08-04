@@ -200,7 +200,7 @@
                     <label>WhatsApp / Telefone</label>
                     <input type="tel" id="telefone" class="input" placeholder="(00) 00000-0000" maxlength="16" required>
                     <label>Valor Desejado para Compra (R$)</label>
-                    <input type="text" id="valor_desejado" class="input" placeholder="Ex: 1000" required>
+                    <input type="text" id="valor_desejado" class="input" placeholder="Digite o valor, ex: 1500" required>
                     <button type="submit" id="btnEnviar" class="btn btn-primary mt-2 flex items-center justify-center gap-2">
                         <span id="textoBtn">Enviar Solicitação</span>
                         <div class="spinner" id="carregando"></div>
@@ -230,7 +230,8 @@ window.addEventListener('load', async () => {
 
 function converterValor(valorTexto) {
     if (!valorTexto) return 0;
-    return Number(valorTexto.replace(/\D/g, '')) / 100 || Number(valorTexto.replace(',', '.')) || 0;
+    let limpo = valorTexto.trim().replace(/R\$/gi, '').replace(/\./g, '').replace(',', '.');
+    return parseFloat(limpo) || 0;
 }
 
 function validarCPF(cpf) {
@@ -263,7 +264,11 @@ async function buscarCep() {
         const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
         const dados = await res.json();
         if(!dados.erro) {
-            document.getElementById('endereco').value = `${dados.logradouro || ''}, ${dados.bairro || ''}, ${dados.localidade} - ${dados.uf}`;
+            let enderecoCompleto = '';
+            if(dados.logradouro) enderecoCompleto += dados.logradouro;
+            if(dados.bairro) enderecoCompleto += (enderecoCompleto ? ', ' : '') + dados.bairro;
+            if(dados.localidade && dados.uf) enderecoCompleto += (enderecoCompleto ? ', ' : '') + `${dados.localidade} - ${dados.uf}`;
+            document.getElementById('endereco').value = enderecoCompleto;
         }
     } catch(e) {}
 }
@@ -293,15 +298,16 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
     if(!nome) { alert('Informe seu nome completo'); return; }
     if(!validarCPF(cpf)) { document.getElementById('erroCpf').style.display = 'block'; return; }
     if(!validarIdade(nascimento)) { document.getElementById('erroIdade').style.display = 'block'; return; }
-    if(!telefone || telefone.replace(/\D/g,'').length < 11) { alert('Informe um WhatsApp válido'); return; }
-    if(valor < 100) { alert('Valor mínimo de R$ 100,00'); return; }
-    if(!supabase) { alert('Aguarde o sistema carregar e tente novamente'); return; }
+    if(!telefone || telefone.replace(/\D/g,'').length < 11) { alert('Informe um WhatsApp válido com DDD'); return; }
+    if(!endereco) { alert('Preencha o endereço completo'); return; }
+    if(valor < 100) { alert(`Valor mínimo de R$ 100,00. Você digitou R$ ${valor.toFixed(2).replace('.', ',')}`); return; }
+    if(!supabase) { alert('Aguarde o sistema carregar completamente e tente novamente'); return; }
 
     const btn = document.getElementById('btnEnviar');
     const textoBtn = document.getElementById('textoBtn');
     const carregando = document.getElementById('carregando');
     btn.disabled = true;
-    textoBtn.textContent = 'Enviando...';
+    textoBtn.textContent = 'Enviando solicitação...';
     carregando.style.display = 'block';
 
     const dados = {
@@ -315,15 +321,15 @@ document.getElementById('formSolicitacao').addEventListener('submit', async e =>
         status: 'Nova'
     };
 
-    console.log('Enviando:', dados);
+    console.log('📤 Enviando dados:', dados);
 
     const { error } = await supabase.from('propostas').insert([dados]);
 
     if (error) {
-        alert('Erro: ' + error.message);
-        console.error(error);
+        alert('❌ Erro ao enviar: ' + error.message);
+        console.error('Erro completo:', error);
     } else {
-        alert('✅ Solicitação enviada com sucesso!');
+        alert(`✅ Solicitação enviada com sucesso! Valor: R$ ${valor.toFixed(2).replace('.', ',')}`);
         setTimeout(() => window.location.href = `consultar.html?cpf=${dados.cpf}`, 1200);
     }
 
