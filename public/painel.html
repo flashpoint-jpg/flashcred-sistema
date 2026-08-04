@@ -83,7 +83,6 @@
 </head>
 <body>
 <div class="container">
-    <!-- Cabeçalho mantido EXATAMENTE como você tem -->
     <div class="cabecalho-painel">
         <h1 class="titulo-pagina">📋 Propostas Recebidas</h1>
         <div class="area-config">
@@ -106,7 +105,6 @@
     </div>
 </div>
 
-<!-- Modal mantido na estrutura original -->
 <div id="modalEditar" class="modal hidden">
     <div class="modal-conteudo">
         <h3 class="text-xl font-bold text-primary mb-4">Valores e Condições</h3>
@@ -164,13 +162,18 @@ function limparValor(valor) {
     return parseFloat(str) || 0;
 }
 
-// Cálculo corrigido e exato
+// ✅ FUNÇÃO PARA PEGAR O WHATSAPP DE QUALQUER NOME DE COLUNA
+function pegarWhatsApp(proposta) {
+    return proposta.whatsapp || proposta.telefone || proposta.celular || proposta.numero || '';
+}
+
+// ✅ CÁLCULO FORÇANDO SEMPRE 2 CASAS DECIMAIS
 function calcularValores(valorSolicitado, percEntrada, percJuros, qtdParcelas) {
-    const valorEntrada = parseFloat((valorSolicitado * percEntrada / 100).toFixed(2));
-    const valorFinanciado = valorSolicitado - valorEntrada;
+    const valorEntrada = Number((valorSolicitado * percEntrada / 100).toFixed(2));
+    const valorFinanciado = Number((valorSolicitado - valorEntrada).toFixed(2));
     const taxaJuros = percJuros / 100;
-    const valorParcela = parseFloat(((valorFinanciado * Math.pow(1 + taxaJuros, qtdParcelas)) / qtdParcelas).toFixed(2));
-    const valorTotal = parseFloat((valorEntrada + (valorParcela * qtdParcelas)).toFixed(2));
+    const valorParcela = Number(((valorFinanciado * Math.pow(1 + taxaJuros, qtdParcelas)) / qtdParcelas).toFixed(2));
+    const valorTotal = Number((valorEntrada + (valorParcela * qtdParcelas)).toFixed(2));
     return { valorEntrada, valorFinanciado, taxaJuros, valorParcela, valorTotal };
 }
 
@@ -221,7 +224,10 @@ function renderizarLista(propostas) {
         const percJuros = limparValor(p.juros || p.juros_perc || 6);
         const qtdParcelas = parseInt(p.quantidade_parcelas || p.qtd_parcelas || 0);
         const valores = qtdParcelas > 0 ? calcularValores(valorSolicitado, percEntrada, percJuros, qtdParcelas) : null;
-        const whatsappFormatado = p.whatsapp ? String(p.whatsapp).replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado';
+        
+        // ✅ PEGA O WHATSAPP DE TODAS AS POSSIBILIDADES
+        const numeroWhatsApp = pegarWhatsApp(p);
+        const whatsappFormatado = numeroWhatsApp ? String(numeroWhatsApp).replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado';
 
         return `
         <div class="proposta-item">
@@ -347,21 +353,24 @@ async function marcarPendente() {
 
 function enviarLinkWhatsApp(proposta = null) {
     const prop = proposta || propostaAtual;
-    if(!prop || !prop.whatsapp) {
+    const numero = pegarWhatsApp(prop);
+    
+    if(!prop || !numero) {
         alert('Esse cliente não tem número de WhatsApp cadastrado.');
         return;
     }
     const link = `${window.location.origin}/consultar.html?cpf=${prop.cpf}`;
     const mensagem = `Olá ${prop.nome || 'Cliente'}! Sua proposta já foi analisada e está disponível para conferir e finalizar pelo link abaixo: ${link} 🛋️ FlashCred - Aqui acreditamos em você!`;
-    window.open(`https://wa.me/${String(prop.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(mensagem)}`, '_blank');
+    window.open(`https://wa.me/${String(numero).replace(/\D/g, '')}?text=${encodeURIComponent(mensagem)}`, '_blank');
 }
 
 function copiarDados(proposta) {
+    const numero = pegarWhatsApp(proposta);
     const texto = `
 📋 Dados da Proposta
 Nome: ${proposta.nome || 'Não informado'}
 CPF: ${String(proposta.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}
-WhatsApp: ${String(proposta.whatsapp || '').replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') || 'Não informado'}
+WhatsApp: ${numero ? String(numero).replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado'}
 Valor Solicitado: R$ ${limparValor(proposta.valor_solicitado || proposta.valor_desejado || 0).toFixed(2).replace('.', ',')}
     `.trim();
     navigator.clipboard.writeText(texto)
@@ -369,7 +378,6 @@ Valor Solicitado: R$ ${limparValor(proposta.valor_solicitado || proposta.valor_d
         .catch(() => alert('Não foi possível copiar, selecione manualmente.'));
 }
 
-// Atualização em tempo real sem precisar apertar F5
 function iniciarAtualizacaoTempoReal() {
     if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
     inscricaoTempoReal = supabase
@@ -380,7 +388,6 @@ function iniciarAtualizacaoTempoReal() {
         .subscribe();
 }
 
-// Iniciar tudo
 carregarPropostas();
 iniciarAtualizacaoTempoReal();
 </script>
