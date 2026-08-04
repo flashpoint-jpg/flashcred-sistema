@@ -30,7 +30,7 @@
         .titulo { font-size: 22px; font-weight: 700; color: #0A2463; margin-bottom: 24px; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .valor-pagar { font-size: 28px; font-weight: 700; color: #0A2463; margin: 12px 0 20px; }
         .subtitulo { color: #475569; margin-bottom: 24px; font-size: 15px; }
-        .box-qr { border: 2px dashed #CBD5E1; border-radius: 12px; padding: 20px; margin: 0 auto 24px; max-width: 220px; background: #FAFBFC; }
+        .box-qr { border: 2px dashed #CBD5E1; border-radius: 12px; padding: 20px; margin: 0 auto 24px; max-width: 220px; background: #FAFBFC; min-height: 200px; display: flex; align-items: center; justify-content: center; }
         #qrcode { width: 100%; height: auto; }
         .label-pix { font-weight: 500; color: #334155; margin-bottom: 12px; font-size: 15px; }
         .btn-copiar { width: 100%; padding: 14px; border-radius: 10px; border: none; background: #F59E0B; color: white; font-weight: 600; font-size: 15px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
@@ -38,7 +38,7 @@
         .aviso { font-size: 13px; color: #64748B; margin-top: 20px; line-height: 1.5; }
         .btn-voltar { margin-top: 24px; background: #E2E8F0; color: #374151; padding: 12px; border-radius: 10px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; border: none; cursor: pointer; }
         .hidden { display: none !important; }
-        .loading { display: inline-block; width: 20px; height: 20px; border: 2px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: spin 1s linear infinite; }
+        .loading { display: inline-block; width: 24px; height: 24px; border: 3px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
@@ -53,15 +53,13 @@
         <p class="subtitulo">Escaneie o QR Code ou copie o código:</p>
 
         <div class="box-qr">
-            <div id="qrcode" class="hidden">
-                <i class="fa-solid fa-qrcode fa-3x text-gray-400"></i>
-            </div>
-            <div id="carregandoQr" class="loading mx-auto"></div>
+            <div id="qrcode" class="hidden"></div>
+            <div id="carregandoQr" class="loading"></div>
         </div>
 
         <p class="label-pix">Pix Copia e Cola:</p>
         <button id="btnCopiar" class="btn-copiar" onclick="copiarCodigoPix()" disabled>
-            <i class="fa-solid fa-copy"></i> Carregando...
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Carregando...
         </button>
         <p id="codigoPix" class="hidden text-xs text-gray-500 mt-2 break-all px-2"></p>
 
@@ -78,26 +76,25 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 📌 CONFIGURAÇÃO DO SEU PIX - ALTERE AQUI SE PRECISAR
-const CHAVE_PIX_EMPRESA = 'SUA-CHAVE-PIX-AQUI'; // Troque pela sua chave Pix
+// 📌 SEUS DADOS JÁ CONFIGURADOS
+const CHAVE_PIX_EMPRESA = '33552949852';
 const NOME_RECEBEDOR = 'Flash Cred / Distribuidora Flash Point';
 const CIDADE_RECEBEDOR = 'SAO PAULO';
+const TOKEN_MERCADO_PAGO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 
 let codigoPixGerado = '';
 
-// Função para gerar Pix Copia e Cola padrão
+// Gera código Pix padrão válido
 function gerarPixValor(valor, descricao = 'Entrada de Móveis') {
     const valorStr = parseFloat(valor).toFixed(2);
     const chave = CHAVE_PIX_EMPRESA;
     
-    // Formatação padrão PIX
-    let pix = `00020126580014br.gov.bcb.pix0136${chave}5204000053039865802BR5925${NOME_RECEBEDOR}6009${CIDADE_RECEBEDOR}62070503***6304`;
+    let pix = `00020126580014br.gov.bcb.pix0111${chave}5204000053039865802BR5925${NOME_RECEBEDOR.substring(0,25)}6009${CIDADE_RECEBEDOR.substring(0,15)}62070503***6304`;
     
     if(parseFloat(valor) > 0) {
         pix = pix.replace('5303986', `53039865406${valorStr.replace('.','')}`);
     }
 
-    // Cálculo CRC16 simples
     function crc16(str) {
         let crc = 0xFFFF;
         for (let i = 0; i < str.length; i++) {
@@ -113,40 +110,47 @@ function gerarPixValor(valor, descricao = 'Entrada de Móveis') {
 
 async function carregarDadosPagamento() {
     try {
-        // Pega o CPF/ID da proposta da URL
         const params = new URLSearchParams(window.location.search);
-        const cpf = params.get('cpf') || '';
-        const propostaId = params.get('id') || '';
+        let cpf = params.get('cpf') || '';
+        let propostaId = params.get('id') || '';
+        
+        cpf = cpf.replace(/\D/g, '');
 
         if(!cpf && !propostaId) {
-            alert('Proposta não encontrada!');
+            alert('⚠️ Proposta não identificada! Acesse pelo link que enviamos ou consulte seu CPF.');
             window.location.href = 'consultar.html';
             return;
         }
 
-        // Busca a proposta aprovada
         let consulta = supabase.from('propostas').select('*').eq('status', 'aprovada');
-        if(propostaId) consulta = consulta.eq('id', propostaId);
-        else consulta = consulta.eq('cpf', cpf.replace(/\D/g, ''));
+        if(propostaId) {
+            consulta = consulta.eq('id', propostaId);
+        } else if(cpf && cpf.length === 11) {
+            consulta = consulta.eq('cpf', cpf);
+        }
 
-        const { data: proposta, error } = await consulta.limit(1).single();
+        const { data: proposta, error } = await consulta.limit(1).maybeSingle();
         
-        if(error || !proposta) {
-            alert('Proposta não aprovada ou não encontrada!');
+        if(error) throw error;
+        if(!proposta) {
+            alert('⚠️ Proposta não aprovada ou não encontrada!');
             window.location.href = 'consultar.html';
             return;
         }
 
-        // Calcula valor da entrada corretamente
-        const valorTotal = parseFloat(proposta.valor_solicitado || 0);
-        const percEntrada = parseFloat(proposta.percentual_entrada || 40);
+        const valorTotal = parseFloat(proposta.valor_solicitado || proposta.valor_desejado || 0);
+        const percEntrada = parseFloat(proposta.percentual_entrada || proposta.entrada_perc || 40);
         const valorEntrada = (valorTotal * percEntrada / 100).toFixed(2);
 
-        // Atualiza na tela
+        if(valorTotal <= 0) {
+            alert('⚠️ Valor da proposta inválido!');
+            window.location.href = 'consultar.html';
+            return;
+        }
+
         document.getElementById('valorEntrada').textContent = `R$ ${valorEntrada.replace('.', ',')}`;
 
-        // Gera código Pix e QR Code
-        codigoPixGerado = gerarPixValor(valorEntrada, `Entrada ${proposta.nome}`);
+        codigoPixGerado = gerarPixValor(valorEntrada, `Entrada ${proposta.nome || 'Cliente'}`);
         
         const btnCopiar = document.getElementById('btnCopiar');
         const codigoPixEl = document.getElementById('codigoPix');
@@ -157,15 +161,14 @@ async function carregarDadosPagamento() {
         btnCopiar.disabled = false;
         btnCopiar.innerHTML = '<i class="fa-solid fa-copy"></i> Copiar Código Pix';
         
-        // Gera QR Code
         await QRCode.toCanvas(qrBox, codigoPixGerado, { width: 200, margin: 2 });
         carregando.classList.add('hidden');
         qrBox.classList.remove('hidden');
 
     } catch (erro) {
-        console.error('Erro:', erro);
+        console.error('Erro completo:', erro);
         document.getElementById('carregandoQr').classList.add('hidden');
-        alert('Erro ao carregar dados de pagamento, tente novamente.');
+        alert(`❌ Erro ao carregar: ${erro?.message || 'Tente novamente ou consulte o suporte'}`);
     }
 }
 
@@ -175,14 +178,15 @@ function copiarCodigoPix() {
         .then(() => {
             const btn = document.getElementById('btnCopiar');
             const textoOriginal = btn.innerHTML;
-            btn.innerHTML = '<i class="fa-solid fa-check"></i> Copiado!';
-            setTimeout(() => btn.innerHTML = textoOriginal, 2000);
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> ✅ Copiado!';
+            setTimeout(() => btn.innerHTML = textoOriginal, 2500);
         })
-        .catch(() => alert('Não foi possível copiar, selecione e copie manualmente o código abaixo'));
-    document.getElementById('codigoPix').classList.remove('hidden');
+        .catch(() => {
+            document.getElementById('codigoPix').classList.remove('hidden');
+            alert('Selecione e copie o código que aparece abaixo do botão');
+        });
 }
 
-// Inicia carregamento
 carregarDadosPagamento();
 </script>
 </body>
