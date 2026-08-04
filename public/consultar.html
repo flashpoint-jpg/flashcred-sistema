@@ -177,7 +177,7 @@
                 </div>
             </div>
 
-            <!-- PAGAMENTO DA ENTRADA COM MERCADO PAGO -->
+            <!-- PAGAMENTO DA ENTRADA -->
             <div id="areaPagamentoEntrada" class="hidden mt-6">
                 <h3 class="text-lg font-semibold text-primary text-center mb-3">💳 Pagamento da Entrada</h3>
                 <div class="text-center p-4 bg-gray-50 rounded-xl mb-4">
@@ -186,7 +186,7 @@
                     
                     <div id="carregandoPixEntrada" class="py-6">
                         <div class="loading mx-auto"></div>
-                        <p class="mt-3 text-gray-500">Gerando código Pix via Mercado Pago...</p>
+                        <p class="mt-3 text-gray-500">Gerando código Pix...</p>
                     </div>
 
                     <div id="dadosPixEntrada" class="hidden">
@@ -209,9 +209,6 @@
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// SEU TOKEN DO MERCADO PAGO JÁ CONFIGURADO
-const MERCADO_PAGO_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 
 let propostaAtual = null;
 let streamCamera = null;
@@ -421,57 +418,37 @@ async function confirmarAssinatura() {
 
         alert('✅ Contrato aceito com sucesso! Agora você pode efetuar o pagamento da entrada.');
         document.getElementById('areaPagamentoEntrada').classList.remove('hidden');
-        gerarPixMercadoPago();
+        carregarDadosPix();
 
     } catch(erro) {
         alert('Erro ao confirmar: ' + erro.message);
     }
 }
 
-async function gerarPixMercadoPago() {
+// Busca os dados do Pix que você já cadastrou no painel
+async function carregarDadosPix() {
     document.getElementById('carregandoPixEntrada').classList.remove('hidden');
     document.getElementById('dadosPixEntrada').classList.add('hidden');
-    
-    const valorEntrada = Number(propostaAtual.valor_entrada || (propostaAtual.valor_solicitado * propostaAtual.percentual_entrada / 100) || 0);
 
     try {
-        const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${MERCADO_PAGO_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                transaction_amount: valorEntrada,
-                description: `Entrada - Proposta ${propostaAtual.codigo_unico} - ${propostaAtual.nome}`,
-                payment_method_id: 'pix',
-                payer: {
-                    email: `pagamento+${propostaAtual.cpf}@flashcred.com.br`,
-                    identification: {
-                        type: 'CPF',
-                        number: propostaAtual.cpf.replace(/\D/g, '')
-                    }
-                },
-                notification_url: 'https://rgcclordmqjmwuzrrfbd.supabase.co/functions/v1/webhook-mercadopago'
-            })
-        });
-
-        const dadosPagamento = await resposta.json();
+        // Pega os dados do Pix que foi gerado e salvo no painel
+        const { data } = await supabase.from('propostas').select('qrcode_pix, copia_cola_pix, valor_entrada').eq('id', propostaAtual.id);
         
-        if(dadosPagamento.point_of_interaction && dadosPagamento.point_of_interaction.transaction_data) {
+        if(data && data.length > 0 && data[0].qrcode_pix && data[0].copia_cola_pix) {
             document.getElementById('carregandoPixEntrada').classList.add('hidden');
             document.getElementById('dadosPixEntrada').classList.remove('hidden');
-            document.getElementById('qrcodeEntradaImg').src = dadosPagamento.point_of_interaction.transaction_data.qr_code_image;
-            document.getElementById('copiaEColaEntrada').textContent = dadosPagamento.point_of_interaction.transaction_data.qr_code;
+            document.getElementById('qrcodeEntradaImg').src = data[0].qrcode_pix;
+            document.getElementById('copiaEColaEntrada').textContent = data[0].copia_cola_pix;
         } else {
-            throw new Error('Resposta inválida do Mercado Pago');
+            throw new Error('Pagamento ainda não gerado pelo administrador');
         }
 
     } catch(erro) {
-        console.error('Erro ao gerar Pix:', erro);
+        console.error('Erro ao carregar Pix:', erro);
         document.getElementById('carregandoPixEntrada').innerHTML = `
-            <p class="text-red-500 mb-2">Erro ao gerar pagamento: ${erro.message}</p>
-            <button class="btn btn-alerta" onclick="gerarPixMercadoPago()">🔄 Tentar Novamente</button>
+            <p class="text-alerta mb-2">Aguardando liberação do pagamento...</p>
+            <p class="text-sm text-gray-500 mb-3">Assim que for liberado pelo atendente, o código aparecerá aqui automaticamente.</p>
+            <button class="btn btn-alerta" onclick="carregarDadosPix()">🔄 Atualizar</button>
         `;
     }
 }
@@ -490,7 +467,7 @@ function voltarBusca() {
     propostaAtual = null;
 }
 
-// Atualiza automaticamente se mudar status no painel a cada 10 segundos
+// Atualiza automaticamente status e dados do Pix a cada 10 segundos
 setInterval(async () => {
     if(!propostaAtual) return;
     const { data } = await supabase.from('propostas').select('*').eq('id', propostaAtual.id);
