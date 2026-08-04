@@ -72,7 +72,6 @@
         .item-parcela-escolha.selecionada { background: #DBEAFE; border-color: #0A2463; }
 
         .area-assinatura { margin-top: 20px; padding: 24px; background: #F8FAFC; border-radius: 16px; text-align: center; border: 1px solid #E2E8F0; }
-        .preview-selfie { max-width: 260px; max-height: 260px; border-radius: 12px; margin: 16px auto; border: 4px solid #10B981; background: #FFFFFF; display: block; }
         input[type="checkbox"] { width: 22px; height: 22px; margin-right: 10px; accent-color: #0A2463; vertical-align: middle; }
         .loading { display: inline-block; width: 40px; height: 40px; border: 3px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: spin 1s linear infinite; margin: 16px auto; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -132,11 +131,11 @@
 
             <div class="area-assinatura">
                 <label class="flex items-center justify-center gap-2 mb-4">
-                    <input type="checkbox" id="aceitoContrato">
+                    <input type="checkbox" id="aceitoContrato" onchange="tratarAceiteContrato()">
                     <span>Li e concordo com todos os termos acima</span>
                 </label>
                 <button id="btnAbrirCamera" class="btn btn-alerta hidden" onclick="abrirCamera()">📸 Tirar uma foto para confirmar</button>
-                <video id="videoCamera" class="hidden rounded-xl border-2 border-gray-300 w-full max-w-[280px] mx-auto" autoplay playsinline></video>
+                <video id="videoCamera" class="hidden rounded-xl border-2 border-gray-300 w-full max-w-[280px] mx-auto mb-3" autoplay playsinline></video>
                 <button id="btnConfirmarFoto" class="btn btn-sucesso hidden mt-3" onclick="capturarFoto()">✅ Confirmar foto</button>
                 <canvas id="canvasFoto" class="hidden"></canvas>
                 <img id="fotoAssinaturaPreview" class="selfie-preview hidden" alt="Foto de confirmação">
@@ -177,7 +176,6 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ⚠️ COLOQUE AQUI SUAS DADOS PIX CORRETOS
 const CHAVE_PIX_RECEBEDOR = '33552949852';
 const NOME_RECEBEDOR = 'FLASH POINT MOVEIS';
 const CIDADE_RECEBEDOR = 'SAO PAULO';
@@ -185,6 +183,7 @@ const CIDADE_RECEBEDOR = 'SAO PAULO';
 let dadosProposta = null;
 let streamCamera = null;
 let valorEntradaAtual = 0;
+let inscricaoTempoReal = null;
 
 function formatarCpf(cpf) { return String(cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
 function formatarTelefone(tel) { 
@@ -204,49 +203,75 @@ function limparValor(valor) {
     const str = String(valor).replace(/\./g, '').replace(',', '.');
     return parseFloat(str) || 0;
 }
-function removerAcentos(texto) { return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+function removerAcentos(texto) { return String(texto || '').normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
-// ✅ GERA CÓDIGO PIX 100% COMPATÍVEL COM BANCO CENTRAL
+// 🛠️ Gerador de EMV Payload rigorosamente compatível com o padrão Bacen para produção real
 function gerarCodigoPix(valor, descricao = '') {
     valor = parseFloat(valor || 0);
     if(valor <= 0) return null;
 
-    // Formata valor no padrão PIX: sem ponto, ex: 58.50 → "5850"
-    const valorStr = valor.toFixed(2).replace('.', '');
-    // Limpa e limita os campos conforme norma
-    descricao = removerAcentos(descricao || 'PAGAMENTO').toUpperCase().replace(/[^A-Z0-9 .-]/g, '').trim().substring(0, 25);
-    const nome = removerAcentos(NOME_RECEBEDOR).toUpperCase().replace(/[^A-Z ]/g, '').trim().substring(0, 25);
-    const cidade = removerAcentos(CIDADE_RECEBEDOR).toUpperCase().replace(/[^A-Z ]/g, '').trim().substring(0, 15);
+    const valorStr = valor.toFixed(2);
+    
+    // Tratamento estrito de tamanhos e caracteres do padrão EMV
+    const formatField = (id, value) => {
+        const len = String(value.length).padStart(2, '0');
+        return `${id}${len}${value}`;
+    };
 
-    let pix = '';
-    pix += '000201';
-    // Dados da chave
-    const chaveDados = `0014BR.GOV.BCB.PIX01${String(CHAVE_PIX_RECEBEDOR.length).padStart(2,'0')}${CHAVE_PIX_RECEBEDOR}`;
-    pix += `26${String(chaveDados.length).padStart(2,'0')}${chaveDados}`;
-    // Descrição opcional
-    if (descricao.length > 0) pix += `02${String(descricao.length).padStart(2,'0')}${descricao}`;
-    // Padrão moeda BRL
-    pix += '520400005303986';
-    // Valor
-    pix += `54${String(valorStr.length).padStart(2,'0')}${valorStr}`;
-    // País
-    pix += '5802BR';
-    // Nome do recebedor
-    pix += `59${String(nome.length).padStart(2,'0')}${nome}`;
-    // Cidade do recebedor
-    pix += `60${String(cidade.length).padStart(2,'0')}${cidade}`;
-    // CRC 16 final
-    pix += '6304';
+    const payloadFormatIndicator = formatField('00', '01');
+    const pointOfInitiationMethod = formatField('01', '12'); // 12 indica QR dinâmico/estático reutilizável com valor
 
+    const gui = formatField('00', 'BR.GOV.BCB.PIX');
+    const chave = formatField('01', CHAVE_PIX_RECEBEDOR.trim());
+    const descFormatted = descricao ? formatField('02', removerAcentos(descricao).toUpperCase().replace(/[^A-Z0-9 .-]/g, '').substring(0, 25)) : '';
+    
+    const merchantAccountInfoVal = gui + chave + descFormatted;
+    const merchantAccountInformation = formatField('26', merchantAccountInfoVal);
+
+    const mcc = formatField('52', '0000');
+    const currency = formatField('53', '986'); // BRL
+    const amount = formatField('54', valorStr);
+    const country = formatField('58', 'BR');
+    
+    const merchantNameClean = removerAcentos(NOME_RECEBEDOR).toUpperCase().replace(/[^A-Z ]/g, '').trim().substring(0, 25);
+    const merchantName = formatField('59', merchantNameClean);
+    
+    const merchantCityClean = removerAcentos(CIDADE_RECEBEDOR).toUpperCase().replace(/[^A-Z ]/g, '').trim().substring(0, 15);
+    const merchantCity = formatField('60', merchantCityClean);
+
+    const additionalDataFieldTemplate = formatField('62', formatField('05', '***'));
+
+    let pix = payloadFormatIndicator + pointOfInitiationMethod + merchantAccountInformation + mcc + currency + amount + country + merchantName + merchantCity + additionalDataFieldTemplate + '6304';
+
+    // Cálculo CRC16 CCITT-FALSE
     let crc = 0xFFFF;
-    const polinomio = 0x1021;
+    const polynomial = 0x1021;
     for (let i = 0; i < pix.length; i++) {
         crc ^= pix.charCodeAt(i) << 8;
-        for (let j = 0; j < 8; j++) crc = (crc & 0x8000) ? (crc << 1) ^ polinomio : crc << 1;
+        for (let j = 0; j < 8; j++) {
+            if ((crc & 0x8000) !== 0) {
+                crc = ((crc << 1) ^ polynomial) & 0xFFFF;
+            } else {
+                crc = (crc << 1) & 0xFFFF;
+            }
+        }
     }
-    crc &= 0xFFFF;
-    pix += crc.toString(16).toUpperCase().padStart(4, '0');
-    return pix;
+    
+    const crcHex = crc.toString(16).toUpperCase().padStart(4, '0');
+    return pix + crcHex;
+}
+
+function iniciarAtualizacaoTempoReal() {
+    if(!dadosProposta || !dadosProposta.cpf) return;
+    if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
+
+    inscricaoTempoReal = supabase
+        .channel('mudancas-proposta')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `cpf=eq.${dadosProposta.cpf}` }, payload => {
+            dadosProposta = payload.new;
+            carregarDadosProposta();
+        })
+        .subscribe();
 }
 
 async function consultarProposta() {
@@ -283,10 +308,17 @@ function carregarDadosProposta() {
     const valorSolicitado = limparValor(dadosProposta.valor_solicitado || dadosProposta.valor_desejado || 0);
     const valorTotal = limparValor(dadosProposta.valor_total || valorSolicitado);
     const percentualEntrada = Number(dadosProposta.percentual_entrada || 40);
-    valorEntradaAtual = limparValor(dadosProposta.valor_entrada || (valorTotal * percentualEntrada / 100));
+    
+    let valorEntradaBanco = limparValor(dadosProposta.valor_entrada);
+    if(valorEntradaBanco > 10) valorEntradaBanco = valorEntradaBanco / 100;
+    valorEntradaAtual = valorEntradaBanco > 0 ? valorEntradaBanco : (valorTotal * percentualEntrada / 100);
+
     const juros = Number(dadosProposta.juros || 6);
     const maxParcelas = Number(dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas || 12);
-    const valorParcela = limparValor(dadosProposta.valor_de_cada_parcela || dadosProposta.valor_parcela || ((valorTotal - valorEntradaAtual) / maxParcelas));
+    let valorParcela = limparValor(dadosProposta.valor_de_cada_parcela || dadosProposta.valor_parcela);
+    if(valorParcela <= 0 && maxParcelas > 0) {
+        valorParcela = (valorTotal - valorEntradaAtual) / maxParcelas;
+    }
 
     document.getElementById('dadosCliente').innerHTML = `
         <p class="mb-2"><strong>Nome:</strong> ${dadosProposta.nome || 'Não informado'}</p>
@@ -315,131 +347,150 @@ function carregarDadosProposta() {
     if(status === 'aprovada') {
         document.getElementById('avisoAguardando').classList.add('hidden');
         document.getElementById('areaAprovado').classList.remove('hidden');
-        carregarOpcoesParcelas(maxParcelas, valorParcela);
-        document.getElementById('aceitoContrato').addEventListener('change', e => {
-            document.getElementById('btnAbrirCamera').classList.toggle('hidden', !e.target.checked);
-        });
+        carregarOpcoesParcelas(maxParcelas, valorTotal, valorEntradaAtual);
+
+        if(dadosProposta.contrato_assinado) {
+            document.getElementById('aceitoContrato').checked = true;
+            document.getElementById('aceitoContrato').disabled = true;
+            document.getElementById('msgConfirmado').classList.remove('hidden');
+            if(dadosProposta.selfie_assinatura) {
+                document.getElementById('fotoAssinaturaPreview').src = dadosProposta.selfie_assinatura;
+                document.getElementById('fotoAssinaturaPreview').classList.remove('hidden');
+            }
+            document.getElementById('areaPagamento').classList.remove('hidden');
+            iniciarPixEntrada();
+        }
     } else {
         document.getElementById('avisoAguardando').classList.remove('hidden');
         document.getElementById('areaAprovado').classList.add('hidden');
     }
 }
 
-function carregarOpcoesParcelas(maxParcelas, valorBase) {
-    const lista = document.getElementById('listaParcelasEscolha');
-    lista.innerHTML = '';
-    for(let i = 1; i <= maxParcelas; i++) {
+function carregarOpcoesParcelas(maxParcelas, valorTotal, valorEntrada) {
+    const container = document.getElementById('listaParcelasEscolha');
+    container.innerHTML = '';
+    const qtdAtual = Number(dadosProposta.qtd_parcelas || maxParcelas);
+
+    for(let i = 1; i <= Math.min(maxParcelas, 48); i++) {
+        let valParc = (valorTotal - valorEntrada) / i;
+        if(valParc < 0.01) valParc = 0.01;
+
         const item = document.createElement('div');
-        item.className = 'item-parcela-escolha';
-        item.onclick = () => selecionarQuantidadeParcelas(i);
-        item.innerHTML = `<span>${i}x</span><span>R$ ${valorBase.toFixed(2).replace('.', ',')}</span>`;
-        lista.appendChild(item);
+        item.className = `item-parcela-escolha ${i === qtdAtual ? 'selecionada' : ''}`;
+        item.onclick = () => selecionarParcela(i, valParc);
+        item.innerHTML = `<span>${i}x parcelas</span><span>R$ ${valParc.toFixed(2).replace('.', ',')} /mês</span>`;
+        container.appendChild(item);
     }
 }
 
-function selecionarQuantidadeParcelas(qtd) {
+async function selecionarParcela(qtd, valorParc) {
     document.querySelectorAll('.item-parcela-escolha').forEach(el => el.classList.remove('selecionada'));
     event.currentTarget.classList.add('selecionada');
-    dadosProposta.qtd_parcelas_escolhida = qtd;
+
+    dadosProposta.qtd_parcelas = qtd;
+    dadosProposta.valor_parcela = valorParc;
+    document.getElementById('valorParcelaContrato').textContent = valorParc.toFixed(2).replace('.', ',');
+    document.getElementById('maxParcelasContrato').textContent = qtd;
+
+    await supabase.from('propostas').update({
+        qtd_parcelas: qtd,
+        valor_parcela: valorParc,
+        atualizado_em: new Date()
+    }).eq('cpf', dadosProposta.cpf);
+}
+
+function tratarAceiteContrato() {
+    const aceito = document.getElementById('aceitoContrato').checked;
+    if(aceito) {
+        document.getElementById('btnAbrirCamera').classList.remove('hidden');
+    } else {
+        document.getElementById('btnAbrirCamera').classList.add('hidden');
+        document.getElementById('videoCamera').classList.add('hidden');
+        document.getElementById('btnConfirmarFoto').classList.add('hidden');
+        if(streamCamera) {
+            streamCamera.getTracks().forEach(t => t.stop());
+            streamCamera = null;
+        }
+    }
 }
 
 async function abrirCamera() {
     try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 400, height: 400 } });
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
         const video = document.getElementById('videoCamera');
         video.srcObject = streamCamera;
         video.classList.remove('hidden');
         document.getElementById('btnAbrirCamera').classList.add('hidden');
         document.getElementById('btnConfirmarFoto').classList.remove('hidden');
     } catch {
-        alert('Permita o acesso à câmera para confirmar o contrato.');
+        alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.');
     }
 }
 
 async function capturarFoto() {
     const video = document.getElementById('videoCamera');
     const canvas = document.getElementById('canvasFoto');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    
-    if(streamCamera) streamCamera.getTracks().forEach(track => track.stop());
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const fotoBase64 = canvas.toDataURL('image/png');
 
-    document.getElementById('videoCamera').classList.add('hidden');
+    if(streamCamera) {
+        streamCamera.getTracks().forEach(t => t.stop());
+        streamCamera = null;
+    }
+
+    video.classList.add('hidden');
     document.getElementById('btnConfirmarFoto').classList.add('hidden');
-    document.getElementById('fotoAssinaturaPreview').src = canvas.toDataURL('image/png');
-    document.getElementById('fotoAssinaturaPreview').classList.remove('hidden');
+    document.getElementById('aceitoContrato').disabled = true;
+
+    const preview = document.getElementById('fotoAssinaturaPreview');
+    preview.src = fotoBase64;
+    preview.classList.remove('hidden');
     document.getElementById('msgConfirmado').classList.remove('hidden');
     document.getElementById('areaPagamento').classList.remove('hidden');
 
-    await salvarAssinaturaCliente(canvas.toDataURL('image/png'));
-    gerarPagamentoPixEntrada();
-}
-
-async function salvarAssinaturaCliente(foto) {
     await supabase.from('propostas').update({
         contrato_assinado: true,
-        foto_assinatura: foto,
-        qtd_parcelas_escolhida: dadosProposta.qtd_parcelas_escolhida || null
+        selfie_assinatura: fotoBase64,
+        atualizado_em: new Date()
     }).eq('cpf', dadosProposta.cpf);
+
+    dadosProposta.contrato_assinado = true;
+    iniciarPixEntrada();
 }
 
-async function gerarPagamentoPixEntrada() {
-    document.getElementById('loadingPix').classList.remove('hidden');
-    document.getElementById('conteudoPixGerado').classList.add('hidden');
+function iniciarPixEntrada() {
+    const codigoPix = gerarCodigoPix(valorEntradaAtual, `ENTRADA-${dadosProposta.cpf}`);
+    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(codigoPix)}`;
 
-    try {
-        const codigoPix = gerarCodigoPix(valorEntradaAtual, `ENTRADA ${dadosProposta.nome}`);
-        if(!codigoPix) throw new Error('Valor inválido para geração do Pix');
-
-        const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codigoPix)}`;
-        document.getElementById('qrcodePix').src = urlQrCode;
-        document.getElementById('chavePixTexto').value = codigoPix;
-
-        document.getElementById('loadingPix').classList.add('hidden');
-        document.getElementById('conteudoPixGerado').classList.remove('hidden');
-    } catch (erro) {
-        document.getElementById('loadingPix').innerHTML = `<p class="text-red-500">Erro ao gerar Pix: ${erro.message}</p>`;
-    }
+    document.getElementById('qrcodePix').src = qrCodeUrl;
+    document.getElementById('chavePixTexto').value = codigoPix;
+    document.getElementById('loadingPix').classList.add('hidden');
+    document.getElementById('conteudoPixGerado').classList.remove('hidden');
 }
 
 function copiarChavePix() {
-    const texto = document.getElementById('chavePixTexto');
-    texto.select();
-    navigator.clipboard.writeText(texto.value);
-    alert('Chave Pix copiada com sucesso!');
-}
-
-function iniciarAtualizacaoTempoReal() {
-    supabase.channel('mudancas-propostas-cliente')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `cpf=eq.${dadosProposta.cpf}` }, payload => {
-            dadosProposta = payload.new;
-            carregarDadosProposta();
-        })
-        .subscribe();
+    const campo = document.getElementById('chavePixTexto');
+    campo.select();
+    navigator.clipboard.writeText(campo.value).then(() => {
+        alert('✅ Chave Pix Copia e Cola copiada com sucesso!');
+    }).catch(() => {
+        document.execCommand('copy');
+        alert('✅ Chave copiada!');
+    });
 }
 
 function voltarBusca() {
-    dadosProposta = null;
-    document.getElementById('secaoDetalhes').classList.add('hidden');
-    document.getElementById('secaoBusca').classList.remove('hidden');
-    document.getElementById('cpfBusca').value = '';
-    document.getElementById('areaAprovado').classList.add('hidden');
-    document.getElementById('avisoAguardando').classList.remove('hidden');
-    document.getElementById('areaPagamento').classList.add('hidden');
-    document.getElementById('msgConfirmado').classList.add('hidden');
-    document.getElementById('aceitoContrato').checked = false;
-    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
-}
-
-window.addEventListener('load', () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const cpfUrl = urlParams.get('cpf');
-    if(cpfUrl) {
-        document.getElementById('cpfBusca').value = cpfUrl;
-        consultarProposta();
+    if(streamCamera) {
+        streamCamera.getTracks().forEach(t => t.stop());
+        streamCamera = null;
     }
-});
+    if(inscricaoTempoReal) {
+        inscricaoTempoReal.unsubscribe();
+    }
+    location.reload();
+}
 </script>
 </body>
 </html>
