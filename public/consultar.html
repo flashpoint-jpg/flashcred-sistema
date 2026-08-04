@@ -95,9 +95,9 @@
     <h2 class="titulo-principal"><i class="fa-solid fa-file-lines"></i> Consultar Proposta</h2>
 
     <div id="secaoBusca">
-        <p class="text-center text-gray-600 mb-4">Digite seu CPF ou Código da Proposta para consultar</p>
+        <p class="text-center text-gray-600 mb-4">Digite seu CPF (com ou sem pontos) ou Código da Proposta para consultar</p>
         <label class="font-medium">CPF ou Código Único</label>
-        <input type="text" id="campoBusca" class="input" placeholder="000.000.000-00 ou FLC-00001" maxlength="20">
+        <input type="text" id="campoBusca" class="input" placeholder="000.000.000-00 / 00000000000 ou FLC-00001" maxlength="30">
         <button id="btnConsultar" class="btn btn-sucesso" onclick="consultarProposta()">
             <i class="fa-solid fa-magnifying-glass"></i> Consultar
         </button>
@@ -252,25 +252,20 @@ function gerarPayloadPix(valor, descricao) {
     const descricaoLimpa = descricao.replace(/[^a-zA-Z0-9 ]/g, '').substring(0, 25);
     
     let payload = '';
-    // Dados iniciais
     payload += '000201';
-    // Chave Pix
     payload += '26580014br.gov.bcb.pix0114' + CHAVE_PIX;
-    // Descrição
     payload += '02' + String(descricaoLimpa.length).padStart(2, '0') + descricaoLimpa;
-    // Valores e categorias
     payload += '520400005303986';
     if(valor > 0) payload += '5406' + valorStr;
-    // País, nome, cidade
     payload += '5802BR';
     payload += '59' + String(NOME_RECEBEDOR.length).padStart(2, '0') + NOME_RECEBEDOR;
     payload += '60' + String(CIDADE.length).padStart(2, '0') + CIDADE;
-    // CRC16 final
     payload += '6304';
     
     return payload;
 }
 
+// ✅ CONSULTA CORRIGIDA E FUNCIONANDO
 async function consultarProposta() {
     const busca = document.getElementById('campoBusca').value.trim();
     if(!busca) { alert('Digite seu CPF ou Código da Proposta'); return; }
@@ -279,23 +274,37 @@ async function consultarProposta() {
     document.getElementById('btnConsultar').innerHTML = '<div class="loading"></div> Buscando...';
 
     try {
-        let consulta;
-        if(busca.toUpperCase().startsWith('FLC-')) {
-            consulta = supabase.from('propostas').select('*').eq('codigo_unico', busca.toUpperCase());
-        } else {
-            const cpfLimpo = busca.replace(/\D/g, '');
-            consulta = supabase.from('propostas').select('*').eq('cpf', cpfLimpo);
+        let resultado = null;
+        const buscaMaiuscula = busca.toUpperCase();
+        
+        // Busca por Código da Proposta
+        if(buscaMaiuscula.startsWith('FLC-')) {
+            const { data, error } = await supabase.from('propostas').select('*').ilike('codigo_unico', buscaMaiuscula);
+            if(error) throw error;
+            if(data && data.length > 0) resultado = data[0];
         }
 
-        const { data, error } = await consulta;
-        if(error) throw error;
-        if(!data || data.length === 0) { alert('Proposta não encontrada.'); return; }
+        // Se não encontrou por código, busca por CPF (limpa pontos e traço)
+        if(!resultado) {
+            const cpfLimpo = busca.replace(/\D/g, '');
+            if(cpfLimpo.length === 11) {
+                const { data, error } = await supabase.from('propostas').select('*').eq('cpf', cpfLimpo);
+                if(error) throw error;
+                if(data && data.length > 0) resultado = data[0];
+            }
+        }
 
-        propostaAtual = data[0];
+        if(!resultado) {
+            alert('Proposta não encontrada. Verifique o CPF ou o código e tente novamente.');
+            return;
+        }
+
+        propostaAtual = resultado;
         carregarDadosProposta();
 
     } catch (erro) {
-        alert('Erro ao buscar: ' + erro.message);
+        console.error('Erro na busca:', erro);
+        alert('Erro ao buscar proposta: ' + erro.message);
     } finally {
         document.getElementById('btnConsultar').disabled = false;
         document.getElementById('btnConsultar').innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Consultar';
@@ -309,12 +318,12 @@ function carregarDadosProposta() {
     document.getElementById('codigoProposta').textContent = `📦 Código do Pedido: ${propostaAtual.codigo_unico || propostaAtual.protocolo || '---'}`;
     
     document.getElementById('dadosCliente').innerHTML = `
-        <p><strong>Nome:</strong> ${propostaAtual.nome}</p>
-        <p><strong>CPF:</strong> ${String(propostaAtual.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
-        <p><strong>Status:</strong> <span class="badge ${propostaAtual.status === 'aprovada' ? 'badge-aprovada' : 'badge-pendente'}">${propostaAtual.status.toUpperCase()}</span></p>
+        <p><strong>Nome:</strong> ${propostaAtual.nome || 'Não informado'}</p>
+        <p><strong>CPF:</strong> ${String(propostaAtual.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
+        <p><strong>Status:</strong> <span class="badge ${(propostaAtual.status || 'pendente').toLowerCase() === 'aprovada' ? 'badge-aprovada' : 'badge-pendente'}">${(propostaAtual.status || 'PENDENTE').toUpperCase()}</span></p>
     `;
 
-    if(propostaAtual.status !== 'aprovada') {
+    if((propostaAtual.status || 'pendente').toLowerCase() !== 'aprovada') {
         document.getElementById('avisoAguardando').classList.remove('hidden');
         return;
     }
@@ -325,4 +334,210 @@ function carregarDadosProposta() {
     const valorEntrada = parseFloat(propostaAtual.valor_entrada || 0);
     const maxParcelas = parseInt(propostaAtual.max_parcelas || propostaAtual.quantidade_parcelas || 12);
 
-    document.getElementById('mostraValorSolicitado').textContent = `R$ ${parseF
+    document.getElementById('mostraValorSolicitado').textContent = `R$ ${parseFloat(propostaAtual.valor_solicitado || 0).toFixed(2).replace('.', ',')}`;
+    document.getElementById('mostraValorTotal').textContent = `R$ ${valorTotal.toFixed(2).replace('.', ',')}`;
+    document.getElementById('mostraEntrada').textContent = `R$ ${valorEntrada.toFixed(2).replace('.', ',')}`;
+    document.getElementById('mostraMaxParcelas').textContent = `até ${maxParcelas}x`;
+
+    document.getElementById('contratoValorTotal').textContent = valorTotal.toFixed(2).replace('.', ',');
+    document.getElementById('contratoEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
+    document.getElementById('contratoMaxParcelas').textContent = maxParcelas;
+    document.getElementById('valorEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
+
+    const select = document.getElementById('selectParcelas');
+    select.innerHTML = '<option value="">Selecione...</option>';
+    for(let i = 1; i <= maxParcelas; i++) {
+        const option = document.createElement('option');
+        option.value = i;
+        option.textContent = `${i}x`;
+        select.appendChild(option);
+    }
+
+    verificarStatusPagamento();
+    intervaloVerificacao = setInterval(verificarStatusPagamento, 10000);
+}
+
+function atualizarValorParcela() {
+    const qtd = parseInt(document.getElementById('selectParcelas').value);
+    const areaValor = document.getElementById('valorParcelaDestaque');
+    
+    if(!qtd) {
+        areaValor.classList.add('hidden');
+        return;
+    }
+
+    const valorTotal = parseFloat(propostaAtual.valor_total || 0);
+    const valorEntrada = parseFloat(propostaAtual.valor_entrada || 0);
+    const valorParcela = (valorTotal - valorEntrada) / qtd;
+    
+    document.getElementById('mostraValorParcela').textContent = `R$ ${valorParcela.toFixed(2).replace('.', ',')}`;
+    areaValor.classList.remove('hidden');
+}
+
+function habilitarAssinatura() {
+    const aceito = document.getElementById('aceitoContrato').checked;
+    document.getElementById('areaOpcoesAssinatura').classList.toggle('hidden', !aceito);
+    if(!aceito) {
+        assinaturaConfirmada = false;
+        document.getElementById('areaPagamentoEntrada').classList.add('hidden');
+    }
+}
+
+function usarAssinaturaEscrita() {
+    document.getElementById('assinaturaSelfie').classList.add('hidden');
+    document.getElementById('assinaturaEscrita').classList.remove('hidden');
+    pararCamera();
+}
+
+function usarSelfie() {
+    document.getElementById('assinaturaEscrita').classList.add('hidden');
+    document.getElementById('assinaturaSelfie').classList.remove('hidden');
+}
+
+async function abrirCamera() {
+    try {
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        const video = document.getElementById('cameraSelfie');
+        video.srcObject = streamCamera;
+        video.classList.remove('hidden');
+        document.getElementById('btnAbrirCamera').classList.add('hidden');
+        document.getElementById('btnTirarFoto').classList.remove('hidden');
+    } catch {
+        alert('Não foi possível acessar a câmera. Use assinatura por escrito.');
+    }
+}
+
+function tirarSelfie() {
+    const video = document.getElementById('cameraSelfie');
+    const canvas = document.getElementById('canvasSelfie');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    
+    document.getElementById('previewSelfie').src = canvas.toDataURL('image/png');
+    document.getElementById('previewSelfie').classList.remove('hidden');
+    pararCamera();
+    document.getElementById('btnTirarFoto').classList.add('hidden');
+    document.getElementById('btnConfirmarSelfie').classList.remove('hidden');
+}
+
+function pararCamera() {
+    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
+    document.getElementById('cameraSelfie').classList.add('hidden');
+}
+
+async function confirmarAssinatura() {
+    let ok = false;
+    if(!document.getElementById('assinaturaEscrita').classList.contains('hidden')) {
+        if(document.getElementById('nomeAssinatura').value.trim().length < 5) { alert('Digite seu nome completo.'); return; }
+        ok = true;
+    } else {
+        if(!document.getElementById('previewSelfie').src) { alert('Tire a selfie.'); return; }
+        ok = true;
+    }
+
+    if(ok) {
+        assinaturaConfirmada = true;
+        alert('✅ Assinatura confirmada!');
+        document.getElementById('areaPagamentoEntrada').classList.remove('hidden');
+        await gerarPixEntrada();
+    }
+}
+
+async function gerarPixEntrada() {
+    const valor = parseFloat(propostaAtual.valor_entrada || 0);
+    const payload = gerarPayloadPix(valor, 'PAGAMENTO ENTRADA');
+    
+    await QRCode.toCanvas(document.getElementById('qrcodeEntrada'), payload, { 
+        width: 220, 
+        margin: 2, 
+        errorCorrectionLevel: 'M' 
+    });
+    
+    document.getElementById('carregandoPixEntrada').classList.add('hidden');
+    document.getElementById('dadosPixEntrada').classList.remove('hidden');
+}
+
+function copiarChaveEntrada() {
+    navigator.clipboard.writeText(CHAVE_PIX).then(() => alert('✅ Chave copiada!'));
+}
+
+async function verificarStatusPagamento() {
+    if(!propostaAtual?.id) return;
+    const { data } = await supabase.from('propostas').select('entrada_paga').eq('id', propostaAtual.id).single();
+    
+    if(data?.entrada_paga) {
+        document.getElementById('areaPagamentoEntrada').classList.add('hidden');
+        document.getElementById('areaParcelasPagas').classList.remove('hidden');
+        carregarListaParcelas();
+        clearInterval(intervaloVerificacao);
+    }
+}
+
+function carregarListaParcelas() {
+    const lista = document.getElementById('listaParcelas');
+    lista.innerHTML = '';
+    const qtd = parseInt(document.getElementById('selectParcelas').value || 1);
+    const valorTotal = parseFloat(propostaAtual.valor_total || 0);
+    const valorEntrada = parseFloat(propostaAtual.valor_entrada || 0);
+    const valorParcela = (valorTotal - valorEntrada) / qtd;
+    const dataBase = new Date(propostaAtual.data_aprovacao || Date.now());
+
+    for(let i = 1; i <= qtd; i++) {
+        const venc = new Date(dataBase);
+        venc.setMonth(venc.getMonth() + i - 1);
+        const hoje = new Date();
+        let status = 'pendente', texto = 'Pendente';
+        
+        if(propostaAtual[`parcela_${i}_paga`]) { status = 'paga'; texto = 'Paga'; }
+        else if(venc < hoje) { status = 'vencida'; texto = 'Vencida'; }
+
+        lista.innerHTML += `
+            <div class="item-parcela ${status}">
+                <div>
+                    <p class="font-medium">${i}ª Parcela</p>
+                    <p class="text-sm text-gray-600">Vencimento: ${venc.toLocaleDateString('pt-BR')}</p>
+                </div>
+                <div class="text-right">
+                    <p class="font-semibold">R$ ${valorParcela.toFixed(2).replace('.', ',')}</p>
+                    <span class="badge badge-${status}">${texto}</span>
+                    ${status !== 'paga' ? `<button class="btn btn-pix-parcela mt-1" onclick="abrirModalPix(${i})">Pagar</button>` : ''}
+                </div>
+            </div>
+        `;
+    }
+}
+
+async function abrirModalPix(num) {
+    const qtd = parseInt(document.getElementById('selectParcelas').value || 1);
+    const valorTotal = parseFloat(propostaAtual.valor_total || 0);
+    const valorEntrada = parseFloat(propostaAtual.valor_entrada || 0);
+    const valorParcela = (valorTotal - valorEntrada) / qtd;
+    const payload = gerarPayloadPix(valorParcela, `PAGAMENTO ${num}ª PARCELA`);
+
+    document.getElementById('numParcelaModal').textContent = num;
+    document.getElementById('valorParcelaModal').textContent = `R$ ${valorParcela.toFixed(2).replace('.', ',')}`;
+    
+    await QRCode.toCanvas(document.getElementById('qrcodeParcelaModal'), payload, { width: 220, margin: 2 });
+    document.getElementById('modalPagamentoParcela').classList.remove('hidden');
+}
+
+function copiarChaveParcela() {
+    navigator.clipboard.writeText(CHAVE_PIX).then(() => alert('✅ Chave copiada!'));
+}
+
+function fecharModalPix() {
+    document.getElementById('modalPagamentoParcela').classList.add('hidden');
+}
+
+function voltarBusca() {
+    if(intervaloVerificacao) clearInterval(intervaloVerificacao);
+    pararCamera();
+    propostaAtual = null;
+    document.getElementById('secaoDetalhes').classList.add('hidden');
+    document.getElementById('secaoBusca').classList.remove('hidden');
+    document.getElementById('campoBusca').value = '';
+}
+</script>
+</body>
+</html>
