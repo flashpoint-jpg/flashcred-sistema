@@ -67,6 +67,7 @@
         input[type="checkbox"] { width: 22px; height: 22px; margin-right: 10px; accent-color: #0A2463; vertical-align: middle; }
         .aviso-atualizacao { font-size: 13px; color: #F59E0B; text-align: center; padding: 10px; background: #FFFBEB; border-radius: 10px; margin-bottom: 16px; display: none; font-weight: 500; }
         .aviso-sucesso { font-size: 15px; color: #10B981; text-align: center; padding: 12px; background: #ECFDF5; border-radius: 10px; margin: 12px 0; font-weight: 600; }
+        .aviso-erro { font-size: 14px; color: #DC2626; text-align: center; padding: 12px; background: #FEF2F2; border-radius: 10px; margin: 12px 0; font-weight: 500; }
         .video-camera { border-radius: 12px; margin: 12px auto; display: block; border: 2px solid #CBD5E1; }
         .fixed { position: fixed; }
         .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
@@ -388,13 +389,35 @@ async function capturarSelfie() {
 }
 
 async function gerarPagamentoEntrada(valor, nome) {
-    const codigoPix = gerarCodigoPixValido(valor, `ENTRADA - ${nome}`);
-    const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(codigoPix)}`;
-    
-    document.getElementById('imgQrCodeEntrada').src = urlQrCode;
-    document.getElementById('copiaEColaPixEntrada').value = codigoPix;
-    document.getElementById('loadingPixEntrada').classList.add('hidden');
-    document.getElementById('conteudoPixEntrada').classList.remove('hidden');
+    if (!valor || parseFloat(valor) <= 0) {
+        let valorTotal = parseFloat(dadosProposta.valor_total || dadosProposta.valor_desejado || 0);
+        if (valorTotal <= 0) {
+            document.getElementById('loadingPixEntrada').innerHTML = `
+                <div class="aviso-erro">❌ Valor não definido</div>
+                <p class="text-sm mt-2">Volte ao painel, preencha o Valor Total e Valor da Entrada, salve e aprove novamente.</p>
+            `;
+            return;
+        }
+        valor = valorTotal * 0.5;
+        document.getElementById('textoValorEntrada').textContent = `Valor da entrada: R$ ${valor.toFixed(2).replace('.', ',')} (calculado automaticamente)`;
+    }
+
+    try {
+        const codigoPix = gerarCodigoPixValido(valor, `ENTRADA - ${nome}`);
+        if (!codigoPix) throw new Error("Não foi possível gerar o código Pix");
+
+        const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(codigoPix)}`;
+        
+        document.getElementById('imgQrCodeEntrada').src = urlQrCode;
+        document.getElementById('copiaEColaPixEntrada').value = codigoPix;
+        document.getElementById('loadingPixEntrada').classList.add('hidden');
+        document.getElementById('conteudoPixEntrada').classList.remove('hidden');
+    } catch (erro) {
+        document.getElementById('loadingPixEntrada').innerHTML = `
+            <div class="aviso-erro">❌ Erro ao gerar Pix: ${erro.message}</div>
+            <p class="text-sm mt-2">Atualize a página ou contate o atendente.</p>
+        `;
+    }
 }
 
 function gerarListaParcelasPagamento(qtd, valorParcela, dataBase, parcelasPagas = []) {
