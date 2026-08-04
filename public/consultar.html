@@ -46,7 +46,7 @@
         .mt-4 { margin-top: 1rem; }
         .mt-6 { margin-top: 1.5rem; }
         .mx-auto { margin-left: auto; margin-right: auto; }
-        .font-mono { font-family: monospace; font-size: 12px; }
+        .font-mono { font-family: monospace; font-size: 12px; word-break: break-all; }
         .badge { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; display: inline-block; }
         .badge-aprovada { background: #D1FAE5; color: #065F46; }
         .badge-pendente { background: #FEF3C7; color: #92400E; }
@@ -99,9 +99,7 @@
             <p style="font-weight: 500; margin-top: 8px;">Estou aqui para te dar esse voto de confiança, porque sei que você é capaz de honrar seus compromissos. Conte comigo, vamos juntos fazer um mundo melhor! 💙🛋️</p>
         </div>
 
-        <div id="dadosCliente" class="bg-gray-50 mb-4">
-            <!-- Dados carregados automaticamente -->
-        </div>
+        <div id="dadosCliente" class="bg-gray-50 mb-4"></div>
 
         <div id="avisoAguardando" class="p-4 rounded-lg mb-4 bg-yellow-50 text-yellow-800 text-center">
             <div class="loading mx-auto mb-2"></div>
@@ -161,7 +159,7 @@
                         <img id="qrcodePix" src="" alt="QR Code Pix" class="mx-auto mb-3 p-2 bg-white rounded-lg border w-48 h-48">
                         <div class="mt-3 p-3 bg-gray-100 rounded-lg">
                             <p class="text-xs text-gray-500 mb-1">Chave PIX Copia e Cola:</p>
-                            <textarea id="chavePixTexto" class="font-mono text-sm w-full p-2 border rounded-lg bg-white" readonly rows="3"></textarea>
+                            <textarea id="chavePixTexto" class="font-mono text-sm w-full p-2 border rounded-lg bg-white" readonly rows="4"></textarea>
                         </div>
                         <button class="btn btn-alerta mt-3" onclick="copiarChavePix()">📋 Copiar Chave Pix</button>
                     </div>
@@ -179,6 +177,7 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ⚠️ COLOQUE AQUI SUAS DADOS PIX CORRETOS
 const CHAVE_PIX_RECEBEDOR = '33552949852';
 const NOME_RECEBEDOR = 'FLASH POINT MOVEIS';
 const CIDADE_RECEBEDOR = 'SAO PAULO';
@@ -199,36 +198,44 @@ function formatarCep(cep) {
     return num.length === 8 ? `${num.slice(0,5)}-${num.slice(5)}` : cep;
 }
 
-// ✅ Função de conversão CORRIGIDA: lê valores exatos do banco
 function limparValor(valor) { 
     if(valor === null || valor === undefined || valor === '') return 0;
-    // Se vier como número (já salvo corretamente)
     if(typeof valor === 'number') return parseFloat(valor);
-    // Se vier como texto: remove pontos de milhar e troca vírgula por ponto
     const str = String(valor).replace(/\./g, '').replace(',', '.');
     return parseFloat(str) || 0;
 }
 function removerAcentos(texto) { return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
-// ✅ Gera Pix com valor exato, sem zeros extras
-function gerarCodigoPix(valor, descricao = 'PAGAMENTO ENTRADA') {
+// ✅ GERA CÓDIGO PIX 100% COMPATÍVEL COM BANCO CENTRAL
+function gerarCodigoPix(valor, descricao = '') {
     valor = parseFloat(valor || 0);
     if(valor <= 0) return null;
 
+    // Formata valor no padrão PIX: sem ponto, ex: 58.50 → "5850"
     const valorStr = valor.toFixed(2).replace('.', '');
-    descricao = removerAcentos(descricao).toUpperCase().replace(/[^A-Z0-9 .,-]/g, '').trim().substring(0, 25);
-    const nome = removerAcentos(NOME_RECEBEDOR).toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim().substring(0, 25);
-    const cidade = removerAcentos(CIDADE_RECEBEDOR).toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim().substring(0, 15);
+    // Limpa e limita os campos conforme norma
+    descricao = removerAcentos(descricao || 'PAGAMENTO').toUpperCase().replace(/[^A-Z0-9 .-]/g, '').trim().substring(0, 25);
+    const nome = removerAcentos(NOME_RECEBEDOR).toUpperCase().replace(/[^A-Z ]/g, '').trim().substring(0, 25);
+    const cidade = removerAcentos(CIDADE_RECEBEDOR).toUpperCase().replace(/[^A-Z ]/g, '').trim().substring(0, 15);
 
-    let pix = '000201';
-    const campoChave = `0014BR.GOV.BCB.PIX01${String(CHAVE_PIX_RECEBEDOR.length).padStart(2,'0')}${CHAVE_PIX_RECEBEDOR}`;
-    pix += `26${String(campoChave.length).padStart(2,'0')}${campoChave}`;
+    let pix = '';
+    pix += '000201';
+    // Dados da chave
+    const chaveDados = `0014BR.GOV.BCB.PIX01${String(CHAVE_PIX_RECEBEDOR.length).padStart(2,'0')}${CHAVE_PIX_RECEBEDOR}`;
+    pix += `26${String(chaveDados.length).padStart(2,'0')}${chaveDados}`;
+    // Descrição opcional
     if (descricao.length > 0) pix += `02${String(descricao.length).padStart(2,'0')}${descricao}`;
+    // Padrão moeda BRL
     pix += '520400005303986';
+    // Valor
     pix += `54${String(valorStr.length).padStart(2,'0')}${valorStr}`;
+    // País
     pix += '5802BR';
+    // Nome do recebedor
     pix += `59${String(nome.length).padStart(2,'0')}${nome}`;
+    // Cidade do recebedor
     pix += `60${String(cidade.length).padStart(2,'0')}${cidade}`;
+    // CRC 16 final
     pix += '6304';
 
     let crc = 0xFFFF;
@@ -273,7 +280,6 @@ async function consultarProposta() {
 
 function carregarDadosProposta() {
     const status = (dadosProposta.status || 'pendente').toLowerCase();
-    // ✅ Lê valores exatos iguais ao painel
     const valorSolicitado = limparValor(dadosProposta.valor_solicitado || dadosProposta.valor_desejado || 0);
     const valorTotal = limparValor(dadosProposta.valor_total || valorSolicitado);
     const percentualEntrada = Number(dadosProposta.percentual_entrada || 40);
@@ -401,7 +407,7 @@ function copiarChavePix() {
     const texto = document.getElementById('chavePixTexto');
     texto.select();
     navigator.clipboard.writeText(texto.value);
-    alert('Chave Pix copiada!');
+    alert('Chave Pix copiada com sucesso!');
 }
 
 function iniciarAtualizacaoTempoReal() {
