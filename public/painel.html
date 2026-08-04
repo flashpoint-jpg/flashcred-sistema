@@ -101,7 +101,7 @@
             <thead>
                 <tr>
                     <th>Código</th>
-                    <th>Nome / CPF</th>
+                    <th>Nome / CPF / WhatsApp</th>
                     <th>Valor</th>
                     <th>Parcelas</th>
                     <th>Status</th>
@@ -176,13 +176,10 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const MERCADO_PAGO_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 const MINHA_CHAVE_PIX = '33552949852';
-
 let modoSistema = 'manual';
 let propostaSelecionada = null;
 
-// GERA CÓDIGO ÚNICO CERTO
 function gerarCodigoUnico() {
     const data = new Date();
     const ano = data.getFullYear().toString().slice(-2);
@@ -192,49 +189,18 @@ function gerarCodigoUnico() {
     return `FC${ano}${mes}${dia}-${aleatorio}`;
 }
 
-// GERA PIX E QR CODE SEMPRE
 async function gerarPixAutomatico(valor, codigoProposta) {
     try {
         const valorLimpo = Number(valor).toFixed(2);
         const chavePix = modoSistema === 'producao' ? MINHA_CHAVE_PIX : 'teste@flashcred.com.br';
         const descricao = `Entrada ${codigoProposta} - FlashCred`;
         const valorCentavos = Math.round(valorLimpo * 100).toString().padStart(10, '0');
-
         const pixCopiaECola = `00020126580014br.gov.bcb.pix0111${chavePix}0228${descricao}5204000053039865802BR5919FlashCred Distribuidora6009SAO PAULO62070503***6304${valorCentavos}`;
         const qrCodeImagem = await QRCode.toDataURL(pixCopiaECola, { width: 240, margin: 2 });
-        
         return { copia_cola_pix: pixCopiaECola, qrcode_pix: qrCodeImagem };
     } catch (erro) {
         console.error('Erro ao gerar Pix:', erro);
         return { qrcode_pix: '', copia_cola_pix: '' };
-    }
-}
-
-// ATUALIZA TODAS AS PROPOSTAS ANTIGAS SEM CÓDIGO E SEM PIX
-async function atualizarTodasPropostas() {
-    const { data } = await supabase.from('propostas').select('*');
-    if(!data) return;
-
-    for(const proposta of data) {
-        let dadosAtualizar = {};
-        
-        // Adiciona código se não tiver
-        if(!proposta.codigo_unico || proposta.codigo_unico === 'undefined') {
-            dadosAtualizar.codigo_unico = gerarCodigoUnico();
-        }
-
-        // Se for aprovada e não tiver Pix/QR Code, gera agora
-        if(proposta.status === 'aprovada' && (!proposta.copia_cola_pix || !proposta.qrcode_pix)) {
-            const valorEntrada = (Number(proposta.valor_solicitado || 0) * Number(proposta.percentual_entrada || 40) / 100).toFixed(2);
-            const cod = dadosAtualizar.codigo_unico || proposta.codigo_unico;
-            const pixDados = await gerarPixAutomatico(valorEntrada, cod);
-            dadosAtualizar = { ...dadosAtualizar, ...pixDados };
-        }
-
-        // Salva se tiver algo para mudar
-        if(Object.keys(dadosAtualizar).length > 0) {
-            await supabase.from('propostas').update(dadosAtualizar).eq('id', proposta.id);
-        }
     }
 }
 
@@ -249,34 +215,22 @@ function calcularValoresEdicao() {
     const percEntrada = Number(document.getElementById('edtPercEntrada').value || 40);
     const percJuros = Number(document.getElementById('edtJuros').value || 6);
     const maxParcelas = Number(document.getElementById('edtMaxParcelas').value || 48);
-
     const valorEntrada = (valorSolicitado * percEntrada / 100).toFixed(2);
     const valorFinanciado = valorSolicitado - Number(valorEntrada);
     const valorJuros = (valorFinanciado * (percJuros / 100) * maxParcelas).toFixed(2);
     const valorTotal = (valorSolicitado + Number(valorJuros)).toFixed(2);
-
     document.getElementById('edtValorEntrada').value = `R$ ${valorEntrada.replace('.', ',')}`;
     document.getElementById('edtValorTotal').value = `R$ ${valorTotal.replace('.', ',')}`;
 }
 
 async function salvarEGerarPix() {
     if(!propostaSelecionada) return;
-    
     const valorEntradaTexto = document.getElementById('edtValorEntrada').value.replace('R$ ', '').replace(',', '.');
     const valorEntrada = Number(valorEntradaTexto);
     const status = document.getElementById('edtStatus').value;
-    
+    let codProposta = propostaSelecionada.codigo_unico || gerarCodigoUnico();
     let dadosPix = { qrcode_pix: propostaSelecionada.qrcode_pix || '', copia_cola_pix: propostaSelecionada.copia_cola_pix || '' };
-    let codProposta = propostaSelecionada.codigo_unico;
-    
-    // Garante código antes de gerar Pix
-    if(!codProposta || codProposta === 'undefined') {
-        codProposta = gerarCodigoUnico();
-    }
-
-    if(status === 'aprovada') {
-        dadosPix = await gerarPixAutomatico(valorEntrada, codProposta);
-    }
+    if(status === 'aprovada') dadosPix = await gerarPixAutomatico(valorEntrada, codProposta);
 
     const dadosAtualizados = {
         codigo_unico: codProposta,
@@ -292,7 +246,7 @@ async function salvarEGerarPix() {
 
     try {
         await supabase.from('propostas').update(dadosAtualizados).eq('id', propostaSelecionada.id);
-        alert('✅ Salvo com sucesso! Código, Pix e QR Code gerados e salvos.');
+        alert('✅ Salvo com sucesso!');
         fecharModalEditar();
         carregarListaPropostas();
     } catch(erro) {
@@ -300,21 +254,10 @@ async function salvarEGerarPix() {
     }
 }
 
-async function reprovarProposta(id) {
-    if(confirm('Deseja realmente reprovar esta proposta?')) {
-        await supabase.from('propostas').update({status: 'reprovada', data_atualizacao: new Date()}).eq('id', id);
-        carregarListaPropostas();
-    }
-}
-
 async function carregarListaPropostas() {
-    // Roda a atualização de todas as propostas primeiro
-    await atualizarTodasPropostas();
-
     const { data } = await supabase.from('propostas').select('*').order('data_criacao', { ascending: false });
     const lista = document.getElementById('listaPropostas');
     lista.innerHTML = '';
-    
     let totalPropostas = 0, totalEntradas = 0, totalReceber = 0, totalVencendo = 0;
 
     (data || []).forEach(proposta => {
@@ -322,19 +265,20 @@ async function carregarListaPropostas() {
         if(proposta.entrada_paga) totalEntradas++;
         const valor = Number(proposta.valor_solicitado || 0);
         if(!proposta.entrada_paga && proposta.status === 'aprovada') totalReceber += valor;
+        const whatsapp = proposta.celular || proposta.telefone || 'Não informado';
         
         lista.innerHTML += `
             <tr>
                 <td><strong>${proposta.codigo_unico || 'Sem código'}</strong></td>
-                <td>${proposta.nome}<br><small>${proposta.cpf?.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</small></td>
+                <td>${proposta.nome}<br><small>${proposta.cpf?.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}<br>📞 ${whatsapp}</small></td>
                 <td>R$ ${Number(proposta.valor_solicitado || 0).toFixed(2).replace('.', ',')}</td>
                 <td>${proposta.quantidade_parcelas || 0}x</td>
                 <td><span class="badge badge-${proposta.status}">${proposta.status?.toUpperCase()}</span></td>
                 <td>${proposta.entrada_paga ? '<span class="badge badge-paga">PAGA</span>' : '<span class="badge badge-vencer">PENDENTE</span>'}</td>
                 <td>
                     <button class="btn btn-secundario" onclick='abrirEditar(${JSON.stringify(proposta)})'><i class="fa-solid fa-pen-to-square"></i> Editar</button>
-                    <button class="btn btn-alerta" onclick="reprovarProposta(${proposta.id})"><i class="fa-solid fa-ban"></i> Reprovar</button>
-                    <button class="btn btn-alerta" onclick="enviarWhatsapp('${proposta.cpf}', '${proposta.codigo_unico}', '${proposta.nome}')"><i class="fa-brands fa-whatsapp"></i> WhatsApp</button>
+                    <button class="btn btn-alerta" onclick="enviarWhatsapp('${proposta.celular || proposta.cpf}', '${proposta.codigo_unico}', '${proposta.nome}')"><i class="fa-brands fa-whatsapp"></i> WhatsApp</button>
+                    <button class="btn btn-alerta" onclick="imprimirProposta()"><i class="fa-solid fa-print"></i> Imprimir</button>
                     <button class="btn btn-perigo" onclick="excluirProposta(${proposta.id})"><i class="fa-solid fa-trash"></i> Excluir</button>
                 </td>
             </tr>
@@ -371,10 +315,11 @@ async function excluirProposta(id) {
     }
 }
 
-function enviarWhatsapp(cpf, codigo, nome) {
+function enviarWhatsapp(numero, codigo, nome) {
+    const numeroLimpo = numero.replace(/\D/g, '');
     const link = `${window.location.origin}/consultar.html?cod=${codigo}`;
-    const mensagem = `Olá ${nome}! Sua proposta ${codigo} foi aprovada ✅ Acesse para ver o Pix e pagar a entrada: ${link}`;
-    window.open(`https://wa.me/55${cpf.replace(/\D/g, '')}?text=${encodeURIComponent(mensagem)}`, '_blank');
+    const mensagem = `Olá ${nome}! Sua proposta foi recebida ✅ Código: ${codigo}\nAcesse para acompanhar: ${link}`;
+    window.open(`https://wa.me/55${numeroLimpo}?text=${encodeURIComponent(mensagem)}`, '_blank');
 }
 
 function imprimirProposta() { window.print(); }
