@@ -94,7 +94,6 @@
 <div class="card">
     <h2 class="titulo-principal"><i class="fa-solid fa-file-lines"></i> Consultar Proposta</h2>
 
-    <!-- Tela de Busca -->
     <div id="secaoBusca">
         <p class="text-center text-gray-600 mb-4">Digite seu CPF ou Código da Proposta para consultar</p>
         <label class="font-medium">CPF ou Código Único</label>
@@ -104,7 +103,6 @@
         </button>
     </div>
 
-    <!-- Conteúdo da Proposta -->
     <div id="secaoDetalhes" class="hidden">
         <div id="codigoProposta" class="codigo-unico"></div>
         <div id="dadosCliente" class="bg-gray-50 mb-4"></div>
@@ -123,7 +121,6 @@
                 <p class="flex justify-between py-1"><strong>Máximo de Parcelas:</strong> <span id="mostraMaxParcelas">0x</span></p>
             </div>
 
-            <!-- ✅ PARCELAS COM VALOR ATUALIZANDO -->
             <div id="escolhaParcelas" class="text-center mb-4">
                 <p class="font-medium text-primary mb-2">Escolha a quantidade de parcelas que deseja:</p>
                 <select id="selectParcelas" class="select-parcelas" onchange="atualizarValorParcela()">
@@ -178,7 +175,6 @@
                 </div>
             </div>
 
-            <!-- 💳 PIX DE PRODUÇÃO COM SUA CHAVE -->
             <div id="areaPagamentoEntrada" class="hidden mt-6">
                 <h3 class="text-lg font-semibold text-primary text-center mb-3">💳 Pagamento da Entrada</h3>
                 <div class="text-center p-4 bg-gray-50 rounded-xl mb-4">
@@ -194,9 +190,9 @@
                         <p class="text-sm text-gray-600 mb-3">Escaneie o QR Code ou copie a chave Pix:</p>
                         <canvas id="qrcodeEntrada" class="mx-auto mb-3 bg-white rounded-lg border p-2" width="220" height="220"></canvas>
                         <p class="font-medium mb-2">Chave Pix:</p>
-                        <div id="chavePixEntrada" class="font-mono">55 11 97329-4235 • Flash Point</div>
+                        <div id="chavePixEntrada" class="font-mono">33552949852 • Felipe Costa • Flash Point</div>
                         <button class="btn btn-alerta mt-3" onclick="copiarChaveEntrada()">📋 Copiar Chave Pix</button>
-                        <p class="text-xs text-gray-500 mt-3">⏳ Após pagar, aguarde a confirmação automática do banco.</p>
+                        <p class="text-xs text-gray-500 mt-3">⏳ Após pagar, aguarde a confirmação automática.</p>
                     </div>
                 </div>
             </div>
@@ -228,7 +224,7 @@
         <p class="text-center text-gray-600 mb-2">Valor: <strong id="valorParcelaModal"></strong></p>
         <canvas id="qrcodeParcelaModal" class="mx-auto mb-3 bg-white rounded-lg border p-2" width="220" height="220"></canvas>
         <p class="font-medium mb-2">Chave Pix:</p>
-        <div class="font-mono mb-3">55 11 97329-4235 • Flash Point</div>
+        <div class="font-mono mb-3">33552949852 • Felipe Costa • Flash Point</div>
         <button class="btn btn-alerta mt-3" onclick="copiarChaveParcela()">📋 Copiar Chave Pix</button>
     </div>
 </div>
@@ -238,10 +234,12 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 🔑 SUA CHAVE PIX DE PRODUÇÃO
-const CHAVE_PIX = '5511973294235';
-const NOME_RECEBEDOR = 'FLASH POINT';
+// 🔑 SEUS DADOS E TOKEN MERCADO PAGO
+const CHAVE_PIX = '33552949852';
+const NOME_RECEBEDOR = 'FELIPE COSTA';
+const NOME_EXIBICAO = 'FLASH POINT';
 const CIDADE = 'SAO PAULO';
+const TOKEN_MERCADO_PAGO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 
 let propostaAtual = null;
 let intervaloVerificacao = null;
@@ -312,7 +310,6 @@ function carregarDadosProposta() {
     document.getElementById('contratoMaxParcelas').textContent = maxParcelas;
     document.getElementById('valorEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
 
-    // Preenche opções de parcelas
     const select = document.getElementById('selectParcelas');
     select.innerHTML = '<option value="">Selecione...</option>';
     for(let i = 1; i <= maxParcelas; i++) {
@@ -326,7 +323,6 @@ function carregarDadosProposta() {
     intervaloVerificacao = setInterval(verificarStatusPagamento, 10000);
 }
 
-// ✅ ATUALIZA O VALOR DA PARCELA NA HORA
 function atualizarValorParcela() {
     const qtd = parseInt(document.getElementById('selectParcelas').value);
     const areaValor = document.getElementById('valorParcelaDestaque');
@@ -414,12 +410,24 @@ async function confirmarAssinatura() {
     }
 }
 
-// ✅ GERA QR CODE COM FORMATO OFICIAL PIX
+// ✅ QR CODE PADRÃO BACEN + COMPATÍVEL MERCADO PAGO
 async function gerarPixEntrada() {
-    const valor = parseFloat(propostaAtual.valor_entrada || 0).toFixed(2).replace('.', '');
-    const pixPayload = `00020126580014br.gov.bcb.pix0114${CHAVE_PIX}0220Pagamento Entrada FlashCred5204000053039865406${valor}5802BR5912${NOME_RECEBEDOR}6009${CIDADE}62070503***6304`;
+    const valor = parseFloat(propostaAtual.valor_entrada || 0);
+    const valorStr = valor.toFixed(2).replace('.', '');
     
-    await QRCode.toCanvas(document.getElementById('qrcodeEntrada'), pixPayload, { width: 220, margin: 2 });
+    let payload = `00020126580014br.gov.bcb.pix0114${CHAVE_PIX}`;
+    payload += `0215Pagamento Entrada`;
+    payload += `520400005303986`;
+    if(valor > 0) payload += `5406${valorStr}`;
+    payload += `5802BR59${String(NOME_RECEBEDOR.length).padStart(2,'0')}${NOME_RECEBEDOR}`;
+    payload += `60${String(CIDADE.length).padStart(2,'0')}${CIDADE}6304`;
+    
+    await QRCode.toCanvas(document.getElementById('qrcodeEntrada'), payload, { 
+        width: 220, 
+        margin: 2, 
+        errorCorrectionLevel: 'M' 
+    });
+    
     document.getElementById('carregandoPixEntrada').classList.add('hidden');
     document.getElementById('dadosPixEntrada').classList.remove('hidden');
 }
@@ -484,9 +492,13 @@ async function abrirModalPix(num) {
     document.getElementById('numParcelaModal').textContent = num;
     document.getElementById('valorParcelaModal').textContent = `R$ ${valorParcela.toFixed(2).replace('.', ',')}`;
     
-    const payload = `00020126580014br.gov.bcb.pix0114${CHAVE_PIX}0225Pagamento ${num}ª Parcela FlashCred5204000053039865406${valorStr}5802BR5912${NOME_RECEBEDOR}6009${CIDADE}62070503***6304`;
-    await QRCode.toCanvas(document.getElementById('qrcodeParcelaModal'), payload, { width: 220 });
+    let payload = `00020126580014br.gov.bcb.pix0114${CHAVE_PIX}`;
+    payload += `0220Pagamento ${num}ª Parcela`;
+    payload += `5204000053039865406${valorStr}`;
+    payload += `5802BR59${String(NOME_RECEBEDOR.length).padStart(2,'0')}${NOME_RECEBEDOR}`;
+    payload += `60${String(CIDADE.length).padStart(2,'0')}${CIDADE}6304`;
     
+    await QRCode.toCanvas(document.getElementById('qrcodeParcelaModal'), payload, { width: 220, margin: 2 });
     document.getElementById('modalPagamentoParcela').classList.remove('hidden');
 }
 
