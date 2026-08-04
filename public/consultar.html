@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -11,32 +11,31 @@
         tailwind.config = { 
             theme: { 
                 extend: { 
-                    fontSize: { 'base': '18px', 'lg': '20px', 'xl': '24px' },
+                    fontSize: { 'base': '15px', 'lg': '16px', 'xl': '18px' },
                     colors: { primary: '#0A2463', sucesso: '#10B981', alerta: '#F59E0B', fundo: '#F8FAFC' } 
                 } 
             } 
         }
     </script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; font-size: 18px; }
-        body { background: #F8FAFC; padding: 24px 16px; }
-        .container { max-width: 550px; margin: 0 auto; }
-        .card { background: white; border-radius: 18px; padding: 32px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); border: 2px solid #E2E8F0; }
-        .titulo { text-align: center; font-size: 28px; font-weight: 700; color: #0A2463; margin-bottom: 24px; }
-        .codigo { background: #EFF6FF; padding: 16px; border-radius: 12px; text-align: center; font-weight: 700; margin-bottom: 20px; font-size: 20px; }
-        .status { padding: 12px; border-radius: 12px; text-align: center; font-weight: 700; margin-bottom: 20px; font-size: 20px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; font-size: 15px; }
+        body { background: #F8FAFC; padding: 20px 12px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        .card { background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); border: 1px solid #E2E8F0; }
+        .titulo { text-align: center; font-size: 22px; font-weight: 700; color: #0A2463; margin-bottom: 20px; }
+        .status { padding: 10px; border-radius: 8px; text-align: center; font-weight: 700; margin-bottom: 16px; font-size: 17px; }
         .aprovada { background: #D1FAE5; color: #065F46; }
         .pendente { background: #FEF3C7; color: #92400E; }
         .reprovada { background: #FEE2E2; color: #B91C1C; }
-        .dados { margin: 20px 0; line-height: 1.8; font-size: 18px; }
-        .dados strong { color: #0A2463; font-weight: 600; font-size: 19px; }
-        .valor { text-align: center; font-size: 32px; font-weight: 700; margin: 20px 0; color: #0A2463; }
-        .qrcode { display: flex; justify-content: center; margin: 20px 0; padding: 16px; background: #F8FAFC; border-radius: 12px; }
-        .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; margin-top: 16px; font-size: 18px; }
+        .dados { margin: 16px 0; line-height: 1.6; font-size: 15px; }
+        .dados strong { color: #0A2463; font-weight: 600; }
+        .valor { text-align: center; font-size: 24px; font-weight: 700; margin: 16px 0; color: #0A2463; }
+        .qrcode { display: flex; justify-content: center; margin: 16px 0; padding: 12px; background: #F8FAFC; border-radius: 8px; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 12px; font-size: 15px; }
         .btn-pix { background: #32BCAD; color: white; }
         .btn-buscar { background: #0A2463; color: white; }
-        .input { width: 100%; padding: 16px; border: 2px solid #CBD5E1; border-radius: 12px; margin-bottom: 16px; font-size: 18px; }
-        .erro { color: #EF4444; text-align: center; font-weight: 600; margin-bottom: 16px; font-size: 20px; }
+        .input { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; margin-bottom: 12px; font-size: 15px; }
+        .aviso { color: #0A2463; text-align: center; font-weight: 500; margin: 16px 0; padding: 12px; background: #EFF6FF; border-radius: 8px; }
     </style>
 </head>
 <body>
@@ -52,45 +51,38 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-async function buscarProposta(valorBusca) {
+async function buscarProposta(cpfBusca) {
     const conteudo = document.getElementById('conteudo');
-    const valorLimpo = valorBusca.replace(/\D/g, '');
-    let proposta = null;
+    const cpfLimpo = cpfBusca.replace(/\D/g, '');
+    if(cpfLimpo.length !== 11) {
+        conteudo.innerHTML = `
+            <p class="aviso">Digite um CPF válido com 11 números</p>
+            <input type="text" class="input" id="cpf" placeholder="Digite seu CPF">
+            <button class="btn btn-buscar" onclick="buscarProposta(document.getElementById('cpf').value)">Buscar</button>
+        `;
+        return;
+    }
 
-    // Busca por CÓDIGO
-    let { data, error } = await supabase
+    const { data: proposta, error } = await supabase
         .from('propostas')
         .select('*')
-        .eq('codigo_unico', valorBusca)
+        .eq('cpf', cpfLimpo)
+        .order('data_criacao', { ascending: false })
+        .limit(1)
         .single();
-    
-    if(data) proposta = data;
-
-    // Se não encontrar, busca por CPF
-    if(!proposta && valorLimpo.length === 11) {
-        const resultado = await supabase
-            .from('propostas')
-            .select('*')
-            .eq('cpf', valorLimpo)
-            .order('data_criacao', { ascending: false })
-            .limit(1);
-        
-        proposta = resultado.data?.[0];
-    }
 
     if(!proposta) {
         conteudo.innerHTML = `
-            <p class="erro">Proposta não encontrada</p>
-            <input type="text" class="input" id="busca" placeholder="Digite o Código ou seu CPF">
-            <button class="btn btn-buscar" onclick="buscarProposta(document.getElementById('busca').value)">Buscar Proposta</button>
+            <p class="aviso">Nenhuma proposta encontrada para este CPF</p>
+            <input type="text" class="input" id="cpf" placeholder="Digite seu CPF">
+            <button class="btn btn-buscar" onclick="buscarProposta(document.getElementById('cpf').value)">Buscar</button>
         `;
         return;
     }
 
     const valorEntrada = (Number(proposta.valor_solicitado || 0) * Number(proposta.percentual_entrada || 40) / 100).toFixed(2).replace('.', ',');
     let html = `
-        <div class="codigo">Código: ${proposta.codigo_unico || 'Não informado'}</div>
-        <div class="status ${proposta.status}">${proposta.status?.toUpperCase()}</div>
+        <div class="status ${proposta.status === 'nova' ? 'pendente' : proposta.status}">${(proposta.status || 'NOVA').toUpperCase()}</div>
         <div class="dados">
             <p><strong>Nome:</strong> ${proposta.nome}</p>
             <p><strong>CPF:</strong> ${proposta.cpf?.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
@@ -100,43 +92,38 @@ async function buscarProposta(valorBusca) {
         </div>
     `;
 
-    if(proposta.status === 'aprovada') {
-        html += `<h3 style="text-align:center; margin:20px 0; font-size:22px;">Pagamento da Entrada</h3>
+    if(proposta.status === 'nova' || proposta.status === 'pendente') {
+        html += `<p class="aviso">⏳ Sua proposta está em análise. Assim que aprovada, os dados de pagamento aparecerão aqui.</p>`;
+    } else if(proposta.status === 'aprovada') {
+        html += `<h3 style="text-align:center; margin:16px 0; font-size:18px;">Pagamento da Entrada</h3>
         <div class="valor">R$ ${valorEntrada}</div>`;
         if(proposta.qrcode_pix && proposta.copia_cola_pix) {
             html += `
-                <p style="text-align:center; margin-bottom:16px;">Escaneie o QR Code ou copie o código abaixo:</p>
-                <div class="qrcode"><img src="${proposta.qrcode_pix}" alt="QR Code Pix" style="width:260px;"></div>
-                <p style="text-align:center; font-weight:600; margin-bottom:12px;">Código Pix Copia e Cola:</p>
-                <div style="background:#F8FAFC; padding:16px; border-radius:12px; font-size:16px; word-break:break-all; border:2px solid #CBD5E1;">${proposta.copia_cola_pix}</div>
-                <button class="btn btn-pix" onclick="navigator.clipboard.writeText('${proposta.copia_cola_pix}').then(() => alert('✅ Código copiado com sucesso!'))">📋 Copiar Código Pix</button>
+                <p style="text-align:center; margin-bottom:12px;">Escaneie o QR Code ou copie o código Pix:</p>
+                <div class="qrcode"><img src="${proposta.qrcode_pix}" alt="QR Code Pix" style="width:200px;"></div>
+                <div style="background:#F8FAFC; padding:12px; border-radius:8px; font-size:13px; word-break:break-all; border:1px solid #CBD5E1;">${proposta.copia_cola_pix}</div>
+                <button class="btn btn-pix" onclick="navigator.clipboard.writeText('${proposta.copia_cola_pix}').then(() => alert('✅ Código copiado!'))">📋 Copiar Código Pix</button>
             `;
         } else {
-            html += `<p style="text-align:center; color:#F59E0B; padding:20px; font-weight:600;">🔄 O código Pix está sendo gerado, atualize a página em instantes.</p>`;
+            html += `<p class="aviso">🔄 Dados de pagamento sendo gerados, aguarde um instante.</p>`;
         }
-    } else if(proposta.status === 'pendente') {
-        html += `<p style="text-align:center; color:#0A2463; padding:20px; font-weight:600;">⏳ Sua proposta está em análise. Assim que aprovada, os dados de pagamento aparecerão aqui automaticamente.</p>`;
     } else {
-        html += `<p style="text-align:center; color:#B91C1C; padding:20px; font-weight:600;">❌ Sua proposta não foi aprovada. Entre em contato para mais informações.</p>`;
+        html += `<p class="aviso" style="background:#FEE2E2; color:#B91C1C;">❌ Sua proposta foi reprovada. Entre em contato para mais informações.</p>`;
     }
 
     conteudo.innerHTML = html;
 }
 
 const urlParams = new URLSearchParams(window.location.search);
-const codParam = urlParams.get('cod');
 const cpfParam = urlParams.get('cpf');
 
-if(codParam) {
-    buscarProposta(codParam);
-    setInterval(() => buscarProposta(codParam), 10000);
-} else if(cpfParam) {
+if(cpfParam) {
     buscarProposta(cpfParam);
     setInterval(() => buscarProposta(cpfParam), 10000);
 } else {
     document.getElementById('conteudo').innerHTML = `
-        <input type="text" class="input" id="busca" placeholder="Digite o Código ou seu CPF">
-        <button class="btn btn-buscar" onclick="buscarProposta(document.getElementById('busca').value)">Buscar Proposta</button>
+        <input type="text" class="input" id="cpf" placeholder="Digite seu CPF">
+        <button class="btn btn-buscar" onclick="buscarProposta(document.getElementById('cpf').value)">Consultar Proposta</button>
     `;
 }
 </script>
