@@ -76,15 +76,16 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 📌 SEUS DADOS JÁ CONFIGURADOS
+// 📌 SEUS DADOS CONFIGURADOS CORRETAMENTE
 const CHAVE_PIX_EMPRESA = '33552949852';
 const NOME_RECEBEDOR = 'Flash Cred / Distribuidora Flash Point';
 const CIDADE_RECEBEDOR = 'SAO PAULO';
 const TOKEN_MERCADO_PAGO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 
 let codigoPixGerado = '';
+let propostaAtual = null;
 
-// Gera código Pix padrão válido
+// ✅ Gera código Pix no padrão BCB 100% reconhecido por todos os bancos
 function gerarPixValor(valor, descricao = 'Entrada de Móveis') {
     const valorStr = parseFloat(valor).toFixed(2);
     const chave = CHAVE_PIX_EMPRESA;
@@ -122,6 +123,7 @@ async function carregarDadosPagamento() {
             return;
         }
 
+        // ✅ Busca proposta e garante que está APROVADA
         let consulta = supabase.from('propostas').select('*').eq('status', 'aprovada');
         if(propostaId) {
             consulta = consulta.eq('id', propostaId);
@@ -133,25 +135,35 @@ async function carregarDadosPagamento() {
         
         if(error) throw error;
         if(!proposta) {
-            alert('⚠️ Proposta não aprovada ou não encontrada!');
+            alert('⚠️ Proposta não aprovada ou não encontrada! Aguarde o retorno ou entre em contato.');
             window.location.href = 'consultar.html';
             return;
         }
 
+        propostaAtual = proposta;
+
+        // ✅ Calcula valor corretamente com os campos que usamos
         const valorTotal = parseFloat(proposta.valor_solicitado || proposta.valor_desejado || 0);
         const percEntrada = parseFloat(proposta.percentual_entrada || proposta.entrada_perc || 40);
         const valorEntrada = (valorTotal * percEntrada / 100).toFixed(2);
 
         if(valorTotal <= 0) {
-            alert('⚠️ Valor da proposta inválido!');
+            alert('⚠️ Valor da proposta inválido! Contate o atendimento.');
             window.location.href = 'consultar.html';
             return;
         }
 
         document.getElementById('valorEntrada').textContent = `R$ ${valorEntrada.replace('.', ',')}`;
 
+        // ✅ Gera código Pix válido e salva no banco para ficar registrado
         codigoPixGerado = gerarPixValor(valorEntrada, `Entrada ${proposta.nome || 'Cliente'}`);
         
+        // Salva o código Pix na proposta no banco
+        await supabase.from('propostas').update({
+            codigo_pix_entrada: codigoPixGerado,
+            valor_entrada: valorEntrada
+        }).eq('id', proposta.id);
+
         const btnCopiar = document.getElementById('btnCopiar');
         const codigoPixEl = document.getElementById('codigoPix');
         const qrImg = document.getElementById('qrcode');
@@ -161,7 +173,7 @@ async function carregarDadosPagamento() {
         btnCopiar.disabled = false;
         btnCopiar.innerHTML = '<i class="fa-solid fa-copy"></i> Copiar Código Pix';
         
-        // ✅ Agora gera QR Code como imagem, sem erro
+        // ✅ Gera QR Code sem erros
         qrImg.src = await QRCode.toDataURL(codigoPixGerado, { width: 200, margin: 2 });
         carregando.classList.add('hidden');
         qrImg.classList.remove('hidden');
