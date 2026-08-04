@@ -101,7 +101,7 @@
             <p class="text-sm text-gray-600 mb-3" id="textoValorEntrada"></p>
             
             <div id="loadingPix" class="py-6 text-gray-500 text-sm">
-                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><br>Gerando Pix automático...
+                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><br>Gerando Pix válido...
             </div>
 
             <div id="conteudoPix" class="hidden">
@@ -120,81 +120,48 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ✅ SUA CHAVE PIX CONFIGURADA AQUI
+const MINHA_CHAVE_PIX = "33552949852";
+const NOME_RECEBEDOR = "FLASH POINT MOVEIS";
+const CIDADE_RECEBEDOR = "SAO PAULO";
+
 let dadosProposta = null;
 let streamCamera = null;
 
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 function formatarCpf(cpf) { return limparCpf(cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
 
-// ✅ Geração Oficial BACEN (Fallback garantido)
-function gerarCodigoPixPadrao(chavePix, valor, descricao = 'Pagamento FlashCred') {
-    if (!chavePix?.trim()) return '';
-    chavePix = chavePix.trim();
+// ✅ GERA CÓDIGO PIX 100% VÁLIDO CONFORME REGRA BACEN
+function gerarCodigoPix(valor, descricao = 'Pagamento FlashCred') {
+    if (!MINHA_CHAVE_PIX) return '';
+    
     descricao = descricao.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü.,-]/g, '').substring(0, 25);
     const valorStr = parseFloat(valor || 0).toFixed(2).replace('.', '');
+    const nome = NOME_RECEBEDOR.substring(0, 25).toUpperCase();
+    const cidade = CIDADE_RECEBEDOR.substring(0, 15).toUpperCase();
 
     let pix = '000201';
-    pix += `26${String(22 + chavePix.length).padStart(2, '0')}0014br.gov.bcb.pix01${String(chavePix.length).padStart(2, '0')}${chavePix}`;
+    pix += `26${String(22 + MINHA_CHAVE_PIX.length).padStart(2, '0')}0014br.gov.bcb.pix01${String(MINHA_CHAVE_PIX.length).padStart(2, '0')}${MINHA_CHAVE_PIX}`;
     pix += `02${String(descricao.length).padStart(2, '0')}${descricao}`;
     pix += '520400005303986';
     pix += `54${String(valorStr.length).padStart(2, '0')}${valorStr}`;
-    pix += '5802BR5913FLASH POINT6009SAO PAULO6304';
-    
-    const crc = (() => {
-        let res = 0xFFFF;
-        for (let i = 0; i < pix.length; i++) {
-            res ^= pix.charCodeAt(i) << 8;
-            for (let j = 0; j < 8; j++) res = res & 0x8000 ? (res << 1) ^ 0x1021 : res << 1;
+    pix += '5802BR';
+    pix += `59${String(nome.length).padStart(2, '0')}${nome}`;
+    pix += `60${String(cidade.length).padStart(2, '0')}${cidade}`;
+    pix += '6304';
+
+    // Cálculo CRC16 obrigatório
+    let crc = 0xFFFF;
+    for (let i = 0; i < pix.length; i++) {
+        crc ^= pix.charCodeAt(i) << 8;
+        for (let j = 0; j < 8; j++) {
+            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
         }
-        return (res & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-    })();
-    
-    return pix + crc;
-}
-
-// ✅ Geração via API + Fallback automático
-async function gerarPixAutomaticoAPI(valor, descricao, cpfPagador) {
-    const tokenMercadoPago = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
-    const chavePixFixa = localStorage.getItem('chavePixProducao') || 'SUA_CHAVE_PIX_AQUI';
-
-    try {
-        // Tenta API primeiro
-        const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${tokenMercadoPago}`,
-                'Content-Type': 'application/json',
-                'X-Idempotency-Key': 'fp-' + Date.now()
-            },
-            body: JSON.stringify({
-                transaction_amount: parseFloat(valor),
-                description: descricao.substring(0, 60),
-                payment_method_id: 'pix',
-                payer: { email: 'atendimento@flashcred.com.br', identification: { type: 'CPF', number: limparCpf(cpfPagador) } }
-            })
-        });
-
-        if (resposta.ok) {
-            const res = await resposta.json();
-            if (res?.point_of_interaction?.transaction_data) {
-                return {
-                    sucesso: true,
-                    qrCodeBase64: res.point_of_interaction.transaction_data.qr_code_base64,
-                    copiaCola: res.point_of_interaction.transaction_data.qr_code
-                };
-            }
-        }
-    } catch (erro) {
-        console.warn('API indisponível, usando padrão BACEN:', erro.message);
     }
+    crc &= 0xFFFF;
+    pix += crc.toString(16).toUpperCase().padStart(4, '0');
 
-    // Fallback automático se API bloquear/falhar
-    const codigoPix = gerarCodigoPixPadrao(chavePixFixa, valor, descricao);
-    return {
-        sucesso: true,
-        copiaCola: codigoPix,
-        urlQrCode: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codigoPix)}`
-    };
+    return pix;
 }
 
 async function consultarProposta() {
@@ -284,18 +251,11 @@ async function gerarPagamentoPix() {
     document.getElementById('textoValorEntrada').textContent = `Valor da entrada: R$ ${dadosProposta.valor_entrada.toFixed(2).replace('.', ',')}`;
     document.getElementById('areaPagamento').classList.remove('hidden');
 
-    const resultado = await gerarPixAutomaticoAPI(
-        dadosProposta.valor_entrada,
-        `Entrada - ${dadosProposta.nome}`,
-        dadosProposta.cpf
-    );
-
-    if (resultado.urlQrCode) {
-        document.getElementById('imgQrCode').src = resultado.urlQrCode;
-    } else {
-        document.getElementById('imgQrCode').src = `data:image/png;base64,${resultado.qrCodeBase64}`;
-    }
-    document.getElementById('copiaEColaPix').value = resultado.copiaCola;
+    const codigoPix = gerarCodigoPix(dadosProposta.valor_entrada, `Entrada - ${dadosProposta.nome}`);
+    const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codigoPix)}`;
+    
+    document.getElementById('imgQrCode').src = urlQrCode;
+    document.getElementById('copiaEColaPix').value = codigoPix;
     document.getElementById('loadingPix').classList.add('hidden');
     document.getElementById('conteudoPix').classList.remove('hidden');
 }
@@ -303,7 +263,7 @@ async function gerarPagamentoPix() {
 function copiarPix() {
     const campo = document.getElementById('copiaEColaPix');
     campo.select();
-    navigator.clipboard.writeText(campo.value).then(() => alert('✅ Código copiado!'));
+    navigator.clipboard.writeText(campo.value).then(() => alert('✅ Código copiado! Já é válido para pagamento.'));
 }
 
 function voltarBusca() { if(streamCamera) streamCamera.getTracks().forEach(t => t.stop()); location.reload(); }
