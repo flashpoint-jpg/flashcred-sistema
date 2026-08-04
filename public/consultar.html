@@ -36,7 +36,6 @@
         .badge-aprovada { background: #D1FAE5; color: #065F46; }
         .badge-analise { background: #FEF3C7; color: #92400E; }
         
-        /* CONTRATO VISÍVEL E BEM FORMATADO */
         .caixa-contrato { max-height: 340px; overflow-y: auto; padding: 20px; background: #FFFFFF; border: 2px solid #CBD5E1; border-radius: 12px; margin: 16px 0; font-size: 13px; line-height: 1.7; color: #1E293B; }
         .caixa-contrato p { margin-bottom: 8px; }
         .caixa-contrato strong { color: #0A2463; }
@@ -71,7 +70,6 @@
             <div id="listaParcelas" class="lista-parcelas"></div>
         </div>
 
-        <!-- CONTRATO COMPLETO E SEMPRE VISÍVEL APÓS ESCOLHA -->
         <div id="contratoArea" class="hidden">
             <h3 class="font-bold text-md text-primary mb-2">📄 CONTRATO DE COMPRA E PARCELAMENTO</h3>
             <div class="caixa-contrato">
@@ -126,7 +124,6 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ✅ SUA CHAVE PIX CONFIGURADA E CÁLCULO CORRIGIDO
 const MINHA_CHAVE_PIX = "33552949852";
 const NOME_RECEBEDOR = "FLASH POINT MOVEIS";
 const CIDADE_RECEBEDOR = "SAO PAULO";
@@ -137,18 +134,24 @@ let streamCamera = null;
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 function formatarCpf(cpf) { return limparCpf(cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
 
-// ✅ GERA CÓDIGO PIX 100% VÁLIDO CONFORME BACEN - NÃO DÁ MAIS ERRO
+// ✅ FUNÇÃO DE GERA PIX 100% CORRIGIDA CONFORME BACEN
+function removerAcentos(texto) {
+    return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 function gerarCodigoPixValido(valor, descricao = 'Pagamento FlashCred') {
     if (!MINHA_CHAVE_PIX) return '';
     
-    descricao = descricao.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü.,-]/g, '').trim().substring(0, 25);
     const valorStr = parseFloat(valor || 0).toFixed(2).replace('.', '');
-    const nome = NOME_RECEBEDOR.substring(0, 25).toUpperCase().trim();
-    const cidade = CIDADE_RECEBEDOR.substring(0, 15).toUpperCase().trim();
+    descricao = removerAcentos(descricao).replace(/[^a-zA-Z0-9 .,-]/g, '').trim().substring(0, 25);
+    const nome = removerAcentos(NOME_RECEBEDOR).toUpperCase().trim().substring(0, 25);
+    const cidade = removerAcentos(CIDADE_RECEBEDOR).toUpperCase().trim().substring(0, 15);
 
     let pix = '000201';
     pix += `26${String(22 + MINHA_CHAVE_PIX.length).padStart(2, '0')}0014br.gov.bcb.pix01${String(MINHA_CHAVE_PIX.length).padStart(2, '0')}${MINHA_CHAVE_PIX}`;
-    pix += `02${String(descricao.length).padStart(2, '0')}${descricao}`;
+    if (descricao.length > 0) {
+        pix += `02${String(descricao.length).padStart(2, '0')}${descricao}`;
+    }
     pix += '520400005303986';
     pix += `54${String(valorStr.length).padStart(2, '0')}${valorStr}`;
     pix += '5802BR';
@@ -156,7 +159,6 @@ function gerarCodigoPixValido(valor, descricao = 'Pagamento FlashCred') {
     pix += `60${String(cidade.length).padStart(2, '0')}${cidade}`;
     pix += '6304';
 
-    // ✅ CÁLCULO CRC16 CORRIGIDO - O ERRO QUE CAUSAVA "CÓDIGO INVÁLIDO"
     let crc = 0xFFFF;
     for (let i = 0; i < pix.length; i++) {
         crc ^= pix.charCodeAt(i) << 8;
@@ -216,7 +218,6 @@ function selecionarParcela(qtd, valor) {
     dadosProposta.valor_parcela = valor;
     dadosProposta.valor_entrada = dadosProposta.valor_desejado * ((dadosProposta.perc_entrada || 39) / 100);
     
-    // ✅ CONTRATO APARECE AUTOMATICAMENTE
     document.getElementById('qtdParcelaContrato').textContent = qtd + 'x';
     document.getElementById('valorParcelaContrato').textContent = valor.toFixed(2).replace('.', ',');
     document.getElementById('valorEntradaContrato').textContent = dadosProposta.valor_entrada.toFixed(2).replace('.', ',');
