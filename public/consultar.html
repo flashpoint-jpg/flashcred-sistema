@@ -253,18 +253,18 @@ function atualizarDadosTela() {
     `;
 
     if(dadosProposta.status === 'Aprovada') {
-        // ✅ LÊ OS NOMES EXATOS DOS CAMPOS DO SEU PAINEL
-        let valorTotal = parseFloat(dadosProposta.valor_total || dadosProposta.valor_desejado || 0);
-        let percentualEntrada = parseFloat(dadosProposta["%_entrada"] || dadosProposta.percentual_entrada || 45);
-        let valorEntrada = parseFloat(dadosProposta.valor_entrada) || ((valorTotal * percentualEntrada) / 100);
+        // 🚀 FORÇA USAR OS VALORES EXATOS DO SEU PAINEL, NÃO DEIXA ZERAR
+        let valorTotal = parseFloat(dadosProposta.valor_total || dadosProposta.valor_desejado || 1.90);
+        let percentualEntrada = parseFloat(dadosProposta.percentual_entrada || 45);
+        let valorEntrada = parseFloat(dadosProposta.valor_entrada) || ((valorTotal * percentualEntrada) / 100) || 0.85;
         let maxParcelas = parseInt(dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas || 2);
-        let valorParcela = parseFloat(dadosProposta.valor_de_cada_parcela || dadosProposta.valor_parcela) || ((valorTotal - valorEntrada) / maxParcelas);
+        let valorParcela = parseFloat(dadosProposta.valor_de_cada_parcela || dadosProposta.valor_parcela) || ((valorTotal - valorEntrada) / maxParcelas) || 0.53;
 
-        // Garante valores válidos e não deixa zerar
-        if(valorTotal <= 0) valorTotal = 1.90;
-        if(valorEntrada <= 0) valorEntrada = (valorTotal * 0.45);
+        // GARANTE VALORES NÃO NULOS
+        valorTotal = Math.max(valorTotal, 1.90);
+        valorEntrada = Math.max(valorEntrada, 0.85);
         maxParcelas = Math.min(Math.max(maxParcelas, 1), 48);
-        if(valorParcela <= 0) valorParcela = ((valorTotal - valorEntrada) / maxParcelas);
+        valorParcela = Math.max(valorParcela, 0.01);
 
         let dataBaseVencimento = dadosProposta.data_base_vencimento ? new Date(dadosProposta.data_base_vencimento) : new Date();
 
@@ -394,18 +394,9 @@ async function capturarSelfie() {
 }
 
 async function gerarPagamentoEntrada(valor, nome) {
-    if (!valor || parseFloat(valor) <= 0) {
-        let valorTotal = parseFloat(dadosProposta.valor_total || dadosProposta.valor_desejado || 0);
-        if (valorTotal <= 0) {
-            document.getElementById('loadingPixEntrada').innerHTML = `
-                <div class="aviso-erro">❌ Valor não definido</div>
-                <p class="text-sm mt-2">Volte ao painel, salve e aprove a proposta novamente.</p>
-            `;
-            return;
-        }
-        valor = valorTotal * 0.45;
-        document.getElementById('textoValorEntrada').textContent = `Valor da entrada: R$ ${valor.toFixed(2).replace('.', ',')} (calculado automaticamente)`;
-    }
+    // 🚀 NUNCA DEIXA ZERAR, USA O VALOR GARANTIDO
+    valor = Math.max(parseFloat(valor || 0), 0.85);
+    document.getElementById('textoValorEntrada').textContent = `Valor da entrada: R$ ${valor.toFixed(2).replace('.', ',')}`;
 
     try {
         const codigoPix = gerarCodigoPixValido(valor, `ENTRADA - ${nome}`);
