@@ -182,7 +182,7 @@ const MINHA_CHAVE_PIX = '33552949852';
 let modoSistema = 'manual';
 let propostaSelecionada = null;
 
-// 🆕 FUNÇÃO PARA GERAR CÓDIGO ÚNICO AUTOMÁTICO
+// GERA CÓDIGO ÚNICO AUTOMÁTICO
 function gerarCodigoUnico() {
     const data = new Date();
     const ano = data.getFullYear().toString().slice(-2);
@@ -192,15 +192,40 @@ function gerarCodigoUnico() {
     return `FC${ano}${mes}${dia}-${aleatorio}`;
 }
 
-// 🆕 ADICIONA CÓDIGO PARA PROPOSTAS QUE AINDA NÃO TEM
-async function adicionarCodigoEmPropostasSemCodigo() {
-    const { data } = await supabase.from('propostas').select('*').is('codigo_unico', null);
-    if((data || []).length === 0) return;
+// GERA PIX E QR CODE SEMPRE QUE SALVAR APROVADA
+async function gerarPixAutomatico(valor, codigoProposta) {
+    try {
+        const valorLimpo = Number(valor).toFixed(2);
+        const chavePix = modoSistema === 'producao' ? MINHA_CHAVE_PIX : 'teste@flashcred.com.br';
+        const descricao = `Entrada ${codigoProposta} - FlashCred`;
+        const valorCentavos = Math.round(valorLimpo * 100).toString().padStart(10, '0');
 
-    for(const proposta of data) {
-        await supabase.from('propostas').update({
-            codigo_unico: gerarCodigoUnico()
-        }).eq('id', proposta.id);
+        const pixCopiaECola = `00020126580014br.gov.bcb.pix0111${chavePix}0228${descricao}5204000053039865802BR5919FlashCred Distribuidora6009SAO PAULO62070503***6304${valorCentavos}`;
+        const qrCodeImagem = await QRCode.toDataURL(pixCopiaECola, { width: 240, margin: 2 });
+        
+        return { copia_cola_pix: pixCopiaECola, qrcode_pix: qrCodeImagem };
+    } catch (erro) {
+        console.error('Erro ao gerar Pix:', erro);
+        return { qrcode_pix: '', copia_cola_pix: '' };
+    }
+}
+
+// ATUALIZA PROPOSTAS ANTIGAS SEM CÓDIGO
+async function atualizarPropostasAntigas() {
+    const { data } = await supabase.from('propostas').select('*');
+    for(const proposta of data || []) {
+        let atualizar = {};
+        if(!proposta.codigo_unico) atualizar.codigo_unico = gerarCodigoUnico();
+        
+        if(proposta.status === 'aprovada' && proposta.valor_solicitado && (!proposta.copia_cola_pix || !proposta.qrcode_pix)) {
+            const valorEntrada = (Number(proposta.valor_solicitado) * Number(proposta.percentual_entrada || 40) / 100).toFixed(2);
+            const dadosPix = await gerarPixAutomatico(valorEntrada, atualizar.codigo_unico || proposta.codigo_unico);
+            atualizar = { ...atualizar, ...dadosPix };
+        }
+
+        if(Object.keys(atualizar).length > 0) {
+            await supabase.from('propostas').update(atualizar).eq('id', proposta.id);
+        }
     }
 }
 
@@ -223,23 +248,6 @@ function calcularValoresEdicao() {
 
     document.getElementById('edtValorEntrada').value = `R$ ${valorEntrada.replace('.', ',')}`;
     document.getElementById('edtValorTotal').value = `R$ ${valorTotal.replace('.', ',')}`;
-}
-
-async function gerarPixAutomatico(valor, codigoProposta) {
-    try {
-        const valorLimpo = Number(valor).toFixed(2);
-        const chavePix = modoSistema === 'producao' ? MINHA_CHAVE_PIX : 'teste@flashcred.com.br';
-        const descricao = `Entrada ${codigoProposta} - FlashCred`;
-        const valorCentavos = Math.round(valorLimpo * 100).toString().padStart(10, '0');
-
-        const pixCopiaECola = `00020126580014br.gov.bcb.pix0111${chavePix}0228${descricao}5204000053039865802BR5919FlashCred Distribuidora6009SAO PAULO62070503***6304${valorCentavos}`;
-        const qrCodeImagem = await QRCode.toDataURL(pixCopiaECola, { width: 240, margin: 2 });
-        
-        return { copia_cola_pix: pixCopiaECola, qrcode_pix: qrCodeImagem };
-    } catch (erro) {
-        console.error('Erro ao gerar Pix:', erro);
-        return { qrcode_pix: '', copia_cola_pix: '' };
-    }
 }
 
 async function salvarEGerarPix() {
@@ -265,7 +273,7 @@ async function salvarEGerarPix() {
 
     try {
         await supabase.from('propostas').update(dadosAtualizados).eq('id', propostaSelecionada.id);
-        alert('✅ Salvo com sucesso! Código e Pix gerados.');
+        alert('✅ Salvo com sucesso! Código, Pix e QR Code gerados e salvos.');
         fecharModalEditar();
         carregarListaPropostas();
     } catch(erro) {
@@ -281,8 +289,7 @@ async function reprovarProposta(id) {
 }
 
 async function carregarListaPropostas() {
-    // Primeiro adiciona código nas propostas que estão sem
-    await adicionarCodigoEmPropostasSemCodigo();
+    await atualizarPropostasAntigas();
 
     const { data } = await supabase.from('propostas').select('*').order('data_criacao', { ascending: false });
     const lista = document.getElementById('listaPropostas');
