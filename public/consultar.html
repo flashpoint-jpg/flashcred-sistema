@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Detalhes da Proposta | FlashCred</title>
+    <title>Consultar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
@@ -29,6 +29,7 @@
         body { background: #F8FAFC; color: #1E293B; min-height: 100vh; padding: 20px 12px; }
         .card { background: white; border-radius: 20px; box-shadow: 0 8px 32px rgba(10, 36, 99, 0.1); padding: 24px; max-width: 600px; margin: 0 auto; border: 1px solid #E2E8F0; }
         .titulo-principal { color: #0A2463; font-weight: 700; font-size: 22px; text-align: center; margin-bottom: 20px; }
+        .codigo-unico { background: #EFF6FF; color: #1E40AF; padding: 8px 12px; border-radius: 8px; font-weight: 600; text-align: center; margin-bottom: 16px; font-size: 16px; }
         .btn { padding: 12px 16px; border-radius: 12px; font-weight: 600; border: none; cursor: pointer; transition: all 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; }
         .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .btn-sucesso { background: #10B981; color: white; }
@@ -89,106 +90,122 @@
 </head>
 <body>
 <div class="card">
-    <h2 class="titulo-principal"><i class="fa-solid fa-file-lines"></i> Detalhes da Proposta</h2>
+    <h2 class="titulo-principal"><i class="fa-solid fa-file-lines"></i> Consultar Proposta</h2>
 
     <div id="secaoBusca">
-        <p class="text-center text-gray-600 mb-4">Digite seu CPF para consultar o andamento</p>
-        <label class="font-medium">Seu CPF</label>
-        <input type="text" id="cpfBusca" class="input" placeholder="000.000.000-00" maxlength="14">
+        <p class="text-center text-gray-600 mb-4">Digite seu CPF ou Código da Proposta para consultar</p>
+        <label class="font-medium">CPF ou Código Único</label>
+        <input type="text" id="campoBusca" class="input" placeholder="000.000.000-00 ou FLC-00001" maxlength="20">
         <button id="btnConsultar" class="btn btn-sucesso" onclick="consultarProposta()">
-            <i class="fa-solid fa-magnifying-glass"></i> Consultar Proposta
+            <i class="fa-solid fa-magnifying-glass"></i> Consultar
         </button>
     </div>
 
     <div id="secaoDetalhes" class="hidden">
         <div class="mensagem-marca">
             <h4>🤝 FlashCred: Aqui acreditamos em você</h4>
-            <p>A FlashCred foi feita pensando em pessoas que não tiveram oportunidade de confiança e querem conquistar seus sonhos — assim como eu também já passei por dificuldades.</p>
-            <p style="font-weight: 500; margin-top: 8px;">Estou aqui para te dar esse voto de confiança, porque sei que você é capaz de honrar seus compromissos. Conte comigo, vamos juntos fazer um mundo melhor! 💙🛋️</p>
+            <p>A FlashCred foi feita para ajudar você a conquistar seus móveis sem complicações. Valor total fixo, sem surpresas no final!</p>
         </div>
 
+        <div id="codigoProposta" class="codigo-unico"></div>
         <div id="dadosCliente" class="bg-gray-50 mb-4"></div>
 
         <div id="avisoAguardando" class="p-4 rounded-lg mb-4 bg-yellow-50 text-yellow-800 text-center">
             <div class="loading mx-auto mb-2"></div>
-            Aguardando análise e aprovação...
+            Aguardando análise e aprovação da proposta...
         </div>
 
         <div id="areaAprovado" class="hidden">
+            <h3 class="text-lg font-semibold text-primary mb-3">📋 Resumo dos Valores (Valor Total Fixo)</h3>
+            <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                <p class="flex justify-between py-1"><strong>Valor Solicitado:</strong> <span id="mostraValorSolicitado">R$ 0,00</span></p>
+                <p class="flex justify-between py-1"><strong>Valor Total com Juros (Fixo):</strong> <span id="mostraValorTotal">R$ 0,00</span></p>
+                <p class="flex justify-between py-1"><strong>Entrada:</strong> <span id="mostraEntrada">R$ 0,00</span></p>
+                <p class="flex justify-between py-1"><strong>Juros:</strong> <span id="mostraJuros">0% ao mês</span></p>
+                <p class="flex justify-between py-1"><strong>Máximo de Parcelas:</strong> <span id="mostraMaxParcelas">0x</span></p>
+            </div>
+
             <h3 class="text-lg font-semibold text-primary mb-3">📅 Escolha a quantidade de parcelas</h3>
             <div id="listaParcelasEscolha" class="lista-parcelas-escolha"></div>
 
-            <h3 class="text-lg font-semibold text-primary mb-3">📄 Contrato de Compra e Parcelamento de Móveis</h3>
+            <h3 class="text-lg font-semibold text-primary mb-3">📄 Contrato de Compra e Parcelamento</h3>
             <div class="caixa-contrato">
                 <div class="cabecalho-contrato">
                     <h4>CONTRATO DE COMPRA E PARCELAMENTO DE MÓVEIS</h4>
-                    <p>FlashCred | Distribuidora Flash Point</p>
+                    <p>FlashCred - Distribuidora Flash Point</p>
                 </div>
-                <p>O presente termo regulamenta a aquisição de móveis pelo CLIENTE, com pagamento parcelado via PIX, conforme condições abaixo:</p>
-                <p><strong>1. OBJETO:</strong> A FlashCred se compromete a entregar os móveis solicitados, em perfeito estado, no endereço cadastrado, após confirmação do pagamento da entrada e das parcelas subsequentes.</p>
-                <p><strong>2. VALORES E CONDIÇÕES:</strong> Valor total R$ <span id="valorTotalContrato"></span> • Entrada de <span id="percentualEntradaContrato"></span>% = R$ <span id="valorEntradaContrato"></span> • Até <span id="maxParcelasContrato"></span> parcelas iguais de R$ <span id="valorParcelaContrato"></span> com juros de <span id="jurosContrato"></span>% ao mês.</p>
-                <p><strong>3. OBRIGAÇÕES DO CLIENTE:</strong> Efetuar o pagamento de todas as parcelas nas datas de vencimento acordadas. O não pagamento implicará no vencimento antecipado do valor total, perda do valor pago, restrição de crédito e adoção de medidas legais para recebimento.</p>
-                <p><strong>4. CONFISSÃO DE DÍVIDA:</strong> O CLIENTE confessa ser devedor do valor total acordado e se compromete a honrar este compromisso, ciente de que o cumprimento permite que continuemos ajudando outras pessoas.</p>
-                <hr>
-                <p style="text-align: right;">São Paulo, __ de ____________ de ____.</p>
+                <p>1. OBJETO: O presente contrato regulamenta a compra de móveis pelo CLIENTE, com pagamento parcelado via Pix, conforme valores e condições aprovadas.</p>
+                <p>2. VALORES: O valor total a ser pago é fixo em R$ <strong id="contratoValorTotal">0,00</strong>, não havendo alteração independentemente da quantidade de parcelas escolhida. A entrada é de R$ <strong id="contratoEntrada">0,00</strong> e o restante dividido em até <strong id="contratoMaxParcelas">0x</strong> iguais.</p>
+                <p>3. OBRIGAÇÕES DO CLIENTE: O CLIENTE se compromete a pagar todas as parcelas nas datas de vencimento acordadas. O não pagamento implicará vencimento antecipado do valor total, restrição de crédito e perda do direito ao produto, que permanece propriedade da FlashCred até quitação total.</p>
+                <p>4. ENTREGA: Os móveis serão entregues após confirmação do pagamento da entrada e assinatura deste contrato.</p>
+                <p>5. ACEITE: Ao assinar ou confirmar com a selfie, o CLIENTE declara que leu, entendeu e concordou com todas as condições acima.</p>
+                <hr class="my-4">
+                <p style="text-align: right;">_________________________, _____ de _______________ de ______.</p>
             </div>
 
             <div class="lembrete">
-                <p class="titulo">💛 Um lembrete com todo carinho:</p>
-                <p>Lembre-se: se deixar de pagar, você acaba me prejudicando também. Criei a FlashCred pensando primeiro em você, em ajudar quem precisa — assim como eu também já passei por dificuldades. Então pense bem: vamos honrar o combinado para que eu possa continuar ajudando mais pessoas! 🤝</p>
+                <p class="titulo">💛 Importante</p>
+                <p>O valor total é sempre o mesmo, não importa se pagar à vista ou parcelado. Não haverá nenhum custo adicional ou desconto que altere o valor final acordado.</p>
             </div>
 
             <div class="area-assinatura">
                 <label class="flex items-center justify-center gap-2 mb-4">
-                    <input type="checkbox" id="aceitoContrato" onchange="tratarAceiteContrato()">
-                    <span>Li e concordo com todos os termos acima</span>
+                    <input type="checkbox" id="aceitoContrato" onchange="habilitarAssinatura()">
+                    <span>Li e concordo com todas as condições do contrato</span>
                 </label>
 
                 <div id="opcoesAssinatura" class="hidden">
-                    <p class="text-sm text-gray-600 mb-3">Escolha uma forma de confirmar sua concordância:</p>
+                    <p class="text-sm text-gray-600 mb-3">Confirme sua concordância de uma das formas abaixo:</p>
                     
-                    <button id="btnAbrirCamera" class="btn btn-alerta mb-2" onclick="abrirCamera()">📸 Tirar foto de confirmação</button>
-                    <video id="videoCamera" class="rounded-xl border-2 border-gray-300 w-full max-w-[320px] mx-auto mb-3" autoplay playsinline muted></video>
-                    <button id="btnConfirmarFoto" class="btn btn-sucesso hidden mt-2" onclick="capturarFoto()">✅ Confirmar foto</button>
+                    <button id="btnAbrirCamera" class="btn btn-alerta mb-2" onclick="abrirCamera()" disabled>
+                        <i class="fa-solid fa-camera"></i> Tirar Foto/ Selfie de Confirmação
+                    </button>
+                    <video id="videoCamera" autoplay playsinline class="w-full max-w-[320px]"></video>
+                    <button id="btnCapturarFoto" class="btn btn-sucesso hidden mt-2" onclick="capturarFoto()">
+                        <i class="fa-solid fa-check"></i> Confirmar com Foto
+                    </button>
                     <canvas id="canvasFoto" class="hidden"></canvas>
-                    <img id="fotoAssinaturaPreview" class="selfie-preview hidden" alt="Foto de confirmação">
+                    <img id="previewFoto" class="selfie-preview hidden" alt="Foto de confirmação">
 
                     <div class="assinatura-alternativa">
-                        <p class="text-sm font-medium mb-2">Ou digite seu nome completo como assinatura:</p>
-                        <input type="text" id="assinaturaTexto" class="input" placeholder="Digite seu nome completo aqui">
-                        <button id="btnConfirmarAssinaturaTexto" class="btn btn-sucesso mt-2" onclick="confirmarAssinaturaTexto()">✅ Confirmar assinatura</button>
+                        <button id="btnAceitarSemFoto" class="btn btn-secundario" onclick="confirmarSemFoto()">
+                            <i class="fa-solid fa-check-circle"></i> Declaro que li e aceito o contrato
+                        </button>
                     </div>
                 </div>
 
-                <p id="msgConfirmado" class="hidden text-green-600 font-semibold mt-3">✅ Contrato aceito! Abaixo estão os dados para pagamento da entrada:</p>
+                <p id="mensagemConfirmado" class="hidden text-green-600 font-semibold mt-3">✅ Contrato aceito com sucesso! Abaixo estão os dados para pagamento.</p>
             </div>
 
             <div id="areaPagamento" class="hidden mt-6">
                 <h3 class="text-lg font-semibold text-primary text-center mb-3">💳 Pagamento da Entrada</h3>
                 <div class="text-center p-4 bg-gray-50 rounded-xl mb-4">
-                    <p class="text-sm text-gray-600 mb-2">Valor da entrada:</p>
+                    <p class="text-sm text-gray-600 mb-2">Valor da Entrada:</p>
                     <p class="font-semibold text-xl text-primary mb-4">R$ <span id="valorEntradaPagamento">0,00</span></p>
                     
-                    <div id="loadingPix" class="py-6">
-                        <div class="loading"></div>
+                    <div id="carregandoPix" class="py-6">
+                        <div class="loading mx-auto"></div>
                         <p class="mt-3 text-gray-500">Gerando código Pix...</p>
                     </div>
 
-                    <div id="conteudoPixGerado" class="hidden">
-                        <p class="text-sm text-gray-600 mb-3">Escaneie o QR Code ou copie a chave PIX</p>
+                    <div id="dadosPix" class="hidden">
+                        <p class="text-sm text-gray-600 mb-3">Escaneie o QR Code ou copie a chave Pix abaixo:</p>
                         <canvas id="qrcodePix" class="mx-auto mb-3 bg-white rounded-lg border p-2" width="192" height="192"></canvas>
-                        <div class="mt-3 p-3 bg-gray-100 rounded-lg">
-                            <p class="text-xs text-gray-500 mb-1">Chave PIX Copia e Cola:</p>
-                            <textarea id="chavePixTexto" class="font-mono text-sm w-full p-2 border rounded-lg bg-white" readonly rows="4"></textarea>
-                        </div>
-                        <button class="btn btn-alerta mt-3" onclick="copiarChavePix()">📋 Copiar Chave Pix</button>
+                        <textarea id="chavePix" class="font-mono text-sm w-full p-2 border rounded-lg bg-white" readonly rows="3"></textarea>
+                        <button class="btn btn-alerta mt-3" onclick="copiarChavePix()">
+                            <i class="fa-solid fa-copy"></i> Copiar Chave Pix
+                        </button>
                     </div>
                 </div>
-                <button class="btn btn-secundario" onclick="window.print()">🖨️ Imprimir contrato e dados</button>
+                <button class="btn btn-secundario" onclick="window.print()">
+                    <i class="fa-solid fa-print"></i> Imprimir Contrato Completo
+                </button>
             </div>
         </div>
 
-        <button class="btn btn-secundario mt-6" onclick="voltarBusca()">🔎 Consultar outra proposta</button>
+        <button class="btn btn-secundario mt-6" onclick="voltarBusca()">
+            <i class="fa-solid fa-arrow-left"></i> Consultar Outra Proposta
+        </button>
     </div>
 </div>
 
@@ -197,313 +214,200 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const CHAVE_PIX_RECEBEDOR = 'flashcred@flashpoint.com.br';
-const NOME_RECEBEDOR = 'FLASH POINT MOVEIS';
-const CIDADE_RECEBEDOR = 'SAO PAULO';
-
-let dadosProposta = null;
+let propostaAtual = null;
 let streamCamera = null;
-let valorEntradaAtual = 0;
-let valorFinanciado = 0;
-let taxaJurosMensal = 0;
-let valorParcelaFixa = 0;
-let inscricaoTempoReal = null;
-let ultimoStatus = null;
 
-function formatarCpf(cpf) { return String(cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
-function formatarTelefone(tel) { 
-    if(!tel) return 'Não informado';
-    const num = String(tel).replace(/\D/g, '');
-    return num.length === 11 ? `(${num.slice(0,2)}) ${num.slice(2,7)}-${num.slice(7)}` : num;
-}
-function formatarCep(cep) { 
-    if(!cep) return 'Não informado';
-    const num = String(cep).replace(/[^0-9-]/g, '');
-    return num.length === 9 ? num : num.replace(/(\d{5})(\d{3})/, '$1-$2');
+// ✅ GERAR CÓDIGO ÚNICO AUTOMÁTICO
+function gerarCodigoUnico() {
+    const numero = Math.floor(Math.random() * 99999).toString().padStart(5, '0');
+    return `FLC-${numero}`;
 }
 
-function limparValor(valor) { 
-    if(valor === null || valor === undefined || valor === '') return 0;
-    if(typeof valor === 'number') return parseFloat(valor);
-    const str = String(valor).replace(/\./g, '').replace(',', '.');
-    return parseFloat(str) || 0;
-}
-function removerAcentos(texto) { return String(texto || '').normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+// ✅ CÁLCULO CORRIGIDO: VALOR TOTAL FIXO, SEM PREJUÍZO
+function calcularValores(valorSolicitado, percJuros, percEntrada, qtdMaxParcelas) {
+    const valorTotal = valorSolicitado * (1 + (percJuros / 100));
+    const valorEntrada = valorTotal * (percEntrada / 100);
+    const valorParcelar = valorTotal - valorEntrada;
+    const valorParcela = valorParcelar / qtdMaxParcelas;
 
-// MESMA FÓRMULA EXATA DO PAINEL ADMINISTRATIVO
-function calcularValoresProposta(valorSolicitado, percEntrada, percJuros, qtdMaxParcelas) {
-    valorEntradaAtual = valorSolicitado * percEntrada / 100;
-    valorFinanciado = valorSolicitado - valorEntradaAtual;
-    taxaJurosMensal = percJuros / 100;
-    valorParcelaFixa = (valorFinanciado * Math.pow(1 + taxaJurosMensal, qtdMaxParcelas)) / qtdMaxParcelas;
-    const valorTotal = valorEntradaAtual + (valorParcelaFixa * qtdMaxParcelas);
-    return { valorEntradaAtual, valorFinanciado, taxaJurosMensal, valorParcelaFixa, valorTotal };
-}
-
-function gerarCodigoPix(valor, descricao = '') {
-    valor = parseFloat(valor || 0);
-    if(valor <= 0) return null;
-
-    const valorStr = valor.toFixed(2);
-    
-    const formatField = (id, value) => {
-        const len = String(value.length).padStart(2, '0');
-        return `${id}${len}${value}`;
-    };
-
-    const payloadFormatIndicator = formatField('00', '01');
-    const pointOfInitiationMethod = formatField('01', '12');
-
-    const gui = formatField('00', 'BR.GOV.BCB.PIX');
-    const chave = formatField('01', CHAVE_PIX_RECEBEDOR.trim());
-    const descFormatted = descricao ? formatField('02', removerAcentos(descricao).toUpperCase().replace(/[^A-Z0-9 .-]/g, '').substring(0, 25)) : '';
-    
-    const merchantAccountInfoVal = gui + chave + descFormatted;
-    const merchantAccountInformation = formatField('26', merchantAccountInfoVal);
-
-    const mcc = formatField('52', '0000');
-    const currency = formatField('53', '986');
-    const amount = formatField('54', valorStr);
-    const country = formatField('58', 'BR');
-    
-    const merchantNameClean = removerAcentos(NOME_RECEBEDOR).toUpperCase().replace(/[^A-Z ]/g, '').trim().substring(0, 25);
-    const merchantName = formatField('59', merchantNameClean);
-    
-    const merchantCityClean = removerAcentos(CIDADE_RECEBEDOR).toUpperCase().replace(/[^A-Z ]/g, '').trim().substring(0, 15);
-    const merchantCity = formatField('60', merchantCityClean);
-
-    const additionalDataFieldTemplate = formatField('62', formatField('05', '***'));
-
-    let pix = payloadFormatIndicator + pointOfInitiationMethod + merchantAccountInformation + mcc + currency + amount + country + merchantName + merchantCity + additionalDataFieldTemplate + '6304';
-
-    let crc = 0xFFFF;
-    const polynomial = 0x1021;
-    for (let i = 0; i < pix.length; i++) {
-        crc ^= pix.charCodeAt(i) << 8;
-        for (let j = 0; j < 8; j++) {
-            if ((crc & 0x8000) !== 0) {
-                crc = ((crc << 1) ^ polynomial) & 0xFFFF;
-            } else {
-                crc = (crc << 1) & 0xFFFF;
-            }
-        }
-    }
-    
-    const crcHex = crc.toString(16).toUpperCase().padStart(4, '0');
-    return pix + crcHex;
-}
-
-function iniciarAtualizacaoTempoReal() {
-    if(!dadosProposta || !dadosProposta.cpf) return;
-    if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
-
-    inscricaoTempoReal = supabase
-        .channel('mudancas-proposta')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `cpf=eq.${dadosProposta.cpf}` }, payload => {
-            if (payload.new.status !== ultimoStatus || payload.new.contrato_assinado !== dadosProposta.contrato_assinado) {
-                dadosProposta = payload.new;
-                ultimoStatus = payload.new.status;
-                carregarDadosProposta();
-            }
-        })
-        .subscribe();
+    return { valorTotal, valorEntrada, valorParcelar, valorParcela };
 }
 
 async function consultarProposta() {
-    const cpf = document.getElementById('cpfBusca').value.replace(/\D/g, '');
-    if(cpf.length !== 11) { alert('Digite um CPF válido!'); return; }
+    const busca = document.getElementById('campoBusca').value.trim();
+    if(!busca) { alert('Digite seu CPF ou o Código da Proposta'); return; }
 
     document.getElementById('btnConsultar').disabled = true;
-    document.getElementById('btnConsultar').innerHTML = '<span class="loading" style="width:18px;height:18px;"></span> Buscando...';
+    document.getElementById('btnConsultar').innerHTML = '<div class="loading"></div> Buscando...';
 
     try {
-        const { data, error } = await supabase
-            .from('propostas')
-            .select('*')
-            .eq('cpf', cpf)
-            .single();
+        let consulta;
+        if(busca.toUpperCase().startsWith('FLC-')) {
+            consulta = supabase.from('propostas').select('*').eq('codigo_unico', busca.toUpperCase());
+        } else {
+            const cpfLimpo = busca.replace(/\D/g, '');
+            consulta = supabase.from('propostas').select('*').eq('cpf', cpfLimpo);
+        }
 
+        const { data, error } = await consulta;
         if(error) throw error;
-        dadosProposta = data;
-        ultimoStatus = data.status;
+        if(!data || data.length === 0) { alert('Proposta não encontrada. Verifique os dados informados.'); return; }
+
+        propostaAtual = data[0];
         carregarDadosProposta();
-        iniciarAtualizacaoTempoReal();
-        
-        document.getElementById('secaoBusca').classList.add('hidden');
-        document.getElementById('secaoDetalhes').classList.remove('hidden');
-    } catch {
-        alert('Proposta não encontrada. Verifique o CPF ou aguarde o cadastro.');
+
+    } catch (erro) {
+        alert('Erro ao buscar proposta: ' + erro.message);
     } finally {
         document.getElementById('btnConsultar').disabled = false;
-        document.getElementById('btnConsultar').innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Consultar Proposta';
+        document.getElementById('btnConsultar').innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Consultar';
     }
 }
 
 function carregarDadosProposta() {
-    const status = (dadosProposta.status || 'pendente').toLowerCase();
-    const valorSolicitado = limparValor(dadosProposta.valor_solicitado || dadosProposta.valor_desejado || 0);
-    const percentualEntrada = Number(dadosProposta.percentual_entrada || dadosProposta.entrada_perc || 40);
-    const percentualJuros = Number(dadosProposta.juros || dadosProposta.juros_perc || 6);
-    const maxParcelas = Number(dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas || 4);
+    document.getElementById('secaoBusca').classList.add('hidden');
+    document.getElementById('secaoDetalhes').classList.remove('hidden');
 
-    // CALCULA TUDO COM A MESMA REGRA DO PAINEL
-    const valores = calcularValoresProposta(valorSolicitado, percentualEntrada, percentualJuros, maxParcelas);
+    // Código Único
+    document.getElementById('codigoProposta').textContent = `Código da Proposta: ${propostaAtual.codigo_unico || gerarCodigoUnico()}`;
 
+    // Dados do Cliente
     document.getElementById('dadosCliente').innerHTML = `
-        <p class="mb-2"><strong>Endereço:</strong> ${dadosProposta.endereco || 'Não informado'}</p>
-        <p class="mb-2"><strong>Valor Solicitado:</strong> R$ ${valorSolicitado.toFixed(2).replace('.', ',')}</p>
-        <p class="mb-2"><strong>Valor Total:</strong> R$ ${valores.valorTotal.toFixed(2).replace('.', ',')}</p>
-        <p class="mb-2"><strong>% Entrada:</strong> ${percentualEntrada}% → R$ ${valores.valorEntradaAtual.toFixed(2).replace('.', ',')}</p>
-        <p class="mb-2"><strong>% Juros:</strong> ${percentualJuros}% ao mês</p>
-        <p class="mb-2"><strong>Quantidade de Parcelas:</strong> Até ${maxParcelas}x</p>
-        <p class="mb-2"><strong>Valor de cada parcela:</strong> R$ ${valores.valorParcelaFixa.toFixed(2).replace('.', ',')}</p>
-        <p><strong>Status:</strong> <span class="badge badge-${status}">${status.toUpperCase()}</span></p>
+        <p><strong>Nome:</strong> ${propostaAtual.nome || 'Não informado'}</p>
+        <p><strong>CPF:</strong> ${String(propostaAtual.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
+        <p><strong>Endereço:</strong> ${propostaAtual.endereco || 'Não informado'} - ${propostaAtual.cidade || ''}/${propostaAtual.uf || ''}</p>
+        <p><strong>Status:</strong> <span class="badge ${propostaAtual.status === 'aprovada' ? 'badge-aprovada' : 'badge-pendente'}">${(propostaAtual.status || 'pendente').toUpperCase()}</span></p>
     `;
 
-    document.getElementById('valorTotalContrato').textContent = valores.valorTotal.toFixed(2).replace('.', ',');
-    document.getElementById('percentualEntradaContrato').textContent = percentualEntrada;
-    document.getElementById('valorEntradaContrato').textContent = valores.valorEntradaAtual.toFixed(2).replace('.', ',');
-    document.getElementById('maxParcelasContrato').textContent = maxParcelas;
-    document.getElementById('valorParcelaContrato').textContent = valores.valorParcelaFixa.toFixed(2).replace('.', ',');
-    document.getElementById('jurosContrato').textContent = percentualJuros;
-    document.getElementById('valorEntradaPagamento').textContent = valores.valorEntradaAtual.toFixed(2).replace('.', ',');
-
-    if(status === 'aprovada') {
-        document.getElementById('avisoAguardando').classList.add('hidden');
-        document.getElementById('areaAprovado').classList.remove('hidden');
-        carregarOpcoesParcelas(maxParcelas);
-        
-        if(dadosProposta.contrato_assinado) {
-            document.getElementById('aceitoContrato').checked = true;
-            tratarAceiteContrato();
-        }
-    } else {
+    if(propostaAtual.status !== 'aprovada') {
         document.getElementById('avisoAguardando').classList.remove('hidden');
         document.getElementById('areaAprovado').classList.add('hidden');
+        return;
     }
-}
 
-function carregarOpcoesParcelas(max) {
+    document.getElementById('avisoAguardando').classList.add('hidden');
+    document.getElementById('areaAprovado').classList.remove('hidden');
+
+    // Valores
+    const valorSolicitado = parseFloat(propostaAtual.valor_solicitado || propostaAtual.valor_desejado || 0);
+    const percJuros = parseFloat(propostaAtual.juros || propostaAtual.juros_perc || 0);
+    const percEntrada = parseFloat(propostaAtual.percentual_entrada || propostaAtual.entrada_perc || 0);
+    const qtdMaxParcelas = parseInt(propostaAtual.quantidade_parcelas || propostaAtual.qtd_parcelas || 0);
+
+    const valores = calcularValores(valorSolicitado, percJuros, percEntrada, qtdMaxParcelas);
+
+    document.getElementById('mostraValorSolicitado').textContent = `R$ ${valorSolicitado.toFixed(2).replace('.', ',')}`;
+    document.getElementById('mostraValorTotal').textContent = `R$ ${valores.valorTotal.toFixed(2).replace('.', ',')}`;
+    document.getElementById('mostraEntrada').textContent = `R$ ${valores.valorEntrada.toFixed(2).replace('.', ',')} (${percEntrada}%)`;
+    document.getElementById('mostraJuros').textContent = `${percJuros}% ao mês`;
+    document.getElementById('mostraMaxParcelas').textContent = `Até ${qtdMaxParcelas}x`;
+
+    // Dados para o contrato
+    document.getElementById('contratoValorTotal').textContent = `R$ ${valores.valorTotal.toFixed(2).replace('.', ',')}`;
+    document.getElementById('contratoEntrada').textContent = `R$ ${valores.valorEntrada.toFixed(2).replace('.', ',')}`;
+    document.getElementById('contratoMaxParcelas').textContent = qtdMaxParcelas;
+    document.getElementById('valorEntradaPagamento').textContent = valores.valorEntrada.toFixed(2).replace('.', ',');
+
+    // Lista de parcelas para escolher
     const lista = document.getElementById('listaParcelasEscolha');
     lista.innerHTML = '';
-    for(let i = 1; i <= max; i++) {
+    for(let i = 1; i <= qtdMaxParcelas; i++) {
+        const valorParcelaEscolha = (valores.valorTotal - valores.valorEntrada) / i;
         const item = document.createElement('div');
         item.className = 'item-parcela-escolha';
-        item.innerHTML = `<span>${i}x</span><span>R$ ${valorParcelaFixa.toFixed(2).replace('.', ',')}</span>`;
-        item.onclick = () => {
-            document.querySelectorAll('.item-parcela-escolha').forEach(el => el.classList.remove('selecionada'));
-            item.classList.add('selecionada');
-        };
+        item.onclick = () => selecionarQuantidadeParcelas(i, valorParcelaEscolha);
+        item.innerHTML = `
+            <span>${i}x</span>
+            <span>R$ ${valorParcelaEscolha.toFixed(2).replace('.', ',')}</span>
+        `;
         lista.appendChild(item);
     }
 }
 
-function tratarAceiteContrato() {
+function selecionarQuantidadeParcelas(qtd, valorParcela) {
+    document.querySelectorAll('.item-parcela-escolha').forEach(el => el.classList.remove('selecionada'));
+    event.currentTarget.classList.add('selecionada');
+    propostaAtual.qtd_escolhida = qtd;
+    propostaAtual.valor_parcela_escolhida = valorParcela;
+}
+
+function habilitarAssinatura() {
     const aceito = document.getElementById('aceitoContrato').checked;
-    if(aceito) {
-        document.getElementById('opcoesAssinatura').classList.remove('hidden');
-    } else {
-        document.getElementById('opcoesAssinatura').classList.add('hidden');
-        document.getElementById('videoCamera').style.display = 'none';
-        document.getElementById('btnConfirmarFoto').classList.add('hidden');
-        document.getElementById('fotoAssinaturaPreview').classList.add('hidden');
-        document.getElementById('assinaturaTexto').value = '';
-        document.getElementById('msgConfirmado').classList.add('hidden');
-        document.getElementById('areaPagamento').classList.add('hidden');
-        if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
-    }
+    document.getElementById('opcoesAssinatura').classList.toggle('hidden', !aceito);
+    document.getElementById('btnAbrirCamera').disabled = !aceito;
 }
 
 async function abrirCamera() {
     try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
-        });
-        const video = document.getElementById('videoCamera');
-        video.srcObject = streamCamera;
-        video.style.display = 'block';
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        document.getElementById('videoCamera').srcObject = streamCamera;
+        document.getElementById('btnCapturarFoto').classList.remove('hidden');
         document.getElementById('btnAbrirCamera').classList.add('hidden');
-        document.getElementById('btnConfirmarFoto').classList.remove('hidden');
-    } catch (erro) {
-        alert('⚠️ Não foi possível acessar a câmera. Use a opção de assinatura por nome abaixo.');
+    } catch {
+        alert('Não foi possível acessar a câmera. Você pode confirmar clicando na opção abaixo.');
     }
 }
 
-async function capturarFoto() {
+function capturarFoto() {
     const video = document.getElementById('videoCamera');
     const canvas = document.getElementById('canvasFoto');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    
-    const fotoBase64 = canvas.toDataURL('image/jpeg', 0.8);
-    
-    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
-    video.style.display = 'none';
-    document.getElementById('btnConfirmarFoto').classList.add('hidden');
-    document.getElementById('fotoAssinaturaPreview').src = fotoBase64;
-    document.getElementById('fotoAssinaturaPreview').classList.remove('hidden');
 
-    await supabase.from('propostas').update({
-        foto_aceite: fotoBase64,
-        contrato_assinado: true,
-        forma_assinatura: 'foto'
-    }).eq('id', dadosProposta.id);
-
-    document.getElementById('msgConfirmado').classList.remove('hidden');
-    document.getElementById('areaPagamento').classList.remove('hidden');
-    gerarPagamentoPix();
+    if(streamCamera) streamCamera.getTracks().forEach(track => track.stop());
+    document.getElementById('previewFoto').src = canvas.toDataURL('image/png');
+    document.getElementById('previewFoto').classList.remove('hidden');
+    document.getElementById('videoCamera').classList.add('hidden');
+    document.getElementById('btnCapturarFoto').classList.add('hidden');
+    confirmarAceite();
 }
 
-async function confirmarAssinaturaTexto() {
-    const nome = document.getElementById('assinaturaTexto').value.trim();
-    if(!nome || nome.length < 5) {
-        alert('Digite seu nome completo corretamente para assinar.');
-        return;
+async function confirmarSemFoto() {
+    confirmarAceite();
+}
+
+async function confirmarAceite() {
+    try {
+        await supabase.from('propostas').update({
+            contrato_aceito: true,
+            data_aceite: new Date().toISOString(),
+            qtd_parcelas_escolhida: propostaAtual.qtd_escolhida || null,
+            valor_parcela_escolhida: propostaAtual.valor_parcela_escolhida || null
+        }).eq('id', propostaAtual.id);
+
+        document.getElementById('mensagemConfirmado').classList.remove('hidden');
+        document.getElementById('areaPagamento').classList.remove('hidden');
+        gerarPix();
+    } catch {
+        alert('Erro ao confirmar aceite. Tente novamente.');
     }
-
-    await supabase.from('propostas').update({
-        assinatura_texto: nome,
-        contrato_assinado: true,
-        forma_assinatura: 'texto'
-    }).eq('id', dadosProposta.id);
-
-    document.getElementById('msgConfirmado').classList.remove('hidden');
-    document.getElementById('areaPagamento').classList.remove('hidden');
-    gerarPagamentoPix();
 }
 
-async function gerarPagamentoPix() {
-    document.getElementById('loadingPix').classList.remove('hidden');
-    document.getElementById('conteudoPixGerado').classList.add('hidden');
+async function gerarPix() {
+    const valorEntrada = parseFloat(propostaAtual.valor_entrada || 0);
+    const chavePix = 'sua-chave-pix-aqui'; // Substitua pela sua chave
+    const textoPix = `Pagamento Entrada - Proposta ${propostaAtual.codigo_unico} - ${propostaAtual.nome} - Valor R$ ${valorEntrada.toFixed(2)}`;
 
-    const codigoPix = gerarCodigoPix(valorEntradaAtual, `ENTRADA PEDIDO ${dadosProposta.nome}`);
-    document.getElementById('chavePixTexto').value = codigoPix;
+    document.getElementById('chavePix').value = chavePix;
+    await QRCode.toCanvas(document.getElementById('qrcodePix'), chavePix, { width: 192 });
 
-    await QRCode.toCanvas(document.getElementById('qrcodePix'), codigoPix, { width: 192, margin: 2 });
-    
-    document.getElementById('loadingPix').classList.add('hidden');
-    document.getElementById('conteudoPixGerado').classList.remove('hidden');
+    document.getElementById('carregandoPix').classList.add('hidden');
+    document.getElementById('dadosPix').classList.remove('hidden');
 }
 
 function copiarChavePix() {
-    navigator.clipboard.writeText(document.getElementById('chavePixTexto').value)
-        .then(() => alert('✅ Chave Pix copiada com sucesso!'))
-        .catch(() => alert('Não foi possível copiar, selecione e copie manualmente.'));
+    navigator.clipboard.writeText(document.getElementById('chavePix').value)
+        .then(() => alert('Chave copiada!'))
+        .catch(() => alert('Não foi possível copiar, selecione manualmente.'));
 }
 
 function voltarBusca() {
-    if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
-    dadosProposta = null;
+    propostaAtual = null;
     document.getElementById('secaoDetalhes').classList.add('hidden');
     document.getElementById('secaoBusca').classList.remove('hidden');
-    document.getElementById('cpfBusca').value = '';
+    document.getElementById('campoBusca').value = '';
 }
-
-// Máscara de CPF
-document.getElementById('cpfBusca')?.addEventListener('input', e => {
-    e.target.value = formatarCpf(e.target.value.replace(/\D/g, ''));
-});
 </script>
 </body>
 </html>
