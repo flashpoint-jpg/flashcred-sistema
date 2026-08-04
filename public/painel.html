@@ -32,7 +32,8 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
         body { background: #F8FAFC; color: #1E293B; min-height: 100vh; padding: 20px 12px; }
         .cabecalho-painel { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #E2E8F0; }
-        .titulo-pagina { font-size: 24px; font-weight: 700; color: #0A2463; }
+        .titulo-pagina { font-size: 24px; font-weight: 700; color: #0A2463; display: flex; align-items: center; gap: 8px; }
+        .notificacao-badge { background: #EF4444; color: white; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
         .area-config { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         .seletor-modo { padding: 8px 12px; border-radius: 8px; border: 1px solid #CBD5E1; background: white; font-size: 13px; font-weight: 500; }
         .btn-cabecalho { padding: 8px 12px; border-radius: 8px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
@@ -40,8 +41,14 @@
         .btn-sair { background: #FEE2E2; color: #B91C1C; }
         .container { max-width: 1200px; margin: 0 auto; }
         .card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(10, 36, 99, 0.08); padding: 24px; border: 1px solid #E2E8F0; }
-        .proposta-item { padding: 16px; border-bottom: 1px solid #E2E8F0; display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; align-items: center; }
+        .proposta-item { padding: 16px; border-bottom: 1px solid #E2E8F0; display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 16px; align-items: center; transition: all 0.3s; }
         .proposta-item:last-child { border-bottom: none; }
+        .proposta-item.nova { animation: destaqueNova 3s ease-out; }
+        @keyframes destaqueNova { 0% { background: #D1FAE5; } 100% { background: transparent; } }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .status-aprovada { background: #D1FAE5; color: #065F46; border: 1px solid #10B981; }
+        .status-pendente { background: #FEF3C7; color: #92400E; border: 1px solid #F59E0B; }
+        .status-reprovada { background: #FEE2E2; color: #B91C1C; border: 1px solid #EF4444; }
         .dados-cliente h4 { font-weight: 600; color: #0A2463; margin-bottom: 4px; font-size: 15px; }
         .dados-cliente p { font-size: 13px; color: #64748B; margin-bottom: 2px; }
         .dados-valores p { font-size: 13px; margin-bottom: 2px; }
@@ -50,6 +57,7 @@
         .btn-acao { padding: 8px 10px; font-size: 12px; border-radius: 8px; border: none; cursor: pointer; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
         .btn-editar { background: #DBEAFE; color: #1E40AF; }
         .btn-aprovar { background: #D1FAE5; color: #047857; }
+        .btn-reprovar { background: #FEE2E2; color: #B91C1C; }
         .btn-copiar { background: #F3F4F6; color: #374151; }
         .btn-excluir { background: #FEE2E2; color: #B91C1C; }
         .btn-pendente { background: #FEF3C7; color: #92400E; }
@@ -84,7 +92,7 @@
 <body>
 <div class="container">
     <div class="cabecalho-painel">
-        <h1 class="titulo-pagina">📋 Propostas Recebidas</h1>
+        <h1 class="titulo-pagina">📋 Propostas Recebidas <span id="qtdNovas" class="notificacao-badge hidden">0</span></h1>
         <div class="area-config">
             <select class="seletor-modo" id="seletorModo">
                 <option value="manual">Modo Manual</option>
@@ -154,6 +162,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let propostaAtual = null;
 let inscricaoTempoReal = null;
+let idsCarregados = new Set();
 
 function limparValor(valor) { 
     if(valor === null || valor === undefined || valor === '') return 0;
@@ -162,7 +171,6 @@ function limparValor(valor) {
     return parseFloat(str) || 0;
 }
 
-// ✅ WHATSAPP JÁ FUNCIONANDO, BUSCA EM TODOS OS CAMPOS
 function pegarNumeroWhatsApp(proposta) {
     const campos = ['whatsapp', 'telefone', 'celular', 'numero', 'fone', 'contato', 'tel'];
     for(const campo of campos) {
@@ -174,7 +182,6 @@ function pegarNumeroWhatsApp(proposta) {
     return '';
 }
 
-// ✅ CÁLCULO JUROS SIMPLES — CORRIGIDO DEFINITIVAMENTE
 function calcularValores(valorSolicitado, percEntrada, percJuros, qtdParcelas) {
     const valorEntrada = Number((valorSolicitado * percEntrada / 100).toFixed(2));
     const valorFinanciado = Number((valorSolicitado - valorEntrada).toFixed(2));
@@ -220,12 +227,23 @@ async function carregarPropostas() {
 
 function renderizarLista(propostas) {
     const lista = document.getElementById('listaPropostas');
+    const qtdNovasEl = document.getElementById('qtdNovas');
+    let qtdNovas = 0;
+
     if(propostas.length === 0) {
         lista.innerHTML = `<p class="text-center py-8 text-gray-500">Nenhuma proposta recebida ainda</p>`;
+        idsCarregados.clear();
+        qtdNovasEl.classList.add('hidden');
         return;
     }
 
     lista.innerHTML = propostas.map(p => {
+        const ehNova = !idsCarregados.has(p.id);
+        if(ehNova) {
+            qtdNovas++;
+            idsCarregados.add(p.id);
+        }
+
         const valorSolicitado = limparValor(p.valor_solicitado || p.valor_desejado || 0);
         const percEntrada = limparValor(p.percentual_entrada || p.entrada_perc || 40);
         const percJuros = limparValor(p.juros || p.juros_perc || 6);
@@ -234,14 +252,19 @@ function renderizarLista(propostas) {
         
         const numeroLimpo = pegarNumeroWhatsApp(p);
         const whatsappFormatado = numeroLimpo ? numeroLimpo.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado';
+        
+        let statusClasse = 'status-pendente';
+        let statusTexto = 'PENDENTE';
+        if(p.status === 'aprovada') { statusClasse = 'status-aprovada'; statusTexto = 'APROVADA'; }
+        if(p.status === 'reprovada') { statusClasse = 'status-reprovada'; statusTexto = 'REPROVADA'; }
 
         return `
-        <div class="proposta-item">
+        <div class="proposta-item ${ehNova ? 'nova' : ''}">
             <div class="dados-cliente">
                 <h4>${p.nome || 'Cliente sem nome'}</h4>
                 <p>CPF: ${String(p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
                 <p><strong>WhatsApp:</strong> ${whatsappFormatado}</p>
-                <p>Status: <strong>${(p.status || 'pendente').toUpperCase()}</strong></p>
+                <p>Status: <span class="status-badge ${statusClasse}">${statusTexto}</span></p>
             </div>
             <div class="dados-valores">
                 <p>Valor Solicitado: <strong>R$ ${valorSolicitado.toFixed(2).replace('.', ',')}</strong></p>
@@ -256,8 +279,11 @@ function renderizarLista(propostas) {
                 <button class="btn-acao btn-editar" onclick="abrirModalEditar(${JSON.stringify(p).replace(/"/g, '&quot;')})">
                     <i class="fa-solid fa-pen-to-square"></i> Editar
                 </button>
-                <button class="btn-acao btn-aprovar" onclick="abrirModalEditar(${JSON.stringify(p).replace(/"/g, '&quot;')})">
+                <button class="btn-acao btn-aprovar" onclick="marcarComoAprovada(${p.id})">
                     <i class="fa-solid fa-check"></i> Aprovar
+                </button>
+                <button class="btn-acao btn-reprovar" onclick="marcarComoReprovada(${p.id})">
+                    <i class="fa-solid fa-xmark"></i> Reprovar
                 </button>
                 <button class="btn-acao btn-copiar" onclick="copiarDados(${JSON.stringify(p).replace(/"/g, '&quot;')})">
                     <i class="fa-solid fa-copy"></i> Copiar
@@ -272,6 +298,13 @@ function renderizarLista(propostas) {
         </div>
         `;
     }).join('');
+
+    if(qtdNovas > 0) {
+        qtdNovasEl.textContent = qtdNovas;
+        qtdNovasEl.classList.remove('hidden');
+    } else {
+        qtdNovasEl.classList.add('hidden');
+    }
 }
 
 function abrirModalEditar(proposta) {
@@ -288,6 +321,26 @@ function abrirModalEditar(proposta) {
 function fecharModal() {
     propostaAtual = null;
     document.getElementById('modalEditar').classList.add('hidden');
+}
+
+async function marcarComoAprovada(id) {
+    if(!confirm('Deseja marcar esta proposta como APROVADA? O cliente verá a mensagem de aprovação.')) return;
+    try {
+        await supabase.from('propostas').update({ status: 'aprovada' }).eq('id', id);
+        alert('✅ Proposta aprovada com sucesso!');
+    } catch {
+        alert('Erro ao alterar status');
+    }
+}
+
+async function marcarComoReprovada(id) {
+    if(!confirm('Deseja marcar esta proposta como REPROVADA? O cliente verá a mensagem de reprovação.')) return;
+    try {
+        await supabase.from('propostas').update({ status: 'reprovada' }).eq('id', id);
+        alert('❌ Proposta reprovada com sucesso!');
+    } catch {
+        alert('Erro ao alterar status');
+    }
 }
 
 async function salvarEAprovar() {
@@ -366,7 +419,7 @@ function enviarLinkWhatsApp(proposta = null) {
         return;
     }
     const link = `${window.location.origin}/consultar.html?cpf=${prop.cpf}`;
-    const mensagem = `Olá ${prop.nome || 'Cliente'}! Sua proposta já foi analisada e está disponível para conferir e finalizar pelo link abaixo: ${link} 🛋️ FlashCred - Aqui acreditamos em você!`;
+    const mensagem = `Olá ${prop.nome || 'Cliente'}! Sua proposta já foi analisada e está disponível para conferir pelo link abaixo: ${link} 🛋️ FlashCred - Aqui acreditamos em você!`;
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`, '_blank');
 }
 
@@ -378,6 +431,7 @@ Nome: ${proposta.nome || 'Não informado'}
 CPF: ${String(proposta.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}
 WhatsApp: ${numero ? numero.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado'}
 Valor Solicitado: R$ ${limparValor(proposta.valor_solicitado || proposta.valor_desejado || 0).toFixed(2).replace('.', ',')}
+Status: ${(proposta.status || 'pendente').toUpperCase()}
     `.trim();
     navigator.clipboard.writeText(texto)
         .then(() => alert('Dados copiados!'))
