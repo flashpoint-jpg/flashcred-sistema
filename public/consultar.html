@@ -66,7 +66,7 @@
             <p class="text-sm text-gray-600 mb-3" id="textoValorEntrada"></p>
             
             <div id="loadingPix" class="py-6 text-gray-500 text-sm">
-                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><br>Gerando Pix seguro pelo Mercado Pago...
+                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><br>Gerando Pix seguro...
             </div>
 
             <div id="conteudoPix" class="hidden">
@@ -87,6 +87,36 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 function formatarCpf(cpf) { return limparCpf(cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
+
+// Função oficial de geração Pix padrão BACEN
+function gerarCodigoPix(chavePix, valor, descricao = 'Pagamento FlashCred', nomeRecebedor = 'FLASH POINT MOVEIS', cidade = 'SAO PAULO') {
+    if (!chavePix?.trim()) return '';
+    
+    chavePix = chavePix.trim();
+    descricao = descricao.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü.,-]/g, '').substring(0, 25);
+    nomeRecebedor = nomeRecebedor.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü]/g, '').substring(0, 25).toUpperCase();
+    cidade = cidade.replace(/[^a-zA-Z0-9 ÁáÂâÀàÃãÉêÊéÍíÓôÔóÕõÚúÜü]/g, '').substring(0, 15).toUpperCase();
+    const valorStr = parseFloat(valor || 0).toFixed(2).replace('.', '');
+
+    let pix = '000201';
+    pix += `26${String(22 + chavePix.length).padStart(2, '0')}0014br.gov.bcb.pix01${String(chavePix.length).padStart(2, '0')}${chavePix}`;
+    pix += `02${String(descricao.length).padStart(2, '0')}${descricao}`;
+    pix += '520400005303986';
+    pix += `54${String(valorStr.length).padStart(2, '0')}${valorStr}`;
+    pix += `5802BR59${String(nomeRecebedor.length).padStart(2, '0')}${nomeRecebedor}`;
+    pix += `60${String(cidade.length).padStart(2, '0')}${cidade}6304`;
+    
+    const crc = (() => {
+        let res = 0xFFFF;
+        for (let i = 0; i < pix.length; i++) {
+            res ^= pix.charCodeAt(i) << 8;
+            for (let j = 0; j < 8; j++) res = res & 0x8000 ? (res << 1) ^ 0x1021 : res << 1;
+        }
+        return (res & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+    })();
+    
+    return pix + crc;
+}
 
 async function consultarProposta() {
     const cpfInput = limparCpf(document.getElementById('cpfConsulta').value);
@@ -128,50 +158,20 @@ async function consultarProposta() {
     if(data.status === 'Aprovada' && !data.pago && data.valor_entrada > 0) {
         document.getElementById('areaPagamento').classList.remove('hidden');
         document.getElementById('textoValorEntrada').textContent = `Valor total para pagamento da entrada: R$ ${parseFloat(data.valor_entrada).toFixed(2).replace('.', ',')}`;
-        gerarPixAutomatico(data.valor_entrada, `Entrada Proposta - ${data.nome}`, data.telefone || 'cliente@flashcred.com.br');
+        
+        // Pega chave salva no painel ou usa a padrão
+        const chavePix = localStorage.getItem('chavePixProducao') || 'COLOQUE_SUA_CHAVE_PIX_AQUI';
+        const codigoPix = gerarCodigoPix(chavePix, data.valor_entrada, `Entrada Proposta - ${data.nome}`);
+        
+        // Gera imagem QR Code via serviço público
+        const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codigoPix)}`;
+        
+        document.getElementById('imgQrCode').src = urlQrCode;
+        document.getElementById('copiaEColaPix').value = codigoPix;
+        document.getElementById('loadingPix').classList.add('hidden');
+        document.getElementById('conteudoPix').classList.remove('hidden');
     } else {
         document.getElementById('areaPagamento').classList.add('hidden');
-    }
-}
-
-async function gerarPixAutomatico(valor, descricao, contato) {
-    const tokenPadrao = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
-    const token = localStorage.getItem('tokenMercadoPagoProducao') || tokenPadrao;
-    
-    try {
-        const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'X-Idempotency-Key': 'fp-' + Date.now()
-            },
-            body: JSON.stringify({
-                transaction_amount: parseFloat(valor),
-                description: descricao.substring(0, 60),
-                payment_method_id: 'pix',
-                payer: {
-                    email: 'atendimento@flashcred.com.br',
-                    identification: { type: 'CPF', number: limparCpf(document.getElementById('cpfConsulta').value) }
-                }
-            })
-        });
-
-        const resultado = await resposta.json();
-
-        if (resultado.point_of_interaction?.transaction_data) {
-            const qrCodeBase64 = resultado.point_of_interaction.transaction_data.qr_code_base64;
-            const qrCodeCopiaCola = resultado.point_of_interaction.transaction_data.qr_code;
-
-            document.getElementById('imgQrCode').src = `data:image/png;base64,${qrCodeBase64}`;
-            document.getElementById('copiaEColaPix').value = qrCodeCopiaCola;
-            document.getElementById('loadingPix').classList.add('hidden');
-            document.getElementById('conteudoPix').classList.remove('hidden');
-        } else {
-            throw new Error(resultado.message || 'Resposta inválida do Mercado Pago');
-        }
-    } catch(err) {
-        document.getElementById('loadingPix').innerHTML = `<p class="text-perigo">⚠️ Erro ao gerar Pix: ${err.message}<br>Tente novamente ou contate o atendimento.</p>`;
     }
 }
 
