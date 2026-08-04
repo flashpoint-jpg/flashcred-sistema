@@ -59,8 +59,10 @@
         #canvasAssinatura { width: 100%; height: 180px; background: white; border: 2px solid #94A3B8; border-radius: 8px; cursor: crosshair; touch-action: none; }
         .area-pix { margin-top: 20px; text-align: center; display: none; }
         #qrcode { display: inline-block; margin: 12px auto; padding: 12px; background: white; border-radius: 8px; }
+        .codigo-pix-texto { background: #F8FAFC; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; margin: 8px 0; text-align: left; }
         .aviso-sucesso { background: #ECFDF5; color: #065F46; padding: 14px; border-radius: 12px; text-align: center; margin-top: 16px; display: none; }
         .flex { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+        .aviso-atualizacao { background: #E0F2FE; color: #0369A1; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 12px; display: none; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -82,6 +84,7 @@
     </div>
 
     <div id="resultadoProposta" class="resultado">
+        <div id="avisoAtualizacao" class="aviso-atualizacao">🔔 A proposta foi atualizada pela equipe!</div>
         <div id="statusProposta" class="status"></div>
         <div class="dado"><strong>Nome:</strong> <span id="resNome"></span></div>
         <div class="dado"><strong>CPF:</strong> <span id="resCpf"></span></div>
@@ -149,10 +152,11 @@
             </button>
 
             <div id="areaPix" class="area-pix">
-                <p style="font-weight: 600;">Escaneie ou copie o código Pix:</p>
+                <p style="font-weight: 600;">Escaneie o QR Code ou copie o código Pix abaixo:</p>
                 <div id="qrcode"></div>
-                <p style="font-size: 14px; color: #64748B;">Valor da entrada: R$ <span id="valorEntradaPix"></span></p>
-                <button class="btn btn-sucesso" style="margin-top: 8px;" onclick="copiarChavePix()">Copiar Código Pix</button>
+                <p style="font-size: 14px; color: #64748B; margin: 8px 0;">Valor da entrada: R$ <span id="valorEntradaPix"></span></p>
+                <div id="codigoPixTexto" class="codigo-pix-texto"></div>
+                <button class="btn btn-sucesso" style="margin-top: 8px;" onclick="copiarChavePix()">📋 Copiar Código Pix</button>
                 <div id="avisoPago" class="aviso-sucesso">
                     ✅ Assim que o pagamento for confirmado, você receberá a confirmação e os dados de entrega no seu WhatsApp!
                 </div>
@@ -167,6 +171,7 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let propostaAtual = null;
+let ultimaVersaoProposta = null;
 let streamCamera = null;
 let selfieBase64 = null;
 let assinaturaBase64 = null;
@@ -317,6 +322,7 @@ async function buscarProposta(cpfSemMascara) {
         if(!data || data.length === 0) { avisoErro.style.display = 'block'; return; }
 
         propostaAtual = data[0];
+        ultimaVersaoProposta = JSON.stringify(propostaAtual);
         preencherDados(propostaAtual);
         iniciarAtualizacaoCliente();
 
@@ -474,28 +480,50 @@ async function mostrarPix() {
     const chavePix = localStorage.getItem('chavePixProducao') || '33552949852';
     const valorTotal = parseFloat(propostaAtual.valor_total || propostaAtual.valor_desejado);
     const percEntrada = parseFloat(propostaAtual.perc_entrada || 39);
-    const valorEntrada = valorTotal * (percEntrada / 100);
+    const valorEntrada = (valorTotal * (percEntrada / 100)).toFixed(2).replace('.', '');
     const nomeRecebedor = 'DISTRIBUIDORA FLASHPOINT';
-    const codigoPix = `00020126580014br.gov.bcb.pix0111${chavePix}5204000053039865802BR5925${nomeRecebedor}62070503***6304`;
+    const cidade = 'SAO PAULO';
+    const descricao = `ENTRADA ${propostaAtual.id || ''}`;
+
+    // Código Pix válido conforme padrão BCB
+    const codigoPix = `00020126580014br.gov.bcb.pix0111${chavePix}0220${descricao}5204000053039865403${valorEntrada}5802BR5925${nomeRecebedor}6009${cidade}6304`;
     
     document.getElementById('qrcode').innerHTML = '';
-    new QRCode(document.getElementById('qrcode'), { text: codigoPix, width: 200, height: 200 });
+    new QRCode(document.getElementById('qrcode'), { 
+        text: codigoPix, 
+        width: 220, 
+        height: 220,
+        correctLevel: QRCode.CorrectLevel.M
+    });
 
+    document.getElementById('codigoPixTexto').textContent = codigoPix;
     document.getElementById('areaPix').style.display = 'block';
     document.getElementById('btnGerarPix').disabled = true;
     document.getElementById('btnGerarPix').textContent = '✅ Pix Gerado com Sucesso';
 }
 
 function copiarChavePix() {
-    const chavePix = localStorage.getItem('chavePixProducao') || '33552949852';
-    navigator.clipboard.writeText(chavePix).then(() => alert('✅ Código Pix copiado!')).catch(() => alert(`Chave Pix: ${chavePix}`));
+    const texto = document.getElementById('codigoPixTexto').textContent;
+    navigator.clipboard.writeText(texto).then(() => alert('✅ Código Pix copiado! Basta colar no app do seu banco.')).catch(() => alert(`Copie esse código: ${texto}`));
 }
 
 function iniciarAtualizacaoCliente() {
     if(!propostaAtual || inscricaoCliente) return;
     inscricaoCliente = supabase.channel('atualizacoes_cliente')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `cpf=eq.${limparCpf(propostaAtual.cpf)}` }, () => {
-            buscarProposta(limparCpf(propostaAtual.cpf));
+        .on('postgres_changes', { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'propostas', 
+            filter: `cpf=eq.${limparCpf(propostaAtual.cpf)}` 
+        }, (payload) => {
+            const novaProposta = payload.new;
+            if(JSON.stringify(novaProposta) !== ultimaVersaoProposta) {
+                ultimaVersaoProposta = JSON.stringify(novaProposta);
+                propostaAtual = novaProposta;
+                document.getElementById('avisoAtualizacao').style.display = 'block';
+                setTimeout(() => document.getElementById('avisoAtualizacao').style.display = 'none', 5000);
+                preencherDados(novaProposta);
+            }
         })
         .subscribe();
 }
