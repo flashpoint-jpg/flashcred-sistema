@@ -179,7 +179,6 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Dados do recebedor do Pix
 const CHAVE_PIX_RECEBEDOR = '33552949852';
 const NOME_RECEBEDOR = 'FLASH POINT MOVEIS';
 const CIDADE_RECEBEDOR = 'SAO PAULO';
@@ -189,27 +188,33 @@ let streamCamera = null;
 let valorEntradaAtual = 0;
 
 function formatarCpf(cpf) { return String(cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
-function formatarTelefone(tel) { return tel ? String(tel).replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado'; }
-function formatarCep(cep) { return cep ? String(cep).replace(/(\d{5})(\d{3})/, '$1-$2') : 'Não informado'; }
+function formatarTelefone(tel) { 
+    if(!tel) return 'Não informado';
+    const num = String(tel).replace(/\D/g, '');
+    return num.length === 11 ? `(${num.slice(0,2)}) ${num.slice(2,7)}-${num.slice(7)}` : num;
+}
+function formatarCep(cep) { 
+    if(!cep) return 'Não informado';
+    const num = String(cep).replace(/\D/g, '');
+    return num.length === 8 ? `${num.slice(0,5)}-${num.slice(5)}` : cep;
+}
 
-// Função de conversão corrigida
+// ✅ Função de conversão CORRIGIDA: lê valores exatos do banco
 function limparValor(valor) { 
-    if(!valor && valor !== 0) return 0;
-    const strValor = String(valor).replace(/\D/g, '');
-    if(strValor.length === 0) return 0;
-    // Se vier em centavos (ex: 20000 = R$200,00)
-    if(strValor.length >= 3) return parseInt(strValor, 10) / 100;
-    // Se vier em reais (ex: 200 = R$200,00)
-    return parseFloat(strValor);
+    if(valor === null || valor === undefined || valor === '') return 0;
+    // Se vier como número (já salvo corretamente)
+    if(typeof valor === 'number') return parseFloat(valor);
+    // Se vier como texto: remove pontos de milhar e troca vírgula por ponto
+    const str = String(valor).replace(/\./g, '').replace(',', '.');
+    return parseFloat(str) || 0;
 }
 function removerAcentos(texto) { return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
-// Função gerar Pix CORRIGIDA, sem duplicar zeros
+// ✅ Gera Pix com valor exato, sem zeros extras
 function gerarCodigoPix(valor, descricao = 'PAGAMENTO ENTRADA') {
     valor = parseFloat(valor || 0);
     if(valor <= 0) return null;
 
-    // Formata valor para PIX: 78.00 vira '7800'
     const valorStr = valor.toFixed(2).replace('.', '');
     descricao = removerAcentos(descricao).toUpperCase().replace(/[^A-Z0-9 .,-]/g, '').trim().substring(0, 25);
     const nome = removerAcentos(NOME_RECEBEDOR).toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim().substring(0, 25);
@@ -268,6 +273,7 @@ async function consultarProposta() {
 
 function carregarDadosProposta() {
     const status = (dadosProposta.status || 'pendente').toLowerCase();
+    // ✅ Lê valores exatos iguais ao painel
     const valorSolicitado = limparValor(dadosProposta.valor_solicitado || dadosProposta.valor_desejado || 0);
     const valorTotal = limparValor(dadosProposta.valor_total || valorSolicitado);
     const percentualEntrada = Number(dadosProposta.percentual_entrada || 40);
