@@ -190,9 +190,12 @@
                         
                         <div id="dadosPixEntrada">
                             <p class="text-sm text-gray-600 mb-3">Escaneie o QR Code ou copie o código abaixo:</p>
-                            <img id="qrcodeEntradaImg" class="mx-auto mb-3 bg-white rounded-lg border p-2" width="220" height="220" alt="QR Code Pix">
+                            <div class="mx-auto mb-3 bg-white rounded-lg border-2 border-gray-200 p-3 w-[240px] h-[240px] flex items-center justify-center">
+                                <img id="qrcodeEntradaImg" class="max-w-full max-h-full hidden" alt="QR Code Pix">
+                                <span id="textoSemQr" class="text-gray-500 text-sm text-center">QR Code disponível após aprovação</span>
+                            </div>
                             <p class="font-medium mb-2">Pix Copia e Cola:</p>
-                            <div id="copiaEColaEntrada" class="font-mono mb-3"></div>
+                            <div id="copiaEColaEntrada" class="font-mono mb-3 break-all bg-gray-50 p-3 rounded-lg border"></div>
                             <button class="btn btn-alerta" onclick="copiarCopiaECola()">📋 Copiar Código Pix</button>
                             <p class="text-xs text-gray-500 mt-3">Assim que o pagamento for confirmado, você receberá o comprovante e os dados de entrega.</p>
                         </div>
@@ -239,10 +242,24 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let propostaAtual = null;
 let streamCamera = null;
 
-// Gerar código único
-function gerarCodigoUnico() {
-    const num = Math.floor(10000 + Math.random() * 90000);
-    return `FLC-${num}`;
+// GERADOR DE CÓDIGO ÚNICO CORRIGIDO E SEM REPETIÇÃO
+async function gerarCodigoUnico() {
+    let codigoGerado = '';
+    let codigoExiste = true;
+
+    while (codigoExiste) {
+        const num = Math.floor(10000 + Math.random() * 90000);
+        codigoGerado = `FLC-${num}`;
+        
+        // Verifica se já existe no banco para não repetir
+        const { data } = await supabase
+            .from('propostas')
+            .select('codigo_unico')
+            .eq('codigo_unico', codigoGerado);
+        
+        codigoExiste = data && data.length > 0;
+    }
+    return codigoGerado;
 }
 
 async function consultarProposta() {
@@ -254,19 +271,20 @@ async function consultarProposta() {
 
     try {
         let resultado = null;
+        const buscaLimpa = busca.replace(/\D/g, '');
         const buscaMaiuscula = busca.toUpperCase();
         
-        if(buscaMaiuscula.startsWith('FLC-')) {
-            const { data } = await supabase.from('propostas').select('*').ilike('codigo_unico', buscaMaiuscula);
+        // Busca por código único (aceita com ou sem traço)
+        if(buscaMaiuscula.startsWith('FLC') || buscaLimpa.length === 5) {
+            const codigoBusca = buscaMaiuscula.includes('FLC-') ? buscaMaiuscula : `FLC-${buscaLimpa}`;
+            const { data } = await supabase.from('propostas').select('*').ilike('codigo_unico', codigoBusca);
             if(data && data.length > 0) resultado = data[0];
         }
 
-        if(!resultado) {
-            const cpfLimpo = busca.replace(/\D/g, '');
-            if(cpfLimpo.length === 11) {
-                const { data } = await supabase.from('propostas').select('*').eq('cpf', cpfLimpo);
-                if(data && data.length > 0) resultado = data[0];
-            }
+        // Busca por CPF se não encontrar por código
+        if(!resultado && buscaLimpa.length === 11) {
+            const { data } = await supabase.from('propostas').select('*').eq('cpf', buscaLimpa);
+            if(data && data.length > 0) resultado = data[0];
         }
 
         if(!resultado) {
@@ -276,9 +294,9 @@ async function consultarProposta() {
 
         propostaAtual = resultado;
         
-        // Gera e salva código único se não tiver
+        // Gera e salva código único automaticamente se não tiver
         if (!propostaAtual.codigo_unico) {
-            propostaAtual.codigo_unico = gerarCodigoUnico();
+            propostaAtual.codigo_unico = await gerarCodigoUnico();
             await supabase.from('propostas').update({ codigo_unico: propostaAtual.codigo_unico }).eq('id', propostaAtual.id);
         }
 
@@ -325,9 +343,11 @@ function carregarDadosProposta() {
         document.getElementById('areaPropostaAprovada').classList.remove('hidden');
         preencherValoresAprovados();
         
-        // Carrega dados do Pix que você salvou no painel
+        // Carrega dados do Pix
         if(propostaAtual.qrcode_pix && propostaAtual.copia_cola_pix) {
             document.getElementById('qrcodeEntradaImg').src = propostaAtual.qrcode_pix;
+            document.getElementById('qrcodeEntradaImg').classList.remove('hidden');
+            document.getElementById('textoSemQr').classList.add('hidden');
             document.getElementById('copiaEColaEntrada').textContent = propostaAtual.copia_cola_pix;
         }
 
@@ -498,6 +518,7 @@ function mostrarTelaPagamentoConfirmado() {
 
 function copiarCopiaECola() {
     const codigo = document.getElementById('copiaEColaEntrada').textContent;
+    if(!codigo) { alert('Código Pix ainda não disponível.'); return; }
     navigator.clipboard.writeText(codigo)
         .then(() => alert('Código copiado com sucesso!'))
         .catch(() => alert('Selecione e copie o código manualmente.'));
