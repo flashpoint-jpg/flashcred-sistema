@@ -78,6 +78,7 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         .selfie-preview { border: 3px solid #10B981; border-radius: 12px; max-width: 280px; margin: 12px auto; display: block; }
         #videoCamera { border-radius: 12px; max-width: 320px; margin: 10px auto; display: none; background: #000; }
+        .assinatura-alternativa { border-top: 1px solid #CBD5E1; margin-top: 16px; padding-top: 16px; }
         @media print {
             body, .card { background: white; box-shadow: none; padding: 0; }
             body * { visibility: hidden; }
@@ -125,7 +126,7 @@
                 </div>
                 <p>O presente termo regulamenta a aquisição de móveis pelo CLIENTE, com pagamento parcelado via PIX, conforme condições abaixo:</p>
                 <p><strong>1. OBJETO:</strong> A FlashCred se compromete a entregar os móveis solicitados, em perfeito estado, no endereço cadastrado, após confirmação do pagamento da entrada e das parcelas subsequentes.</p>
-                <p><strong>2. VALORES E CONDIÇÕES:</strong> Valor total R$ <span id="valorTotalContrato"></span> • Entrada de <span id="percentualEntradaContrato"></span>% = R$ <span id="valorEntradaContrato"></span> • Até <span id="maxParcelasContrato"></span> parcelas de R$ <span id="valorParcelaContrato"></span> com juros de <span id="jurosContrato"></span>% ao mês.</p>
+                <p><strong>2. VALORES E CONDIÇÕES:</strong> Valor total R$ <span id="valorTotalContrato"></span> • Entrada de <span id="percentualEntradaContrato"></span>% = R$ <span id="valorEntradaContrato"></span> • Até <span id="maxParcelasContrato"></span> parcelas iguais de R$ <span id="valorParcelaContrato"></span> com juros de <span id="jurosContrato"></span>% ao mês.</p>
                 <p><strong>3. OBRIGAÇÕES DO CLIENTE:</strong> Efetuar o pagamento de todas as parcelas nas datas de vencimento acordadas. O não pagamento implicará no vencimento antecipado do valor total, perda do valor pago, restrição de crédito e adoção de medidas legais para recebimento.</p>
                 <p><strong>4. CONFISSÃO DE DÍVIDA:</strong> O CLIENTE confessa ser devedor do valor total acordado e se compromete a honrar este compromisso, ciente de que o cumprimento permite que continuemos ajudando outras pessoas.</p>
                 <hr>
@@ -142,11 +143,23 @@
                     <input type="checkbox" id="aceitoContrato" onchange="tratarAceiteContrato()">
                     <span>Li e concordo com todos os termos acima</span>
                 </label>
-                <button id="btnAbrirCamera" class="btn btn-alerta hidden" onclick="abrirCamera()">📸 Tirar uma foto para confirmar</button>
-                <video id="videoCamera" class="rounded-xl border-2 border-gray-300 w-full max-w-[320px] mx-auto mb-3" autoplay playsinline muted></video>
-                <button id="btnConfirmarFoto" class="btn btn-sucesso hidden mt-3" onclick="capturarFoto()">✅ Confirmar foto</button>
-                <canvas id="canvasFoto" class="hidden"></canvas>
-                <img id="fotoAssinaturaPreview" class="selfie-preview hidden" alt="Foto de confirmação">
+
+                <div id="opcoesAssinatura" class="hidden">
+                    <p class="text-sm text-gray-600 mb-3">Escolha uma forma de confirmar sua concordância:</p>
+                    
+                    <button id="btnAbrirCamera" class="btn btn-alerta mb-2" onclick="abrirCamera()">📸 Tirar foto de confirmação</button>
+                    <video id="videoCamera" class="rounded-xl border-2 border-gray-300 w-full max-w-[320px] mx-auto mb-3" autoplay playsinline muted></video>
+                    <button id="btnConfirmarFoto" class="btn btn-sucesso hidden mt-2" onclick="capturarFoto()">✅ Confirmar foto</button>
+                    <canvas id="canvasFoto" class="hidden"></canvas>
+                    <img id="fotoAssinaturaPreview" class="selfie-preview hidden" alt="Foto de confirmação">
+
+                    <div class="assinatura-alternativa">
+                        <p class="text-sm font-medium mb-2">Ou digite seu nome completo como assinatura:</p>
+                        <input type="text" id="assinaturaTexto" class="input" placeholder="Digite seu nome completo aqui">
+                        <button id="btnConfirmarAssinaturaTexto" class="btn btn-sucesso mt-2" onclick="confirmarAssinaturaTexto()">✅ Confirmar assinatura</button>
+                    </div>
+                </div>
+
                 <p id="msgConfirmado" class="hidden text-green-600 font-semibold mt-3">✅ Contrato aceito! Abaixo estão os dados para pagamento da entrada:</p>
             </div>
 
@@ -191,6 +204,9 @@ const CIDADE_RECEBEDOR = 'SAO PAULO';
 let dadosProposta = null;
 let streamCamera = null;
 let valorEntradaAtual = 0;
+let valorFinanciado = 0;
+let taxaJurosMensal = 0;
+let valorParcelaFixa = 0;
 let inscricaoTempoReal = null;
 let ultimoStatus = null;
 
@@ -213,6 +229,11 @@ function limparValor(valor) {
     return parseFloat(str) || 0;
 }
 function removerAcentos(texto) { return String(texto || '').normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+
+function calcularValorParcelaFixa(qtdMax) {
+    if(qtdMax <= 0 || valorFinanciado <= 0 || taxaJurosMensal <= 0) return 0;
+    return (valorFinanciado * Math.pow(1 + taxaJurosMensal, qtdMax)) / qtdMax;
+}
 
 function gerarCodigoPix(valor, descricao = '') {
     valor = parseFloat(valor || 0);
@@ -316,20 +337,15 @@ async function consultarProposta() {
 function carregarDadosProposta() {
     const status = (dadosProposta.status || 'pendente').toLowerCase();
     const valorSolicitado = limparValor(dadosProposta.valor_solicitado || dadosProposta.valor_desejado || 0);
-    const valorTotal = limparValor(dadosProposta.valor_total || valorSolicitado);
     const percentualEntrada = Number(dadosProposta.percentual_entrada || dadosProposta.entrada_perc || 40);
-    
-    valorEntradaAtual = valorTotal * percentualEntrada / 100;
-
-    const juros = Number(dadosProposta.juros || dadosProposta.juros_perc || 6);
-    const maxParcelas = Number(dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas || 12);
-    let valorParcela = limparValor(dadosProposta.valor_de_cada_parcela || dadosProposta.valor_parcela);
-    if(valorParcela <= 0 && maxParcelas > 0) {
-        valorParcela = (valorTotal - valorEntradaAtual) / maxParcelas;
-    }
+    valorEntradaAtual = valorSolicitado * percentualEntrada / 100;
+    valorFinanciado = valorSolicitado - valorEntradaAtual;
+    taxaJurosMensal = Number(dadosProposta.juros || dadosProposta.juros_perc || 6) / 100;
+    const maxParcelas = Number(dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas || 4);
+    valorParcelaFixa = calcularValorParcelaFixa(maxParcelas);
+    const valorTotal = valorEntradaAtual + (valorParcelaFixa * maxParcelas);
 
     document.getElementById('dadosCliente').innerHTML = `
-        <p class="mb-2"><strong>Nome:</strong> ${dadosProposta.nome || 'Não informado'}</p>
         <p class="mb-2"><strong>CPF:</strong> ${formatarCpf(dadosProposta.cpf)}</p>
         <p class="mb-2"><strong>Data de Nascimento:</strong> ${dadosProposta.nascimento || 'Não informado'}</p>
         <p class="mb-2"><strong>WhatsApp:</strong> ${formatarTelefone(dadosProposta.whatsapp)}</p>
@@ -338,9 +354,9 @@ function carregarDadosProposta() {
         <p class="mb-2"><strong>Valor Solicitado:</strong> R$ ${valorSolicitado.toFixed(2).replace('.', ',')}</p>
         <p class="mb-2"><strong>Valor Total:</strong> R$ ${valorTotal.toFixed(2).replace('.', ',')}</p>
         <p class="mb-2"><strong>% Entrada:</strong> ${percentualEntrada}% → R$ ${valorEntradaAtual.toFixed(2).replace('.', ',')}</p>
-        <p class="mb-2"><strong>% Juros:</strong> ${juros}% ao mês</p>
+        <p class="mb-2"><strong>% Juros:</strong> ${(taxaJurosMensal * 100).toFixed(0)}% ao mês</p>
         <p class="mb-2"><strong>Quantidade de Parcelas:</strong> Até ${maxParcelas}x</p>
-        <p class="mb-2"><strong>Valor de cada parcela:</strong> R$ ${valorParcela.toFixed(2).replace('.', ',')}</p>
+        <p class="mb-2"><strong>Valor de cada parcela:</strong> R$ ${valorParcelaFixa.toFixed(2).replace('.', ',')}</p>
         <p><strong>Status:</strong> <span class="badge badge-${status}">${status.toUpperCase()}</span></p>
     `;
 
@@ -348,14 +364,14 @@ function carregarDadosProposta() {
     document.getElementById('percentualEntradaContrato').textContent = percentualEntrada;
     document.getElementById('valorEntradaContrato').textContent = valorEntradaAtual.toFixed(2).replace('.', ',');
     document.getElementById('maxParcelasContrato').textContent = maxParcelas;
-    document.getElementById('valorParcelaContrato').textContent = valorParcela.toFixed(2).replace('.', ',');
-    document.getElementById('jurosContrato').textContent = juros;
+    document.getElementById('valorParcelaContrato').textContent = valorParcelaFixa.toFixed(2).replace('.', ',');
+    document.getElementById('jurosContrato').textContent = (taxaJurosMensal * 100).toFixed(0);
     document.getElementById('valorEntradaPagamento').textContent = valorEntradaAtual.toFixed(2).replace('.', ',');
 
     if(status === 'aprovada') {
         document.getElementById('avisoAguardando').classList.add('hidden');
         document.getElementById('areaAprovado').classList.remove('hidden');
-        carregarOpcoesParcelas(maxParcelas, valorParcela);
+        carregarOpcoesParcelas(maxParcelas);
         
         if(dadosProposta.contrato_assinado) {
             document.getElementById('aceitoContrato').checked = true;
@@ -367,13 +383,13 @@ function carregarDadosProposta() {
     }
 }
 
-function carregarOpcoesParcelas(max, valor) {
+function carregarOpcoesParcelas(max) {
     const lista = document.getElementById('listaParcelasEscolha');
     lista.innerHTML = '';
     for(let i = 1; i <= max; i++) {
         const item = document.createElement('div');
         item.className = 'item-parcela-escolha';
-        item.innerHTML = `<span>${i}x</span><span>R$ ${valor.toFixed(2).replace('.', ',')}</span>`;
+        item.innerHTML = `<span>${i}x</span><span>R$ ${valorParcelaFixa.toFixed(2).replace('.', ',')}</span>`;
         item.onclick = () => {
             document.querySelectorAll('.item-parcela-escolha').forEach(el => el.classList.remove('selecionada'));
             item.classList.add('selecionada');
@@ -385,12 +401,13 @@ function carregarOpcoesParcelas(max, valor) {
 function tratarAceiteContrato() {
     const aceito = document.getElementById('aceitoContrato').checked;
     if(aceito) {
-        document.getElementById('btnAbrirCamera').classList.remove('hidden');
+        document.getElementById('opcoesAssinatura').classList.remove('hidden');
     } else {
-        document.getElementById('btnAbrirCamera').classList.add('hidden');
+        document.getElementById('opcoesAssinatura').classList.add('hidden');
         document.getElementById('videoCamera').style.display = 'none';
         document.getElementById('btnConfirmarFoto').classList.add('hidden');
         document.getElementById('fotoAssinaturaPreview').classList.add('hidden');
+        document.getElementById('assinaturaTexto').value = '';
         document.getElementById('msgConfirmado').classList.add('hidden');
         document.getElementById('areaPagamento').classList.add('hidden');
         if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
@@ -408,7 +425,7 @@ async function abrirCamera() {
         document.getElementById('btnAbrirCamera').classList.add('hidden');
         document.getElementById('btnConfirmarFoto').classList.remove('hidden');
     } catch (erro) {
-        alert('⚠️ Não foi possível acessar a câmera. Permita o acesso nas configurações do navegador ou tente usar outro dispositivo.');
+        alert('⚠️ Não foi possível acessar a câmera. Use a opção de assinatura por nome abaixo.');
     }
 }
 
@@ -429,7 +446,26 @@ async function capturarFoto() {
 
     await supabase.from('propostas').update({
         foto_aceite: fotoBase64,
-        contrato_assinado: true
+        contrato_assinado: true,
+        forma_assinatura: 'foto'
+    }).eq('id', dadosProposta.id);
+
+    document.getElementById('msgConfirmado').classList.remove('hidden');
+    document.getElementById('areaPagamento').classList.remove('hidden');
+    gerarPagamentoPix();
+}
+
+async function confirmarAssinaturaTexto() {
+    const nome = document.getElementById('assinaturaTexto').value.trim();
+    if(!nome || nome.length < 5) {
+        alert('Digite seu nome completo corretamente para assinar.');
+        return;
+    }
+
+    await supabase.from('propostas').update({
+        assinatura_texto: nome,
+        contrato_assinado: true,
+        forma_assinatura: 'texto'
     }).eq('id', dadosProposta.id);
 
     document.getElementById('msgConfirmado').classList.remove('hidden');
