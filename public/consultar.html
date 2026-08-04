@@ -467,6 +467,41 @@ function resetarTudo() {
     document.getElementById('abasAssinatura').style.display = 'none';
 }
 
+// ✅ PADRÃO PIX OFICIAL BANCO CENTRAL
+function gerarCodigoPix(chavePix, valor, descricao, nomeRecebedor, cidade) {
+    const valorLimpo = String(valor.toFixed(2)).replace('.', '');
+    descricao = descricao.substring(0, 25);
+    nomeRecebedor = nomeRecebedor.substring(0, 25);
+    cidade = cidade.substring(0, 15);
+
+    let pix = '000201';
+    pix += '26' + String(22 + chavePix.length).padStart(2, '0') + '0014br.gov.bcb.pix01' + String(chavePix.length).padStart(2, '0') + chavePix;
+    pix += '02' + String(descricao.length).padStart(2, '0') + descricao;
+    pix += '52040000';
+    pix += '5303986';
+    pix += '54' + String(valorLimpo.length).padStart(2, '0') + valorLimpo;
+    pix += '5802BR';
+    pix += '59' + String(nomeRecebedor.length).padStart(2, '0') + nomeRecebedor;
+    pix += '60' + String(cidade.length).padStart(2, '0') + cidade;
+    pix += '6304';
+
+    const crc = calcularCRC16(pix, 0xFFFF);
+    pix += crc.toString(16).toUpperCase().padStart(4, '0');
+    return pix;
+}
+
+function calcularCRC16(dados, valorInicial) {
+    let polinomio = 0x1021;
+    let resultado = valorInicial;
+    for (let i = 0; i < dados.length; i++) {
+        resultado ^= (dados.charCodeAt(i) << 8);
+        for (let j = 0; j < 8; j++) {
+            resultado = (resultado & 0x8000) ? (resultado << 1) ^ polinomio : resultado << 1;
+        }
+    }
+    return resultado & 0xFFFF;
+}
+
 async function mostrarPix() {
     if(!propostaAtual) return;
     const dadoAssinatura = selfieBase64 || assinaturaBase64;
@@ -477,17 +512,20 @@ async function mostrarPix() {
         data_assinatura: new Date().toISOString()
     }).eq('cpf', propostaAtual.cpf);
 
-    const chavePix = localStorage.getItem('chavePixProducao') || '33552949852';
+    // Usa a chave e modo que você configurou no painel
+    const modo = localStorage.getItem('modoSistema') || 'teste';
+    const chavePix = modo === 'producao' 
+        ? localStorage.getItem('chavePixProducao') || '33552949852'
+        : localStorage.getItem('chavePixTeste') || '33552949852';
+
     const valorTotal = parseFloat(propostaAtual.valor_total || propostaAtual.valor_desejado || 0);
     const percEntrada = parseFloat(propostaAtual.perc_entrada || 39);
     const valorEntrada = valorTotal * (percEntrada / 100);
-    const valorFormatado = valorEntrada.toFixed(2).replace('.', '');
-    const nomeRecebedor = 'DISTRIBUIDORA FLASHPOINT';
+    const descricao = `ENTRADA PROPOSTA ${propostaAtual.id || ''}`;
+    const nomeLoja = 'DISTRIBUIDORA FLASHPOINT';
     const cidade = 'SAO PAULO';
-    const descricao = `ENTRADA PROPOSTA ${propostaAtual.id || ''}`.substring(0, 25);
 
-    // ✅ PIX NO PADRÃO OFICIAL BANCO CENTRAL
-    const codigoPix = `00020126580014br.gov.bcb.pix0111${chavePix}02${String(descricao.length).padStart(2,'0')}${descricao}5204000053039865403${valorFormatado}5802BR59${String(nomeRecebedor.length).padStart(2,'0')}${nomeRecebedor}60${String(cidade.length).padStart(2,'0')}${cidade}6304`;
+    const codigoPix = gerarCodigoPix(chavePix, valorEntrada, descricao, nomeLoja, cidade);
     
     document.getElementById('qrcode').innerHTML = '';
     new QRCode(document.getElementById('qrcode'), { 
@@ -508,6 +546,7 @@ function copiarChavePix() {
     navigator.clipboard.writeText(texto).then(() => alert('✅ Código Pix copiado! Basta colar no app do seu banco.')).catch(() => alert(`Copie esse código: ${texto}`));
 }
 
+// ✅ ATUALIZA ALTERAÇÕES DO PAINEL EM TEMPO REAL
 function iniciarAtualizacaoCliente() {
     if(!propostaAtual || inscricaoCliente) return;
     inscricaoCliente = supabase.channel('atualizacoes_cliente')
@@ -521,9 +560,14 @@ function iniciarAtualizacaoCliente() {
             if(JSON.stringify(novaProposta) !== ultimaVersaoProposta) {
                 ultimaVersaoProposta = JSON.stringify(novaProposta);
                 propostaAtual = novaProposta;
+                
                 document.getElementById('avisoAtualizacao').style.display = 'block';
                 setTimeout(() => document.getElementById('avisoAtualizacao').style.display = 'none', 6000);
+                
                 preencherDados(novaProposta);
+                if(novaProposta.status === 'Aprovada') {
+                    carregarDadosAprovado(novaProposta);
+                }
             }
         })
         .subscribe();
