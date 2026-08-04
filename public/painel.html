@@ -162,18 +162,23 @@ function limparValor(valor) {
     return parseFloat(str) || 0;
 }
 
-// ✅ BUSCA WHATSAPP EM TODOS OS CAMPOS POSSÍVEIS DO BANCO
-function pegarWhatsApp(proposta) {
-    return proposta.whatsapp || proposta.telefone || proposta.celular || proposta.numero || proposta.fone || '';
+// ✅ WHATSAPP JÁ FUNCIONANDO, BUSCA EM TODOS OS CAMPOS
+function pegarNumeroWhatsApp(proposta) {
+    const campos = ['whatsapp', 'telefone', 'celular', 'numero', 'fone', 'contato', 'tel'];
+    for(const campo of campos) {
+        if(proposta[campo]) {
+            const limpo = String(proposta[campo]).replace(/\D/g, '');
+            if(limpo.length >= 10) return limpo;
+        }
+    }
+    return '';
 }
 
-// ✅ CÁLCULO COM JUROS SIMPLES (CORRETO PARA FINANCIAMENTO DE MÓVEIS)
+// ✅ CÁLCULO JUROS SIMPLES — CORRIGIDO DEFINITIVAMENTE
 function calcularValores(valorSolicitado, percEntrada, percJuros, qtdParcelas) {
     const valorEntrada = Number((valorSolicitado * percEntrada / 100).toFixed(2));
     const valorFinanciado = Number((valorSolicitado - valorEntrada).toFixed(2));
-    const taxaJuros = percJuros / 100;
-    // Juros Simples: Juros = Capital × taxa × tempo
-    const valorJuros = Number((valorFinanciado * taxaJuros * qtdParcelas).toFixed(2));
+    const valorJuros = Number((valorFinanciado * (percJuros / 100) * qtdParcelas).toFixed(2));
     const valorTotal = Number((valorSolicitado + valorJuros).toFixed(2));
     const valorParcela = Number(((valorFinanciado + valorJuros) / qtdParcelas).toFixed(2));
     return { valorEntrada, valorFinanciado, valorJuros, valorParcela, valorTotal };
@@ -227,8 +232,8 @@ function renderizarLista(propostas) {
         const qtdParcelas = parseInt(p.quantidade_parcelas || p.qtd_parcelas || 0);
         const valores = qtdParcelas > 0 ? calcularValores(valorSolicitado, percEntrada, percJuros, qtdParcelas) : null;
         
-        const numeroWhatsApp = pegarWhatsApp(p);
-        const whatsappFormatado = numeroWhatsApp ? String(numeroWhatsApp).replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado';
+        const numeroLimpo = pegarNumeroWhatsApp(p);
+        const whatsappFormatado = numeroLimpo ? numeroLimpo.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado';
 
         return `
         <div class="proposta-item">
@@ -354,24 +359,24 @@ async function marcarPendente() {
 
 function enviarLinkWhatsApp(proposta = null) {
     const prop = proposta || propostaAtual;
-    const numero = pegarWhatsApp(prop);
+    const numero = pegarNumeroWhatsApp(prop);
     
     if(!prop || !numero) {
-        alert('Esse cliente não tem número de WhatsApp cadastrado. Verifique o cadastro no formulário.');
+        alert('Esse cliente não tem número de WhatsApp cadastrado.');
         return;
     }
     const link = `${window.location.origin}/consultar.html?cpf=${prop.cpf}`;
     const mensagem = `Olá ${prop.nome || 'Cliente'}! Sua proposta já foi analisada e está disponível para conferir e finalizar pelo link abaixo: ${link} 🛋️ FlashCred - Aqui acreditamos em você!`;
-    window.open(`https://wa.me/${String(numero).replace(/\D/g, '')}?text=${encodeURIComponent(mensagem)}`, '_blank');
+    window.open(`https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`, '_blank');
 }
 
 function copiarDados(proposta) {
-    const numero = pegarWhatsApp(proposta);
+    const numero = pegarNumeroWhatsApp(proposta);
     const texto = `
 📋 Dados da Proposta
 Nome: ${proposta.nome || 'Não informado'}
 CPF: ${String(proposta.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}
-WhatsApp: ${numero ? String(numero).replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado'}
+WhatsApp: ${numero ? numero.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado'}
 Valor Solicitado: R$ ${limparValor(proposta.valor_solicitado || proposta.valor_desejado || 0).toFixed(2).replace('.', ',')}
     `.trim();
     navigator.clipboard.writeText(texto)
