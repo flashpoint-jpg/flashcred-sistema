@@ -60,9 +60,17 @@
         .loading { display: inline-block; width: 28px; height: 28px; border: 3px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .aviso-calculo { background: #FEF3C7; color: #92400E; padding: 10px; border-radius: 8px; margin: 8px 0; font-size: 13px; }
+        /* NOTIFICAÇÃO */
+        .notificacao { position: fixed; top: 16px; right: 16px; z-index: 9999; max-width: 380px; padding: 16px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,0.15); animation: deslizar 0.3s ease-out; }
+        @keyframes deslizar { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .notificacao-sucesso { background: #ECFDF5; border-left: 4px solid #10B981; color: #065F46; }
+        .notificacao-alerta { background: #FFFBEB; border-left: 4px solid #F59E0B; color: #92400E; }
     </style>
 </head>
 <body>
+
+<!-- ÁREA DE NOTIFICAÇÕES -->
+<div id="areaNotificacoes"></div>
 
 <div class="card">
     <h2 class="text-xl font-bold text-primary mb-4">📋 Propostas e Pagamentos</h2>
@@ -123,7 +131,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let modoAtual = 'teste';
 let cpfEdicao = null;
 let cpfDinheiro = null;
-const VALOR_MINIMO_PARCELA = 10; // Nenhuma parcela pode ser menor que R$10,00
+const VALOR_MINIMO_PARCELA = 10;
 
 function limparValor(valor) { 
     if(valor === null || valor === undefined || valor === '') return 0;
@@ -148,7 +156,7 @@ function formatarCep(cep) {
     return num.length === 9 ? num : num.replace(/(\d{5})(\d{3})/, '$1-$2');
 }
 
-// ✅ CÁLCULO CORRIGIDO COM JUROS E PARCELA MÍNIMA
+// ✅ CÁLCULO CORRIGIDO COM PARCELA MÍNIMA
 function calcularValores(valorSolicitado, percEntrada, percJuros, maxParcelas) {
     const valorTotal = limparValor(valorSolicitado);
     const entrada = (valorTotal * percEntrada) / 100;
@@ -157,7 +165,6 @@ function calcularValores(valorSolicitado, percEntrada, percJuros, maxParcelas) {
     let aviso = '';
 
     for(let qtd = 1; qtd <= maxParcelas; qtd++) {
-        // Juros simples mensal aplicado sobre o saldo
         const valorParcela = (saldo * (1 + (percJuros / 100 * qtd))) / qtd;
         const parcelaArredondada = Math.ceil(valorParcela * 100) / 100;
 
@@ -180,6 +187,16 @@ function calcularValores(valorSolicitado, percEntrada, percJuros, maxParcelas) {
         opcoes: opcoesValidas,
         aviso: aviso
     };
+}
+
+// 🔔 SISTEMA DE NOTIFICAÇÕES
+function mostrarNotificacao(texto, tipo = 'sucesso') {
+    const area = document.getElementById('areaNotificacoes');
+    const notif = document.createElement('div');
+    notif.className = `notificacao notificacao-${tipo}`;
+    notif.innerHTML = `<p class="font-semibold">${texto}</p>`;
+    area.appendChild(notif);
+    setTimeout(() => notif.remove(), 6000);
 }
 
 function definirModo(modo) {
@@ -223,12 +240,13 @@ async function carregarPropostas() {
         const calc = calcularValores(valorSolicitado, percEntrada, percJuros, maxParc);
         const valorTotal = calc.opcoes.length > 0 ? calc.opcoes[0].totalComJuros : valorSolicitado;
         const valorEntrada = calc.entrada;
+        const valorParcela = calc.opcoes.length > 0 ? calc.opcoes[0].valor : 0;
         const valorRecebido = limparValor(dados.valor_recebido) || 0;
         
         if(dados.entrada_paga) totalRecebido += valorEntrada;
         totalAReceber += (valorTotal - valorRecebido);
 
-        const status = (dados.status || 'pendente').toLowerCase();
+        const status = (dados.status || 'nova').toLowerCase();
         const statusPag = dados.entrada_paga ? 
             '<span class="badge badge-pago">Entrada Paga</span>' : 
             '<span class="badge badge-pendente-pag">Entrada Pendente</span>';
@@ -244,10 +262,12 @@ async function carregarPropostas() {
             <p class="mb-1"><strong>CEP:</strong> ${formatarCep(dados.cep)}</p>
             <p class="mb-1"><strong>Endereço:</strong> ${dados.endereco || 'Não informado'}</p>
             <p class="mb-1"><strong>Valor Solicitado:</strong> ${formatarMoeda(valorSolicitado)}</p>
+            <p class="mb-1"><strong>Valor Total:</strong> ${formatarMoeda(valorTotal)}</p>
             <p class="mb-1"><strong>% Entrada:</strong> ${percEntrada}% → ${formatarMoeda(valorEntrada)}</p>
             <p class="mb-1"><strong>% Juros:</strong> ${percJuros}% a.m.</p>
             ${calc.aviso ? `<div class="aviso-calculo">${calc.aviso}</div>` : ''}
-            ${calc.opcoes.length > 0 ? `<p class="mb-1"><strong>Melhor parcela:</strong> ${calc.opcoes[0].qtd}x de ${formatarMoeda(calc.opcoes[0].valor)}</p>` : ''}
+            ${calc.opcoes.length > 0 ? `<p class="mb-1"><strong>Melhor opção:</strong> Até ${calc.opcoes.length}x de ${formatarMoeda(valorParcela)}</p>` : ''}
+            ${dados.data_pagamento_entrada ? `<p class="mb-1 text-sm text-gray-600">Pagamento confirmado em: ${new Date(dados.data_pagamento_entrada).toLocaleString('pt-BR')}</p>` : ''}
 
             <div class="acoes-linha">
                 <button class="btn btn-azul" onclick="copiarDados('${dados.cpf}')"><i class="fa-solid fa-copy"></i> Copiar</button>
@@ -276,7 +296,7 @@ async function carregarPropostas() {
 async function excluirProposta(cpf) {
     if(confirm('Tem certeza que deseja EXCLUIR esta proposta? Essa ação não pode ser desfeita!')) {
         await supabase.from('propostas').delete().eq('cpf', cpf);
-        alert('✅ Proposta excluída com sucesso!');
+        mostrarNotificacao('✅ Proposta excluída com sucesso!');
         carregarPropostas();
     }
 }
@@ -307,16 +327,27 @@ async function confirmarEntradaDinheiro() {
             modo: modoAtual
         }).eq('cpf', cpfDinheiro);
 
-        alert('✅ Entrada marcada como paga em dinheiro!');
+        mostrarNotificacao('✅ Entrada marcada como paga em dinheiro!');
         fecharModalDinheiro();
         carregarPropostas();
     }
 }
 
-// DEMAIS FUNÇÕES QUE JÁ FUNCIONAVAM
+// ALTERAR STATUS E SALVAR VALORES CALCULADOS
 async function alterarStatus(cpf, status) {
-    if(confirm(`Deseja realmente ${status === 'aprovada' ? 'APROVAR' : 'REPROVAR'} esta proposta?`)) {
-        await supabase.from('propostas').update({ status, modo: modoAtual }).eq('cpf', cpf);
+    if(confirm(`Deseja realmente ${status === 'aprovada' ? 'APROVAR' : 'REPROVAR'} esta proposta? Os valores calculados serão salvos para o cliente.`)) {
+        const { data: proposta } = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
+        const calc = calcularValores(proposta.valor_solicitado, proposta.percentual_entrada || 40, proposta.juros || 6, proposta.quantidade_parcelas || 48);
+        
+        await supabase.from('propostas').update({ 
+            status: status, 
+            modo: modoAtual,
+            valor_entrada: calc.entrada,
+            valor_total: calc.opcoes[0]?.totalComJuros || proposta.valor_solicitado,
+            valor_de_cada_parcela: calc.opcoes[0]?.valor || 0
+        }).eq('cpf', cpf);
+        
+        mostrarNotificacao(`✅ Proposta ${status} com sucesso! Já aparece para o cliente.`);
         carregarPropostas();
     }
 }
@@ -369,6 +400,7 @@ async function salvarEdicao() {
         juros: percJuros,
         quantidade_parcelas: qtdMax,
         valor_solicitado: valorSolicitado,
+        valor_entrada: calc.entrada,
         valor_total: calc.opcoes[0].totalComJuros,
         valor_de_cada_parcela: calc.opcoes[0].valor,
         status: 'aprovada',
@@ -376,14 +408,26 @@ async function salvarEdicao() {
     };
 
     await supabase.from('propostas').update(dadosAtualizados).eq('cpf', cpfEdicao);
-    alert('✅ Proposta atualizada e aprovada!');
+    mostrarNotificacao('✅ Proposta atualizada e aprovada! Já aparece para o cliente.');
     fecharModalEditar();
     carregarPropostas();
 }
 
 function copiarDados(cpf) {
-    const dadosCard = document.querySelector(`.card:has(.badge-pendente, .badge-aprovada, .badge-reprovada):has(p:contains('${cpf}'))`).innerText;
-    navigator.clipboard.writeText(dadosCard).then(() => alert('✅ Dados copiados!'));
+    supabase.from('propostas').select('*').eq('cpf', cpf).single().then(({data}) => {
+        if(!data) return;
+        const texto = `
+NOME: ${data.nome}
+CPF: ${formatarCpf(data.cpf)}
+NASCIMENTO: ${data.nascimento}
+WHATSAPP: ${formatarTelefone(data.whatsapp)}
+CEP: ${formatarCep(data.cep)}
+ENDEREÇO: ${data.endereco}
+VALOR SOLICITADO: ${formatarMoeda(data.valor_solicitado)}
+STATUS: ${data.status?.toUpperCase()}
+        `.trim();
+        navigator.clipboard.writeText(texto).then(() => mostrarNotificacao('✅ Dados copiados!'));
+    });
 }
 
 function imprimirProposta(cpf) {
@@ -393,22 +437,32 @@ function imprimirProposta(cpf) {
 function enviarWhatsApp(cpf) {
     supabase.from('propostas').select('nome, whatsapp').eq('cpf', cpf).single().then(({data}) => {
         if(!data) return;
-        const link = `https://wa.me/${String(data.whatsapp).replace(/\D/g, '')}?text=Olá ${data.nome}! Sua proposta já foi analisada e aprovada! Acesse aqui para ver os detalhes, valores corrigidos, assinar o contrato e fazer o pagamento: ${window.location.origin}/consultar.html?cpf=${cpf}`;
+        const link = `https://wa.me/${String(data.whatsapp).replace(/\D/g, '')}?text=Olá ${data.nome}! Sua proposta já foi analisada e aprovada! Acesse aqui para ver os detalhes, valores, assinar o contrato e efetuar o pagamento: ${window.location.origin}/consultar.html?cpf=${cpf}`;
         window.open(link, '_blank');
     });
 }
 
 function abrirAlterarSenha() {
-    alert('Função de alterar senha configurada no sistema');
+    alert('🔒 Função de alterar senha configurada no sistema');
 }
 
 function sairPainel() {
-    if(confirm('Deseja realmente sair?')) window.location.href = 'login.html';
+    if(confirm('Deseja realmente sair do painel?')) window.location.href = 'login.html';
 }
 
-// ATUALIZAÇÃO AUTOMÁTICA EM TEMPO REAL
+// 🔄 ATUALIZAÇÃO EM TEMPO REAL E NOTIFICAÇÕES
 supabase.channel('atualizacao-propostas')
-.on('postgres_changes', { event: '*', schema: 'public', table: 'propostas' }, payload => {
+.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'propostas' }, payload => {
+    mostrarNotificacao(`📩 NOVA PROPOSTA RECEBIDA: ${payload.new.nome}`);
+    carregarPropostas();
+})
+.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas' }, payload => {
+    if(payload.new.entrada_paga && payload.old.entrada_paga !== true) {
+        mostrarNotificacao(`✅ PAGAMENTO CONFIRMADO: ${payload.new.nome} - ${formatarMoeda(payload.new.valor_entrada)}`, 'sucesso');
+    }
+    if(payload.new.status === 'aprovada' && payload.old.status !== 'aprovada') {
+        mostrarNotificacao(`📌 Proposta aprovada: ${payload.new.nome}`, 'alerta');
+    }
     carregarPropostas();
 })
 .subscribe();
