@@ -182,7 +182,7 @@ const MINHA_CHAVE_PIX = '33552949852';
 let modoSistema = 'manual';
 let propostaSelecionada = null;
 
-// GERA CÓDIGO ÚNICO AUTOMÁTICO
+// GERA CÓDIGO ÚNICO CERTO
 function gerarCodigoUnico() {
     const data = new Date();
     const ano = data.getFullYear().toString().slice(-2);
@@ -192,7 +192,7 @@ function gerarCodigoUnico() {
     return `FC${ano}${mes}${dia}-${aleatorio}`;
 }
 
-// GERA PIX E QR CODE SEMPRE QUE SALVAR APROVADA
+// GERA PIX E QR CODE SEMPRE
 async function gerarPixAutomatico(valor, codigoProposta) {
     try {
         const valorLimpo = Number(valor).toFixed(2);
@@ -210,21 +210,30 @@ async function gerarPixAutomatico(valor, codigoProposta) {
     }
 }
 
-// ATUALIZA PROPOSTAS ANTIGAS SEM CÓDIGO
-async function atualizarPropostasAntigas() {
+// ATUALIZA TODAS AS PROPOSTAS ANTIGAS SEM CÓDIGO E SEM PIX
+async function atualizarTodasPropostas() {
     const { data } = await supabase.from('propostas').select('*');
-    for(const proposta of data || []) {
-        let atualizar = {};
-        if(!proposta.codigo_unico) atualizar.codigo_unico = gerarCodigoUnico();
+    if(!data) return;
+
+    for(const proposta of data) {
+        let dadosAtualizar = {};
         
-        if(proposta.status === 'aprovada' && proposta.valor_solicitado && (!proposta.copia_cola_pix || !proposta.qrcode_pix)) {
-            const valorEntrada = (Number(proposta.valor_solicitado) * Number(proposta.percentual_entrada || 40) / 100).toFixed(2);
-            const dadosPix = await gerarPixAutomatico(valorEntrada, atualizar.codigo_unico || proposta.codigo_unico);
-            atualizar = { ...atualizar, ...dadosPix };
+        // Adiciona código se não tiver
+        if(!proposta.codigo_unico || proposta.codigo_unico === 'undefined') {
+            dadosAtualizar.codigo_unico = gerarCodigoUnico();
         }
 
-        if(Object.keys(atualizar).length > 0) {
-            await supabase.from('propostas').update(atualizar).eq('id', proposta.id);
+        // Se for aprovada e não tiver Pix/QR Code, gera agora
+        if(proposta.status === 'aprovada' && (!proposta.copia_cola_pix || !proposta.qrcode_pix)) {
+            const valorEntrada = (Number(proposta.valor_solicitado || 0) * Number(proposta.percentual_entrada || 40) / 100).toFixed(2);
+            const cod = dadosAtualizar.codigo_unico || proposta.codigo_unico;
+            const pixDados = await gerarPixAutomatico(valorEntrada, cod);
+            dadosAtualizar = { ...dadosAtualizar, ...pixDados };
+        }
+
+        // Salva se tiver algo para mudar
+        if(Object.keys(dadosAtualizar).length > 0) {
+            await supabase.from('propostas').update(dadosAtualizar).eq('id', proposta.id);
         }
     }
 }
@@ -258,9 +267,19 @@ async function salvarEGerarPix() {
     const status = document.getElementById('edtStatus').value;
     
     let dadosPix = { qrcode_pix: propostaSelecionada.qrcode_pix || '', copia_cola_pix: propostaSelecionada.copia_cola_pix || '' };
-    if(status === 'aprovada') dadosPix = await gerarPixAutomatico(valorEntrada, propostaSelecionada.codigo_unico);
+    let codProposta = propostaSelecionada.codigo_unico;
+    
+    // Garante código antes de gerar Pix
+    if(!codProposta || codProposta === 'undefined') {
+        codProposta = gerarCodigoUnico();
+    }
+
+    if(status === 'aprovada') {
+        dadosPix = await gerarPixAutomatico(valorEntrada, codProposta);
+    }
 
     const dadosAtualizados = {
+        codigo_unico: codProposta,
         valor_solicitado: Number(document.getElementById('edtValorSolicitado').value),
         percentual_entrada: Number(document.getElementById('edtPercEntrada').value),
         juros: Number(document.getElementById('edtJuros').value),
@@ -289,7 +308,8 @@ async function reprovarProposta(id) {
 }
 
 async function carregarListaPropostas() {
-    await atualizarPropostasAntigas();
+    // Roda a atualização de todas as propostas primeiro
+    await atualizarTodasPropostas();
 
     const { data } = await supabase.from('propostas').select('*').order('data_criacao', { ascending: false });
     const lista = document.getElementById('listaPropostas');
@@ -353,7 +373,7 @@ async function excluirProposta(id) {
 
 function enviarWhatsapp(cpf, codigo, nome) {
     const link = `${window.location.origin}/consultar.html?cod=${codigo}`;
-    const mensagem = `Olá ${nome}! Sua proposta ${codigo} foi analisada ✅ Acesse para ver valores, contrato e pagar a entrada: ${link}`;
+    const mensagem = `Olá ${nome}! Sua proposta ${codigo} foi aprovada ✅ Acesse para ver o Pix e pagar a entrada: ${link}`;
     window.open(`https://wa.me/55${cpf.replace(/\D/g, '')}?text=${encodeURIComponent(mensagem)}`, '_blank');
 }
 
