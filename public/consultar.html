@@ -134,24 +134,26 @@ let streamCamera = null;
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 function formatarCpf(cpf) { return limparCpf(cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
 
-// ✅ FUNÇÃO DE GERA PIX 100% CORRIGIDA CONFORME BACEN
-function removerAcentos(texto) {
-    return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+// ✅ FUNÇÃO DE GERA PIX 100% CONFORME REGRAS DO BACEN
+function limparTexto(texto, maxTamanho) {
+    return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^A-Z0-9 .,-]/gi, '')
+        .trim()
+        .toUpperCase()
+        .substring(0, maxTamanho);
 }
 
-function gerarCodigoPixValido(valor, descricao = 'Pagamento FlashCred') {
+function gerarCodigoPixValido(valor, descricao = 'PAGAMENTO') {
     if (!MINHA_CHAVE_PIX) return '';
     
     const valorStr = parseFloat(valor || 0).toFixed(2).replace('.', '');
-    descricao = removerAcentos(descricao).replace(/[^a-zA-Z0-9 .,-]/g, '').trim().substring(0, 25);
-    const nome = removerAcentos(NOME_RECEBEDOR).toUpperCase().trim().substring(0, 25);
-    const cidade = removerAcentos(CIDADE_RECEBEDOR).toUpperCase().trim().substring(0, 15);
+    descricao = limparTexto(descricao, 25) || 'PAGAMENTO';
+    const nome = limparTexto(NOME_RECEBEDOR, 25);
+    const cidade = limparTexto(CIDADE_RECEBEDOR, 15);
 
     let pix = '000201';
-    pix += `26${String(22 + MINHA_CHAVE_PIX.length).padStart(2, '0')}0014br.gov.bcb.pix01${String(MINHA_CHAVE_PIX.length).padStart(2, '0')}${MINHA_CHAVE_PIX}`;
-    if (descricao.length > 0) {
-        pix += `02${String(descricao.length).padStart(2, '0')}${descricao}`;
-    }
+    pix += `26${String(22 + MINHA_CHAVE_PIX.length).padStart(2, '0')}0014BR.GOV.BCB.PIX01${String(MINHA_CHAVE_PIX.length).padStart(2, '0')}${MINHA_CHAVE_PIX}`;
+    pix += `02${String(descricao.length).padStart(2, '0')}${descricao}`;
     pix += '520400005303986';
     pix += `54${String(valorStr.length).padStart(2, '0')}${valorStr}`;
     pix += '5802BR';
@@ -160,10 +162,11 @@ function gerarCodigoPixValido(valor, descricao = 'Pagamento FlashCred') {
     pix += '6304';
 
     let crc = 0xFFFF;
+    const polinomio = 0x1021;
     for (let i = 0; i < pix.length; i++) {
         crc ^= pix.charCodeAt(i) << 8;
         for (let j = 0; j < 8; j++) {
-            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+            crc = (crc & 0x8000) ? (crc << 1) ^ polinomio : crc << 1;
         }
     }
     crc &= 0xFFFF;
@@ -273,7 +276,7 @@ async function gerarPagamentoPix() {
     document.getElementById('textoValorEntrada').textContent = `Valor da entrada: R$ ${dadosProposta.valor_entrada.toFixed(2).replace('.', ',')}`;
     document.getElementById('areaPagamento').classList.remove('hidden');
 
-    const codigoPix = gerarCodigoPixValido(dadosProposta.valor_entrada, `Entrada - ${dadosProposta.nome}`);
+    const codigoPix = gerarCodigoPixValido(dadosProposta.valor_entrada, `ENTRADA - ${dadosProposta.nome}`);
     const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(codigoPix)}`;
     
     document.getElementById('imgQrCode').src = urlQrCode;
