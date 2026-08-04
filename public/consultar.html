@@ -253,14 +253,12 @@ function atualizarDadosTela() {
     `;
 
     if(dadosProposta.status === 'Aprovada') {
-        // 🚀 FORÇA USAR OS VALORES EXATOS DO SEU PAINEL, NÃO DEIXA ZERAR
         let valorTotal = parseFloat(dadosProposta.valor_total || dadosProposta.valor_desejado || 1.90);
         let percentualEntrada = parseFloat(dadosProposta.percentual_entrada || 45);
         let valorEntrada = parseFloat(dadosProposta.valor_entrada) || ((valorTotal * percentualEntrada) / 100) || 0.85;
         let maxParcelas = parseInt(dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas || 2);
         let valorParcela = parseFloat(dadosProposta.valor_de_cada_parcela || dadosProposta.valor_parcela) || ((valorTotal - valorEntrada) / maxParcelas) || 0.53;
 
-        // GARANTE VALORES NÃO NULOS
         valorTotal = Math.max(valorTotal, 1.90);
         valorEntrada = Math.max(valorEntrada, 0.85);
         maxParcelas = Math.min(Math.max(maxParcelas, 1), 48);
@@ -310,46 +308,52 @@ function atualizarDadosTela() {
 async function consultarProposta() {
     const cpfInput = limparCpf(document.getElementById('cpfConsulta').value);
     if(!cpfInput || cpfInput.length !== 11) { alert('Digite um CPF válido!'); return; }
+
     const { data, error } = await supabase.from('propostas').select('*').eq('cpf', cpfInput).maybeSingle();
-    if(error || !data) { alert('Proposta não encontrada. Verifique o CPF.'); return; }
+    if(error || !data) { alert('Proposta não encontrada.'); return; }
     
     dadosProposta = data;
     document.getElementById('secaoBusca').classList.add('hidden');
     document.getElementById('secaoDetalhes').classList.remove('hidden');
+    
     iniciarAtualizacaoTempoReal(cpfInput);
     atualizarDadosTela();
 }
 
-function preencherOpcoesParcelas(maxParcelas, valorTotal, valorParcelaPadrao, valorEntradaPadrao) {
+function preencherOpcoesParcelas(maxParcelas, valorTotal, valorParcelaBase, valorEntrada) {
     const container = document.getElementById('listaParcelasEscolha');
     container.innerHTML = '';
-    for(let i = 1; i <= maxParcelas; i++) {
-        const valorParc = ((valorTotal - valorEntradaPadrao) / i);
+    
+    let qtdSelecionadaAtual = dadosProposta.qtd_parcelas || maxParcelas;
+
+    for(let i = 1; i <= Math.min(maxParcelas, 48); i++) {
+        let valParc = (valorTotal - valorEntrada) / i;
+        if(valParc < 0.01) valParc = 0.01;
+        
         const item = document.createElement('div');
-        item.className = 'item-parcela-escolha';
-        item.onclick = () => selecionarParcela(i, valorParc, valorTotal, valorEntradaPadrao);
-        item.innerHTML = `<span>${i}x</span><span>R$ ${valorParc.toFixed(2).replace('.', ',')}</span>`;
+        item.className = `item-parcela-escolha ${i === parseInt(qtdSelecionadaAtual) ? 'selecionada' : ''}`;
+        item.onclick = () => selecionarQtdParcelas(i, valParc);
+        item.innerHTML = `<span>${i}x parcelas</span><span>R$ ${valParc.toFixed(2).replace('.', ',')} /mês</span>`;
         container.appendChild(item);
     }
 }
 
-function selecionarParcela(qtd, valor, valorTotal, valorEntradaPadrao) {
+async function selecionarQtdParcelas(qtd, valorParc) {
     document.querySelectorAll('.item-parcela-escolha').forEach(el => el.classList.remove('selecionada'));
     event.currentTarget.classList.add('selecionada');
+
     dadosProposta.qtd_parcelas = qtd;
-    dadosProposta.valor_parcela = valor;
-    dadosProposta.valor_entrada = valorEntradaPadrao;
-    
-    document.getElementById('valorParcelaContrato').textContent = valor.toFixed(2).replace('.', ',');
-    document.getElementById('valorEntradaContrato').textContent = valorEntradaPadrao.toFixed(2).replace('.', ',');
-    document.getElementById('valorTotalContrato').textContent = valorTotal.toFixed(2).replace('.', ',');
-    document.getElementById('nomeClienteContrato').textContent = dadosProposta.nome;
-    document.getElementById('cpfClienteContrato').textContent = formatarCpf(dadosProposta.cpf);
+    dadosProposta.valor_parcela = valorParc;
+
+    document.getElementById('valorParcelaContrato').textContent = valorParc.toFixed(2).replace('.', ',');
+    document.getElementById('maxParcelaContrato').textContent = qtd;
     document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
-    
-    document.getElementById('contratoArea').classList.remove('hidden');
-    document.getElementById('areaPagamentoEntrada').classList.add('hidden');
-    window.scrollTo({ top: document.getElementById('contratoArea').offsetTop - 20, behavior: 'smooth' });
+
+    await supabase.from('propostas').update({ 
+        qtd_parcelas: qtd, 
+        valor_parcela: valorParc,
+        atualizado_em: new Date() 
+    }).eq('cpf', dadosProposta.cpf);
 }
 
 async function abrirCamera() {
@@ -364,18 +368,22 @@ async function abrirCamera() {
 }
 
 async function capturarSelfie() {
-    if(!document.getElementById('liContrato').checked) { alert('Primeiro marque "Li e concordo com os termos"!'); return; }
-    if(!dadosProposta.quantidade_parcelas && !dadosProposta.qtd_parcelas) { alert('Primeiro escolha a quantidade de parcelas!'); return; }
+    if(!document.getElementById('liContrato').checked) {
+        alert('Marque a caixa confirmando que leu e concorda com os termos!');
+        return;
+    }
 
     const video = document.getElementById('videoCamera');
     const canvas = document.getElementById('canvasSelfie');
-    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.width = video.videoWidth || 640; 
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
     const fotoBase64 = canvas.toDataURL('image/png');
     
     document.getElementById('previewAssinatura').src = fotoBase64;
     document.getElementById('previewAssinatura').classList.remove('hidden');
     document.getElementById('avisoAssinatura').classList.remove('hidden');
+    
     if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
     document.getElementById('videoCamera').classList.add('hidden');
     document.getElementById('btnCapturar').classList.add('hidden');
@@ -383,102 +391,96 @@ async function capturarSelfie() {
     await supabase.from('propostas').update({ 
         contrato_assinado: true, 
         selfie_assinatura: fotoBase64, 
-        quantidade_parcelas: dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas, 
-        valor_de_cada_parcela: dadosProposta.valor_de_cada_parcela || dadosProposta.valor_parcela,
-        valor_entrada: dadosProposta.valor_entrada,
         atualizado_em: new Date() 
     }).eq('cpf', dadosProposta.cpf);
+
+    dadosProposta.contrato_assinado = true;
+    atualizarDadosTela();
+}
+
+function gerarPagamentoEntrada(valorEntrada, nomeCliente) {
+    const codigoPix = gerarCodigoPixValido(valorEntrada, `ENTRADA - ${nomeCliente}`);
+    const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(codigoPix)}`;
     
-    document.getElementById('areaPagamentoEntrada').classList.remove('hidden');
-    window.scrollTo({ top: document.getElementById('areaPagamentoEntrada').offsetTop - 20, behavior: 'smooth' });
+    document.getElementById('imgQrCodeEntrada').src = urlQrCode;
+    document.getElementById('copiaEColaPixEntrada').value = codigoPix;
+    document.getElementById('loadingPixEntrada').classList.add('hidden');
+    document.getElementById('conteudoPixEntrada').classList.remove('hidden');
 }
 
-async function gerarPagamentoEntrada(valor, nome) {
-    // 🚀 NUNCA DEIXA ZERAR, USA O VALOR GARANTIDO
-    valor = Math.max(parseFloat(valor || 0), 0.85);
-    document.getElementById('textoValorEntrada').textContent = `Valor da entrada: R$ ${valor.toFixed(2).replace('.', ',')}`;
-
-    try {
-        const codigoPix = gerarCodigoPixValido(valor, `ENTRADA - ${nome}`);
-        if (!codigoPix) throw new Error("Não foi possível gerar o código Pix");
-
-        const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(codigoPix)}`;
-        
-        document.getElementById('imgQrCodeEntrada').src = urlQrCode;
-        document.getElementById('copiaEColaPixEntrada').value = codigoPix;
-        document.getElementById('loadingPixEntrada').classList.add('hidden');
-        document.getElementById('conteudoPixEntrada').classList.remove('hidden');
-    } catch (erro) {
-        document.getElementById('loadingPixEntrada').innerHTML = `
-            <div class="aviso-erro">❌ Erro ao gerar Pix: ${erro.message}</div>
-            <p class="text-sm mt-2">Atualize a página ou contate o atendente.</p>
-        `;
-    }
-}
-
-function gerarListaParcelasPagamento(qtd, valorParcela, dataBase, parcelasPagas = []) {
+function gerarListaParcelasPagamento(maxParcelas, valorParcela, dataBase, parcelasPagasArray) {
     const container = document.getElementById('listaParcelasPagamento');
     container.innerHTML = '';
-    const hoje = new Date();
+    parcelasPagasArray = parcelasPagasArray || [];
 
-    for(let i = 1; i <= qtd; i++) {
-        const dataVencimento = new Date(dataBase);
-        dataVencimento.setMonth(dataBase.getMonth() + (i-1));
-        const dataVencimentoStr = dataVencimento.toLocaleDateString('pt-BR');
-        const estaPago = parcelasPagas.includes(i);
-        const diasAtraso = Math.floor((hoje - dataVencimento) / (1000 * 60 * 60 * 24));
-        
-        let status, classeBadge;
-        if(estaPago) { status = 'Paga'; classeBadge = 'badge-pago'; }
-        else if(diasAtraso > 0) { status = `${diasAtraso} dias atrasado`; classeBadge = 'badge-atrasado'; }
-        else if(diasAtraso >= -3) { status = 'Próximo do vencimento'; classeBadge = 'badge-vencer'; }
-        else { status = 'Aguardando'; classeBadge = 'badge-analise'; }
+    for(let i = 1; i <= maxParcelas; i++) {
+        let dataVenc = new Date(dataBase);
+        dataVenc.setMonth(dataVenc.getMonth() + (i - 1));
+        const dataVencStr = dataVenc.toLocaleDateString('pt-BR');
+
+        const jaPaga = parcelasPagasArray.includes(i);
+        let badgeClass = jaPaga ? 'badge-pago' : 'badge-vencer';
+        let badgeText = jaPaga ? 'Pago' : 'A Vencer';
 
         const item = document.createElement('div');
         item.className = 'item-parcela-pagamento';
         item.innerHTML = `
             <div class="info-parcela">
-                <p class="font-medium">${i}ª Parcela • R$ ${valorParcela.toFixed(2).replace('.', ',')}</p>
-                <p class="text-sm">Vencimento: ${dataVencimentoStr}</p>
-                <span class="badge ${classeBadge}">${status}</span>
+                <p><strong>Parcela ${i} de ${maxParcelas}</strong> • R$ ${valorParcela.toFixed(2).replace('.', ',')}</p>
+                <p class="text-gray-500">Vencimento: ${dataVencStr}</p>
+                <span class="badge ${badgeClass} mt-1">${badgeText}</span>
             </div>
-            ${!estaPago ? `<button class="btn btn-sucesso btn-pagar-parcela" onclick="abrirModalPixParcela(${i}, ${valorParcela.toFixed(2).replace('.', ',')})">Pagar</button>` : ''}
+            ${!jaPaga ? `<button class="btn btn-sucesso btn-pagar-parcela" onclick="abrirPixParcela(${i}, ${valorParcela})"><i class="fa-solid fa-qrcode"></i> Pagar Pix</button>` : `<span class="text-sm font-medium text-green-600"><i class="fa-solid fa-check-circle"></i> Quitada</span>`}
         `;
         container.appendChild(item);
     }
 }
 
-function abrirModalPixParcela(numeroParcela, valor) {
-    const codigoPix = gerarCodigoPixValido(valor, `PARC ${numeroParcela} - ${dadosProposta.nome}`);
-    const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(codigoPix)}`;
+function abrirPixParcela(numParcela, valorParcela) {
+    const codigoPix = gerarCodigoPixValido(valorParcela, `PARC ${numParcela} - ${dadosProposta.nome}`);
+    const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codigoPix)}`;
     
     document.getElementById('conteudoModalPix').innerHTML = `
-        <p class="text-center font-medium mb-2">${numeroParcela}ª Parcela • R$ ${valor.toFixed(2).replace('.', ',')}</p>
-        <img src="${urlQrCode}" alt="QR Code" class="mx-auto mb-3 w-40 h-40 border rounded-lg p-2">
-        <textarea class="input font-mono" rows="2" readonly>${codigoPix}</textarea>
-        <button class="btn btn-sucesso" onclick="copiarTexto('${codigoPix}')"><i class="fa-solid fa-copy"></i> Copiar Código</button>
+        <p class="text-center text-sm font-medium mb-3">Parcela ${numParcela} - R$ ${valorParcela.toFixed(2).replace('.', ',')}</p>
+        <img src="${urlQrCode}" alt="QR Code Parcela" class="mx-auto mb-3 w-48 h-48 border rounded-xl p-2 bg-white">
+        <textarea id="copiaEColaPixParcela" class="input font-mono" rows="3" readonly>${codigoPix}</textarea>
+        <button class="btn btn-sucesso mt-2" onclick="copiarPix('Parcela')"><i class="fa-solid fa-copy"></i> Copiar Código Pix</button>
     `;
     document.getElementById('modalPixParcela').classList.remove('hidden');
 }
 
-function fecharModalPix() { document.getElementById('modalPixParcela').classList.add('hidden'); }
+function fecharModalPix() {
+    document.getElementById('modalPixParcela').classList.add('hidden');
+}
+
 function copiarPix(tipo) {
-    const campo = tipo === 'Entrada' ? document.getElementById('copiaEColaPixEntrada') : null;
-    copiarTexto(campo ? campo.value.trim() : '');
+    const campoId = tipo === 'Entrada' ? 'copiaEColaPixEntrada' : 'copiaEColaPixParcela';
+    const campo = document.getElementById(campoId);
+    if(!campo) return;
+    
+    const textoPuro = campo.value.trim();
+    navigator.clipboard.writeText(textoPuro).then(() => {
+        alert('✅ Código Pix copiado! Cole no aplicativo do seu banco.');
+    }).catch(() => {
+        campo.select();
+        document.execCommand('copy');
+        alert('✅ Código copiado!');
+    });
 }
-function copiarTexto(texto) {
-    navigator.clipboard.writeText(texto).then(() => alert('✅ Código copiado!')).catch(() => alert('Selecione e copie manualmente.'));
-}
-function voltarBusca() { 
-    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop()); 
+
+function voltarBusca() {
+    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
     if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
-    location.reload(); 
+    location.reload();
 }
 
 window.addEventListener('load', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const cpfUrl = urlParams.get('cpf');
-    if(cpfUrl) { document.getElementById('cpfConsulta').value = cpfUrl; consultarProposta(); }
+    if(cpfUrl) {
+        document.getElementById('cpfConsulta').value = cpfUrl;
+        consultarProposta();
+    }
 });
 </script>
 </body>
