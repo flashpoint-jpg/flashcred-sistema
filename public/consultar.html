@@ -65,7 +65,7 @@
         <div id="dadosCliente" class="bg-gray-50"></div>
 
         <div id="escolhaParcelas" class="hidden mb-4">
-            <h3 class="font-bold text-md text-primary mb-2">📅 Escolha a quantidade de parcelas</h3>
+            <h3 class="font-bold text-md text-primary mb-2">📅 Escolha a quantidade de parcelas (até <span id="maxParcelasPermitidas">48</span>x)</h3>
             <p class="text-sm text-gray-600 mb-2">Clique na opção desejada:</p>
             <div id="listaParcelas" class="lista-parcelas"></div>
         </div>
@@ -134,7 +134,6 @@ let streamCamera = null;
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 function formatarCpf(cpf) { return limparCpf(cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
 
-// ✅ FUNÇÃO OFICIAL CONFORME MANUAL BACEN — TESTADA E APROVADA
 function removerAcentos(texto) {
     return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -142,34 +141,24 @@ function removerAcentos(texto) {
 function gerarCodigoPixValido(valor, descricao = 'PAGAMENTO') {
     if (!MINHA_CHAVE_PIX) return '';
     
-    // Trata valor: exatamente 2 casas decimais, sem ponto
     const valorStr = parseFloat(valor || 0).toFixed(2).replace('.', '');
-    
-    // Limpa e limita todos os campos
     descricao = removerAcentos(descricao).toUpperCase().replace(/[^A-Z0-9 .,-]/g, '').trim().substring(0, 25);
     const nome = removerAcentos(NOME_RECEBEDOR).toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim().substring(0, 25);
     const cidade = removerAcentos(CIDADE_RECEBEDOR).toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim().substring(0, 15);
 
-    // MONTA A ESTRUTURA NA ORDEM EXATA E COM TAMANHOS CORRETOS
     let pix = '000201';
-    // Dados da chave Pix
     const campoChave = `0014BR.GOV.BCB.PIX01${String(MINHA_CHAVE_PIX.length).padStart(2,'0')}${MINHA_CHAVE_PIX}`;
     pix += `26${String(campoChave.length).padStart(2,'0')}${campoChave}`;
-    // Descrição (opcional)
     if (descricao.length > 0) {
         pix += `02${String(descricao.length).padStart(2,'0')}${descricao}`;
     }
-    // Categoria e valor
     pix += '520400005303986';
     pix += `54${String(valorStr.length).padStart(2,'0')}${valorStr}`;
-    // País, nome e cidade
     pix += '5802BR';
     pix += `59${String(nome.length).padStart(2,'0')}${nome}`;
     pix += `60${String(cidade.length).padStart(2,'0')}${cidade}`;
-    // Reserva para CRC
     pix += '6304';
 
-    // CÁLCULO CRC16 EXATO CONFORME BACEN
     let crc = 0xFFFF;
     const polinomio = 0x1021;
     for (let i = 0; i < pix.length; i++) {
@@ -204,41 +193,48 @@ async function consultarProposta() {
     `;
 
     if(data.status === 'Aprovada' && !data.pago) {
-        preencherOpcoesParcelas(parseInt(data.qtd_parcelas_max || 48), parseFloat(data.valor_desejado), parseFloat(data.perc_juros || 6));
+        // ✅ AGORA USA EXATAMENTE O VALOR QUE VOCÊ DEFINIU NO PAINEL
+        const maxParcelas = parseInt(data.qtd_parcelas_max) || 48;
+        document.getElementById('maxParcelasPermitidas').textContent = maxParcelas;
+        preencherOpcoesParcelas(maxParcelas, parseFloat(data.valor_desejado), parseFloat(data.perc_juros || 6), parseFloat(data.perc_entrada || 39));
         document.getElementById('escolhaParcelas').classList.remove('hidden');
     }
 }
 
-function preencherOpcoesParcelas(maxParcelas, valorTotal, juros) {
+// ✅ AGORA CALCULA VALORES CORRETOS E ATUALIZA TUDO NA HORA
+function preencherOpcoesParcelas(maxParcelas, valorTotal, juros, percEntrada) {
     const container = document.getElementById('listaParcelas');
     container.innerHTML = '';
     for(let i = 1; i <= Math.min(maxParcelas, 48); i++) {
         const valorParc = (valorTotal * (1 + (juros/100))) / i;
         const item = document.createElement('div');
         item.className = 'item-parcela';
-        item.onclick = () => selecionarParcela(i, valorParc);
+        item.onclick = () => selecionarParcela(i, valorParc, valorTotal, percEntrada);
         item.innerHTML = `<span>${i}x</span><span>R$ ${valorParc.toFixed(2).replace('.', ',')}</span>`;
         container.appendChild(item);
     }
 }
 
-function selecionarParcela(qtd, valor) {
+function selecionarParcela(qtd, valor, valorTotal, percEntrada) {
     document.querySelectorAll('.item-parcela').forEach(el => el.classList.remove('selecionada'));
     event.currentTarget.classList.add('selecionada');
     
+    // ✅ ATUALIZA TODOS OS VALORES E DADOS NA HORA
     dadosProposta.qtd_parcelas = qtd;
     dadosProposta.valor_parcela = valor;
-    dadosProposta.valor_entrada = dadosProposta.valor_desejado * ((dadosProposta.perc_entrada || 39) / 100);
+    dadosProposta.valor_entrada = valorTotal * (percEntrada / 100);
     
     document.getElementById('qtdParcelaContrato').textContent = qtd + 'x';
     document.getElementById('valorParcelaContrato').textContent = valor.toFixed(2).replace('.', ',');
     document.getElementById('valorEntradaContrato').textContent = dadosProposta.valor_entrada.toFixed(2).replace('.', ',');
-    document.getElementById('valorTotalContrato').textContent = dadosProposta.valor_desejado.toFixed(2).replace('.', ',');
+    document.getElementById('valorTotalContrato').textContent = valorTotal.toFixed(2).replace('.', ',');
     document.getElementById('nomeClienteContrato').textContent = dadosProposta.nome;
     document.getElementById('cpfClienteContrato').textContent = formatarCpf(dadosProposta.cpf);
     document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
     
     document.getElementById('contratoArea').classList.remove('hidden');
+    // ✅ OCULTA O PIX ATÉ QUE A ESCOLHA SEJA FEITA CORRETAMENTE
+    document.getElementById('areaPagamento').classList.add('hidden');
 }
 
 async function abrirCamera() {
@@ -255,6 +251,10 @@ async function abrirCamera() {
 async function capturarSelfie() {
     if(!document.getElementById('liContrato').checked) {
         alert('Primeiro marque que leu e concorda com o contrato!');
+        return;
+    }
+    if(!dadosProposta.qtd_parcelas) {
+        alert('Primeiro escolha a quantidade de parcelas!');
         return;
     }
 
@@ -275,6 +275,8 @@ async function capturarSelfie() {
         contrato_assinado: true, 
         selfie_assinatura: fotoBase64, 
         qtd_parcelas: dadosProposta.qtd_parcelas, 
+        valor_parcela: dadosProposta.valor_parcela,
+        valor_entrada: dadosProposta.valor_entrada,
         atualizado_em: new Date() 
     }).eq('cpf', dadosProposta.cpf);
     
