@@ -22,7 +22,7 @@
                 }
             }
         }
-    </script>
+    </style>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
         body { background: #F8FAFC; color: #1E293B; min-height: 100vh; padding: 20px 12px; }
@@ -204,10 +204,59 @@ let propostaAtual = null;
 let streamCamera = null;
 let valorParcelaCalculada = 0;
 
-// Gerar código único seguro (Evita erros caso o banco recuse a coluna)
 function gerarCodigoUnico() {
     const num = Math.floor(10000 + Math.random() * 90000);
     return `FLC-${num}`;
+}
+
+// Função auxiliar para gerar CRC16 do Pix (necessário para o Pix ser válido no banco)
+function calcularCRC16(payload) {
+    let polinomio = 0x1021;
+    let resultado = 0xFFFF;
+    
+    for (let i = 0; i < payload.length; i++) {
+        resultado ^= (payload.charCodeAt(i) << 8);
+        for (let j = 0; j < 8; j++) {
+            if ((resultado & 0x8000) !== 0) {
+                resultado = ((resultado << 1) ^ polinomio) & 0xFFFF;
+            } else {
+                resultado = (resultado << 1) & 0xFFFF;
+            }
+        }
+    }
+    return resultado.toString(16).toUpperCase().padStart(4, '0');
+}
+
+function gerarPayloadPix(chave, nomeRecebedor, cidade, valorStr, identificador) {
+    const normalizar = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 25);
+    
+    nomeRecebedor = normalizar(nomeRecebedor);
+    cidade = normalizar(cidade);
+    
+    let payload = "000201";
+    
+    // Conta / Chave Pix
+    let merchantAccount = `0014br.gov.bcb.pix01${String(chave.length).padStart(2, '0')}${chave}`;
+    payload += `26${String(merchantAccount.length).padStart(2, '0')}${merchantAccount}`;
+    
+    payload += "52040000"; // MCC
+    payload += "5303986";  // Moeda (BRL)
+    
+    if (valorStr && Number(valorStr) > 0) {
+        let valFormatted = Number(valorStr).toFixed(2);
+        payload += `54${String(valFormatted.length).padStart(2, '0')}${valFormatted}`;
+    }
+    
+    payload += "5802BR";
+    payload += `59${String(nomeRecebedor.length).padStart(2, '0')}${nomeRecebedor}`;
+    payload += `60${String(cidade.length).padStart(2, '0')}${cidade}`;
+    
+    let additionalData = `05${String(identificador.length).padStart(2, '0')}${identificador}`;
+    payload += `62${String(additionalData.length).padStart(2, '0')}${additionalData}`;
+    
+    payload += "6304";
+    let crc = calcularCRC16(payload);
+    return payload + crc;
 }
 
 async function consultarProposta() {
@@ -241,7 +290,6 @@ async function consultarProposta() {
 
         propostaAtual = resultado;
         
-        // Atribui código único localmente se não existir, sem forçar update que cause erro no banco
         if (!propostaAtual.codigo_unico) {
             propostaAtual.codigo_unico = gerarCodigoUnico();
         }
@@ -268,7 +316,6 @@ function carregarDadosProposta() {
         <p><strong>Endereço:</strong> ${propostaAtual.endereco || ''}, ${propostaAtual.numero || ''} - ${propostaAtual.bairro || ''}, ${propostaAtual.cidade || ''}/${propostaAtual.uf || ''} - CEP: ${String(propostaAtual.cep || '').replace(/(\d{5})(\d{3})/, '$1-$2')}</p>
     `;
 
-    // Define status
     const status = (propostaAtual.status || 'pendente').toLowerCase();
     document.getElementById('areaPendente').classList.add('hidden');
     document.getElementById('areaReprovada').classList.add('hidden');
@@ -285,16 +332,25 @@ function carregarDadosProposta() {
         document.getElementById('areaPropostaAprovada').classList.remove('hidden');
         preencherValoresAprovados();
         
-        // Verifica de forma segura em qualquer possível nome de coluna do banco
         let codigoCopiaECola = propostaAtual.copia_cola_pix || 
                                propostaAtual.codigo_pix_entrada || 
                                propostaAtual.codigo_pix || 
                                propostaAtual.pix || 
                                propostaAtual.qrcode_pix;
         
-        // Fallback robusto para o QR Code nunca falhar
         if (!codigoCopiaECola) {
-            codigoCopiaECola = `00020126580014br.gov.bcb.pix0136suporte@flashcred.com.br0204000053039865802BR5925FLASHCRED INSTITUICAO DE P6009SAO PAULO62070503***63041D3D`;
+            const valorSolicitado = Number(propostaAtual.valor_solicitado || propostaAtual.valor_desejado || 400);
+            const percEntrada = Number(propostaAtual.percentual_entrada || 40);
+            const valorEntrada = (valorSolicitado * percEntrada / 100).toFixed(2);
+            
+            // Gera um Pix válido com a chave padrão e o valor correto da entrada
+            codigoCopiaECola = gerarPayloadPix(
+                "suporte@flashcred.com.br", 
+                "FLASHCRED", 
+                "SAO PAULO", 
+                valorEntrada, 
+                propostaAtual.codigo_unico || "FLC01"
+            );
         }
 
         document.getElementById('copiaEColaEntrada').textContent = codigoCopiaECola;
@@ -309,7 +365,6 @@ function preencherValoresAprovados() {
     const percJuros = Number(propostaAtual.juros || 6);
     const maxParcelas = Number(propostaAtual.quantidade_parcelas || 48);
 
-    // Cálculo Juros Simples
     const valorEntrada = Number((valorSolicitado * percEntrada / 100).toFixed(2));
     const valorFinanciado = Number((valorSolicitado - valorEntrada).toFixed(2));
     const valorJuros = Number((valorFinanciado * (percJuros / 100) * maxParcelas).toFixed(2));
