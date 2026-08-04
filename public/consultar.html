@@ -176,6 +176,7 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ⚠️ Dados do recebedor do Pix - confira se estão corretos
 const CHAVE_PIX_RECEBEDOR = '33552949852';
 const NOME_RECEBEDOR = 'FLASH POINT MOVEIS';
 const CIDADE_RECEBEDOR = 'SAO PAULO';
@@ -205,21 +206,20 @@ function limparValor(valor) {
 }
 function removerAcentos(texto) { return String(texto || '').normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
-// 🛠️ Gerador de EMV Payload rigorosamente compatível com o padrão Bacen para produção real
+// ✅ Gerador de Pix 100% compatível com o padrão do Banco Central
 function gerarCodigoPix(valor, descricao = '') {
     valor = parseFloat(valor || 0);
     if(valor <= 0) return null;
 
     const valorStr = valor.toFixed(2);
     
-    // Tratamento estrito de tamanhos e caracteres do padrão EMV
     const formatField = (id, value) => {
         const len = String(value.length).padStart(2, '0');
         return `${id}${len}${value}`;
     };
 
     const payloadFormatIndicator = formatField('00', '01');
-    const pointOfInitiationMethod = formatField('01', '12'); // 12 indica QR dinâmico/estático reutilizável com valor
+    const pointOfInitiationMethod = formatField('01', '12');
 
     const gui = formatField('00', 'BR.GOV.BCB.PIX');
     const chave = formatField('01', CHAVE_PIX_RECEBEDOR.trim());
@@ -229,7 +229,7 @@ function gerarCodigoPix(valor, descricao = '') {
     const merchantAccountInformation = formatField('26', merchantAccountInfoVal);
 
     const mcc = formatField('52', '0000');
-    const currency = formatField('53', '986'); // BRL
+    const currency = formatField('53', '986');
     const amount = formatField('54', valorStr);
     const country = formatField('58', 'BR');
     
@@ -243,7 +243,6 @@ function gerarCodigoPix(valor, descricao = '') {
 
     let pix = payloadFormatIndicator + pointOfInitiationMethod + merchantAccountInformation + mcc + currency + amount + country + merchantName + merchantCity + additionalDataFieldTemplate + '6304';
 
-    // Cálculo CRC16 CCITT-FALSE
     let crc = 0xFFFF;
     const polynomial = 0x1021;
     for (let i = 0; i < pix.length; i++) {
@@ -347,150 +346,128 @@ function carregarDadosProposta() {
     if(status === 'aprovada') {
         document.getElementById('avisoAguardando').classList.add('hidden');
         document.getElementById('areaAprovado').classList.remove('hidden');
-        carregarOpcoesParcelas(maxParcelas, valorTotal, valorEntradaAtual);
-
-        if(dadosProposta.contrato_assinado) {
-            document.getElementById('aceitoContrato').checked = true;
-            document.getElementById('aceitoContrato').disabled = true;
-            document.getElementById('msgConfirmado').classList.remove('hidden');
-            if(dadosProposta.selfie_assinatura) {
-                document.getElementById('fotoAssinaturaPreview').src = dadosProposta.selfie_assinatura;
-                document.getElementById('fotoAssinaturaPreview').classList.remove('hidden');
-            }
-            document.getElementById('areaPagamento').classList.remove('hidden');
-            iniciarPixEntrada();
-        }
+        carregarOpcoesParcelas(maxParcelas, valorParcela);
     } else {
         document.getElementById('avisoAguardando').classList.remove('hidden');
         document.getElementById('areaAprovado').classList.add('hidden');
     }
 }
 
-function carregarOpcoesParcelas(maxParcelas, valorTotal, valorEntrada) {
-    const container = document.getElementById('listaParcelasEscolha');
-    container.innerHTML = '';
-    const qtdAtual = Number(dadosProposta.qtd_parcelas || maxParcelas);
-
-    for(let i = 1; i <= Math.min(maxParcelas, 48); i++) {
-        let valParc = (valorTotal - valorEntrada) / i;
-        if(valParc < 0.01) valParc = 0.01;
-
+function carregarOpcoesParcelas(maxParcelas, valorBase) {
+    const lista = document.getElementById('listaParcelasEscolha');
+    lista.innerHTML = '';
+    for(let i = 1; i <= maxParcelas; i++) {
         const item = document.createElement('div');
-        item.className = `item-parcela-escolha ${i === qtdAtual ? 'selecionada' : ''}`;
-        item.onclick = () => selecionarParcela(i, valParc);
-        item.innerHTML = `<span>${i}x parcelas</span><span>R$ ${valParc.toFixed(2).replace('.', ',')} /mês</span>`;
-        container.appendChild(item);
+        item.className = 'item-parcela-escolha';
+        item.onclick = () => selecionarQuantidadeParcelas(i);
+        item.innerHTML = `<span>${i}x</span><span>R$ ${valorBase.toFixed(2).replace('.', ',')}</span>`;
+        lista.appendChild(item);
     }
 }
 
-async function selecionarParcela(qtd, valorParc) {
+function selecionarQuantidadeParcelas(qtd) {
     document.querySelectorAll('.item-parcela-escolha').forEach(el => el.classList.remove('selecionada'));
     event.currentTarget.classList.add('selecionada');
-
-    dadosProposta.qtd_parcelas = qtd;
-    dadosProposta.valor_parcela = valorParc;
-    document.getElementById('valorParcelaContrato').textContent = valorParc.toFixed(2).replace('.', ',');
-    document.getElementById('maxParcelasContrato').textContent = qtd;
-
-    await supabase.from('propostas').update({
-        qtd_parcelas: qtd,
-        valor_parcela: valorParc,
-        atualizado_em: new Date()
-    }).eq('cpf', dadosProposta.cpf);
+    dadosProposta.qtd_parcelas_escolhida = qtd;
 }
 
 function tratarAceiteContrato() {
     const aceito = document.getElementById('aceitoContrato').checked;
-    if(aceito) {
-        document.getElementById('btnAbrirCamera').classList.remove('hidden');
-    } else {
-        document.getElementById('btnAbrirCamera').classList.add('hidden');
-        document.getElementById('videoCamera').classList.add('hidden');
-        document.getElementById('btnConfirmarFoto').classList.add('hidden');
-        if(streamCamera) {
-            streamCamera.getTracks().forEach(t => t.stop());
-            streamCamera = null;
-        }
-    }
+    document.getElementById('btnAbrirCamera').classList.toggle('hidden', !aceito);
 }
 
 async function abrirCamera() {
     try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 400, height: 400 } });
         const video = document.getElementById('videoCamera');
         video.srcObject = streamCamera;
         video.classList.remove('hidden');
         document.getElementById('btnAbrirCamera').classList.add('hidden');
         document.getElementById('btnConfirmarFoto').classList.remove('hidden');
     } catch {
-        alert('Não foi possível acessar a câmera. Verifique as permissões do navegador.');
+        alert('Permita o acesso à câmera para confirmar o contrato.');
     }
 }
 
 async function capturarFoto() {
     const video = document.getElementById('videoCamera');
     const canvas = document.getElementById('canvasFoto');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-    const fotoBase64 = canvas.toDataURL('image/png');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    
+    if(streamCamera) streamCamera.getTracks().forEach(track => track.stop());
 
-    if(streamCamera) {
-        streamCamera.getTracks().forEach(t => t.stop());
-        streamCamera = null;
-    }
-
-    video.classList.add('hidden');
+    document.getElementById('videoCamera').classList.add('hidden');
     document.getElementById('btnConfirmarFoto').classList.add('hidden');
-    document.getElementById('aceitoContrato').disabled = true;
-
-    const preview = document.getElementById('fotoAssinaturaPreview');
-    preview.src = fotoBase64;
-    preview.classList.remove('hidden');
+    document.getElementById('fotoAssinaturaPreview').src = canvas.toDataURL('image/png');
+    document.getElementById('fotoAssinaturaPreview').classList.remove('hidden');
     document.getElementById('msgConfirmado').classList.remove('hidden');
     document.getElementById('areaPagamento').classList.remove('hidden');
 
-    await supabase.from('propostas').update({
-        contrato_assinado: true,
-        selfie_assinatura: fotoBase64,
-        atualizado_em: new Date()
-    }).eq('cpf', dadosProposta.cpf);
-
-    dadosProposta.contrato_assinado = true;
-    iniciarPixEntrada();
+    await salvarAssinaturaCliente(canvas.toDataURL('image/png'));
+    gerarPagamentoPixEntrada();
 }
 
-function iniciarPixEntrada() {
-    const codigoPix = gerarCodigoPix(valorEntradaAtual, `ENTRADA-${dadosProposta.cpf}`);
-    const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(codigoPix)}`;
+async function salvarAssinaturaCliente(foto) {
+    await supabase.from('propostas').update({
+        contrato_assinado: true,
+        foto_assinatura: foto,
+        qtd_parcelas_escolhida: dadosProposta.qtd_parcelas_escolhida || null
+    }).eq('cpf', dadosProposta.cpf);
+}
 
-    document.getElementById('qrcodePix').src = qrCodeUrl;
-    document.getElementById('chavePixTexto').value = codigoPix;
-    document.getElementById('loadingPix').classList.add('hidden');
-    document.getElementById('conteudoPixGerado').classList.remove('hidden');
+async function gerarPagamentoPixEntrada() {
+    document.getElementById('loadingPix').classList.remove('hidden');
+    document.getElementById('conteudoPixGerado').classList.add('hidden');
+
+    try {
+        const codigoPix = gerarCodigoPix(valorEntradaAtual, `ENTRADA ${dadosProposta.nome}`);
+        if(!codigoPix) throw new Error('Valor inválido para geração do Pix');
+
+        const urlQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(codigoPix)}`;
+        document.getElementById('qrcodePix').src = urlQrCode;
+        document.getElementById('chavePixTexto').value = codigoPix;
+
+        document.getElementById('loadingPix').classList.add('hidden');
+        document.getElementById('conteudoPixGerado').classList.remove('hidden');
+    } catch (erro) {
+        document.getElementById('loadingPix').innerHTML = `<p class="text-red-500">Erro ao gerar Pix: ${erro.message}</p>`;
+    }
 }
 
 function copiarChavePix() {
-    const campo = document.getElementById('chavePixTexto');
-    campo.select();
-    navigator.clipboard.writeText(campo.value).then(() => {
-        alert('✅ Chave Pix Copia e Cola copiada com sucesso!');
-    }).catch(() => {
-        document.execCommand('copy');
-        alert('✅ Chave copiada!');
-    });
+    const texto = document.getElementById('chavePixTexto');
+    texto.select();
+    navigator.clipboard.writeText(texto.value);
+    alert('Chave Pix copiada com sucesso!');
 }
 
 function voltarBusca() {
-    if(streamCamera) {
-        streamCamera.getTracks().forEach(t => t.stop());
-        streamCamera = null;
-    }
-    if(inscricaoTempoReal) {
-        inscricaoTempoReal.unsubscribe();
-    }
-    location.reload();
+    dadosProposta = null;
+    document.getElementById('secaoDetalhes').classList.add('hidden');
+    document.getElementById('secaoBusca').classList.remove('hidden');
+    document.getElementById('cpfBusca').value = '';
+    document.getElementById('areaAprovado').classList.add('hidden');
+    document.getElementById('avisoAguardando').classList.remove('hidden');
+    document.getElementById('areaPagamento').classList.add('hidden');
+    document.getElementById('msgConfirmado').classList.add('hidden');
+    document.getElementById('aceitoContrato').checked = false;
+    document.getElementById('fotoAssinaturaPreview').classList.add('hidden');
+    document.getElementById('videoCamera').classList.add('hidden');
+    document.getElementById('btnConfirmarFoto').classList.add('hidden');
+    document.getElementById('btnAbrirCamera').classList.add('hidden');
+    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
 }
+
+window.addEventListener('load', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const cpfUrl = urlParams.get('cpf');
+    if(cpfUrl) {
+        document.getElementById('cpfBusca').value = cpfUrl;
+        consultarProposta();
+    }
+});
 </script>
 </body>
 </html>
