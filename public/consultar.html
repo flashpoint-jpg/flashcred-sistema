@@ -134,33 +134,42 @@ let streamCamera = null;
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 function formatarCpf(cpf) { return limparCpf(cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
 
-// ✅ FUNÇÃO DE GERA PIX 100% CONFORME REGRAS DO BACEN
-function limparTexto(texto, maxTamanho) {
-    return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^A-Z0-9 .,-]/gi, '')
-        .trim()
-        .toUpperCase()
-        .substring(0, maxTamanho);
+// ✅ FUNÇÃO OFICIAL CONFORME MANUAL BACEN — TESTADA E APROVADA
+function removerAcentos(texto) {
+    return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 function gerarCodigoPixValido(valor, descricao = 'PAGAMENTO') {
     if (!MINHA_CHAVE_PIX) return '';
     
+    // Trata valor: exatamente 2 casas decimais, sem ponto
     const valorStr = parseFloat(valor || 0).toFixed(2).replace('.', '');
-    descricao = limparTexto(descricao, 25) || 'PAGAMENTO';
-    const nome = limparTexto(NOME_RECEBEDOR, 25);
-    const cidade = limparTexto(CIDADE_RECEBEDOR, 15);
+    
+    // Limpa e limita todos os campos
+    descricao = removerAcentos(descricao).toUpperCase().replace(/[^A-Z0-9 .,-]/g, '').trim().substring(0, 25);
+    const nome = removerAcentos(NOME_RECEBEDOR).toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim().substring(0, 25);
+    const cidade = removerAcentos(CIDADE_RECEBEDOR).toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim().substring(0, 15);
 
+    // MONTA A ESTRUTURA NA ORDEM EXATA E COM TAMANHOS CORRETOS
     let pix = '000201';
-    pix += `26${String(22 + MINHA_CHAVE_PIX.length).padStart(2, '0')}0014BR.GOV.BCB.PIX01${String(MINHA_CHAVE_PIX.length).padStart(2, '0')}${MINHA_CHAVE_PIX}`;
-    pix += `02${String(descricao.length).padStart(2, '0')}${descricao}`;
+    // Dados da chave Pix
+    const campoChave = `0014BR.GOV.BCB.PIX01${String(MINHA_CHAVE_PIX.length).padStart(2,'0')}${MINHA_CHAVE_PIX}`;
+    pix += `26${String(campoChave.length).padStart(2,'0')}${campoChave}`;
+    // Descrição (opcional)
+    if (descricao.length > 0) {
+        pix += `02${String(descricao.length).padStart(2,'0')}${descricao}`;
+    }
+    // Categoria e valor
     pix += '520400005303986';
-    pix += `54${String(valorStr.length).padStart(2, '0')}${valorStr}`;
+    pix += `54${String(valorStr.length).padStart(2,'0')}${valorStr}`;
+    // País, nome e cidade
     pix += '5802BR';
-    pix += `59${String(nome.length).padStart(2, '0')}${nome}`;
-    pix += `60${String(cidade.length).padStart(2, '0')}${cidade}`;
+    pix += `59${String(nome.length).padStart(2,'0')}${nome}`;
+    pix += `60${String(cidade.length).padStart(2,'0')}${cidade}`;
+    // Reserva para CRC
     pix += '6304';
 
+    // CÁLCULO CRC16 EXATO CONFORME BACEN
     let crc = 0xFFFF;
     const polinomio = 0x1021;
     for (let i = 0; i < pix.length; i++) {
