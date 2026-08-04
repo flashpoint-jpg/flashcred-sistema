@@ -35,6 +35,7 @@
         .badge { padding: 5px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; display: inline-block; }
         .badge-aprovada { background: #D1FAE5; color: #065F46; }
         .badge-analise { background: #FEF3C7; color: #92400E; }
+        .badge-reprovada { background: #FEE2E2; color: #991B1B; }
         
         .caixa-contrato { max-height: 340px; overflow-y: auto; padding: 20px; background: #FFFFFF; border: 2px solid #CBD5E1; border-radius: 12px; margin: 16px 0; font-size: 13px; line-height: 1.7; color: #1E293B; }
         .caixa-contrato p { margin-bottom: 8px; }
@@ -48,10 +49,15 @@
         .area-assinatura { margin-top: 16px; padding: 20px; background: #F8FAFC; border-radius: 12px; text-align: center; border: 1px solid #E2E8F0; }
         .preview-selfie { max-width: 240px; max-height: 240px; border-radius: 10px; margin: 12px auto; border: 3px solid #10B981; background: #FFFFFF; display: block; }
         input[type="checkbox"] { width: 20px; height: 20px; margin-right: 10px; accent-color: #0A2463; vertical-align: middle; }
+        .aviso-atualizacao { font-size: 12px; color: #F59E0B; text-align: center; padding: 8px; background: #FFFBEB; border-radius: 8px; margin-bottom: 12px; display: none; }
     </style>
 </head>
 <body>
 <div class="card">
+    <div id="avisoAtualizacao" class="aviso-atualizacao">
+        <i class="fa-solid fa-sync-alt fa-spin"></i> Atualização detectada! A página já foi atualizada automaticamente.
+    </div>
+
     <div id="secaoBusca">
         <h2 class="text-xl font-bold text-primary text-center mb-4">🔍 Acompanhar Proposta</h2>
         <p class="text-sm text-gray-600 text-center mb-4">Digite seu CPF para consultar, escolher parcelas, ler o contrato e pagar.</p>
@@ -130,6 +136,8 @@ const CIDADE_RECEBEDOR = "SAO PAULO";
 
 let dadosProposta = null;
 let streamCamera = null;
+let inscricaoTempoReal = null;
+let cpfCarregado = null;
 
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 function formatarCpf(cpf) { return limparCpf(cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
@@ -173,6 +181,54 @@ function gerarCodigoPixValido(valor, descricao = 'PAGAMENTO') {
     return pix;
 }
 
+// ✅ ATUALIZA AUTOMÁTICO QUANDO VOCÊ ALTERAR NO PAINEL
+function iniciarAtualizacaoTempoReal(cpf) {
+    if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
+    
+    inscricaoTempoReal = supabase
+        .channel('atualizacao-proposta')
+        .on('postgres_changes', {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'propostas',
+            filter: `cpf=eq.${cpf}`
+        }, (payload) => {
+            dadosProposta = payload.new;
+            mostrarAvisoAtualizacao();
+            atualizarDadosTela();
+        })
+        .subscribe();
+}
+
+function mostrarAvisoAtualizacao() {
+    const aviso = document.getElementById('avisoAtualizacao');
+    aviso.style.display = 'block';
+    setTimeout(() => aviso.style.display = 'none', 4000);
+}
+
+function atualizarDadosTela() {
+    const classeStatus = dadosProposta.status === 'Aprovada' ? 'badge-aprovada' : 
+                         dadosProposta.status === 'Reprovada' ? 'badge-reprovada' : 'badge-analise';
+    
+    document.getElementById('dadosCliente').innerHTML = `
+        <p><strong>Nome:</strong> ${dadosProposta.nome}</p>
+        <p><strong>CPF:</strong> ${formatarCpf(dadosProposta.cpf)}</p>
+        <p><strong>Status:</strong> <span class="badge ${classeStatus}">${dadosProposta.status || 'Em Análise'}</span></p>
+        <p><strong>Valor Solicitado:</strong> R$ ${parseFloat(dadosProposta.valor_desejado || 0).toFixed(2).replace('.', ',')}</p>
+    `;
+
+    if(dadosProposta.status === 'Aprovada' && !dadosProposta.pago) {
+        const maxParcelas = parseInt(dadosProposta.qtd_parcelas_max) || 48;
+        document.getElementById('maxParcelasPermitidas').textContent = maxParcelas;
+        preencherOpcoesParcelas(maxParcelas, parseFloat(dadosProposta.valor_desejado), parseFloat(dadosProposta.perc_juros || 6), parseFloat(dadosProposta.perc_entrada || 39));
+        document.getElementById('escolhaParcelas').classList.remove('hidden');
+    } else {
+        document.getElementById('escolhaParcelas').classList.add('hidden');
+        document.getElementById('contratoArea').classList.add('hidden');
+        document.getElementById('areaPagamento').classList.add('hidden');
+    }
+}
+
 async function consultarProposta() {
     const cpfInput = limparCpf(document.getElementById('cpfConsulta').value);
     if(!cpfInput || cpfInput.length !== 11) { alert('Digite um CPF válido!'); return; }
@@ -180,28 +236,15 @@ async function consultarProposta() {
     const { data, error } = await supabase.from('propostas').select('*').eq('cpf', cpfInput).maybeSingle();
     if(error || !data) { alert('Proposta não encontrada.'); return; }
     
+    cpfCarregado = cpfInput;
     dadosProposta = data;
     document.getElementById('secaoBusca').classList.add('hidden');
     document.getElementById('secaoDetalhes').classList.remove('hidden');
-
-    const classeStatus = data.status === 'Aprovada' ? 'badge-aprovada' : 'badge-analise';
-    document.getElementById('dadosCliente').innerHTML = `
-        <p><strong>Nome:</strong> ${data.nome}</p>
-        <p><strong>CPF:</strong> ${formatarCpf(data.cpf)}</p>
-        <p><strong>Status:</strong> <span class="badge ${classeStatus}">${data.status || 'Em Análise'}</span></p>
-        <p><strong>Valor Solicitado:</strong> R$ ${parseFloat(data.valor_desejado || 0).toFixed(2).replace('.', ',')}</p>
-    `;
-
-    if(data.status === 'Aprovada' && !data.pago) {
-        // ✅ AGORA USA EXATAMENTE O VALOR QUE VOCÊ DEFINIU NO PAINEL
-        const maxParcelas = parseInt(data.qtd_parcelas_max) || 48;
-        document.getElementById('maxParcelasPermitidas').textContent = maxParcelas;
-        preencherOpcoesParcelas(maxParcelas, parseFloat(data.valor_desejado), parseFloat(data.perc_juros || 6), parseFloat(data.perc_entrada || 39));
-        document.getElementById('escolhaParcelas').classList.remove('hidden');
-    }
+    
+    iniciarAtualizacaoTempoReal(cpfInput);
+    atualizarDadosTela();
 }
 
-// ✅ AGORA CALCULA VALORES CORRETOS E ATUALIZA TUDO NA HORA
 function preencherOpcoesParcelas(maxParcelas, valorTotal, juros, percEntrada) {
     const container = document.getElementById('listaParcelas');
     container.innerHTML = '';
@@ -219,7 +262,6 @@ function selecionarParcela(qtd, valor, valorTotal, percEntrada) {
     document.querySelectorAll('.item-parcela').forEach(el => el.classList.remove('selecionada'));
     event.currentTarget.classList.add('selecionada');
     
-    // ✅ ATUALIZA TODOS OS VALORES E DADOS NA HORA
     dadosProposta.qtd_parcelas = qtd;
     dadosProposta.valor_parcela = valor;
     dadosProposta.valor_entrada = valorTotal * (percEntrada / 100);
@@ -233,7 +275,6 @@ function selecionarParcela(qtd, valor, valorTotal, percEntrada) {
     document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
     
     document.getElementById('contratoArea').classList.remove('hidden');
-    // ✅ OCULTA O PIX ATÉ QUE A ESCOLHA SEJA FEITA CORRETAMENTE
     document.getElementById('areaPagamento').classList.add('hidden');
 }
 
@@ -311,6 +352,8 @@ function copiarPix() {
 
 function voltarBusca() { 
     if(streamCamera) streamCamera.getTracks().forEach(t => t.stop()); 
+    if(inscricaoTempoReal) inscricaoTempoReal.unsubscribe();
+    cpfCarregado = null;
     location.reload(); 
 }
 
