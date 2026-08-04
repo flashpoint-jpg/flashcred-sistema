@@ -53,6 +53,7 @@
         .area-pix { margin-top: 20px; text-align: center; display: none; }
         #qrcode { display: inline-block; margin: 12px auto; padding: 12px; background: white; border-radius: 8px; }
         .aviso-sucesso { background: #ECFDF5; color: #065F46; padding: 14px; border-radius: 12px; text-align: center; margin-top: 16px; display: none; }
+        .flex { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
     </style>
 </head>
 <body>
@@ -150,6 +151,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let propostaAtual = null;
 let streamCamera = null;
 let selfieBase64 = null;
+let inscricaoCliente = null;
 
 function limparCpf(cpf) { return String(cpf || '').replace(/\D/g, ''); }
 
@@ -207,6 +209,7 @@ async function buscarProposta(cpfSemMascara) {
 
         propostaAtual = data[0];
         preencherDados(propostaAtual);
+        iniciarAtualizacaoCliente();
 
     } catch(erro) {
         avisoErro.textContent = '⚠️ Erro ao buscar: ' + erro.message;
@@ -265,13 +268,13 @@ function carregarDadosAprovado(p) {
     document.getElementById('valorEntradaPix').textContent = valorEntrada.toFixed(2).replace('.', ',');
 
     // Preenche o select de 1 até o máximo
-    const select = document.getElementById('qtdParcelasCliente');
-    select.innerHTML = '';
+    const selectParcelas = document.getElementById('qtdParcelasCliente');
+    selectParcelas.innerHTML = '';
     for(let i = 1; i <= maxParc; i++) {
         const opcao = document.createElement('option');
         opcao.value = i;
         opcao.textContent = `${i}x`;
-        select.appendChild(opcao);
+        selectParcelas.appendChild(opcao);
     }
     atualizarValorParcela();
 }
@@ -285,10 +288,9 @@ function atualizarValorParcela() {
 
     const valorEntrada = valorTotal * (percEntrada / 100);
     const valorComJuros = valorTotal * (1 + (percJuros / 100));
-    const valorParcela = (valorComJuros - valorEntrada) / qtd;
+    const valorParcela = qtd > 0 ? (valorComJuros - valorEntrada) / qtd : 0;
 
     document.getElementById('valorParcela').textContent = valorParcela.toFixed(2).replace('.', ',');
-    select.options[select.selectedIndex].textContent = `${qtd}x de R$ ${valorParcela.toFixed(2).replace('.', ',')}`;
 }
 
 function mostrarAreaSelfie() {
@@ -393,16 +395,26 @@ async function mostrarPix() {
 
 function copiarChavePix() {
     const chavePix = localStorage.getItem('chavePixProducao') || '33552949852';
-    const valorTotal = parseFloat(propostaAtual.valor_total || propostaAtual.valor_desejado);
-    const percEntrada = parseFloat(propostaAtual.perc_entrada || 39);
-    const valorEntrada = valorTotal * (percEntrada / 100);
-    const codigoPix = `00020126580014br.gov.bcb.pix0111${chavePix}5204000053039865802BR5925DISTRIBUIDORA FLASHPOINT6009SAO PAULO62070503***6304`;
-
-    navigator.clipboard.writeText(codigoPix).then(() => {
+    navigator.clipboard.writeText(chavePix).then(() => {
         alert('✅ Código Pix copiado! Basta colar no app do seu banco.');
     }).catch(() => {
-        alert(`Use essa chave Pix: ${chavePix}\nValor: R$ ${valorEntrada.toFixed(2).replace('.', ',')}`);
+        alert(`Use essa chave Pix: ${chavePix}`);
     });
+}
+
+// Atualização automática para o cliente
+function iniciarAtualizacaoCliente() {
+    if(!propostaAtual || inscricaoCliente) return;
+    inscricaoCliente = supabase.channel('atualizacoes_cliente')
+        .on('postgres_changes', { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'propostas', 
+            filter: `cpf=eq.${limparCpf(propostaAtual.cpf)}` 
+        }, () => {
+            buscarProposta(limparCpf(propostaAtual.cpf));
+        })
+        .subscribe();
 }
 </script>
 </body>
