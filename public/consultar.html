@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meu Pedido | FlashCred</title>
+    <title>Consultar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
@@ -35,7 +35,7 @@
         .btn-sucesso { background: #10B981; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
         .btn-secundario { background: #F1F5F9; color: #0A2463; border: 1px solid #CBD5E1; margin-top: 12px; }
-        .btn-pix-parcela { background: #32BCAD; color: white; font-size: 13px; padding: 8px 12px; width: auto; }
+        .btn-pix-parcela { background: #32BCAD; color: white; font-size: 13px; padding: 8px 12px; width: auto; border-radius: 8px; }
         .input { width: 100%; padding: 14px; border: 1px solid #CBD5E1; border-radius: 12px; font-size: 15px; background: #FAFBFC; margin-bottom: 16px; }
         .hidden { display: none !important; }
         .text-center { text-align: center; }
@@ -68,115 +68,126 @@
         .caixa-contrato strong { color: #0A2463; font-weight: 600; }
         .cabecalho-contrato { text-align: center; margin-bottom: 20px; }
         .cabecalho-contrato h4 { font-size: 18px; font-weight: 700; color: #0A2463; margin-bottom: 8px; }
-
-        .alerta-atualizacao { background: #ECFDF5; border-left: 4px solid #10B981; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
+        
+        .area-assinatura { margin-top: 20px; padding: 24px; background: #F8FAFC; border-radius: 16px; text-align: center; border: 1px solid #E2E8F0; }
+        input[type="checkbox"] { width: 22px; height: 22px; margin-right: 10px; accent-color: #0A2463; vertical-align: middle; }
+        .modal-pix { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 999; }
         .loading { display: inline-block; width: 40px; height: 40px; border: 3px solid #E2E8F0; border-top-color: #0A2463; border-radius: 50%; animation: spin 1s linear infinite; margin: 16px auto; }
         @keyframes spin { to { transform: rotate(360deg); } }
         @media print {
             body, .card { background: white; box-shadow: none; padding: 0; }
             body * { visibility: hidden; }
-            .area-contrato-impressao, .area-contrato-impressao * { visibility: visible; }
-            .area-contrato-impressao { position: absolute; left: 0; top: 0; width: 100%; border: none; padding: 30px; }
+            .caixa-contrato, .caixa-contrato * { visibility: visible; }
+            .caixa-contrato { position: absolute; left: 0; top: 0; width: 100%; border: none; max-height: unset; padding: 30px; }
         }
     </style>
 </head>
 <body>
 <div class="card">
-    <h2 class="titulo-principal"><i class="fa-solid fa-user-check"></i> Acompanhar Meu Pedido</h2>
+    <h2 class="titulo-principal"><i class="fa-solid fa-file-lines"></i> Consultar Proposta</h2>
 
-    <!-- Tela de Acesso -->
-    <div id="secaoAcesso">
-        <p class="text-center text-gray-600 mb-4">Digite seu CPF ou Código da Proposta para acessar</p>
+    <!-- Tela de Busca -->
+    <div id="secaoBusca">
+        <p class="text-center text-gray-600 mb-4">Digite seu CPF ou Código da Proposta para consultar</p>
         <label class="font-medium">CPF ou Código Único</label>
-        <input type="text" id="campoAcesso" class="input" placeholder="000.000.000-00 ou FLC-00001" maxlength="20">
-        <button id="btnAcessar" class="btn btn-sucesso" onclick="acessarPedido()">
-            <i class="fa-solid fa-unlock"></i> Acessar Pedido
+        <input type="text" id="campoBusca" class="input" placeholder="000.000.000-00 ou FLC-00001" maxlength="20">
+        <button id="btnConsultar" class="btn btn-sucesso" onclick="consultarProposta()">
+            <i class="fa-solid fa-magnifying-glass"></i> Consultar
         </button>
     </div>
 
-    <!-- Conteúdo do Pedido -->
-    <div id="conteudoPedido" class="hidden">
-        <div id="alertaPagamentoConfirmado" class="alerta-atualizacao hidden">
-            ✅ Pagamento da entrada confirmado! Seus dados foram liberados automaticamente.
-        </div>
-        
+    <!-- Conteúdo da Proposta -->
+    <div id="secaoDetalhes" class="hidden">
         <div id="codigoProposta" class="codigo-unico"></div>
         <div id="dadosCliente" class="bg-gray-50 mb-4"></div>
 
-        <!-- 🟡 ENQUANTO O PAGAMENTO NÃO FOR CONFIRMADO PELO BANCO -->
-        <div id="areaAguardandoEntrada" class="hidden">
-            <h3 class="text-lg font-semibold text-primary mb-3">💳 Pagamento da Entrada</h3>
-            <div class="text-center p-4 bg-gray-50 rounded-xl mb-4">
-                <p class="text-sm text-gray-600 mb-2">Valor da Entrada:</p>
-                <p class="font-semibold text-xl text-primary mb-4">R$ <span id="valorEntrada">0,00</span></p>
-                
-                <div id="carregandoPix" class="py-6">
-                    <div class="loading mx-auto"></div>
-                    <p class="mt-3 text-gray-500">Gerando código Pix...</p>
-                </div>
+        <div id="avisoAguardando" class="p-4 rounded-lg mb-4 bg-yellow-50 text-yellow-800 text-center hidden">
+            <div class="loading mx-auto mb-2"></div>
+            Aguardando análise e aprovação da proposta...
+        </div>
 
-                <div id="dadosPixEntrada" class="hidden">
-                    <p class="text-sm text-gray-600 mb-3">Escaneie o QR Code ou copie a chave Pix:</p>
-                    <canvas id="qrcodeEntrada" class="mx-auto mb-3 bg-white rounded-lg border p-2" width="192" height="192"></canvas>
-                    <textarea id="chavePixEntrada" class="font-mono text-sm w-full p-2 border rounded-lg bg-white" readonly rows="3"></textarea>
-                    <button class="btn btn-alerta mt-3" onclick="copiarChaveEntrada()">📋 Copiar Chave Pix</button>
-                    <p class="text-xs text-gray-500 mt-3">⏳ Após pagar, aguarde a confirmação automática do banco. A página vai atualizar sozinha quando for confirmado.</p>
-                </div>
-            </div>
-
-            <h3 class="text-lg font-semibold text-primary mb-3">📄 Contrato e Parcelas</h3>
-            <button class="btn btn-secundario mb-3" onclick="mostrarContrato()">📄 Ver Contrato Completo</button>
+        <div id="areaPropostaAprovada" class="hidden">
+            <h3 class="text-lg font-semibold text-primary mb-3">📋 Resumo dos Valores</h3>
             <div class="bg-gray-50 p-4 rounded-lg mb-4">
-                <p class="flex justify-between py-1"><strong>Valor Total:</strong> <span id="resumoValorTotal">R$ 0,00</span></p>
-                <p class="flex justify-between py-1"><strong>Quantidade de Parcelas:</strong> <span id="resumoQtdParcelas">0x</span></p>
-                <p class="flex justify-between py-1"><strong>Valor de Cada Parcela:</strong> <span id="resumoValorParcela">R$ 0,00</span></p>
-            </div>
-        </div>
-
-        <!-- 🟢 LIBERADO AUTOMATICAMENTE APÓS CONFIRMAÇÃO DO BANCO -->
-        <div id="areaPedidoLiberado" class="hidden">
-            <div class="bg-green-50 p-4 rounded-lg mb-4 text-center border border-green-200">
-                <i class="fa-solid fa-circle-check text-green-600 text-xl"></i>
-                <h3 class="font-semibold text-green-800 mt-2">✅ Entrada Confirmada e Pedido Liberado!</h3>
-                <p class="text-sm text-green-700">O banco já confirmou seu pagamento. Acompanhe abaixo suas parcelas e documentos.</p>
+                <p class="flex justify-between py-1"><strong>Valor Solicitado:</strong> <span id="mostraValorSolicitado">R$ 0,00</span></p>
+                <p class="flex justify-between py-1"><strong>Valor Total:</strong> <span id="mostraValorTotal">R$ 0,00</span></p>
+                <p class="flex justify-between py-1"><strong>Entrada:</strong> <span id="mostraEntrada">R$ 0,00</span></p>
+                <p class="flex justify-between py-1"><strong>Quantidade de Parcelas:</strong> <span id="mostraParcelas">0x</span></p>
             </div>
 
-            <h3 class="text-lg font-semibold text-primary mb-3">📄 Documentos</h3>
-            <div class="flex gap-2 mb-4">
-                <button class="btn btn-secundario flex-1" onclick="mostrarContrato()">📄 Ver / Baixar Contrato</button>
-                <button class="btn btn-secundario flex-1" onclick="imprimirResumo()">🖨️ Imprimir Resumo</button>
-            </div>
-
-            <h3 class="text-lg font-semibold text-primary mb-3">📋 Minhas Parcelas</h3>
-            <div class="lista-parcelas" id="listaParcelas"></div>
-        </div>
-
-        <button class="btn btn-secundario mt-6" onclick="voltarAcesso()">🔙 Sair / Consultar Outro Pedido</button>
-    </div>
-
-    <!-- Área do Contrato Completa -->
-    <div id="modalContrato" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-        <div class="card w-full max-w-[700px] max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-primary">CONTRATO DE COMPRA E PARCELAMENTO</h3>
-                <button onclick="fecharContrato()" class="text-gray-500 text-xl">&times;</button>
-            </div>
-            <div class="caixa-contrato area-contrato-impressao">
+            <h3 class="text-lg font-semibold text-primary mb-3">📄 Contrato de Compra e Parcelamento</h3>
+            <div class="caixa-contrato">
                 <div class="cabecalho-contrato">
                     <h4>CONTRATO DE COMPRA E PARCELAMENTO DE MÓVEIS</h4>
                     <p>FlashCred - Distribuidora Flash Point</p>
                 </div>
                 <p>1. OBJETO: Compra de móveis pelo CLIENTE, com pagamento parcelado via Pix.</p>
-                <p>2. VALORES: Valor total fixo em R$ <strong id="contratoValorTotal">0,00</strong>, sem alterações. Entrada de R$ <strong id="contratoEntrada">0,00</strong> e restante dividido em <strong id="contratoQtdParcelas">0x</strong> iguais de R$ <strong id="contratoValorParcela">0,00</strong>.</p>
+                <p>2. VALORES: Valor total fixo em R$ <strong id="contratoValorTotal">0,00</strong>, sem alterações. Entrada de R$ <strong id="contratoEntrada">0,00</strong> e restante dividido em até <strong id="contratoQtdParcelas">0x</strong>.</p>
                 <p>3. OBRIGAÇÕES: O CLIENTE se compromete a pagar todas as parcelas nas datas acordadas. O não pagamento implicará vencimento antecipado, multa, restrição de crédito e o produto permanece propriedade da FlashCred até quitação total.</p>
                 <hr class="my-4">
                 <p style="text-align: right;">_________________________, _____ de _______________ de ______.</p>
             </div>
-            <div class="flex gap-2 mt-4">
-                <button class="btn btn-alerta flex-1" onclick="window.print()">🖨️ Imprimir</button>
-                <button onclick="fecharContrato()" class="btn btn-secundario flex-1">Fechar</button>
+
+            <div class="area-assinatura">
+                <label class="flex items-center justify-center gap-2 mb-4">
+                    <input type="checkbox" id="aceitoContrato" onchange="habilitarPagamento()">
+                    <span>Declaro que li e aceito o contrato</span>
+                </label>
+            </div>
+
+            <!-- 💳 PAGAMENTO DA ENTRADA -->
+            <div id="areaPagamentoEntrada" class="hidden mt-6">
+                <h3 class="text-lg font-semibold text-primary text-center mb-3">💳 Pagamento da Entrada</h3>
+                <div class="text-center p-4 bg-gray-50 rounded-xl mb-4">
+                    <p class="text-sm text-gray-600 mb-2">Valor da Entrada:</p>
+                    <p class="font-semibold text-xl text-primary mb-4">R$ <span id="valorEntrada">0,00</span></p>
+                    
+                    <div id="carregandoPixEntrada" class="py-6">
+                        <div class="loading mx-auto"></div>
+                        <p class="mt-3 text-gray-500">Gerando código Pix...</p>
+                    </div>
+
+                    <div id="dadosPixEntrada" class="hidden">
+                        <p class="text-sm text-gray-600 mb-3">Escaneie o QR Code ou copie a chave Pix:</p>
+                        <canvas id="qrcodeEntrada" class="mx-auto mb-3 bg-white rounded-lg border p-2" width="192" height="192"></canvas>
+                        <textarea id="chavePixEntrada" class="font-mono text-sm w-full p-2 border rounded-lg bg-white" readonly rows="3"></textarea>
+                        <button class="btn btn-alerta mt-3" onclick="copiarChaveEntrada()">📋 Copiar Chave Pix</button>
+                        <p class="text-xs text-gray-500 mt-3">⏳ Após pagar, aguarde a confirmação automática. A página atualiza sozinha e você verá suas parcelas.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ ÁREA DAS PARCELAS COM BOTÃO DE PAGAR -->
+            <div id="areaParcelasPagas" class="hidden mt-6">
+                <div class="bg-green-50 p-4 rounded-lg mb-4 text-center border border-green-200">
+                    <i class="fa-solid fa-circle-check text-green-600 text-xl"></i>
+                    <h3 class="font-semibold text-green-800 mt-2">✅ Entrada Confirmada!</h3>
+                    <p class="text-sm text-green-700">Pagamento recebido. Abaixo você paga cada parcela quando quiser.</p>
+                </div>
+
+                <h3 class="text-lg font-semibold text-primary mb-3">📋 Minhas Parcelas</h3>
+                <div class="lista-parcelas" id="listaParcelas"></div>
+
+                <button class="btn btn-secundario mt-4" onclick="window.print()">🖨️ Imprimir Resumo</button>
             </div>
         </div>
+
+        <button class="btn btn-secundario mt-6" onclick="voltarBusca()">🔙 Consultar Outra Proposta</button>
+    </div>
+</div>
+
+<!-- MODAL PIX PARA PARCELAS -->
+<div id="modalPagamentoParcela" class="modal-pix hidden">
+    <div class="card w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold">Pagamento da <span id="numParcelaModal"></span>ª Parcela</h3>
+            <button onclick="fecharModalPix()" class="text-gray-500 text-xl">&times;</button>
+        </div>
+        <p class="text-center text-gray-600 mb-2">Valor: <strong id="valorParcelaModal"></strong></p>
+        <canvas id="qrcodeParcelaModal" class="mx-auto mb-3 bg-white rounded-lg border p-2" width="192" height="192"></canvas>
+        <textarea id="chavePixParcelaModal" class="font-mono text-sm w-full p-2 border rounded-lg bg-white" readonly rows="3"></textarea>
+        <button class="btn btn-alerta mt-3" onclick="copiarChaveParcela()">📋 Copiar Chave Pix</button>
+        <p class="text-xs text-gray-500 mt-3 text-center">Assim que confirmado, o status muda automaticamente para "Paga".</p>
     </div>
 </div>
 
@@ -185,19 +196,16 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 🔑 Dados do Recebedor
 const CHAVE_PIX = 'sua-chave-pix-aqui';
-const NOME_LOJA = 'FLASH POINT / FLASHCRED';
+let propostaAtual = null;
+let intervaloVerificacao = null;
 
-let pedidoAtual = null;
-let intervaloAtualizacao = null;
-
-async function acessarPedido() {
-    const busca = document.getElementById('campoAcesso').value.trim();
+async function consultarProposta() {
+    const busca = document.getElementById('campoBusca').value.trim();
     if(!busca) { alert('Digite seu CPF ou Código da Proposta'); return; }
 
-    document.getElementById('btnAcessar').disabled = true;
-    document.getElementById('btnAcessar').innerHTML = '<div class="loading"></div> Entrando...';
+    document.getElementById('btnConsultar').disabled = true;
+    document.getElementById('btnConsultar').innerHTML = '<div class="loading"></div> Buscando...';
 
     try {
         let consulta;
@@ -210,132 +218,103 @@ async function acessarPedido() {
 
         const { data, error } = await consulta;
         if(error) throw error;
-        if(!data || data.length === 0) { alert('Pedido não encontrado. Verifique os dados.'); return; }
+        if(!data || data.length === 0) { alert('Proposta não encontrada. Verifique os dados.'); return; }
 
-        pedidoAtual = data[0];
-        carregarDadosPedido();
-        // ⚡ INICIA VERIFICAÇÃO AUTOMÁTICA A CADA 10 SEGUNDOS
-        iniciarAtualizacaoAutomatica();
+        propostaAtual = data[0];
+        carregarDadosProposta();
 
     } catch (erro) {
-        alert('Erro ao acessar: ' + erro.message);
+        alert('Erro ao buscar: ' + erro.message);
     } finally {
-        document.getElementById('btnAcessar').disabled = false;
-        document.getElementById('btnAcessar').innerHTML = '<i class="fa-solid fa-unlock"></i> Acessar Pedido';
+        document.getElementById('btnConsultar').disabled = false;
+        document.getElementById('btnConsultar').innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Consultar';
     }
 }
 
-function iniciarAtualizacaoAutomatica() {
-    // Limpa se já tiver um rodando
-    if(intervaloAtualizacao) clearInterval(intervaloAtualizacao);
+function carregarDadosProposta() {
+    document.getElementById('secaoBusca').classList.add('hidden');
+    document.getElementById('secaoDetalhes').classList.remove('hidden');
+
+    document.getElementById('codigoProposta').textContent = `Código do Pedido: ${propostaAtual.codigo_unico || propostaAtual.protocolo || '---'}`;
     
-    // Verifica se o pagamento foi confirmado a cada 10 segundos
-    intervaloAtualizacao = setInterval(async () => {
-        if(!pedidoAtual?.id) return;
-
-        const { data } = await supabase
-            .from('propostas')
-            .select('entrada_paga, valor_total, valor_entrada, qtd_parcelas_escolhida, quantidade_parcelas, data_aprovacao')
-            .eq('id', pedidoAtual.id)
-            .single();
-
-        if(data && pedidoAtual.entrada_paga !== data.entrada_paga) {
-            // Pagamento foi confirmado agora!
-            pedidoAtual = { ...pedidoAtual, ...data };
-            document.getElementById('alertaPagamentoConfirmado').classList.remove('hidden');
-            carregarDadosPedido();
-            clearInterval(intervaloAtualizacao); // Para de verificar depois de liberado
-        }
-
-        // Atualiza status das parcelas sempre
-        if(data?.entrada_paga) {
-            pedidoAtual = { ...pedidoAtual, ...data };
-            atualizarStatusParcelas();
-        }
-
-    }, 10000); // 10 segundos
-}
-
-function carregarDadosPedido() {
-    document.getElementById('secaoAcesso').classList.add('hidden');
-    document.getElementById('conteudoPedido').classList.remove('hidden');
-
-    document.getElementById('codigoProposta').textContent = `Código do Pedido: ${pedidoAtual.codigo_unico}`;
     document.getElementById('dadosCliente').innerHTML = `
-        <p><strong>Nome:</strong> ${pedidoAtual.nome}</p>
-        <p><strong>CPF:</strong> ${String(pedidoAtual.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
-        <p><strong>Status:</strong> <span class="badge ${pedidoAtual.status === 'aprovada' ? 'badge-aprovada' : 'badge-pendente'}">${pedidoAtual.status.toUpperCase()}</span></p>
+        <p><strong>Nome:</strong> ${propostaAtual.nome}</p>
+        <p><strong>CPF:</strong> ${String(propostaAtual.cpf).replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
+        <p><strong>Status:</strong> <span class="badge ${propostaAtual.status === 'aprovada' ? 'badge-aprovada' : 'badge-pendente'}">${propostaAtual.status.toUpperCase()}</span></p>
     `;
 
-    // ✅ VERIFICA SE JÁ FOI CONFIRMADO (AUTOMÁTICO PELO BANCO OU MANUAL)
-    const entradaPaga = pedidoAtual.entrada_paga === true;
-
-    if(!entradaPaga) {
-        document.getElementById('areaAguardandoEntrada').classList.remove('hidden');
-        document.getElementById('areaPedidoLiberado').classList.add('hidden');
-
-        const valorTotal = parseFloat(pedidoAtual.valor_total);
-        const valorEntrada = parseFloat(pedidoAtual.valor_entrada);
-        const qtdParcelas = parseInt(pedidoAtual.qtd_parcelas_escolhida || pedidoAtual.quantidade_parcelas);
-        const valorParcela = (valorTotal - valorEntrada) / qtdParcelas;
-
-        document.getElementById('valorEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
-        document.getElementById('resumoValorTotal').textContent = valorTotal.toFixed(2).replace('.', ',');
-        document.getElementById('resumoQtdParcelas').textContent = `${qtdParcelas}x`;
-        document.getElementById('resumoValorParcela').textContent = valorParcela.toFixed(2).replace('.', ',');
-
-        document.getElementById('contratoValorTotal').textContent = valorTotal.toFixed(2).replace('.', ',');
-        document.getElementById('contratoEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
-        document.getElementById('contratoQtdParcelas').textContent = qtdParcelas;
-        document.getElementById('contratoValorParcela').textContent = valorParcela.toFixed(2).replace('.', ',');
-
-        gerarPixEntrada(valorEntrada);
-
-    } else {
-        document.getElementById('areaAguardandoEntrada').classList.add('hidden');
-        document.getElementById('areaPedidoLiberado').classList.remove('hidden');
-
-        const valorTotal = parseFloat(pedidoAtual.valor_total);
-        const valorEntrada = parseFloat(pedidoAtual.valor_entrada);
-        const qtdParcelas = parseInt(pedidoAtual.qtd_parcelas_escolhida || pedidoAtual.quantidade_parcelas);
-        const valorParcela = (valorTotal - valorEntrada) / qtdParcelas;
-
-        document.getElementById('contratoValorTotal').textContent = valorTotal.toFixed(2).replace('.', ',');
-        document.getElementById('contratoEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
-        document.getElementById('contratoQtdParcelas').textContent = qtdParcelas;
-        document.getElementById('contratoValorParcela').textContent = valorParcela.toFixed(2).replace('.', ',');
-
-        gerarListaParcelas(qtdParcelas, valorParcela);
+    if(propostaAtual.status !== 'aprovada') {
+        document.getElementById('avisoAguardando').classList.remove('hidden');
+        return;
     }
+
+    document.getElementById('areaPropostaAprovada').classList.remove('hidden');
+
+    const valorTotal = parseFloat(propostaAtual.valor_total || 0);
+    const valorEntrada = parseFloat(propostaAtual.valor_entrada || 0);
+    const qtdParcelas = parseInt(propostaAtual.qtd_parcelas_escolhida || propostaAtual.quantidade_parcelas || 0);
+
+    document.getElementById('mostraValorSolicitado').textContent = `R$ ${parseFloat(propostaAtual.valor_solicitado || 0).toFixed(2).replace('.', ',')}`;
+    document.getElementById('mostraValorTotal').textContent = `R$ ${valorTotal.toFixed(2).replace('.', ',')}`;
+    document.getElementById('mostraEntrada').textContent = `R$ ${valorEntrada.toFixed(2).replace('.', ',')}`;
+    document.getElementById('mostraParcelas').textContent = `${qtdParcelas}x`;
+
+    document.getElementById('contratoValorTotal').textContent = valorTotal.toFixed(2).replace('.', ',');
+    document.getElementById('contratoEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
+    document.getElementById('contratoQtdParcelas').textContent = qtdParcelas;
+
+    document.getElementById('valorEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
+
+    verificarStatusPagamento();
+    intervaloVerificacao = setInterval(verificarStatusPagamento, 10000);
 }
 
-async function gerarPixEntrada(valor) {
+function habilitarPagamento() {
+    const aceito = document.getElementById('aceitoContrato').checked;
+    document.getElementById('areaPagamentoEntrada').classList.toggle('hidden', !aceito);
+    if(aceito) gerarPixEntrada();
+}
+
+async function gerarPixEntrada() {
     document.getElementById('chavePixEntrada').value = CHAVE_PIX;
     await QRCode.toCanvas(document.getElementById('qrcodeEntrada'), CHAVE_PIX, { width: 192 });
-    document.getElementById('carregandoPix').classList.add('hidden');
+    document.getElementById('carregandoPixEntrada').classList.add('hidden');
     document.getElementById('dadosPixEntrada').classList.remove('hidden');
 }
 
 function copiarChaveEntrada() {
-    navigator.clipboard.writeText(CHAVE_PIX).then(() => alert('✅ Chave copiada! Aguardando confirmação automática...'));
+    navigator.clipboard.writeText(CHAVE_PIX).then(() => alert('✅ Chave copiada!'));
 }
 
-function gerarListaParcelas(qtd, valor) {
-    const lista = document.getElementById('listaParcelas');
-    lista.innerHTML = '';
-    atualizarStatusParcelas();
+async function verificarStatusPagamento() {
+    if(!propostaAtual?.id) return;
+
+    const { data } = await supabase
+        .from('propostas')
+        .select('entrada_paga, *')
+        .eq('id', propostaAtual.id)
+        .single();
+
+    if(data?.entrada_paga === true) {
+        propostaAtual = data;
+        document.getElementById('areaPagamentoEntrada').classList.add('hidden');
+        document.getElementById('areaParcelasPagas').classList.remove('hidden');
+        carregarListaParcelas();
+    } else {
+        carregarListaParcelas();
+    }
 }
 
-function atualizarStatusParcelas() {
+function carregarListaParcelas() {
     const lista = document.getElementById('listaParcelas');
     lista.innerHTML = '';
 
-    const valorTotal = parseFloat(pedidoAtual.valor_total);
-    const valorEntrada = parseFloat(pedidoAtual.valor_entrada);
-    const qtd = parseInt(pedidoAtual.qtd_parcelas_escolhida || pedidoAtual.quantidade_parcelas);
+    const valorTotal = parseFloat(propostaAtual.valor_total || 0);
+    const valorEntrada = parseFloat(propostaAtual.valor_entrada || 0);
+    const qtd = parseInt(propostaAtual.qtd_parcelas_escolhida || propostaAtual.quantidade_parcelas || 0);
     const valorParcela = (valorTotal - valorEntrada) / qtd;
 
-    const dataBase = new Date(pedidoAtual.data_aprovacao || new Date());
+    const dataBase = new Date(propostaAtual.data_aprovacao || new Date());
     dataBase.setDate(dataBase.getDate() + 7);
 
     for(let i = 1; i <= qtd; i++) {
@@ -346,7 +325,7 @@ function atualizarStatusParcelas() {
         const hoje = new Date();
         let status = 'pendente';
         let textoStatus = 'Pendente';
-        if(pedidoAtual[`parcela_${i}_paga`] === true) {
+        if(propostaAtual[`parcela_${i}_paga`] === true) {
             status = 'paga';
             textoStatus = 'Paga';
         } else if(dataVencimento < hoje) {
@@ -364,41 +343,41 @@ function atualizarStatusParcelas() {
             <div class="text-right">
                 <p class="font-semibold">R$ ${valorParcela.toFixed(2).replace('.', ',')}</p>
                 <span class="badge badge-${status}">${textoStatus}</span>
-                ${status !== 'paga' ? `<button class="btn btn-pix-parcela mt-1" onclick="gerarPixParcela(${i})">Pagar</button>` : ''}
+                ${status !== 'paga' ? `<button class="btn btn-pix-parcela mt-1" onclick="abrirModalPix(${i})">Pagar</button>` : ''}
             </div>
         `;
         lista.appendChild(item);
     }
 }
 
-async function gerarPixParcela(numeroParcela) {
-    const valorTotal = parseFloat(pedidoAtual.valor_total);
-    const valorEntrada = parseFloat(pedidoAtual.valor_entrada);
-    const qtd = parseInt(pedidoAtual.qtd_parcelas_escolhida || pedidoAtual.quantidade_parcelas);
+async function abrirModalPix(numeroParcela) {
+    const valorTotal = parseFloat(propostaAtual.valor_total || 0);
+    const valorEntrada = parseFloat(propostaAtual.valor_entrada || 0);
+    const qtd = parseInt(propostaAtual.qtd_parcelas_escolhida || propostaAtual.quantidade_parcelas || 0);
     const valorParcela = (valorTotal - valorEntrada) / qtd;
 
-    alert(`🔑 Chave Pix para pagamento da ${numeroParcela}ª Parcela:\n\n${CHAVE_PIX}\n\nValor: R$ ${valorParcela.toFixed(2).replace('.', ',')}\n\n✅ Assim que confirmado, o status aqui vai mudar automaticamente para "Paga".`);
+    document.getElementById('numParcelaModal').textContent = numeroParcela;
+    document.getElementById('valorParcelaModal').textContent = `R$ ${valorParcela.toFixed(2).replace('.', ',')}`;
+    document.getElementById('chavePixParcelaModal').value = CHAVE_PIX;
+    
+    await QRCode.toCanvas(document.getElementById('qrcodeParcelaModal'), CHAVE_PIX, { width: 192 });
+    document.getElementById('modalPagamentoParcela').classList.remove('hidden');
 }
 
-function mostrarContrato() {
-    document.getElementById('modalContrato').classList.remove('hidden');
+function copiarChaveParcela() {
+    navigator.clipboard.writeText(CHAVE_PIX).then(() => alert('✅ Chave copiada!'));
 }
 
-function fecharContrato() {
-    document.getElementById('modalContrato').classList.add('hidden');
+function fecharModalPix() {
+    document.getElementById('modalPagamentoParcela').classList.add('hidden');
 }
 
-function imprimirResumo() {
-    mostrarContrato();
-    setTimeout(() => window.print(), 300);
-}
-
-function voltarAcesso() {
-    if(intervaloAtualizacao) clearInterval(intervaloAtualizacao);
-    pedidoAtual = null;
-    document.getElementById('conteudoPedido').classList.add('hidden');
-    document.getElementById('secaoAcesso').classList.remove('hidden');
-    document.getElementById('campoAcesso').value = '';
+function voltarBusca() {
+    if(intervaloVerificacao) clearInterval(intervaloVerificacao);
+    propostaAtual = null;
+    document.getElementById('secaoDetalhes').classList.add('hidden');
+    document.getElementById('secaoBusca').classList.remove('hidden');
+    document.getElementById('campoBusca').value = '';
 }
 </script>
 </body>
