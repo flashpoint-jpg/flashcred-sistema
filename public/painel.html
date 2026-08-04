@@ -89,6 +89,7 @@
         .max-w-6xl { max-width: 72rem; }
         .mx-auto { margin-left: auto; margin-right: auto; }
         .w-full { width: 100%; }
+        .btn-carregando { opacity: 0.7; cursor: not-allowed; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -230,11 +231,11 @@ function alterarSenha() {
     }
 }
 
-// ✅ TEMPO REAL ATUALIZA PAINEL E CLIENTE
+// 🔄 TEMPO REAL GARANTIDO
 function iniciarTempoReal() {
     supabase.channel('atualizacoes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas' }, () => {
-            mostrarNotificacao('🔔 Atualização recebida!', 'alerta');
+            mostrarNotificacao('🔔 Atualização recebida! Lista já renovada.', 'alerta');
             carregarPropostas();
         })
         .subscribe();
@@ -304,10 +305,13 @@ function enviarWhatsapp(numero, nome) {
     window.open(`https://wa.me/55${num}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
-// ✅ MODAL QUE ALTERA E SALVA TODOS OS VALORES
+// ✅ MODAL COM CARREGAMENTO E CÁLCULO FUNCIONAL
 function abrirModalEditar(cpf) {
     const prop = listaPropostas.find(p => limparCpf(p.cpf) === cpf);
-    if(!prop) return;
+    if(!prop) {
+        alert('Proposta não encontrada!');
+        return;
+    }
     
     document.getElementById('formModal').innerHTML = `
         <p class="mb-3"><strong>Cliente:</strong> ${prop.nome}</p>
@@ -342,7 +346,7 @@ function abrirModalEditar(cpf) {
         </div>
 
         <div class="flex gap-2 mt-4">
-            <button class="btn btn-sucesso flex-1" onclick="salvarEdicao('${cpf}')">💾 Salvar e Aprovar</button>
+            <button id="btnSalvarEdicao" class="btn btn-sucesso flex-1" onclick="salvarEdicao('${cpf}')">💾 Salvar e Aprovar</button>
             <button class="btn flex-1 bg-gray-200" onclick="fecharModalEditar()">Cancelar</button>
         </div>
     `;
@@ -366,36 +370,50 @@ function atualizarCalculo() {
         document.getElementById('valorParcelaCalc').textContent = valorParcela.toFixed(2).replace('.', ',');
 }
 
-// ✅ FUNÇÃO QUE SALVA TUDO NO BANCO DE DADOS
+// ✅ SALVAMENTO GARANTIDO COM TODOS OS CAMPOS
 async function salvarEdicao(cpf) {
-    const valorTotal = parseFloat(document.getElementById('valorTotal').value);
-    const percEntrada = parseFloat(document.getElementById('percEntrada').value);
-    const percJuros = parseFloat(document.getElementById('percJuros').value);
-    const qtdParc = parseInt(document.getElementById('qtdParc').value);
+    const btn = document.getElementById('btnSalvarEdicao');
+    btn.classList.add('btn-carregando');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando...';
 
-    if(!valorTotal || !percEntrada || !percJuros || !qtdParc) {
-        alert('⚠️ Preencha todos os valores corretamente!');
-        return;
+    try {
+        const valorTotal = parseFloat(document.getElementById('valorTotal').value);
+        const percEntrada = parseFloat(document.getElementById('percEntrada').value);
+        const percJuros = parseFloat(document.getElementById('percJuros').value);
+        const qtdParc = parseInt(document.getElementById('qtdParc').value);
+
+        if(!valorTotal || !percEntrada || !percJuros || !qtdParc) {
+            throw new Error('Preencha todos os valores corretamente!');
+        }
+
+        const valorEntrada = valorTotal * (percEntrada / 100);
+        const valorComJuros = valorTotal * (1 + (percJuros / 100));
+        const valorParcela = qtdParc > 0 ? (valorComJuros - valorEntrada) / qtdParc : 0;
+
+        // 📌 AQUI SALVA ABSOLUTAMENTE TUDO NO BANCO
+        const { error } = await supabase.from('propostas').update({
+            valor_total: valorTotal,
+            perc_entrada: percEntrada,
+            perc_juros: percJuros,
+            qtd_parcelas: qtdParc,
+            valor_entrada: valorEntrada,
+            valor_parcela: valorParcela,
+            status: 'Aprovada',
+            atualizado_em: new Date()
+        }).eq('cpf', cpf);
+
+        if(error) throw error;
+
+        mostrarNotificacao('✅ Alteração salva com sucesso! O cliente já vê os valores atualizados.', 'sucesso');
+        fecharModalEditar();
+        await carregarPropostas();
+
+    } catch (erro) {
+        mostrarNotificacao(`⚠️ Erro: ${erro.message}`, 'perigo');
+    } finally {
+        btn.classList.remove('btn-carregando');
+        btn.innerHTML = '💾 Salvar e Aprovar';
     }
-
-    const valorEntrada = valorTotal * (percEntrada / 100);
-    const valorComJuros = valorTotal * (1 + (percJuros / 100));
-    const valorParcela = qtdParc > 0 ? (valorComJuros - valorEntrada) / qtdParc : 0;
-
-    // ✅ SALVA TODOS OS CAMPOS QUE O CLIENTE VÊ
-    await supabase.from('propostas').update({
-        valor_total: valorTotal,
-        perc_entrada: percEntrada,
-        perc_juros: percJuros,
-        qtd_parcelas: qtdParc,
-        valor_entrada: valorEntrada,
-        valor_parcela: valorParcela,
-        status: 'Aprovada'
-    }).eq('cpf', cpf);
-
-    mostrarNotificacao('✅ Proposta atualizada e aprovada! Os valores já aparecem para o cliente.', 'sucesso');
-    fecharModalEditar();
-    carregarPropostas();
 }
 
 function fecharModalEditar() {
