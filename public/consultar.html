@@ -291,12 +291,14 @@ function carregarDadosProposta() {
         document.getElementById('areaPropostaAprovada').classList.remove('hidden');
         preencherValoresAprovados();
         
-        // Carrega Pix salvo no banco (não gera código novo inválido)
-        if(propostaAtual.qrcode_pix && propostaAtual.copia_cola_pix) {
+        // CORREÇÃO AQUI: Gera o QR Code dinamicamente utilizando a API pública com base no Pix Copia e Cola salvo
+        const codigoCopiaECola = propostaAtual.copia_cola_pix || propostaAtual.codigo_pix_entrada;
+        if(codigoCopiaECola) {
+            document.getElementById('copiaEColaEntrada').textContent = codigoCopiaECola;
+            const urlApiQrCode = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(codigoCopiaECola)}`;
+            document.getElementById('qrcodeEntradaImg').src = urlApiQrCode;
+        } else if(propostaAtual.qrcode_pix) {
             document.getElementById('qrcodeEntradaImg').src = propostaAtual.qrcode_pix;
-            document.getElementById('copiaEColaEntrada').textContent = propostaAtual.copia_cola_pix;
-        } else if(propostaAtual.codigo_pix_entrada) {
-            document.getElementById('copiaEColaEntrada').textContent = propostaAtual.codigo_pix_entrada;
         }
     }
 }
@@ -311,152 +313,141 @@ function preencherValoresAprovados() {
     const valorEntrada = Number((valorSolicitado * percEntrada / 100).toFixed(2));
     const valorFinanciado = Number((valorSolicitado - valorEntrada).toFixed(2));
     const valorJuros = Number((valorFinanciado * (percJuros / 100) * maxParcelas).toFixed(2));
-    const valorTotal = Number((valorSolicitado + valorJuros).toFixed(2));
+    const valorTotal = Number((valorFinanciado + valorJuros).toFixed(2));
 
-    document.getElementById('mostraValorSolicitado').textContent = `R$ ${valorSolicitado.toFixed(2).replace('.', ',')}`;
-    document.getElementById('mostraValorTotal').textContent = `R$ ${valorTotal.toFixed(2).replace('.', ',')}`;
-    document.getElementById('mostraEntrada').textContent = `R$ ${valorEntrada.toFixed(2).replace('.', ',')}`;
+    document.getElementById('mostraValorSolicitado').textContent = valorSolicitado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    document.getElementById('mostraEntrada').textContent = valorEntrada.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    document.getElementById('mostraValorTotal').textContent = valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     document.getElementById('mostraMaxParcelas').textContent = `Até ${maxParcelas}x`;
-    
-    document.getElementById('contratoValorTotal').textContent = valorTotal.toFixed(2).replace('.', ',');
-    document.getElementById('contratoEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
-    document.getElementById('contratoMaxParcelas').textContent = maxParcelas;
-    document.getElementById('valorEntrada').textContent = valorEntrada.toFixed(2).replace('.', ',');
 
-    // Preenche opções de parcelas
+    document.getElementById('contratoValorTotal').textContent = valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    document.getElementById('contratoEntrada').textContent = valorEntrada.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    document.getElementById('contratoMaxParcelas').textContent = `${maxParcelas}x`;
+    document.getElementById('valorEntrada').textContent = valorEntrada.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+
     const select = document.getElementById('selectParcelas');
     select.innerHTML = '<option value="">Selecione...</option>';
     for(let i = 1; i <= maxParcelas; i++) {
-        const option = document.createElement('option');
-        option.value = i;
-        option.textContent = `${i}x de R$ ${((valorFinanciado + valorJuros) / i).toFixed(2).replace('.', ',')}`;
-        select.appendChild(option);
+        const valParc = (valorTotal / i).toFixed(2);
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = `${i}x de R$ ${Number(valParc).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+        select.appendChild(opt);
     }
 }
 
 function atualizarValorParcela() {
-    const parcelasEscolhidas = Number(document.getElementById('selectParcelas').value);
-    if(!parcelasEscolhidas) {
-        document.getElementById('valorParcelaDestaque').classList.add('hidden');
+    const parcelas = parseInt(document.getElementById('selectParcelas').value);
+    const destaque = document.getElementById('valorParcelaDestaque');
+    if(!parcelas) {
+        destaque.classList.add('hidden');
         return;
     }
-    const valorFinanciado = Number(propostaAtual.valor_solicitado - (propostaAtual.valor_solicitado * propostaAtual.percentual_entrada / 100));
-    const valorJuros = Number((valorFinanciado * (Number(propostaAtual.juros || 6) / 100) * Number(propostaAtual.quantidade_parcelas || 48)).toFixed(2));
-    valorParcelaCalculada = Number(((valorFinanciado + valorJuros) / parcelasEscolhidas).toFixed(2));
-    
-    document.getElementById('mostraValorParcela').textContent = `R$ ${valorParcelaCalculada.toFixed(2).replace('.', ',')}`;
-    document.getElementById('valorParcelaDestaque').classList.remove('hidden');
+    const valorSolicitado = Number(propostaAtual.valor_solicitado || propostaAtual.valor_desejado || 0);
+    const percEntrada = Number(propostaAtual.percentual_entrada || 40);
+    const percJuros = Number(propostaAtual.juros || 6);
+    const maxParcelas = Number(propostaAtual.quantidade_parcelas || 48);
+
+    const valorEntrada = valorSolicitado * percEntrada / 100;
+    const valorFinanciado = valorSolicitado - valorEntrada;
+    const valorJuros = valorFinanciado * (percJuros / 100) * maxParcelas;
+    const valorTotal = valorFinanciado + valorJuros;
+
+    valorParcelaCalculada = (valorTotal / parcelas).toFixed(2);
+    document.getElementById('mostraValorParcela').textContent = Number(valorParcelaCalculada).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    destaque.classList.remove('hidden');
 }
 
 function habilitarAssinatura() {
     const aceito = document.getElementById('aceitoContrato').checked;
-    document.getElementById('areaOpcoesAssinatura').classList.toggle('hidden', !aceito);
-    if(!aceito) {
+    const areaOpcoes = document.getElementById('areaOpcoesAssinatura');
+    if(aceito) {
+        areaOpcoes.classList.remove('hidden');
+    } else {
+        areaOpcoes.classList.add('hidden');
         document.getElementById('assinaturaEscrita').classList.add('hidden');
         document.getElementById('assinaturaSelfie').classList.add('hidden');
-        document.getElementById('areaPagamentoEntrada').classList.add('hidden');
     }
 }
 
 function usarAssinaturaEscrita() {
-    document.getElementById('assinaturaSelfie').classList.add('hidden');
     document.getElementById('assinaturaEscrita').classList.remove('hidden');
-    pararCamera();
+    document.getElementById('assinaturaSelfie').classList.add('hidden');
 }
 
 function usarSelfie() {
-    document.getElementById('assinaturaEscrita').classList.add('hidden');
     document.getElementById('assinaturaSelfie').classList.remove('hidden');
+    document.getElementById('assinaturaEscrita').classList.add('hidden');
 }
 
 async function abrirCamera() {
     try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 320, height: 240 } });
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
         const video = document.getElementById('cameraSelfie');
         video.srcObject = streamCamera;
         video.classList.remove('hidden');
         document.getElementById('btnAbrirCamera').classList.add('hidden');
         document.getElementById('btnTirarFoto').classList.remove('hidden');
-    } catch (erro) {
-        alert('Não foi possível acessar a câmera. Você pode usar a assinatura por escrito.');
-        usarAssinaturaEscrita();
+    } catch(e) {
+        alert('Não foi possível acessar a câmera: ' + e.message);
     }
-}
-
-function pararCamera() {
-    if(streamCamera) {
-        streamCamera.getTracks().forEach(track => track.stop());
-        streamCamera = null;
-    }
-    document.getElementById('cameraSelfie').classList.add('hidden');
-    document.getElementById('previewSelfie').classList.add('hidden');
-    document.getElementById('btnAbrirCamera').classList.remove('hidden');
-    document.getElementById('btnTirarFoto').classList.add('hidden');
-    document.getElementById('btnConfirmarSelfie').classList.add('hidden');
 }
 
 function tirarSelfie() {
     const video = document.getElementById('cameraSelfie');
     const canvas = document.getElementById('canvasSelfie');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
+    const dataUrl = canvas.toDataURL('image/png');
     const preview = document.getElementById('previewSelfie');
-    preview.src = canvas.toDataURL('image/png');
+    preview.src = dataUrl;
     preview.classList.remove('hidden');
-    
+    video.classList.add('hidden');
+
+    if(streamCamera) {
+        streamCamera.getTracks().forEach(track => track.stop());
+    }
+
     document.getElementById('btnTirarFoto').classList.add('hidden');
     document.getElementById('btnConfirmarSelfie').classList.remove('hidden');
-    pararCamera();
 }
 
 async function confirmarAssinatura() {
-    let assinaturaValida = false;
-    let dadosAssinatura = {};
-
-    if(document.getElementById('assinaturaEscrita').classList.contains('hidden') === false) {
-        const nome = document.getElementById('nomeAssinatura').value.trim();
-        if(nome.length < 5) { alert('Digite seu nome completo para confirmar'); return; }
-        assinaturaValida = true;
-        dadosAssinatura = { tipo: 'escrita', nome_assinante: nome };
-    } else if(document.getElementById('assinaturaSelfie').classList.contains('hidden') === false) {
-        const preview = document.getElementById('previewSelfie');
-        if(!preview.src) { alert('Tire a foto para confirmar'); return; }
-        assinaturaValida = true;
-        dadosAssinatura = { tipo: 'selfie', foto_assinatura: preview.src };
+    const parcelasEscolhidas = document.getElementById('selectParcelas').value;
+    if(!parcelasEscolhidas) {
+        alert('Por favor, escolha a quantidade de parcelas antes de confirmar.');
+        return;
     }
 
-    if(!assinaturaValida) return;
-
+    document.getElementById('areaOpcoesAssinatura').classList.add('hidden');
+    document.getElementById('areaPagamentoEntrada').classList.remove('hidden');
+    
     try {
-        // Salva confirmação no banco
         await supabase.from('propostas').update({
-            contrato_assinado: true,
-            dados_assinatura: dadosAssinatura,
-            data_assinatura: new Date().toISOString()
+            status_assinatura: 'assinado',
+            parcelas_escolhidas: parseInt(parcelasEscolhidas)
         }).eq('id', propostaAtual.id);
-
-        document.getElementById('areaPagamentoEntrada').classList.remove('hidden');
-        alert('✅ Contrato aceito! Agora você pode efetuar o pagamento da entrada.');
-
-    } catch (erro) {
-        console.error('Erro ao salvar assinatura:', erro);
-        alert('Erro ao confirmar. Tente novamente.');
+    } catch(e) {
+        console.error('Erro ao atualizar assinatura:', e);
     }
 }
 
 function copiarCopiaECola() {
-    const codigo = document.getElementById('copiaEColaEntrada').textContent;
-    if(!codigo) return;
-    navigator.clipboard.writeText(codigo)
-        .then(() => alert('✅ Código copiado!'))
-        .catch(() => alert('Selecione e copie o código manualmente'));
+    const texto = document.getElementById('copiaEColaEntrada').textContent;
+    navigator.clipboard.writeText(texto).then(() => {
+        alert('Código Pix copiado com sucesso!');
+    }).catch(err => {
+        alert('Erro ao copiar código: ' + err);
+    });
 }
 
 function voltarBusca() {
-    pararCamera();
+    if(streamCamera) {
+        streamCamera.getTracks().forEach(track => track.stop());
+    }
     document.getElementById('secaoDetalhes').classList.add('hidden');
     document.getElementById('secaoBusca').classList.remove('hidden');
     document.getElementById('campoBusca').value = '';
