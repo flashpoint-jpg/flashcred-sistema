@@ -66,7 +66,7 @@
         .cabecalho-contrato { text-align: center; margin-bottom: 20px; }
         .cabecalho-contrato h4 { font-size: 18px; font-weight: 700; color: #0A2463; margin-bottom: 8px; }
         
-        .lista-parcelas-escolha { display: grid; gap: 10px; margin: 12px 0; max-height: 240px; overflow-y: auto; }
+        .lista-parcelas-escolha { display: grid; gap: 10px; margin: 12px 0 24px 0; max-height: 240px; overflow-y: auto; }
         .item-parcela-escolha { display: flex; align-items: center; justify-content: space-between; padding: 16px; background: #F8FAFC; border: 2px solid #E2E8F0; border-radius: 12px; cursor: pointer; transition: all 0.2s; font-weight: 600; font-size: 15px; }
         .item-parcela-escolha:hover { border-color: #93C5FD; background: #EFF6FF; }
         .item-parcela-escolha.selecionada { background: #DBEAFE; border-color: #0A2463; }
@@ -110,7 +110,7 @@
 
         <div id="areaAprovado" class="hidden">
             <h3 class="text-lg font-semibold text-primary mb-3">📅 Escolha a quantidade de parcelas</h3>
-            <div id="listaParcelasEscolha" class="lista-parcelas-escolha mb-6"></div>
+            <div id="listaParcelasEscolha" class="lista-parcelas-escolha"></div>
 
             <h3 class="text-lg font-semibold text-primary mb-3">📄 Contrato de Compra e Parcelamento</h3>
             <div class="caixa-contrato">
@@ -189,21 +189,27 @@ let streamCamera = null;
 let valorEntradaAtual = 0;
 
 function formatarCpf(cpf) { return String(cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4'); }
-// CORREÇÃO AQUI: Removemos a divisão dupla por 100
+function formatarTelefone(tel) { return tel ? String(tel).replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3') : 'Não informado'; }
+function formatarCep(cep) { return cep ? String(cep).replace(/(\d{5})(\d{3})/, '$1-$2') : 'Não informado'; }
+
+// Função de conversão corrigida
 function limparValor(valor) { 
-    if(!valor) return 0;
-    // Se vier como número inteiro (ex: 7800 = R$78,00) divide por 100
-    if(typeof valor === 'number' && valor > 100) return valor / 100;
-    // Se vier como texto com ponto/vírgula converte corretamente
-    return Number(String(valor).replace(/\./g, '').replace(',', '.')) || 0;
+    if(!valor && valor !== 0) return 0;
+    const strValor = String(valor).replace(/\D/g, '');
+    if(strValor.length === 0) return 0;
+    // Se vier em centavos (ex: 20000 = R$200,00)
+    if(strValor.length >= 3) return parseInt(strValor, 10) / 100;
+    // Se vier em reais (ex: 200 = R$200,00)
+    return parseFloat(strValor);
 }
 function removerAcentos(texto) { return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
 
-// Função para gerar código Pix válido
+// Função gerar Pix CORRIGIDA, sem duplicar zeros
 function gerarCodigoPix(valor, descricao = 'PAGAMENTO ENTRADA') {
     valor = parseFloat(valor || 0);
     if(valor <= 0) return null;
 
+    // Formata valor para PIX: 78.00 vira '7800'
     const valorStr = valor.toFixed(2).replace('.', '');
     descricao = removerAcentos(descricao).toUpperCase().replace(/[^A-Z0-9 .,-]/g, '').trim().substring(0, 25);
     const nome = removerAcentos(NOME_RECEBEDOR).toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim().substring(0, 25);
@@ -265,7 +271,6 @@ function carregarDadosProposta() {
     const valorSolicitado = limparValor(dadosProposta.valor_solicitado || dadosProposta.valor_desejado || 0);
     const valorTotal = limparValor(dadosProposta.valor_total || valorSolicitado);
     const percentualEntrada = Number(dadosProposta.percentual_entrada || 40);
-    // CORREÇÃO: Calcula entrada corretamente igual ao painel
     valorEntradaAtual = limparValor(dadosProposta.valor_entrada || (valorTotal * percentualEntrada / 100));
     const juros = Number(dadosProposta.juros || 6);
     const maxParcelas = Number(dadosProposta.quantidade_parcelas || dadosProposta.qtd_parcelas || 12);
@@ -275,8 +280,8 @@ function carregarDadosProposta() {
         <p class="mb-2"><strong>Nome:</strong> ${dadosProposta.nome || 'Não informado'}</p>
         <p class="mb-2"><strong>CPF:</strong> ${formatarCpf(dadosProposta.cpf)}</p>
         <p class="mb-2"><strong>Data de Nascimento:</strong> ${dadosProposta.nascimento || 'Não informado'}</p>
-        <p class="mb-2"><strong>WhatsApp:</strong> ${dadosProposta.whatsapp || 'Não informado'}</p>
-        <p class="mb-2"><strong>CEP:</strong> ${dadosProposta.cep || 'Não informado'}</p>
+        <p class="mb-2"><strong>WhatsApp:</strong> ${formatarTelefone(dadosProposta.whatsapp)}</p>
+        <p class="mb-2"><strong>CEP:</strong> ${formatarCep(dadosProposta.cep)}</p>
         <p class="mb-2"><strong>Endereço:</strong> ${dadosProposta.endereco || 'Não informado'}</p>
         <p class="mb-2"><strong>Valor Solicitado:</strong> R$ ${valorSolicitado.toFixed(2).replace('.', ',')}</p>
         <p class="mb-2"><strong>Valor Total:</strong> R$ ${valorTotal.toFixed(2).replace('.', ',')}</p>
@@ -287,7 +292,6 @@ function carregarDadosProposta() {
         <p><strong>Status:</strong> <span class="badge badge-${status}">${status.toUpperCase()}</span></p>
     `;
 
-    // Preenche dados do contrato
     document.getElementById('valorTotalContrato').textContent = valorTotal.toFixed(2).replace('.', ',');
     document.getElementById('percentualEntradaContrato').textContent = percentualEntrada;
     document.getElementById('valorEntradaContrato').textContent = valorEntradaAtual.toFixed(2).replace('.', ',');
@@ -416,7 +420,6 @@ function voltarBusca() {
     if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
 }
 
-// Carrega automaticamente se vier link com CPF
 window.addEventListener('load', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const cpfUrl = urlParams.get('cpf');
