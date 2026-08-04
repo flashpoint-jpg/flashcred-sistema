@@ -182,6 +182,28 @@ const MINHA_CHAVE_PIX = '33552949852';
 let modoSistema = 'manual';
 let propostaSelecionada = null;
 
+// 🆕 FUNÇÃO PARA GERAR CÓDIGO ÚNICO AUTOMÁTICO
+function gerarCodigoUnico() {
+    const data = new Date();
+    const ano = data.getFullYear().toString().slice(-2);
+    const mes = (data.getMonth() + 1).toString().padStart(2, '0');
+    const dia = data.getDate().toString().padStart(2, '0');
+    const aleatorio = Math.floor(Math.random() * 9999).toString().padStart(4, '0');
+    return `FC${ano}${mes}${dia}-${aleatorio}`;
+}
+
+// 🆕 ADICIONA CÓDIGO PARA PROPOSTAS QUE AINDA NÃO TEM
+async function adicionarCodigoEmPropostasSemCodigo() {
+    const { data } = await supabase.from('propostas').select('*').is('codigo_unico', null);
+    if((data || []).length === 0) return;
+
+    for(const proposta of data) {
+        await supabase.from('propostas').update({
+            codigo_unico: gerarCodigoUnico()
+        }).eq('id', proposta.id);
+    }
+}
+
 function definirModo(modo) {
     modoSistema = modo;
     document.querySelectorAll('.modo-botao').forEach(b => b.classList.remove('modo-ativo'));
@@ -243,7 +265,7 @@ async function salvarEGerarPix() {
 
     try {
         await supabase.from('propostas').update(dadosAtualizados).eq('id', propostaSelecionada.id);
-        alert('✅ Salvo com sucesso!');
+        alert('✅ Salvo com sucesso! Código e Pix gerados.');
         fecharModalEditar();
         carregarListaPropostas();
     } catch(erro) {
@@ -259,6 +281,9 @@ async function reprovarProposta(id) {
 }
 
 async function carregarListaPropostas() {
+    // Primeiro adiciona código nas propostas que estão sem
+    await adicionarCodigoEmPropostasSemCodigo();
+
     const { data } = await supabase.from('propostas').select('*').order('data_criacao', { ascending: false });
     const lista = document.getElementById('listaPropostas');
     lista.innerHTML = '';
