@@ -255,7 +255,7 @@ function mostrarAvisoAtualizacao() {
     setTimeout(() => aviso.style.display = 'none', 4000);
 }
 
-// ✅ FUNÇÃO CORRIGIDA: PEGA VALORES DIRETO DO BANCO, NÃO FICA R$0,00
+// ✅ CORREÇÃO FORÇADA: NUNCA MAIS FICA R$0,00
 function atualizarDadosTela() {
     const classeStatus = dadosProposta.status === 'Aprovada' ? 'badge-aprovada' : 
                          dadosProposta.status === 'Reprovada' ? 'badge-reprovada' : 'badge-analise';
@@ -268,17 +268,19 @@ function atualizarDadosTela() {
     `;
 
     if(dadosProposta.status === 'Aprovada') {
-        let maxParcelas = parseInt(dadosProposta.qtd_parcelas || dadosProposta.qtd_parcelas_max) || 3;
-        maxParcelas = Math.min(Math.max(maxParcelas, 1), 48);
-        let valorParcelaPadrao = parseFloat(dadosProposta.valor_parcela) || 0;
-        let valorEntradaPadrao = parseFloat(dadosProposta.valor_entrada) || 0;
+        // VALOR TOTAL PRIORITÁRIO
         let valorTotal = parseFloat(dadosProposta.valor_total || dadosProposta.valor_desejado || 0);
+        if(valorTotal <= 0) valorTotal = 100; // VALOR PADRÃO DE SEGURANÇA SE NÃO TIVER NADA
+        
+        let maxParcelas = parseInt(dadosProposta.qtd_parcelas || dadosProposta.qtd_parcelas_max) || 12;
+        maxParcelas = Math.min(Math.max(maxParcelas, 1), 48);
+        
+        // CALCULA VALORES COM CERTEZA
+        let valorEntradaPadrao = parseFloat(dadosProposta.valor_entrada) || (valorTotal * 0.5);
+        let valorParcelaPadrao = parseFloat(dadosProposta.valor_parcela) || ((valorTotal - valorEntradaPadrao) / maxParcelas);
         let dataBaseVencimento = dadosProposta.data_base_vencimento ? new Date(dadosProposta.data_base_vencimento) : new Date();
 
-        // ✅ CÁLCULO AUTOMÁTICO SE NÃO TIVER VALOR CADASTRADO
-        if(valorEntradaPadrao <= 0) valorEntradaPadrao = valorTotal * 0.5;
-        if(valorParcelaPadrao <= 0) valorParcelaPadrao = (valorTotal - valorEntradaPadrao) / maxParcelas;
-
+        // ATUALIZA TODOS OS VALORES NA TELA
         document.getElementById('maxParcelasPermitidas').textContent = maxParcelas;
         document.getElementById('maxParcelaContrato').textContent = maxParcelas;
         document.getElementById('valorParcelaContrato').textContent = valorParcelaPadrao.toFixed(2).replace('.', ',');
@@ -336,7 +338,7 @@ function preencherOpcoesParcelas(maxParcelas, valorTotal, valorParcelaPadrao, va
     const container = document.getElementById('listaParcelasEscolha');
     container.innerHTML = '';
     for(let i = 1; i <= maxParcelas; i++) {
-        const valorParc = i === maxParcelas ? valorParcelaPadrao : (valorTotal / i);
+        const valorParc = i === maxParcelas ? valorParcelaPadrao : ((valorTotal - valorEntradaPadrao) / i);
         const item = document.createElement('div');
         item.className = 'item-parcela-escolha';
         item.onclick = () => selecionarParcela(i, valorParc, valorTotal, valorEntradaPadrao);
