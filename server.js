@@ -10,18 +10,20 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rota de Teste para acordar o Render
+// IMPORTANTE: Isso diz ao servidor onde estão os seus arquivos HTML (como o painel.html)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Rota de Teste
 app.get('/', (req, res) => {
     res.send('Servidor FlashCred rodando com sucesso!');
 });
 
-// Rota Pix (Alinhada exatamente com o painel: /api/criar-pagamento)
+// Rota Pix /api/criar-pagamento
 app.post('/api/criar-pagamento', async (req, res) => {
     try {
         const { valor, descricao, cpf, nome } = req.body;
         if (!valor) return res.status(400).json({ erro: "Valor não informado" });
 
-        // Token do Mercado Pago (Insira seu Access Token do Mercado Pago aqui ou via Variável de Ambiente no Render)
         const tokenApi = process.env.MERCADO_PAGO_TOKEN || 'APP_USR-seu-token-aqui';
 
         const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
@@ -58,7 +60,6 @@ app.post('/api/criar-pagamento', async (req, res) => {
     }
 });
 
-// Inicialização OBRIGATÓRIA para o Render na porta 10000
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ Servidor rodando na porta ${PORT}`);
 });
