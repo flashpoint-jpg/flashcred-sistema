@@ -80,7 +80,6 @@
 
         .vazio { text-align: center; color: var(--texto-claro); padding: 40px; font-size: 15px; }
         .carregando { text-align: center; padding: 30px; color: var(--texto-claro); display: none; font-size: 14px; }
-        .qrcode-prev { max-width: 150px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; }
     </style>
 </head>
 <body>
@@ -138,7 +137,6 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ✅ TUDO CONFIGURADO!
 const SENHA = 'flash2026';
 const CHAVE_PIX_AUTOMATICA = '33552949852';
 const TOKEN_MP_PRODUCAO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
@@ -230,17 +228,15 @@ function criarCard(p) {
     const valParc = parcelas ? resto * (1 + juros/100) / parcelas : 0;
 
     const cpf = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    const endereco = p.endereco || '';
-    const cep = p.cep || '';
-    const temQR = p.qr_code_entrada ? '✅ QR Code gerado' : '⏳ Aguardando aprovação';
+    const temQR = p.copia_cola_pix ? '✅ Pix configurado' : '⏳ Aguardando aprovação';
 
     return `
     <div class="proposta">
         <div class="proposta-topo">
             <div>
                 <div class="proposta-nome">${p.nome}</div>
-                <div class="proposta-info">Código: ${p.codigo_unico || '---'} | CPF: ${cpf} | ${endereco} ${cep}</div>
-                <div class="proposta-info">Pix/QR: ${temQR}</div>
+                <div class="proposta-info">Código: ${p.codigo_unico || '---'} | CPF: ${cpf}</div>
+                <div class="proposta-info">Pix: ${temQR}</div>
             </div>
             <span class="status ${statusCls}">${statusTxt}</span>
         </div>
@@ -273,7 +269,7 @@ function criarCard(p) {
         </div>
 
         <div class="botoes">
-            <button class="btn btn-aprovar" onclick="aprovar(${p.id})">✅ Aprovar + Gerar QR Code</button>
+            <button class="btn btn-aprovar" onclick="aprovar(${p.id})">✅ Aprovar</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
             <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
@@ -295,7 +291,7 @@ function atualizar(id) {
     document.getElementById(`vp-${id}`).value = real(valorParc);
 }
 
-// ✅ APROVAR + GERAR QR CODE MERCADO PAGO
+// ✅ APROVAR — SEM ERRO DE CAMPO!
 async function aprovar(id) {
     const proposta = propostas.find(p => p.id === id);
     if (!proposta) return;
@@ -306,14 +302,10 @@ async function aprovar(id) {
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${parcelas}x\n\nModo: ${modo.toUpperCase()}\nSerá gerado QR Code Mercado Pago!`)) return;
+    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${parcelas}x\n\nModo: ${modo.toUpperCase()}`)) return;
 
-    // ==========================================
-    // ✅ GERA COBRANÇA NO MERCADO PAGO
-    // ==========================================
+    // ✅ GERA CHAVE PIX
     let chavePixGerada = CHAVE_PIX_AUTOMATICA;
-    let qrCodeImagem = null;
-    let linkPagamento = null;
 
     if (modo === 'producao' && getTokenMP()) {
         try {
@@ -332,34 +324,32 @@ async function aprovar(id) {
             });
 
             const dados = await resp.json();
-            if (dados.point_of_interaction) {
+            if (dados.point_of_interaction && dados.point_of_interaction.transaction_data) {
                 chavePixGerada = dados.point_of_interaction.transaction_data.qr_code || CHAVE_PIX_AUTOMATICA;
-                qrCodeImagem = dados.point_of_interaction.transaction_data.qr_code_base64 || null;
-                linkPagamento = dados.point_of_interaction.transaction_data.ticket_url || null;
             }
-            console.log('✅ QR Code gerado pelo Mercado Pago!');
+            console.log('✅ Pix gerado pelo Mercado Pago!');
         } catch (erro) {
-            console.log('⚠️ Mercado Pago indisponível, usando chave fixa:', erro);
+            console.log('⚠️ Usando chave Pix fixa:', erro);
         }
     }
 
-    // ✅ SALVA TUDO NO BANCO
-    const { error } = await supabase.from('propostas').update({
+    // ✅ SALVA SOMENTE OS CAMPOS QUE EXISTEM — SEM ERRO!
+    const dadosParaSalvar = {
         status: 'Aprovada',
         valor_desejado: valor,
         percentual_entrada: perc,
         valor_entrada: entrada,
         quantidade_parcelas: parcelas,
         juros: juros,
-        copia_cola_pix: chavePixGerada,
-        qr_code_entrada: qrCodeImagem,
-        link_pagamento: linkPagamento
-    }).eq('id', id);
+        copia_cola_pix: chavePixGerada
+    };
+
+    const { error } = await supabase.from('propostas').update(dadosParaSalvar).eq('id', id);
 
     if (error) {
         alert('❌ Erro: ' + error.message);
     } else {
-        alert(`✅ APROVADA!\n\n✅ QR Code e Pix gerados!\n✅ Cliente já pode pagar!\nModo: ${modo.toUpperCase()}`);
+        alert(`✅ APROVADA!\n\n✅ Pix configurado!\n✅ Cliente já pode consultar e pagar!\nModo: ${modo.toUpperCase()}`);
         carregar();
     }
 }
@@ -375,7 +365,7 @@ async function enviarWhatsApp(id) {
     const p = propostas.find(x => x.id === id);
     if (!p) return;
     const link = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(p.cpf || '').replace(/\D/g, '')}`;
-    const msg = `Olá ${p.nome}! Tudo bem? ✅\n\nSua proposta foi APROVADA! 🎉\n\nValor: R$ ${(p.valor_desejado || 0).toLocaleString('pt-BR')}\nEntrada: R$ ${(p.valor_entrada || 0).toLocaleString('pt-BR')}\n\nAcesse abaixo para ver o QR Code, chave Pix e assinar o contrato:\n${link}\n\nObrigado! 📋`;
+    const msg = `Olá ${p.nome}! Tudo bem? ✅\n\nSua proposta foi APROVADA! 🎉\n\nValor: R$ ${(p.valor_desejado || 0).toLocaleString('pt-BR')}\nEntrada: R$ ${(p.valor_entrada || 0).toLocaleString('pt-BR')}\n\nAcesse abaixo para ver o Pix, assinar o contrato e pagar:\n${link}\n\nObrigado! 📋`;
     window.open(`https://wa.me/55${p.telefone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
