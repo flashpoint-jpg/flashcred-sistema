@@ -203,7 +203,7 @@
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const SERVIDOR_URL = 'https://flashcred-sistema.onrender.com'; // ✅ JÁ CONFIGURADO!
+const SERVIDOR_URL = 'https://flashcred-sistema.onrender.com';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let proposta = null;
@@ -271,7 +271,6 @@ function mostrarProposta() {
     document.getElementById('telaProposta').classList.remove('escondido');
     document.getElementById('dataHoje').textContent = hoje();
 
-    // ✅ SE ENTRADA PAGA → MOSTRA PARCELAS
     if (proposta.entrada_paga === true) {
         mostrarTelaParcelas();
         return;
@@ -283,8 +282,25 @@ function mostrarProposta() {
         document.getElementById('blocoReprovada').classList.add('escondido');
         document.getElementById('blocoEntradaPaga').classList.add('escondido');
         preencherValores();
+        
+        // Se já tiver o PIX gerado e salvo na base, exibe direto na etapa 4
+        if (proposta.copia_cola_pix) {
+            document.getElementById('etapaParcelas').classList.add('escondido');
+            document.getElementById('etapaContrato').classList.add('escondido');
+            document.getElementById('etapaAssinar').classList.add('escondido');
+            document.getElementById('etapaPagamento').classList.remove('escondido');
+            document.getElementById('chavePix').textContent = proposta.copia_cola_pix;
+            document.getElementById('semQrCode').style.display = 'none';
+            document.getElementById('qrcodeImagem').innerHTML = '';
+            new QRCode(document.getElementById('qrcodeImagem'), {
+                text: proposta.copia_cola_pix,
+                width: 180,
+                height: 180
+            });
+        }
     } else if (proposta.status === 'Reprovada') {
         document.getElementById('blocoReprovada').classList.remove('escondido');
+        document.getElementById('blocoAguardando').classList.add('escondido');
     } else {
         document.getElementById('blocoAguardando').classList.remove('escondido');
     }
@@ -379,29 +395,20 @@ function preencherValores() {
     document.getElementById('listaParcelasEscolha').innerHTML = html;
 }
 
-// ✅ CONFIRMA QUANTIDADE DE PARCELAS
-async function confirmarParcelas() {
-    const selecionada = document.querySelector('input[name="qtdParcelas"]:checked');
-    if (!selecionada) { alert('⚠️ Escolha a quantidade de parcelas'); return; }
-    
-    qtdParcelasEscolhida = parseInt(selecionada.value);
-    const valorParcela = parseFloat(selecionada.dataset.valor);
-
-    // Salva no banco
-    await supabase.from('propostas').update({ 
-        parcelas_escolhidas: qtdParcelasEscolhida,
-        valor_parcela: valorParcela
-    }).eq('id', proposta.id);
-
-    // Avança para contrato
+function confirmarParcelas() {
+    const selecionado = document.querySelector('input[name="qtdParcelas"]:checked');
+    if (!selecionado) {
+        alert('Selecione uma quantidade de parcelas!');
+        return;
+    }
+    qtdParcelasEscolhida = selecionado.value;
     document.getElementById('etapaParcelas').classList.add('escondido');
     document.getElementById('etapaContrato').classList.remove('escondido');
 }
 
-// ✅ AVANÇA PARA ASSINATURA
 function avancarAssinatura() {
     if (!document.getElementById('liContrato').checked) {
-        alert('⚠️ Você precisa concordar com o contrato primeiro!');
+        alert('Você precisa concordar com os termos do contrato!');
         return;
     }
     document.getElementById('etapaContrato').classList.add('escondido');
@@ -409,134 +416,118 @@ function avancarAssinatura() {
     iniciarCamera();
 }
 
-// ✅ CAMERA
-async function iniciarCamera() {
-    try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-        const video = document.getElementById('camera');
-        video.srcObject = streamCamera;
-    } catch(e) {
-        document.getElementById('formSelfie').innerHTML = '<p class="text-red-500 text-center">📷 Câmera indisponível. Use a opção de assinar com nome.</p>';
+function mostrarOpcao(opcao) {
+    if (opcao === 'selfie') {
+        document.getElementById('formSelfie').classList.remove('escondido');
+        document.getElementById('formAssinatura').classList.add('escondido');
+        document.getElementById('abaSelfie').className = 'botao botao-primario flex-1 py-2 text-sm';
+        document.getElementById('abaAssinatura').className = 'botao botao-secundario flex-1 py-2 text-sm';
+        iniciarCamera();
+    } else {
+        document.getElementById('formSelfie').classList.add('escondido');
+        document.getElementById('formAssinatura').classList.remove('escondido');
+        document.getElementById('abaAssinatura').className = 'botao botao-primario flex-1 py-2 text-sm';
+        document.getElementById('abaSelfie').className = 'botao botao-secundario flex-1 py-2 text-sm';
+        pararCamera();
     }
 }
 
-function mostrarOpcao(tipo) {
-    document.getElementById('formSelfie').classList.add('escondido');
-    document.getElementById('formAssinatura').classList.add('escondido');
-    document.getElementById('abaSelfie').classList.remove('botao-primario');
-    document.getElementById('abaSelfie').classList.add('botao-secundario');
-    document.getElementById('abaAssinatura').classList.remove('botao-primario');
-    document.getElementById('abaAssinatura').classList.add('botao-secundario');
+async function iniciarCamera() {
+    try {
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        document.getElementById('camera').srcObject = streamCamera;
+    } catch (e) {
+        console.log('Erro ao abrir câmera:', e);
+    }
+}
 
-    if (tipo === 'selfie') {
-        document.getElementById('formSelfie').classList.remove('escondido');
-        document.getElementById('abaSelfie').classList.add('botao-primario');
-        document.getElementById('abaSelfie').classList.remove('botao-secundario');
-    } else {
-        document.getElementById('formAssinatura').classList.remove('escondido');
-        document.getElementById('abaAssinatura').classList.add('botao-primario');
-        document.getElementById('abaAssinatura').classList.remove('botao-secundario');
+function pararCamera() {
+    if (streamCamera) {
+        streamCamera.getTracks().forEach(t => t.stop());
     }
 }
 
 function tirarFoto() {
     const video = document.getElementById('camera');
     const canvas = document.getElementById('fotoTirada');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    canvas.width = video.videoWidth || 300;
+    canvas.height = video.videoHeight || 300;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     canvas.classList.remove('escondido');
+    video.classList.add('escondido');
     document.getElementById('btnConfirmaFoto').classList.remove('escondido');
-    if (streamCamera) streamCamera.getTracks().forEach(t => t.stop());
 }
 
-async function confirmarSelfie() {
-    await registrarAssinatura('Selfie confirmada');
+function confirmarSelfie() {
+    concluirAssinatura('Selfie Gravada');
 }
 
-async function confirmarAssinatura() {
+function confirmarAssinatura() {
     const nome = document.getElementById('nomeAssinatura').value.trim();
-    if (!nome) { alert('⚠️ Digite seu nome'); return; }
-    await registrarAssinatura('Assinatura: ' + nome);
+    if (!nome) {
+        alert('Digite seu nome para assinar!');
+        return;
+    }
+    concluirAssinatura(nome);
 }
 
-// ✅ REGISTRA ASSINATURA E GERA PIX
-async function registrarAssinatura(texto) {
-    const dataAss = hoje();
-    document.getElementById('dataAssinatura').textContent = dataAss;
-
-    // Salva assinatura no banco
-    await supabase.from('propostas').update({
-        assinatura_contrato: texto,
-        data_assinatura: new Date().toISOString()
-    }).eq('id', proposta.id);
-
-    proposta.assinatura_contrato = texto;
+async function concluirAssinatura(assinaturaTexto) {
+    pararCamera();
     document.getElementById('etapaAssinar').classList.add('escondido');
     document.getElementById('etapaPagamento').classList.remove('escondido');
-
-    // ✅ CHAMA SERVIDOR PARA GERAR PIX
-    await gerarPixEntrada();
-}
-
-// ✅ GERA PIX VIA SERVIDOR
-async function gerarPixEntrada() {
-    const valorTotal = Number(proposta.valor_desejado || 0);
-    const percEnt = Number(proposta.percentual_entrada || 20);
-    const valorEnt = valorTotal * percEnt / 100;
-    const cpfLimpo = proposta.cpf.replace(/\D/g, '');
+    document.getElementById('dataAssinatura').textContent = hoje();
 
     try {
-        const resposta = await fetch(SERVIDOR_URL + '/api/criar-pagamento', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                valor: Number(valorEnt.toFixed(2)),
-                tipo: 'pix',
-                cpf: cpfLimpo,
-                nome: proposta.nome,
-                descricao: `Entrada - ${proposta.nome}`
+        const { error } = await supabase
+            .from('propostas')
+            .update({
+                parcelas_escolhidas: qtdParcelasEscolhida,
+                assinatura_contrato: assinaturaTexto
             })
-        });
+            .eq('id', proposta.id);
 
-        const dados = await resposta.json();
-
-        if (dados.erro) throw new Error(dados.erro);
-
-        // ✅ MOSTRA QR CODE E CHAVE PIX
-        document.getElementById('semQrCode').classList.add('escondido');
-        document.getElementById('qrcodeImagem').classList.remove('escondido');
-        document.getElementById('chavePix').textContent = dados.qr_code || 'Pix gerado com sucesso';
-        codigoPixEntrada = dados.qr_code || '';
-
-        // Renderiza QR Code
-        if (codigoPixEntrada && window.QRCode) {
-            document.getElementById('qrcodeImagem').innerHTML = '';
-            new QRCode(document.getElementById('qrcodeImagem'), {
-                text: codigoPixEntrada,
-                width: 180,
-                height: 180,
-                correctLevel: QRCode.CorrectLevel.M
-            });
-        }
-
-    } catch (erro) {
-        console.error(erro);
-        document.getElementById('semQrCode').textContent = '⚠️ Servidor acordando... tente em ~1 minuto';
-        alert('Servidor está ligando, aguarde ~1 minuto e recarregue a página.');
+        if (error) throw error;
+    } catch (err) {
+        console.error('Erro ao salvar assinatura:', err);
     }
 }
 
 function copiarPix() {
-    if (!codigoPixEntrada) { alert('Aguarde o Pix ser gerado!'); return; }
-    navigator.clipboard.writeText(codigoPixEntrada)
-        .then(() => alert('✅ Código copiado! Cole no app do banco para pagar.'))
-        .catch(() => alert('Não foi possível copiar. Selecione manualmente.'));
+    const texto = document.getElementById('chavePix').textContent;
+    navigator.clipboard.writeText(texto);
+    alert('Código Pix copiado com sucesso!');
 }
 
 function imprimirContrato() {
     window.print();
 }
+
+// ✅ ATUALIZAÇÃO AUTOMÁTICA EM TEMPO REAL (Sai de "Proposta em Análise" sozinhamente)
+setInterval(async () => {
+    if (!proposta || !proposta.cpf) return;
+    
+    if (proposta.status !== 'Aprovada' || !proposta.copia_cola_pix || proposta.entrada_paga !== true) {
+        const { data, error } = await supabase
+            .from('propostas')
+            .select('*')
+            .eq('cpf', proposta.cpf)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (data && data.length > 0) {
+            const propostaAtualizada = data[0];
+            if (
+                propostaAtualizada.status !== proposta.status || 
+                propostaAtualizada.copia_cola_pix !== proposta.copia_cola_pix ||
+                propostaAtualizada.entrada_paga !== proposta.entrada_paga
+            ) {
+                proposta = propostaAtualizada;
+                mostrarProposta();
+            }
+        }
+    }
+}, 4000); // Verifica a cada 4 segundos no banco de dados
 </script>
 </body>
 </html>
