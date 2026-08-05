@@ -133,6 +133,7 @@
             <p>⏳ Sua proposta está sendo analisada pela nossa equipe. Assim que aprovada, as etapas de escolha de parcelas e contrato serão liberadas automaticamente aqui.</p>
         </div>
 
+        <!-- ETAPA DE SELEÇÃO DE PARCELAS -->
         <div id="etapaParcelas" style="display:none;" class="secao-etapa">
             <h3>💳 Passo 1: Escolha das Parcelas</h3>
             <label>Selecione em quantas vezes deseja parcelar o saldo restante (Limite liberado: até <span id="maxParcelasLbl">12</span>x)</label>
@@ -142,18 +143,20 @@
             <div id="resumoDetalhadoValores" class="card-info" style="background: #F1F5F9; margin-top: 12px; margin-bottom: 15px;">
                 <p><strong>Valor da Entrada (Sinal):</strong> <span id="detalheValorEntrada">R$ 0,00</span></p>
                 <p><strong>Valor das Parcelas:</strong> <span id="detalheValorParcelas">0x de R$ 0,00</span></p>
+                <p><strong>Vencimento das Próximas Parcelas:</strong> <span>Todo dia 10 de cada mês</span></p>
                 <p style="font-size: 15px; color: var(--primary); margin-top: 6px;"><strong>VALOR TOTAL FINAL (Entrada + Parcelas):</strong> <span id="detalheValorTotalFinal">R$ 0,00</span></p>
             </div>
 
             <button onclick="avancarParaContrato()" style="background: var(--primary);">Continuar para o Contrato ➔</button>
         </div>
 
+        <!-- ETAPA DE CONTRATO E ASSINATURA -->
         <div id="etapaContrato" style="display:none;" class="secao-etapa">
             <h3>📄 Passo 2: Contrato de Crédito e Garantia</h3>
             
             <div class="caixa-contrato" id="caixaContratoTexto">
                 <h4>CONTRATO PARTICULAR DE FINANCIAMENTO E GARANTIA</h4>
-                <p><strong>1. Objeto:</strong> O presente instrumento tem por objeto a concessão de crédito no valor total de <span id="contratoValorTotal">R$ 0,00</span>, mediante pagamento de sinal/entrada e o parcelamento do saldo remanescente em <span id="contratoQtdParc">0</span> parcelas mensais, acrescidas da taxa de juros de <span id="contratoJuros">0</span>% ao mês.</p>
+                <p><strong>1. Objeto:</strong> O presente instrumento tem por objeto a concessão de crédito no valor total de <span id="contratoValorTotal">R$ 0,00</span>, mediante pagamento de sinal/entrada e o parcelamento do saldo remanescente em <span id="contratoQtdParc">0</span> parcelas mensais, com vencimento todo dia 10, acrescidas da taxa de juros de <span id="contratoJuros">0</span>% ao mês.</p>
                 <br>
                 <p><strong>2. Condições de Pagamento e Inadimplência:</strong> O(A) CONTRATANTE obriga-se a quitar pontualmente as parcelas nos vencimentos ajustados. Em caso de atraso superior a 15 (quinze) dias, incidirão multa moratória de 2%, juros de mora de 1% ao mês, além do vencimento antecipado de todo o saldo devedor.</p>
                 <br>
@@ -180,6 +183,7 @@
             <button type="button" class="btn-limpar" onclick="limparAssinatura()">Limpar Assinatura</button>
 
             <button type="button" id="btnConcluirContrato" style="margin-top: 10px; background: var(--sucesso);">Assinar Contrato e Gerar Pix da Entrada ➔</button>
+            <button type="button" class="btn-voltar" onclick="voltarParaEtapaParcelas()" style="background: #E2E8F0; color: var(--texto); margin-top: 8px;">⬅️ Voltar e Alterar Parcelas</button>
         </div>
 
         <div id="etapaAguardandoPagamento" style="display:none;" class="secao-etapa">
@@ -242,7 +246,7 @@
     <p><strong>CONTRATANTE:</strong> <span id="printNome">-</span>, CPF: <span id="printCpf">-</span></p>
     <p><strong>CONTRATADA:</strong> FlashCred Soluções Financeiras Ltda.</p>
     <br>
-    <p><strong>1. Objeto:</strong> O presente instrumento tem por objeto a concessão de crédito no valor total de <span id="printValorTotal">R$ 0,00</span>, mediante pagamento de sinal/entrada e o parcelamento do saldo remanescente em <span id="printQtdParc">0</span> parcelas mensais, acrescidas da taxa de juros de <span id="printJuros">0</span>% ao mês.</p>
+    <p><strong>1. Objeto:</strong> O presente instrumento tem por objeto a concessão de crédito no valor total de <span id="printValorTotal">R$ 0,00</span>, mediante pagamento de sinal/entrada e o parcelamento do saldo remanescente em <span id="printQtdParc">0</span> parcelas mensais, com vencimento todo dia 10, acrescidas da taxa de juros de <span id="printJuros">0</span>% ao mês.</p>
     <br>
     <p><strong>2. Condições de Pagamento e Inadimplência:</strong> O(A) CONTRATANTE obriga-se a quitar pontualmente as parcelas nos vencimentos ajustados. Em caso de atraso superior a 15 (quinze) dias, incidirão multa moratória de 2%, juros de mora de 1% ao mês, além do vencimento antecipado de todo o saldo devedor.</p>
     <br>
@@ -263,7 +267,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let propostaAtual = null;
 let base64Selfie = '';
 let canvas, ctx, desenhando = false;
-let subEtapaCliente = 'parcelas';
+let subEtapaCliente = 'parcelas'; // Força iniciar na escolha de parcelas se aprovada
 let parcelasSelecionadasCache = 1;
 let valorParcelaCache = 0;
 let valorEntradaCache = 0;
@@ -504,7 +508,7 @@ function popularSelectParcelas(max) {
     for (let i = 1; i <= max; i++) {
         const opt = document.createElement('option');
         opt.value = i;
-        opt.textContent = `${i}x mensais`;
+        opt.textContent = `${i}x mensais (Vencimento todo dia 10)`;
         select.appendChild(opt);
     }
     
@@ -545,6 +549,11 @@ function recalcularSimulacaoCliente() {
 
 function avancarParaContrato() {
     subEtapaCliente = 'contrato';
+    exibirDadosProposta();
+}
+
+function voltarParaEtapaParcelas() {
+    subEtapaCliente = 'parcelas';
     exibirDadosProposta();
 }
 
