@@ -67,6 +67,11 @@
         .campo input { padding: 8px 10px; margin: 0; border: 1px solid var(--borda); border-radius: 6px; font-size: 14px; width: 100%; }
         .campo input[readonly] { background: #F8FAFC; color: var(--sucesso); font-weight: 600; }
 
+        .bloco-parcelas-admin { background: #f8fafc; border: 1px solid var(--borda); padding: 12px; border-radius: 8px; margin-top: 12px; }
+        .bloco-parcelas-admin h4 { font-size: 13px; color: var(--primary); margin-bottom: 8px; font-weight: 700; }
+        .linha-parcela-edit { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 12px; flex-wrap: wrap; }
+        .linha-parcela-edit input { padding: 4px 8px; font-size: 12px; border: 1px solid var(--borda); border-radius: 4px; }
+
         .botoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
         .btn { padding: 8px 14px; font-size: 13px; border-radius: 7px; }
         .btn-aprovar { background: var(--sucesso); color: white; }
@@ -139,7 +144,6 @@
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const SERVIDOR_URL = 'https://flashcred-sistema.onrender.com';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SENHA = 'flash2026';
@@ -220,10 +224,10 @@ function criarCard(p) {
     const valorTotal = Number(p.valor_desejado || 0);
     const percEnt = Number(p.percentual_entrada || 20);
     const valorEnt = valorTotal * percEnt / 100;
-    const parcelas = p.quantidade_parcelas || '';
+    const parcelasQtd = Number(p.quantidade_parcelas || 1);
     const juros = Number(p.juros || 0);
     const resto = valorTotal - valorEnt;
-    const valParc = parcelas ? resto * (1 + juros/100) / parcelas : 0;
+    const valParc = parcelasQtd > 0 ? resto * (1 + juros/100) / parcelasQtd : 0;
 
     const cpf = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     const qrExibicao = p.qr_code_entrada 
@@ -233,14 +237,31 @@ function criarCard(p) {
         ? '<span style="color:#10B981; font-weight:600">✅ Pix Gerado</span>' 
         : '<span style="color:#94a3b8">Aguardando</span>';
 
+    // Monta os campos editáveis de cada parcela para o administrador ajustar datas/valores
+    let htmlParcelasAdmin = '';
+    const hoje = new Date();
+    for (let i = 1; i <= parcelasQtd; i++) {
+        let vencimentoPadrao = new Date();
+        vencimentoPadrao.setMonth(hoje.getMonth() + i);
+        let dataStr = vencimentoPadrao.toISOString().split('T')[0];
+
+        htmlParcelasAdmin += `
+        <div class="linha-parcela-edit">
+            <span><strong>${i}ª</strong></span>
+            <input type="number" step="0.01" id="p-val-${p.id}-${i}" value="${valParc.toFixed(2)}" style="width: 90px;" title="Valor da parcela">
+            <span>Venc:</span>
+            <input type="date" id="p-data-${p.id}-${i}" value="${dataStr}" style="width: 130px;" title="Data de vencimento">
+        </div>`;
+    }
+
     return `
     <div class="proposta">
         <div class="proposta-topo">
             <div>
                 <div class="proposta-nome">${p.nome}</div>
                 <div class="proposta-info">Código: ${p.codigo_unico || '---'} | CPF: ${cpf}</div>
-                <div class="proposta-info">Pix: ${pixStatus}</div>
-                <div class="proposta-info">QR Code: ${qrExibicao}</div>
+                <div class="proposta-info">Pix de Entrada: ${pixStatus}</div>
+                <div class="proposta-info">QR Code Entrada: ${qrExibicao}</div>
             </div>
             <span class="status ${statusCls}">${statusTxt}</span>
         </div>
@@ -260,20 +281,27 @@ function criarCard(p) {
             </div>
             <div class="campo">
                 <label>Parcelas (1-48)</label>
-                <input type="number" id="par-${p.id}" value="${parcelas}" min="1" max="48" oninput="atualizar(${p.id})">
+                <input type="number" id="par-${p.id}" value="${parcelasQtd}" min="1" max="48" oninput="atualizar(${p.id})">
             </div>
             <div class="campo">
                 <label>Juros % ao mês</label>
                 <input type="number" id="j-${p.id}" value="${juros}" step="0.01" oninput="atualizar(${p.id})">
             </div>
             <div class="campo">
-                <label>Valor da Parcela (R$)</label>
+                <label>Média Parcela (R$)</label>
                 <input type="text" id="vp-${p.id}" value="${real(valParc)}" readonly>
             </div>
         </div>
 
+        <div class="bloco-parcelas-admin">
+            <h4>📅 Detalhes e Vencimentos das Parcelas (Editável para o Cliente)</h4>
+            <div id="container-parc-edit-${p.id}">
+                ${htmlParcelasAdmin}
+            </div>
+        </div>
+
         <div class="botoes">
-            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix (MP)</button>
+            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix</button>
             <button class="btn btn-manual" onclick="marcarEntradaManual(${p.id})">💰 Marcar Entrada Paga</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
@@ -294,9 +322,30 @@ function atualizar(id) {
 
     document.getElementById(`e-${id}`).value = real(entrada);
     document.getElementById(`vp-${id}`).value = real(valorParc);
+
+    // Atualiza dinamicamente as linhas de parcelas se o usuário mexer na quantidade
+    const container = document.getElementById(`container-parc-edit-${id}`);
+    if (container) {
+        let html = '';
+        const hoje = new Date();
+        for (let i = 1; i <= parcelas; i++) {
+            let vencimentoPadrao = new Date();
+            vencimentoPadrao.setMonth(hoje.getMonth() + i);
+            let dataStr = vencimentoPadrao.toISOString().split('T')[0];
+
+            html += `
+            <div class="linha-parcela-edit">
+                <span><strong>${i}ª</strong></span>
+                <input type="number" step="0.01" id="p-val-${id}-${i}" value="${valorParc.toFixed(2)}" style="width: 90px;" title="Valor da parcela">
+                <span>Venc:</span>
+                <input type="date" id="p-data-${id}-${i}" value="${dataStr}" style="width: 130px;" title="Data de vencimento">
+            </div>`;
+        }
+        container.innerHTML = html;
+    }
 }
 
-// 🟢 APROVAÇÃO COM CHAMADA SEGURA NO SERVIDOR (RENDER) PARA GERAR O PIX AUTOMÁTICO
+// 🟢 APROVAR PROPOSTA E SALVAR DADOS
 async function aprovar(id) {
     if (processando) {
         alert('⏳ Aguarde, processando...');
@@ -312,31 +361,40 @@ async function aprovar(id) {
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    if (!confirm(`✅ Aprovar proposta de ${proposta.nome} e gerar Pix automático?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}`)) return;
+    // Coleta as alterações feitas nas parcelas individuais se houver necessidade de salvar
+    let parcelasPersonalizadas = [];
+    for (let i = 1; i <= parcelas; i++) {
+        const inputVal = document.getElementById(`p-val-${id}-${i}`);
+        const inputData = document.getElementById(`p-data-${id}-${i}`);
+        if (inputVal && inputData) {
+            parcelasPersonalizadas.push({
+                numero: i,
+                valor: Number(inputVal.value),
+                vencimento: inputData.value
+            });
+        }
+    }
+
+    if (!confirm(`✅ Aprovar a proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}`)) return;
 
     processando = true;
     const btn = document.getElementById(`btn-aprovar-${id}`);
     if (btn) btn.disabled = true;
 
     try {
-        // Atualiza primeiro os valores editados na tela no Supabase
-        await supabase.from('propostas').update({
+        const { error } = await supabase.from('propostas').update({
+            status: 'Aprovada',
             valor_desejado: valor,
             percentual_entrada: perc,
             valor_entrada: entrada,
             quantidade_parcelas: parcelas,
-            juros: juros
+            juros: juros,
+            dados_parcelas: parcelasPersonalizadas // Salva os valores/datas customizados no banco
         }).eq('id', id);
 
-        // Chama o servidor no Render para criar o Pix de forma segura
-        const resposta = await fetch(`${SERVIDOR_URL}/gerar-pix/${id}`, {
-            method: 'POST'
-        });
+        if (error) throw error;
 
-        const dados = await resposta.json();
-        if (!resposta.ok) throw new Error(dados.erro || 'Erro ao gerar Pix no servidor');
-
-        alert('✅ Proposta aprovada e Pix gerado com sucesso pelo Mercado Pago!');
+        alert('✅ Proposta aprovada com sucesso!');
         carregar();
     } catch (erro) {
         alert('❌ Erro ao aprovar: ' + erro.message);
@@ -346,19 +404,47 @@ async function aprovar(id) {
     }
 }
 
-// 💰 BOTÃO PARA DAR ENTRADA MANUAL (CASO O CLIENTE PAGUE EM DINHEIRO/OUTRO MEIO)
+// 💰 MARCAR ENTRADA MANUAL E SALVAR DADOS
 async function marcarEntradaManual(id) {
-    if (!confirm('Deseja confirmar o recebimento da entrada manualmente (Dinheiro / Pix manual)?')) return;
+    const proposta = propostas.find(p => p.id === id);
+    if (!proposta) return;
+
+    const valor = Number(document.getElementById(`v-${id}`).value) || 0;
+    const perc = Number(document.getElementById(`p-${id}`).value) || 0;
+    const entrada = valor * perc / 100;
+    const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
+    const juros = Number(document.getElementById(`j-${id}`).value) || 0;
+
+    let parcelasPersonalizadas = [];
+    for (let i = 1; i <= parcelas; i++) {
+        const inputVal = document.getElementById(`p-val-${id}-${i}`);
+        const inputData = document.getElementById(`p-data-${id}-${i}`);
+        if (inputVal && inputData) {
+            parcelasPersonalizadas.push({
+                numero: i,
+                valor: Number(inputVal.value),
+                vencimento: inputData.value
+            });
+        }
+    }
+
+    if (!confirm('Deseja confirmar o recebimento da entrada manualmente e aprovar a proposta?')) return;
 
     try {
         const { error } = await supabase.from('propostas').update({
             status: 'Aprovada',
-            entrada_paga: true
+            entrada_paga: true,
+            valor_desejado: valor,
+            percentual_entrada: perc,
+            valor_entrada: entrada,
+            quantidade_parcelas: parcelas,
+            juros: juros,
+            dados_parcelas: parcelasPersonalizadas
         }).eq('id', id);
 
         if (error) throw error;
 
-        alert('✅ Entrada marcada como paga com sucesso!');
+        alert('✅ Entrada marcada como paga e proposta aprovada com sucesso!');
         carregar();
     } catch (erro) {
         alert('❌ Erro ao atualizar: ' + erro.message);
