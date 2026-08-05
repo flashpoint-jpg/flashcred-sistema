@@ -75,13 +75,20 @@
         .tabela-parcelas th { background: #F1F5F9; padding: 8px 10px; text-align: left; font-size: 13px; color: var(--texto-claro); font-weight: 600; }
         .tabela-parcelas td { padding: 8px 10px; border-top: 1px solid var(--borda); font-size: 14px; }
         .tabela-parcelas tr:hover { background: #FAFBFC; }
+        
+        .parcela-verde { border-left: 4px solid #22C55E; }
+        .parcela-amarela { border-left: 4px solid #F59E0B; }
+        .parcela-vermelha { border-left: 4px solid #EF4444; }
         .parcela-paga { color: var(--sucesso); font-weight: 600; }
         .parcela-pendente { color: var(--alerta); font-weight: 600; }
-        .btn-marcar-paga { padding: 4px 8px; font-size: 12px; background: var(--sucesso); color: white; border-radius: 4px; }
+        
+        .btn-marcar-paga { padding: 4px 8px; font-size: 12px; background: var(--sucesso); color: white; border-radius: 4px; border: none; }
         .btn-marcar-paga:disabled { background: #D1FAE5; color: #166534; cursor: default; }
+        .btn-cobranca { padding: 4px 8px; font-size: 12px; background: #25D366; color: white; border-radius: 4px; border: none; margin-left: 4px; }
+        .btn-pix { padding: 4px 8px; font-size: 12px; background: #32BCAD; color: white; border-radius: 4px; border: none; margin-left: 4px; }
 
         .botoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-        .btn { padding: 8px 14px; font-size: 13px; border-radius: 7px; }
+        .btn { padding: 8px 14px; font-size: 13px; border-radius: 7px; border: none; }
         .btn-aprovar { background: var(--sucesso); color: white; }
         .btn-aprovar:hover { background: #059669; }
         .btn-aprovar:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -93,15 +100,14 @@
         .btn-whatsapp:hover { background: #1fb85c; }
         .btn-excluir { background: #F1F5F9; color: #64748B; }
         .btn-excluir:hover { background: #E2E8F0; }
+        .btn-ver-parcelas { background: #8B5CF6; color: white; margin-left: 8px; }
+        .btn-ver-parcelas:hover { background: #7C3AED; }
 
         .vazio { text-align: center; color: var(--texto-claro); padding: 40px; font-size: 15px; }
         .carregando { text-align: center; padding: 30px; color: var(--texto-claro); display: none; font-size: 14px; }
         .qrcode-img { max-width: 100px; border-radius: 6px; margin-top: 6px; border: 1px solid #ddd; }
         .data-pagamento { background: #E0F2FE; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: #0369A1; display: inline-block; margin-top: 4px; }
-        .btn-ver-parcelas { background: #8B5CF6; color: white; margin-left: 8px; }
-        .btn-ver-parcelas:hover { background: #7C3AED; }
-        .parcelas-container { margin-top: 14px; display: none; }
-        .parcelas-container.visivel { display: block; }
+        .parcelas-container { margin-top: 14px; display: block; }
     </style>
 </head>
 <body>
@@ -191,6 +197,17 @@ function real(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function calcularCorVencimento(dataVenc) {
+    if (!dataVenc) return 'parcela-verde';
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const ven = new Date(dataVenc); ven.setHours(0,0,0,0);
+    const dias = Math.ceil((ven - hoje) / (1000*60*60*24));
+    if (dias < 0) return 'parcela-vermelha';
+    if (dias <= 7) return 'parcela-vermelha';
+    if (dias <= 14) return 'parcela-amarela';
+    return 'parcela-verde';
+}
+
 function calcularParcelas(valorTotal, percEnt, qtdParcelas, juros) {
     const entrada = valorTotal * percEnt / 100;
     const resto = valorTotal - entrada;
@@ -204,7 +221,8 @@ function calcularParcelas(valorTotal, percEnt, qtdParcelas, juros) {
             numero: i,
             valor: valorParcela,
             vencimento: vencimento.toISOString().split('T')[0],
-            status: 'Pendente'
+            status: 'Pendente',
+            pix_copia: null
         });
     }
     return { entrada, valorParcela, lista };
@@ -311,7 +329,7 @@ function criarCard(p) {
         : '';
 
     const listaParcelas = p.lista_parcelas || calc.lista;
-    const tabelaParcelas = p.status === 'Entrada Paga' || p.status === 'Aprovada' ? `
+    const tabelaParcelas = (p.status === 'Entrada Paga' || p.status === 'Aprovada') && listaParcelas.length > 0 ? `
     <div class="parcelas-container" id="parc-${p.id}">
         <table class="tabela-parcelas">
             <thead>
@@ -320,27 +338,31 @@ function criarCard(p) {
                     <th>Vencimento</th>
                     <th>Valor</th>
                     <th>Status</th>
-                    <th>Ação</th>
+                    <th>Ações</th>
                 </tr>
             </thead>
             <tbody>
-                ${listaParcelas.map((parc, idx) => `
-                <tr>
-                    <td>${parc.numero}</td>
-                    <td>${formatarData(parc.vencimento)}</td>
-                    <td>${real(parc.valor)}</td>
-                    <td class="${parc.status === 'Paga' ? 'parcela-paga' : 'parcela-pendente'}">
-                        ${parc.status === 'Paga' ? '✅ Paga' : '⏳ Pendente'}
-                    </td>
-                    <td>
-                        <button class="btn-marcar-paga" 
-                            ${parc.status === 'Paga' ? 'disabled' : ''}
-                            onclick="marcarParcelaPaga(${p.id}, ${idx})">
-                            ${parc.status === 'Paga' ? '✓ Paga' : 'Marcar Paga'}
-                        </button>
-                    </td>
-                </tr>
-                `).join('')}
+                ${listaParcelas.map((parc, idx) => {
+                    const cor = calcularCorVencimento(parc.vencimento);
+                    return `
+                    <tr class="${cor}">
+                        <td>${parc.numero}</td>
+                        <td>${formatarData(parc.vencimento)}</td>
+                        <td>${real(parc.valor)}</td>
+                        <td class="${parc.status === 'Paga' ? 'parcela-paga' : 'parcela-pendente'}">
+                            ${parc.status === 'Paga' ? '✅ Paga' : '⏳ Pendente'}
+                        </td>
+                        <td>
+                            <button class="btn-marcar-paga" 
+                                ${parc.status === 'Paga' ? 'disabled' : ''}
+                                onclick="marcarParcelaPaga(${p.id}, ${idx})">
+                                ${parc.status === 'Paga' ? '✓ Paga' : 'Marcar'}
+                            </button>
+                            <button class="btn-cobranca" onclick="enviarCobranca(${p.id}, ${idx})">📱 Cobrar</button>
+                            <button class="btn-pix" onclick="gerarPixParcela(${p.id}, ${idx})">💳 Pix</button>
+                        </td>
+                    </tr>`;
+                }).join('')}
             </tbody>
         </table>
     </div>` : '';
@@ -356,7 +378,9 @@ function criarCard(p) {
             </div>
             <div>
                 <span class="status ${statusCls}">${statusTxt}</span>
-                ${parcelas > 0 && p.status !== 'Nova' ? `<button class="btn btn-ver-parcelas" onclick="document.getElementById('parc-${p.id}').classList.toggle('visivel')">📊 Ver Parcelas</button>` : ''}
+                ${parcelas > 0 && (p.status === 'Entrada Paga' || p.status === 'Aprovada') 
+                    ? `<button class="btn btn-ver-parcelas" onclick="document.getElementById('parc-${p.id}').style.display = 'block'">📊 Ver Parcelas</button>` 
+                    : ''}
             </div>
         </div>
 
@@ -540,6 +564,26 @@ async function marcarParcelaPaga(propostaId, indiceParcela) {
         alert('✅ Parcela marcada como PAGA!');
         carregar();
     }
+}
+
+function enviarCobranca(propostaId, indiceParcela) {
+    const proposta = propostas.find(p => p.id === propostaId);
+    if (!proposta) return;
+    const parcela = proposta.lista_parcelas?.[indiceParcela];
+    if (!parcela) return;
+
+    const mensagem = `Olá ${proposta.nome}! 👋\n\n📌 Cobrança - Parcela ${parcela.numero}\n💰 Valor: ${real(parcela.valor)}\n📅 Vencimento: ${formatarData(parcela.vencimento)}\n\nPor favor, realize o pagamento via Pix acessando:\n${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(proposta.cpf||'').replace(/\D/g,'')}\n\nObrigado! 🙏`;
+    
+    window.open(`https://wa.me/55${(proposta.telefone||'').replace(/\D/g,'')}?text=${encodeURIComponent(mensagem)}`, '_blank');
+}
+
+function gerarPixParcela(propostaId, indiceParcela) {
+    const proposta = propostas.find(p => p.id === propostaId);
+    if (!proposta) return;
+    const parcela = proposta.lista_parcelas?.[indiceParcela];
+    if (!parcela) return;
+
+    alert(`💳 PIX para Parcela ${parcela.numero}\n\n💰 Valor: ${real(parcela.valor)}\n📅 Vencimento: ${formatarData(parcela.vencimento)}\n\nChave Pix: ${CHAVE_PIX_FIXA}\n\nCliente acessa pelo CPF e gera o código de pagamento!`);
 }
 
 async function reprovar(id) {
