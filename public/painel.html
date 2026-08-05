@@ -60,6 +60,7 @@
         .status { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
         .status-nova { background: #FEF3C7; color: #92400E; }
         .status-aprovada { background: #D1FAE5; color: #065F46; }
+        .status-paga { background: #BBF7D0; color: #166534; }
         .status-reprovada { background: #FEE2E2; color: #991B1B; }
 
         .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
@@ -150,17 +151,12 @@ let propostas = [];
 let timer = null;
 let processando = false;
 
-// Função para gerar o Código Único automático (ex: FL-9A4B2)
 function gerarCodigoUnico() {
     const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const numeros = '0123456789';
     let codigo = 'FL-';
-    for (let i = 0; i < 2; i++) {
-        codigo += letras.charAt(Math.floor(Math.random() * letras.length));
-    }
-    for (let i = 0; i < 3; i++) {
-        codigo += numeros.charAt(Math.floor(Math.random() * numeros.length));
-    }
+    for (let i = 0; i < 2; i++) codigo += letras.charAt(Math.floor(Math.random() * letras.length));
+    for (let i = 0; i < 3; i++) codigo += numeros.charAt(Math.floor(Math.random() * numeros.length));
     return codigo;
 }
 
@@ -228,10 +224,16 @@ function filtrar() {
 }
 
 function criarCard(p) {
-    const statusCls = p.status === 'Aprovada' ? 'status-aprovada' : 
-                       p.status === 'Reprovada' ? 'status-reprovada' : 'status-nova';
-    const statusTxt = p.status === 'Aprovada' ? '✅ Aprovada' : 
-                      p.status === 'Reprovada' ? '❌ Reprovada' : '⏳ Aguardando';
+    let statusCls, statusTxt;
+    if (p.status === 'Entrada Paga') {
+        statusCls = 'status-paga'; statusTxt = '💰 Entrada Paga';
+    } else if (p.status === 'Aprovada') {
+        statusCls = 'status-aprovada'; statusTxt = '✅ Aprovada';
+    } else if (p.status === 'Reprovada') {
+        statusCls = 'status-reprovada'; statusTxt = '❌ Reprovada';
+    } else {
+        statusCls = 'status-nova'; statusTxt = '⏳ Aguardando';
+    }
 
     const valorTotal = Number(p.valor_desejado || 0);
     const percEnt = Number(p.percentual_entrada || 20);
@@ -244,9 +246,11 @@ function criarCard(p) {
     const cpf = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     const qrExibicao = p.qr_code_entrada 
         ? `<img src="${p.qr_code_entrada}" class="qrcode-img" alt="QR Code">` 
-        : '<span style="color:#94a3b8">Aguardando geração</span>';
+        : '<span style="color:#94a3b8">Aguardando</span>';
     const pixStatus = p.copia_cola_pix 
-        ? (p.copia_cola_pix.length > 40 ? '<span style="color:#10B981; font-weight:600">✅ MP - Pix Gerado</span>' : '<span style="color:#3B82F6">✅ Chave Pix</span>')
+        ? (p.status === 'Entrada Paga' ? '<span style="color:#0284C7; font-weight:600">✅ ENTRADA PAGA</span>' :
+           p.copia_cola_pix.length > 40 ? '<span style="color:#10B981; font-weight:600">✅ MP - Pix</span>' : 
+           '<span style="color:#3B82F6">✅ Chave Pix</span>')
         : '<span style="color:#94a3b8">Aguardando</span>';
 
     return `
@@ -290,7 +294,7 @@ function criarCard(p) {
 
         <div class="botoes">
             <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix</button>
-            <button class="btn btn-pagar-manual" onclick="marcarEntradaPaga(${p.id})">💰 Marcar Entrada Paga</button>
+            <button class="btn btn-pagar-manual" onclick="marcarEntradaPaga(${p.id})" ${p.status==='Entrada Paga'?'disabled':''}>💰 Marcar Entrada Paga</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
             <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
@@ -303,21 +307,15 @@ function atualizar(id) {
     const perc = Number(document.getElementById(`p-${id}`).value) || 0;
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 0;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
-
     const entrada = valor * perc / 100;
     const resto = valor - entrada;
     const valorParc = parcelas > 0 ? resto * (1 + juros/100) / parcelas : 0;
-
     document.getElementById(`e-${id}`).value = real(entrada);
-    document.getElementById(`vp-${id}`).value = real(valParc);
+    document.getElementById(`vp-${id}`).value = real(valorParc);
 }
 
 async function aprovar(id) {
-    if (processando) {
-        alert('⏳ Aguarde, processando...');
-        return;
-    }
-
+    if (processando) { alert('⏳ Aguarde...'); return; }
     const proposta = propostas.find(p => p.id === id);
     if (!proposta) return;
 
@@ -326,11 +324,9 @@ async function aprovar(id) {
     const entrada = valor * perc / 100;
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
-
-    // Gera código único automaticamente caso não tenha
     const codigoUnicoFinal = proposta.codigo_unico ? proposta.codigo_unico : gerarCodigoUnico();
 
-    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\nCódigo: ${codigoUnicoFinal}`)) return;
+    if (!confirm(`✅ Aprovar ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\nCódigo: ${codigoUnicoFinal}`)) return;
 
     processando = true;
     const btn = document.getElementById(`btn-aprovar-${id}`);
@@ -338,20 +334,16 @@ async function aprovar(id) {
 
     let chavePixGerada = CHAVE_PIX_FIXA;
     let qrCodeImagem = null;
-    let linkPagamentoGerado = null;
     let mensagem = '';
 
     if (modo === 'producao') {
         try {
-            console.log('🔄 Chamando Mercado Pago via Proxy CORS...');
             const urlAlvo = encodeURIComponent('https://api.mercadopago.com/v1/payments');
-            
             const resposta = await fetch(`https://corsproxy.io/?${urlAlvo}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${TOKEN_MP_PRODUCAO}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     transaction_amount: entrada,
@@ -362,22 +354,18 @@ async function aprovar(id) {
             });
 
             const dados = await resposta.json();
-            console.log('✅ Resposta:', dados);
-
             if (dados.point_of_interaction?.transaction_data) {
                 chavePixGerada = dados.point_of_interaction.transaction_data.qr_code;
                 qrCodeImagem = dados.point_of_interaction.transaction_data.qr_code_base64 || null;
-                linkPagamentoGerado = dados.init_point || null;
-                mensagem = '✅ PIX GERADO PELO MERCADO PAGO COM SUCESSO!';
+                mensagem = '✅ PIX GERADO PELO MERCADO PAGO!';
             } else {
-                mensagem = '⚠️ Erro na API do MP → Usando chave Pix fixa.';
+                mensagem = '⚠️ MP não retornou → Usando chave fixa.';
             }
-        } catch (erro) {
-            console.log('❌ Erro:', erro);
-            mensagem = '⚠️ Falha de conexão com o MP → Usando chave fixa.';
+        } catch {
+            mensagem = '⚠️ Sem conexão MP → Usando chave fixa.';
         }
     } else {
-        mensagem = 'ℹ️ Modo manual/teste: Usando chave Pix fixa.';
+        mensagem = 'ℹ️ Usando chave Pix fixa.';
     }
 
     const { error } = await supabase.from('propostas').update({
@@ -389,49 +377,44 @@ async function aprovar(id) {
         quantidade_parcelas: parcelas,
         juros: juros,
         copia_cola_pix: chavePixGerada,
-        qr_code_entrada: qrCodeImagem,
-        link_pagamento: linkPagamentoGerado
+        qr_code_entrada: qrCodeImagem
     }).eq('id', id);
 
     processando = false;
     if (btn) btn.disabled = false;
-
-    if (error) {
-        alert('❌ Erro no banco:\n' + error.message);
-    } else {
-        alert(`✅ APROVADA!\n\n${mensagem}`);
-        carregar();
-    }
+    alert(error ? '❌ Erro: ' + error.message : `✅ APROVADA!\n\n${mensagem}`);
+    carregar();
 }
 
-// Nova função para marcar entrada paga manualmente
 async function marcarEntradaPaga(id) {
     const proposta = propostas.find(p => p.id === id);
     if (!proposta) return;
 
-    if (!confirm(`💰 Confirmar recebimento manual da entrada para ${proposta.nome}?`)) return;
+    if (!confirm(`💰 MARCAR ENTRADA PAGA para ${proposta.nome}?\n\n→ Cliente NÃO verá mais tela de pagamento.\n→ Vai ver DIRETO: CONTRATO + PARCELAS + VENCIMENTOS.`)) return;
 
     const codigoUnicoFinal = proposta.codigo_unico ? proposta.codigo_unico : gerarCodigoUnico();
 
     const { error } = await supabase.from('propostas').update({
-        status: 'Aprovada',
+        status: 'Entrada Paga',
+        entrada_paga: true,
         codigo_unico: codigoUnicoFinal,
-        copia_cola_pix: 'ENTRADA PAGA MANUALMENTE'
+        copia_cola_pix: 'ENTRADA PAGA - Pagamento em Dinheiro/Transferência',
+        qr_code_entrada: null
     }).eq('id', id);
 
     if (error) {
-        alert('❌ Erro ao atualizar: ' + error.message);
+        alert('❌ Erro: ' + error.message);
     } else {
-        alert('✅ Entrada marcada como paga manualmente com sucesso!');
+        alert('✅ ENTRADA MARCADA COMO PAGA!\n\nCliente digita o CPF e verá DIRETO as PARCELAS e CONTRATO.');
         carregar();
     }
 }
 
 async function reprovar(id) {
-    if (!confirm('Reprovar esta proposta?')) return;
+    if (!confirm('Reprovar?')) return;
     const { error } = await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
-    if (error) alert('Erro: ' + error.message);
-    else carregar();
+    alert(error ? 'Erro: ' + error.message : '✅ Reprovada!');
+    carregar();
 }
 
 async function enviarWhatsApp(id) {
@@ -443,10 +426,10 @@ async function enviarWhatsApp(id) {
 }
 
 async function excluir(id) {
-    if (!confirm('⚠️ Tem certeza? Essa ação não pode ser desfeita!')) return;
+    if (!confirm('⚠️ Tem certeza?')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
-    if (error) alert('Erro: ' + error.message);
-    else carregar();
+    alert(error ? 'Erro: ' + error.message : '✅ Excluída!');
+    carregar();
 }
 </script>
 </body>
