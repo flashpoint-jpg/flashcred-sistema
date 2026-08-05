@@ -106,6 +106,7 @@
         .vazio { text-align: center; color: var(--texto-claro); padding: 40px; font-size: 15px; }
         .carregando { text-align: center; padding: 30px; color: var(--texto-claro); display: none; font-size: 14px; }
         .aviso-prox { color: var(--alerta); font-weight: 600; font-size: 12px; margin-left: 6px; }
+        .btn-sair { background: #FEE2E2; color: #991B1B; padding: 6px 12px; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -121,10 +122,13 @@
 <div id="telaPainel" class="container">
     <div class="topo">
         <h1>📋 Painel de Controle — FlashCred</h1>
-        <div class="modos">
-            <button class="modo modo-manual" onclick="definirModo('manual')">Manual</button>
-            <button class="modo modo-teste" onclick="definirModo('teste')">Teste</button>
-            <button class="modo modo-producao modo-ativo" onclick="definirModo('producao')">Produção</button>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <div class="modos">
+                <button class="modo modo-manual" onclick="definirModo('manual')">Manual</button>
+                <button class="modo modo-teste" onclick="definirModo('teste')">Teste</button>
+                <button class="modo modo-producao modo-ativo" onclick="definirModo('producao')">Produção</button>
+            </div>
+            <button class="btn btn-sair" onclick="sair()">Sair 🚪</button>
         </div>
     </div>
 
@@ -175,57 +179,44 @@ let propostas = [];
 let timer = null;
 let processando = false;
 let ultimaContagem = 0;
-let servidorPronto = false;
 
+// Assim que a página abre, verifica se já estava logado anteriormente
 window.addEventListener('DOMContentLoaded', () => {
-    fetch(SERVIDOR_URL, { method: 'GET', mode: 'no-cors' }).catch(() => {});
-});
-
-async function acordarServidor() {
-    const btnEntrar = document.querySelector('.btn-entrar');
-    btnEntrar.disabled = true;
-    btnEntrar.textContent = '⏳ Conectando ao servidor...';
-
-    for (let i = 0; i < 15; i++) {
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 4000);
-            await fetch(SERVIDOR_URL, { method: 'GET', mode: 'no-cors', signal: controller.signal });
-            clearTimeout(timeout);
-            servidorPronto = true;
-            break;
-        } catch (e) {
-            await new Promise(r => setTimeout(r, 2000));
-        }
-    }
-
-    btnEntrar.disabled = false;
-    btnEntrar.textContent = 'Entrar';
-}
-
-async function entrar() {
-    if (document.getElementById('senha').value === SENHA) {
-        document.getElementById('erroLogin').style.display = 'none';
-        
-        if (!servidorPronto) {
-            await acordarServidor();
-        }
-
+    if (localStorage.getItem('flashcred_logado') === 'true') {
         document.getElementById('telaLogin').style.display = 'none';
         document.getElementById('telaPainel').style.display = 'block';
         carregar();
-        ultimaContagem = 0;
+        timer = setInterval(() => carregar(true), 15000);
+    }
+});
+
+async function entrar() {
+    const senhaDigitada = document.getElementById('senha').value.trim();
+    if (senhaDigitada === SENHA) {
+        document.getElementById('erroLogin').style.display = 'none';
+        localStorage.setItem('flashcred_logado', 'true');
+        
+        document.getElementById('telaLogin').style.display = 'none';
+        document.getElementById('telaPainel').style.display = 'block';
+        carregar();
         timer = setInterval(() => carregar(true), 15000);
     } else {
         document.getElementById('erroLogin').style.display = 'block';
     }
 }
 
+function sair() {
+    localStorage.removeItem('flashcred_logado');
+    if (timer) clearInterval(timer);
+    document.getElementById('telaPainel').style.display = 'none';
+    document.getElementById('telaLogin').style.display = 'block';
+    document.getElementById('senha').value = '';
+}
+
 function definirModo(m) {
     modo = m;
     document.querySelectorAll('.modo').forEach(b => b.classList.remove('modo-ativo'));
     event.target.classList.add('modo-ativo');
-    alert(`✅ Modo ${m.toUpperCase()} ativado!`);
 }
 
 function real(valor) {
@@ -247,7 +238,7 @@ async function carregar(silencioso = false) {
     if (!silencioso) document.getElementById('carregando').style.display = 'block';
     const { data, error } = await supabase.from('propostas').select('*').order('created_at', { ascending: false });
     if (!silencioso) document.getElementById('carregando').style.display = 'none';
-    if (error) { alert('Erro: ' + error.message); return; }
+    if (error) { console.error('Erro ao carregar:', error.message); return; }
 
     const qtdAnt = ultimaContagem;
     propostas = data || [];
