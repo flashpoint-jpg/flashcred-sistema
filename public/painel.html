@@ -3,160 +3,263 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Administrativo | FlashCred</title>
-    <style>
-        :root {
-            --primary: #0A2463;
-            --sucesso: #10B981;
-            --alerta: #F59E0B;
-            --perigo: #EF4444;
-            --bg-body: #F8FAFC;
-            --borda: #E2E8F0;
-            --texto: #334155;
-            --texto-claro: #64748B;
+    <title>Consultar Proposta | FlashCred</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0A2463',
+                        pix: '#32BCAD',
+                        sucesso: '#10B981',
+                        alerta: '#F59E0B',
+                        perigo: '#EF4444',
+                        fundo: '#F8FAFC'
+                    }
+                }
+            }
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background: var(--bg-body); color: var(--texto); padding: 16px; line-height: 1.5; }
-
-        .login { max-width: 380px; margin: 80px auto; background: white; padding: 28px; border-radius: 16px; box-shadow: 0 4px 16px rgba(10,36,99,0.06); }
-        .login h2 { text-align: center; color: var(--primary); margin-bottom: 22px; font-size: 20px; }
-        input { width: 100%; padding: 11px 14px; border: 1px solid var(--borda); border-radius: 8px; font-size: 15px; margin: 6px 0 14px; }
-        input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(10,36,99,0.08); }
-        button { border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 14px; }
-        .btn-entrar { width: 100%; padding: 11px; background: var(--primary); color: white; }
-        .btn-entrar:hover { background: #0c3499; }
-        .erro { color: var(--perigo); text-align: center; margin-top: 8px; display: none; font-size: 14px; }
-
-        .container { max-width: 1100px; margin: 0 auto; display: none; }
-        .topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
-        h1 { color: var(--primary); font-size: 20px; font-weight: 700; }
-
-        .caixa-totais { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
-        .total-card { background: white; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--borda); }
-        .total-label { font-size: 12px; color: var(--texto-claro); font-weight: 600; }
-        .total-valor { font-size: 20px; font-weight: 700; color: var(--primary); margin-top: 4px; }
-        .total-ent { color: var(--sucesso); }
-        .total-falta { color: var(--alerta); }
-        .total-parc { color: #8B5CF6; }
-
-        .modos { display: flex; gap: 6px; }
-        .modo { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
-        .modo-manual { background: #DBEAFE; color: #1E40AF; }
-        .modo-teste { background: #FEF3C7; color: #92400E; }
-        .modo-producao { background: #D1FAE5; color: #065F46; }
-        .modo-ativo { box-shadow: inset 0 0 0 2px rgba(0,0,0,0.15); }
-
-        .busca { background: white; padding: 16px; border-radius: 12px; border: 1px solid var(--borda); margin-bottom: 18px; }
-        .busca label { font-size: 13px; font-weight: 600; color: var(--texto-claro); display: block; margin-bottom: 6px; }
-        .busca-linha { display: flex; gap: 10px; }
-        .busca input { flex: 1; margin: 0; }
-        .btn-busca { padding: 11px 18px; background: var(--primary); color: white; white-space: nowrap; }
-
-        .alerta-novo { background: #FEF3C7; border-left: 3px solid var(--alerta); padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; display: none; }
-
-        .proposta { background: white; padding: 18px; border-radius: 12px; border: 1px solid var(--borda); margin-bottom: 14px; }
-        .proposta-topo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
-        .proposta-nome { font-size: 16px; font-weight: 700; color: var(--primary); }
-        .proposta-info { font-size: 12px; color: var(--texto-claro); margin-top: 3px; }
-        .status { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-        .status-nova { background: #FEF3C7; color: #92400E; }
-        .status-aprovada { background: #D1FAE5; color: #065F46; }
-        .status-paga { background: #BBF7D0; color: #166534; }
-        .status-reprovada { background: #FEE2E2; color: #991B1B; }
-
-        .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
-        .campo label { font-size: 12px; color: var(--texto-claro); font-weight: 600; display: block; margin-bottom: 3px; }
-        .campo input { padding: 8px 10px; margin: 0; border: 1px solid var(--borda); border-radius: 6px; font-size: 14px; width: 100%; }
-        .campo input[readonly] { background: #F8FAFC; color: var(--sucesso); font-weight: 600; }
-
-        .tabela-parcelas { width: 100%; border-collapse: collapse; margin-top: 14px; }
-        .tabela-parcelas th { background: #F1F5F9; padding: 8px 10px; text-align: left; font-size: 13px; color: var(--texto-claro); font-weight: 600; }
-        .tabela-parcelas td { padding: 8px 10px; border-top: 1px solid var(--borda); font-size: 14px; }
-        .parcela-verde { border-left: 4px solid #22C55E; }
-        .parcela-amarela { border-left: 4px solid #F59E0B; }
-        .parcela-vermelha { border-left: 4px solid #EF4444; }
-        .parcela-paga { color: var(--sucesso); font-weight: 600; }
-        .parcela-pendente { color: var(--alerta); font-weight: 600; }
-        
-        .btn-marcar-paga { padding: 5px 8px; font-size: 12px; background: var(--sucesso); color: white; border-radius: 4px; border: none; cursor: pointer; }
-        .btn-marcar-paga:disabled { background: #D1FAE5; color: #166534; cursor: not-allowed; }
-        .btn-cobranca { padding: 5px 8px; font-size: 12px; background: #25D366; color: white; border-radius: 4px; border: none; margin-left: 4px; cursor: pointer; }
-        .btn-pix { padding: 5px 8px; font-size: 12px; background: #32BCAD; color: white; border-radius: 4px; border: none; margin-left: 4px; cursor: pointer; }
-
-        .botoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-        .btn { padding: 8px 14px; font-size: 13px; border-radius: 7px; border: none; cursor: pointer; }
-        .btn-aprovar { background: var(--sucesso); color: white; }
-        .btn-aprovar:hover { background: #059669; }
-        .btn-aprovar:disabled { opacity: 0.6; cursor: not-allowed; }
-        .btn-pagar-manual { background: #0284C7; color: white; }
-        .btn-pagar-manual:hover { background: #0369A1; }
-        .btn-reprovar { background: var(--perigo); color: white; }
-        .btn-reprovar:hover { background: #DC2626; }
-        .btn-whatsapp { background: #25D366; color: white; }
-        .btn-whatsapp:hover { background: #1fb85c; }
-        .btn-excluir { background: #F1F5F9; color: #64748B; }
-        .btn-excluir:hover { background: #E2E8F0; }
-        .btn-ver-parcelas { background: #8B5CF6; color: white; margin-left: 8px; }
-        .btn-ver-parcelas:hover { background: #7C3AED; }
-
-        .vazio { text-align: center; color: var(--texto-claro); padding: 40px; font-size: 15px; }
-        .carregando { text-align: center; padding: 30px; color: var(--texto-claro); display: none; font-size: 14px; }
-        .data-pagamento { background: #E0F2FE; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: #0369A1; display: inline-block; margin-top: 4px; }
-        .parcelas-container { margin-top: 14px; display: none; }
-        .parcelas-container.aberta { display: block; }
+    </script>
+    <style>
+        .contrato {
+            background: white;
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 20px 0;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+        .contrato h3 {
+            text-align: center;
+            color: #0A2463;
+            font-weight: 700;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #0A2463;
+            padding-bottom: 10px;
+        }
+        .contrato .linha { margin: 8px 0; }
+        .contrato .destaque { font-weight: 600; color: #0A2463; }
+        .assinatura-area {
+            border: 2px dashed #94a3b8;
+            border-radius: 8px;
+            height: 120px;
+            margin: 16px 0;
+            position: relative;
+            background: #fafafa;
+            touch-action: none;
+        }
+        .assinatura-canvas {
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+        .parcelas-tabela {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .parcelas-tabela th {
+            background: #0A2463;
+            color: white;
+            padding: 12px 10px;
+            text-align: left;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .parcelas-tabela td {
+            padding: 12px 10px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 14px;
+        }
+        .parcela-verde { border-left: 5px solid #22C55E; background: #F0FDF4; }
+        .parcela-amarela { border-left: 5px solid #F59E0B; background: #FFFBEB; }
+        .parcela-vermelha { border-left: 5px solid #EF4444; background: #FEF2F2; }
+        .parcela-paga { color: #16A34A; font-weight: 700; }
+        .parcela-pendente { color: #D97706; font-weight: 600; }
+        .pix-copia {
+            background: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 14px;
+            word-break: break-all;
+            font-size: 13px;
+            color: #166534;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .pix-copia:hover { background: #dcfce7; }
+        .pagamento-entrada {
+            border: 3px solid #32BCAD;
+            border-radius: 16px;
+            padding: 24px;
+            background: linear-gradient(135deg, #F0FDFA 0%, #CCFBF1 100%);
+        }
+        .oculto { display: none !important; }
+        .qrcode-box {
+            text-align: center;
+            padding: 24px;
+            background: white;
+            border-radius: 12px;
+            margin: 16px 0;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+        }
+        .aviso {
+            background: #FEF3C7;
+            border-left: 4px solid #F59E0B;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            font-size: 15px;
+        }
+        .sucesso-aviso {
+            background: #D1FAE5;
+            border-left: 4px solid #10B981;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            font-size: 15px;
+        }
+        .info-aviso {
+            background: #EFF6FF;
+            border-left: 4px solid #3B82F6;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+        .botao {
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            margin: 6px 4px;
+            font-size: 15px;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .botao-principal { background: #0A2463; color: white; width: 100%; }
+        .botao-principal:hover { background: #0c3499; transform: translateY(-1px); }
+        .botao-sucesso { background: #10B981; color: white; flex: 1; }
+        .botao-sucesso:hover { background: #059669; }
+        .botao-pix { background: #32BCAD; color: white; flex: 1; }
+        .botao-pix:hover { background: #0d9488; }
+        .botao-whatsapp { background: #25D366; color: white; width: 100%; }
+        .botao-whatsapp:hover { background: #1fb85c; }
+        .botao-voltar { background: #F1F5F9; color: #475569; }
+        .botao-voltar:hover { background: #E2E8F0; }
+        .botao-imprimir { background: #8B5CF6; color: white; }
+        .botao-imprimir:hover { background: #7C3AED; }
+        .botao-pagar-parcela { background: #10B981; color: white; padding: 6px 12px; font-size: 13px; border-radius: 6px; }
+        .botao-pagar-parcela:hover { background: #059669; }
+        .botao:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .copia-nota {
+            font-size: 12px;
+            color: #166534;
+            margin-top: 8px;
+        }
+        .lido-check {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin: 20px 0;
+            padding: 14px;
+            background: #EFF6FF;
+            border-radius: 10px;
+            border: 1px solid #BFDBFE;
+        }
+        .lido-check input { width: 22px; height: 22px; cursor: pointer; margin-top: 2px; }
+        .lido-check label { font-weight: 600; color: #1E40AF; cursor: pointer; font-size: 15px; line-height: 1.5; }
+        .resumo-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 12px 0;
+            border-left: 4px solid #0A2463;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        }
+        .resumo-titulo { font-size: 13px; color: #64748B; font-weight: 600; }
+        .resumo-valor { font-size: 22px; font-weight: 800; color: #0A2463; margin-top: 4px; }
+        .status-bolinha {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .bolinha-verde { background: #22C55E; }
+        .bolinha-amarela { background: #F59E0B; }
+        .bolinha-vermelha { background: #EF4444; }
+        .botoes-linha { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .notificacao-pagamento {
+            background: #ECFDF5;
+            border: 2px solid #10B981;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 16px 0;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .etapa {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin: 4px 0;
+            font-size: 14px;
+        }
+        .etapa-concluida { background: #ECFDF5; color: #065F46; border-left: 3px solid #10B981; }
+        .etapa-andamento { background: #FEF9C3; color: #854D0E; border-left: 3px solid #FACC15; }
+        .etapa-pendente { background: #F3F4F6; color: #6B7280; border-left: 3px solid #D1D5DB; }
+        @media print {
+            body * { visibility: hidden; }
+            .contrato, .contrato * { visibility: visible; }
+            .contrato { position: absolute; left: 0; top: 0; width: 100%; border: none; }
+            .nao-imprimir { display: none !important; }
+        }
     </style>
 </head>
-<body>
+<body class="bg-fundo text-slate-700 min-h-screen">
 
-<div id="telaLogin" class="login">
-    <h2>🔐 Acesso Administrativo</h2>
-    <label style="font-weight:600; font-size:14px; color:#475569;">Senha</label>
-    <input type="password" id="senha" placeholder="Digite sua senha">
-    <button onclick="entrar()" class="btn-entrar">Entrar</button>
-    <p id="erroLogin" class="erro">Senha incorreta!</p>
-</div>
+<div class="max-w-2xl mx-auto p-4">
+    <h1 class="text-[clamp(1.5rem,4vw,1.8rem)] font-bold text-primary mb-6 text-center">🔍 Consultar Proposta</h1>
 
-<div id="telaPainel" class="container">
-    <div class="topo">
-        <h1>📋 Painel de Controle</h1>
-        <div class="modos">
-            <button class="modo modo-manual" onclick="definirModo('manual')">Manual</button>
-            <button class="modo modo-teste" onclick="definirModo('teste')">Teste</button>
-            <button class="modo modo-producao modo-ativo" onclick="definirModo('producao')">Produção</button>
-        </div>
+    <button onclick="voltar()" class="botao botao-voltar nao-imprimir mb-4">
+        <i class="fas fa-arrow-left"></i> Voltar
+    </button>
+
+    <div id="telaConsulta" class="bg-white rounded-xl shadow p-6 mb-6">
+        <label class="block font-semibold text-sm text-slate-500 mb-2">Digite seu CPF</label>
+        <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" 
+            class="w-full p-3 border border-slate-200 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+        <button onclick="consultar()" class="botao botao-principal mt-4">
+            <i class="fas fa-search"></i> Consultar Proposta
+        </button>
     </div>
 
-    <div class="caixa-totais">
-        <div class="total-card">
-            <div class="total-label">💰 Total Propostas</div>
-            <div class="total-valor" id="totalPropostas">0</div>
-        </div>
-        <div class="total-card">
-            <div class="total-label total-ent">✅ Entradas Recebidas</div>
-            <div class="total-valor total-ent" id="totalEntradas">R$ 0,00</div>
-        </div>
-        <div class="total-card">
-            <div class="total-label total-falta">⏳ Valor a Receber</div>
-            <div class="total-valor total-falta" id="totalFalta">R$ 0,00</div>
-        </div>
-        <div class="total-card">
-            <div class="total-label total-parc">📊 Parcelas Pagas/Pendentes</div>
-            <div class="total-valor total-parc" id="totalParcelas">0 / 0</div>
-        </div>
-    </div>
+    <div id="resultado" class="hidden"></div>
 
-    <div id="alertaNovas" class="alerta-novo">🔔 Você tem novas propostas!</div>
-
-    <div class="busca">
-        <label>🔍 Buscar por CPF ou Código Único</label>
-        <div class="busca-linha">
-            <input type="text" id="busca" placeholder="Digite o CPF ou Código" oninput="filtrar()">
-            <button onclick="carregar()" class="btn-busca">Atualizar</button>
-        </div>
-    </div>
-
-    <div id="lista"></div>
-    <div id="carregando" class="carregando">Carregando propostas...</div>
+    <button onclick="window.open('https://wa.me/5511973294235?text=Olá! Preciso de suporte sobre minha proposta.', '_blank')" 
+        class="botao botao-whatsapp nao-imprimir mt-6">
+        <i class="fab fa-whatsapp"></i> Falar com Suporte
+    </button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
@@ -165,21 +268,32 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const SENHA = 'flash2026';
 const CHAVE_PIX_FIXA = '33552949852';
+const NOME_RECEBEDOR = 'FLASH POINT';
 
-let modo = 'producao';
-let propostas = [];
-let timer = null;
-let processando = false;
+let proposta = null;
+let assinaturaCanvas = null;
+let assinaturaCtx = null;
+let assinando = false;
+let assinaturaFeita = false;
+let canalRealtime = null;
+let ultimaAtualizacao = 0;
+const INTERVALO_MINIMO = 3000; // 3 segundos entre atualizações — PARA O PISCAR
 
-function gerarCodigoUnico() {
-    const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const numeros = '0123456789';
-    let codigo = 'FL-';
-    for (let i = 0; i < 2; i++) codigo += letras.charAt(Math.floor(Math.random() * letras.length));
-    for (let i = 0; i < 3; i++) codigo += numeros.charAt(Math.floor(Math.random() * numeros.length));
-    return codigo;
+function voltar() {
+    if (canalRealtime) {
+        supabase.removeChannel(canalRealtime);
+        canalRealtime = null;
+    }
+    document.getElementById('resultado').classList.add('hidden');
+    document.getElementById('telaConsulta').classList.remove('hidden');
+    document.getElementById('cpf').value = '';
+}
+
+function formatarCPF(cpf) {
+    if (!cpf) return '---';
+    cpf = String(cpf).replace(/\D/g, '');
+    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
 }
 
 function formatarData(data) {
@@ -203,373 +317,435 @@ function calcularCorVencimento(dataVenc) {
     return 'parcela-verde';
 }
 
-function calcularParcelas(valorTotal, percEnt, qtdParcelas, juros) {
-    const entrada = valorTotal * percEnt / 100;
-    const resto = valorTotal - entrada;
-    const valorParcela = qtdParcelas > 0 ? resto * (1 + juros/100) / qtdParcelas : 0;
-    const lista = [];
-    const hoje = new Date();
-    for (let i = 1; i <= qtdParcelas; i++) {
-        const vencimento = new Date(hoje);
-        vencimento.setMonth(vencimento.getMonth() + i);
-        lista.push({
-            numero: i,
-            valor: valorParcela,
-            vencimento: vencimento.toISOString().split('T')[0],
-            status: 'Pendente'
-        });
+function calcularBolinha(dataVenc) {
+    if (!dataVenc) return 'bolinha-verde';
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const ven = new Date(dataVenc); ven.setHours(0,0,0,0);
+    const dias = Math.ceil((ven - hoje) / (1000*60*60*24));
+    if (dias < 0) return 'bolinha-vermelha';
+    if (dias <= 7) return 'bolinha-vermelha';
+    if (dias <= 14) return 'bolinha-amarela';
+    return 'bolinha-verde';
+}
+
+function gerarCodigoPix(valor, descricao = 'Pagamento') {
+    const valorStr = Number(valor || 0).toFixed(2);
+    const chave = CHAVE_PIX_FIXA;
+    const nome = NOME_RECEBEDOR;
+    const cidade = 'SAO PAULO';
+    const txId = '***';
+
+    function montarParte(id, conteudo) {
+        const s = String(conteudo || '');
+        return id + String(s.length).padStart(2, '0') + s;
     }
-    return { entrada, valorParcela, lista };
-}
 
-function entrar() {
-    if (document.getElementById('senha').value === SENHA) {
-        document.getElementById('telaLogin').style.display = 'none';
-        document.getElementById('telaPainel').style.display = 'block';
-        carregar();
-        timer = setInterval(() => carregar(true), 10000);
-    } else {
-        document.getElementById('erroLogin').style.display = 'block';
+    const brCod = montarParte('00', 'BR-GOV.BCB.PIX') + montarParte('01', chave);
+    const valorParte = valorStr !== '0.00' ? montarParte('05', valorStr) : '';
+
+    let payload = montarParte('00', '01')
+        + montarParte('26', brCod)
+        + montarParte('52', '0000')
+        + montarParte('53', '986')
+        + valorParte
+        + montarParte('59', nome)
+        + montarParte('60', cidade)
+        + montarParte('62', montarParte('05', txId));
+
+    function calcularCRC16(s) {
+        let crc = 0xFFFF;
+        for (let i = 0; i < s.length; i++) {
+            crc ^= s.charCodeAt(i) << 8;
+            for (let j = 0; j < 8; j++) {
+                crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+            }
+        }
+        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
     }
+    return payload + '6304' + calcularCRC16(payload + '6304');
 }
 
-function definirModo(m) {
-    modo = m;
-    document.querySelectorAll('.modo').forEach(b => b.classList.remove('modo-ativo'));
-    event.target.classList.add('modo-ativo');
-    alert(`✅ Modo ${m.toUpperCase()} ativado!`);
-}
+async function consultar() {
+    let cpf = document.getElementById('cpf').value.replace(/\D/g, '');
+    if (cpf.length !== 11) { alert('⚠️ Digite um CPF válido com 11 dígitos!'); return; }
 
-async function carregar(silencioso = false) {
-    if (!silencioso) document.getElementById('carregando').style.display = 'block';
-    const { data, error } = await supabase.from('propostas').select('*').order('created_at', { ascending: false });
-    if (!silencioso) document.getElementById('carregando').style.display = 'none';
-    if (error) { alert('Erro: ' + error.message); return; }
+    document.getElementById('telaConsulta').classList.add('hidden');
+    document.getElementById('resultado').innerHTML = '<p class="text-center p-10 text-slate-500 text-lg">🔎 Buscando sua proposta...</p>';
+    document.getElementById('resultado').classList.remove('hidden');
 
-    const qtdAnt = propostas.length;
-    propostas = data || [];
+    const { data, error } = await supabase
+        .from('propostas')
+        .select('*')
+        .filter('cpf', 'ilike', '%' + cpf + '%')
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-    const totalEntradas = propostas.reduce((s, p) => s + Number(p.valor_entrada || 0), 0);
-    const totalRestante = propostas.reduce((s, p) => {
-        const total = Number(p.valor_desejado || 0);
-        const entrada = Number(p.valor_entrada || 0);
-        return s + (total - entrada);
-    }, 0);
-
-    let totalPagas = 0, totalTodas = 0;
-    propostas.forEach(p => {
-        const parcelas = p.lista_parcelas || [];
-        totalTodas += parcelas.length;
-        totalPagas += parcelas.filter(x => x.status === 'Paga').length;
-    });
-
-    document.getElementById('totalPropostas').textContent = propostas.length;
-    document.getElementById('totalEntradas').textContent = real(totalEntradas);
-    document.getElementById('totalFalta').textContent = real(totalRestante);
-    document.getElementById('totalParcelas').textContent = `${totalPagas} / ${totalTodas}`;
-
-    if (silencioso && propostas.length > qtdAnt) {
-        const alerta = document.getElementById('alertaNovas');
-        alerta.style.display = 'block';
-        setTimeout(() => alerta.style.display = 'none', 5000);
+    if (error) {
+        document.getElementById('resultado').innerHTML = `
+            <div class="aviso">❌ Erro na busca: ${error.message}</div>
+            <button onclick="voltar()" class="botao botao-voltar w-full mt-4">Voltar e tentar novamente</button>`;
+        return;
     }
-    filtrar();
+
+    if (!data || data.length === 0) {
+        document.getElementById('resultado').innerHTML = `
+            <div class="aviso">⚠️ Proposta não encontrada! Verifique o CPF digitado.</div>
+            <button onclick="voltar()" class="botao botao-voltar w-full mt-4">Voltar e corrigir</button>`;
+        return;
+    }
+
+    proposta = data[0];
+    ultimaAtualizacao = Date.now();
+    mostrarProposta();
+    ativarNotificacaoTempoReal(proposta.id);
 }
 
-function filtrar() {
-    const busca = document.getElementById('busca').value.replace(/\D/g, '').trim();
-    let lista = propostas;
+function ativarNotificacaoTempoReal(propostaId) {
+    canalRealtime = supabase
+        .channel('proposta-atualizada')
+        .on(
+            'postgres_changes',
+            {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'propostas',
+                filter: `id=eq.${propostaId}`
+            },
+            (payload) => {
+                // EVITA O PISCAR — só atualiza se passou 3 segundos
+                const agora = Date.now();
+                if (agora - ultimaAtualizacao < INTERVALO_MINIMO) return;
+                ultimaAtualizacao = agora;
+
+                proposta = payload.new;
+                mostrarProposta();
+                tocarSomNotificacao();
+            }
+        )
+        .subscribe();
+}
+
+function tocarSomNotificacao() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const som = audioCtx.createOscillator();
+        const vol = audioCtx.createGain();
+        som.connect(vol);
+        vol.connect(audioCtx.destination);
+        som.type = 'sine';
+        som.frequency.value = 880;
+        vol.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        vol.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        som.start(audioCtx.currentTime);
+        som.stop(audioCtx.currentTime + 0.4);
+    } catch (e) {}
+}
+
+function getStatusEtapas(status, assinada) {
+    return [
+        { titulo: 'Proposta enviada', concluida: true },
+        { titulo: status === 'Aprovada' ? '✅ Proposta aprovada' : status === 'Reprovada' ? '❌ Reprovada' : '⏳ Em análise', concluida: status === 'Aprovada' || status === 'Entrada Paga', andamento: status === 'Aguardando' },
+        { titulo: assinada ? '✅ Contrato assinado' : '📄 Assinar contrato', concluida: assinada },
+        { titulo: status === 'Entrada Paga' ? '✅ Entrada confirmada pelo banco' : '💳 Aguardando confirmação do pagamento', concluida: status === 'Entrada Paga', andamento: status === 'Aprovada' },
+        { titulo: status === 'Entrada Paga' ? '📊 Pagamento das parcelas' : '🔒 Parcelas liberadas após entrada', concluida: false, liberado: status === 'Entrada Paga' }
+    ];
+}
+
+function mostrarProposta() {
+    const valorTotal = Number(proposta.valor_desejado || 0);
+    const percEnt = Number(proposta.percentual_entrada || 20);
+    const valorEntrada = valorTotal * percEnt / 100;
     
-    if (busca.length >= 11) {
-        lista = propostas.filter(p => {
-            const cpfLimpo = (p.cpf || '').replace(/\D/g, '');
-            return cpfLimpo.includes(busca);
-        });
-    } else if (busca.length >= 3) {
-        lista = propostas.filter(p => {
-            const codigo = (p.codigo_unico || '').toUpperCase();
-            return codigo.includes(busca.toUpperCase());
-        });
-    }
-    
-    document.getElementById('lista').innerHTML = lista.length === 0 
-        ? '<p class="vazio">Nenhuma proposta encontrada</p>'
-        : lista.map(criarCard).join('');
-}
+    // ✅ CORRIGIDO: se a coluna não existir, usa array vazio
+    const parcelas = proposta.lista_parcelas || [];
+    const quantidadeParc = proposta.quantidade_parcelas || (Array.isArray(parcelas) ? parcelas.length : 0);
+    const juros = Number(proposta.juros || 0);
+    const codigoPixEntrada = gerarCodigoPix(valorEntrada, 'Entrada');
 
-function criarCard(p) {
-    let statusCls, statusTxt;
-    if (p.status === 'Entrada Paga') {
-        statusCls = 'status-paga'; statusTxt = '💰 Entrada Paga';
-    } else if (p.status === 'Aprovada') {
-        statusCls = 'status-aprovada'; statusTxt = '✅ Aprovada';
-    } else if (p.status === 'Reprovada') {
-        statusCls = 'status-reprovada'; statusTxt = '❌ Reprovada';
+    let statusTexto, statusCor;
+    if (proposta.status === 'Entrada Paga') {
+        statusTexto = '✅ ENTRADA CONFIRMADA — Pagamento identificado pelo banco!'; statusCor = 'text-green-600';
+    } else if (proposta.status === 'Aprovada') {
+        statusTexto = '✅ APROVADA — Aguarda confirmação do pagamento'; statusCor = 'text-blue-600';
+    } else if (proposta.status === 'Reprovada') {
+        statusTexto = '❌ Reprovada'; statusCor = 'text-red-600';
     } else {
-        statusCls = 'status-nova'; statusTxt = '⏳ Aguardando';
+        statusTexto = '⏳ Aguardando Análise'; statusCor = 'text-yellow-600';
     }
 
-    const valorTotal = Number(p.valor_desejado || 0);
-    const percEnt = Number(p.percentual_entrada || 20);
-    const valorEnt = valorTotal * percEnt / 100;
-    const parcelas = p.quantidade_parcelas || 0;
-    const juros = Number(p.juros || 0);
-    const calc = calcularParcelas(valorTotal, percEnt, parcelas, juros);
+    const jaAssinou = !!proposta.assinatura_assinada;
+    const entradaPaga = proposta.status === 'Entrada Paga';
+    const etapas = getStatusEtapas(proposta.status, jaAssinou);
 
-    const cpf = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    const telefoneLimpo = (p.telefone || '').replace(/\D/g, '');
-    const temTelefone = telefoneLimpo.length >= 10;
+    let html = `
+    <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-xl font-bold text-primary mb-2">📋 Proposta de ${proposta.nome || '---'}</h2>
+        <p class="text-sm text-slate-500 mb-3">Código: ${proposta.codigo_unico || '---'}</p>
+        <p class="${statusCor} font-bold text-lg mb-6 p-3 bg-slate-50 rounded-lg">${statusTexto}</p>
 
-    const dataPagamento = p.data_pagamento_entrada 
-        ? `<div class="data-pagamento">📅 Entrada paga em: ${formatarData(p.data_pagamento_entrada)}</div>` 
-        : '';
+        <div class="resumo-card">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <div class="resumo-titulo">💰 Valor Total</div>
+                    <div class="resumo-valor">${real(valorTotal)}</div>
+                </div>
+                <div>
+                    <div class="resumo-titulo">💵 Entrada (${percEnt}%)</div>
+                    <div class="resumo-valor text-green-600">${real(valorEntrada)}</div>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 mt-3">
+                <div>
+                    <div class="resumo-titulo">📊 Parcelas</div>
+                    <div class="resumo-valor text-blue-600">${quantidadeParc}x</div>
+                </div>
+                <div>
+                    <div class="resumo-titulo">📈 Juros</div>
+                    <div class="resumo-valor text-purple-600">${juros}% ao mês</div>
+                </div>
+            </div>
+        </div>
 
-    const listaParcelas = p.lista_parcelas || calc.lista;
-    const containerId = `parc-${p.id}`;
+        <div class="info-aviso">
+            <strong>📋 Situação da proposta:</strong>
+            ${etapas.map(e => `
+                <div class="etapa ${e.concluida ? 'etapa-concluida' : e.andamento ? 'etapa-andamento' : 'etapa-pendente'}">
+                    ${e.concluida ? '✅' : e.andamento ? '⏳' : '⬜'} ${e.titulo}
+                </div>
+            `).join('')}
+        </div>`;
 
-    const tabelaParcelas = (p.status === 'Entrada Paga' || p.status === 'Aprovada') && listaParcelas.length > 0 ? `
-    <div class="parcelas-container" id="${containerId}">
-        <table class="tabela-parcelas">
+    if (!entradaPaga && proposta.status === 'Aprovada') {
+        html += `
+        <div class="pagamento-entrada mt-6">
+            <h3 class="text-xl font-bold text-pix mb-4 text-center">💳 PAGAMENTO DA ENTRADA</h3>
+            <p class="text-center font-semibold text-lg mb-4">Valor: <span class="text-2xl text-green-700 font-bold">${real(valorEntrada)}</span></p>
+            
+            <div class="qrcode-box">
+                <div id="qrcode-entrada"></div>
+                <p class="text-sm text-slate-500 mt-3">📱 Escaneie com a câmera do app do banco</p>
+            </div>
+
+            <div class="pix-copia" onclick="copiarPix('${codigoPixEntrada}')">
+                <strong>🔑 Chave Pix:</strong> ${CHAVE_PIX_FIXA}<br>
+                <span class="copia-nota">👆 Clique para copiar o código Pix e pagar no app do banco</span>
+            </div>
+        </div>
+
+        <div class="info-aviso">
+            🏦 <strong>Atenção:</strong> Após pagar, o banco pode levar até <strong>24h</strong> para notificar. Assim que confirmado, aparecerá abaixo: 
+            <strong>"✅ Entrada confirmada pelo banco"</strong> e as parcelas serão liberadas.
+        </div>`;
+
+        if (!jaAssinou) {
+            html += `
+            <div class="lido-check">
+                <input type="checkbox" id="liContrato" onchange="verificarLido()">
+                <label for="liContrato">Li e concordo com o contrato abaixo. Declaro que os dados são verdadeiros e autorizo os pagamentos nas datas de vencimento.</label>
+            </div>
+
+            <div id="areaAssinatura" class="oculto">
+                <p class="font-bold text-sm text-slate-700 mb-2">✍️ Assine no quadro abaixo:</p>
+                <div class="assinatura-area">
+                    <canvas id="assinaturaCanvas" class="assinatura-canvas"></canvas>
+                </div>
+                <div class="botoes-linha">
+                    <button onclick="limparAssinatura()" class="botao botao-voltar flex-1">🗑️ Limpar</button>
+                    <button onclick="confirmarAssinatura()" id="btnConfirmarAssinatura" class="botao botao-sucesso flex-1" disabled>✅ Confirmar Assinatura</button>
+                </div>
+            </div>`;
+        } else {
+            html += `<div class="aviso">✅ Contrato assinado! Aguarde a confirmação do pagamento pelo banco.</div>`;
+        }
+    }
+
+    if (entradaPaga && Array.isArray(parcelas) && parcelas.length > 0) {
+        html += `
+        <div class="notificacao-pagamento">
+            ✅ <strong>PAGAMENTO CONFIRMADO!</strong> O banco notificou o recebimento. Suas parcelas foram liberadas 👇
+        </div>
+
+        <h3 class="text-xl font-bold text-primary mt-6 mb-4">📊 SUAS PARCELAS</h3>
+        <p class="text-sm text-slate-500 mb-3">
+            <span class="status-bolinha bolinha-verde"></span> Em dia · 
+            <span class="status-bolinha bolinha-amarela"></span> Atenção · 
+            <span class="status-bolinha bolinha-vermelha"></span> Vencida
+        </p>
+        <table class="parcelas-tabela">
             <thead>
                 <tr>
                     <th>Nº</th>
                     <th>Vencimento</th>
                     <th>Valor</th>
                     <th>Status</th>
-                    <th>Ações</th>
+                    <th>Ação</th>
                 </tr>
             </thead>
-            <tbody>
-                ${listaParcelas.map((parc, idx) => {
-                    const cor = calcularCorVencimento(parc.vencimento);
-                    return `
-                    <tr class="${cor}">
-                        <td>${parc.numero}</td>
-                        <td>${formatarData(parc.vencimento)}</td>
-                        <td>${real(parc.valor)}</td>
-                        <td class="${parc.status === 'Paga' ? 'parcela-paga' : 'parcela-pendente'}">
-                            ${parc.status === 'Paga' ? '✅ Paga' : '⏳ Pendente'}
-                        </td>
-                        <td>
-                            <button class="btn-marcar-paga" 
-                                ${parc.status === 'Paga' ? 'disabled' : ''}
-                                onclick="marcarParcelaPaga(${p.id}, ${idx})">
-                                ${parc.status === 'Paga' ? '✓ Paga' : 'Marcar'}
-                            </button>
-                            <button class="btn-cobranca" onclick="enviarCobranca(${p.id}, ${idx})" ${!temTelefone?'disabled':''}>📱 Cobrar</button>
-                            <button class="btn-pix" onclick="gerarPixParcela(${p.id}, ${idx})">💳 Pix</button>
-                        </td>
-                    </tr>`;
-                }).join('')}
-            </tbody>
-        </table>
-    </div>` : '';
+            <tbody>`;
+        parcelas.forEach((p, idx) => {
+            const cor = calcularCorVencimento(p.vencimento);
+            const bolinha = calcularBolinha(p.vencimento);
+            const estaPaga = p.status === 'Paga';
+            const codigoPixParcela = gerarCodigoPix(p.valor, `Parcela ${p.numero}`);
+            html += `
+            <tr class="${cor}">
+                <td class="font-bold">${p.numero || idx+1}</td>
+                <td>${formatarData(p.vencimento)}</td>
+                <td class="font-bold">${real(p.valor)}</td>
+                <td class="${estaPaga ? 'parcela-paga' : 'parcela-pendente'}">
+                    <span class="status-bolinha ${bolinha}"></span>
+                    ${estaPaga ? '✅ Paga' : '⏳ Pendente'}
+                </td>
+                <td>
+                    ${!estaPaga 
+                        ? `<button class="botao-pagar-parcela" onclick="pagarParcela(${idx}, '${codigoPixParcela}')">💳 Pagar</button>` 
+                        : '<span class="text-green-600 font-semibold">✓</span>'}
+                </td>
+            </tr>`;
+        });
+        html += `</tbody></table>`;
+    }
 
-    return `
-    <div class="proposta">
-        <div class="proposta-topo">
-            <div>
-                <div class="proposta-nome">${p.nome}</div>
-                <div class="proposta-info">Código: ${p.codigo_unico || '---'} | CPF: ${cpf}</div>
-                <div class="proposta-info">Telefone: ${p.telefone || 'Não informado'}</div>
-                ${dataPagamento}
-            </div>
-            <div>
-                <span class="status ${statusCls}">${statusTxt}</span>
-                ${parcelas > 0 && (p.status === 'Entrada Paga' || p.status === 'Aprovada') 
-                    ? `<button class="btn btn-ver-parcelas" onclick="document.getElementById('${containerId}').classList.toggle('aberta')">📊 Ver Parcelas</button>` 
-                    : ''}
-            </div>
+    html += `
+        <div class="contrato" id="contrato-impressao">
+            <h3>📄 CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h3>
+            <p class="linha">Pelo presente instrumento, <span class="destaque">${proposta.nome || '---'}</span>, CPF ${formatarCPF(proposta.cpf || '')}, abaixo assinado, aceita as condições:</p>
+            <p class="linha">1. Valor Total Contratado: <span class="destaque">${real(valorTotal)}</span></p>
+            <p class="linha">2. Entrada de <span class="destaque">${percEnt}% (${real(valorEntrada)})</span> e ${quantidadeParc} parcelas mensais com juros de ${juros}% ao mês.</p>
+            <p class="linha">3. O não pagamento no vencimento implicará em multa de 2% e juros de 1% ao mês.</p>
+            <p class="linha">4. A FlashCred / Distribuidora Flash Point se responsabiliza pela entrega dos móveis conforme combinado, após confirmação do pagamento da entrada.</p>
+            <p class="linha">5. Declaro que os dados informados são verdadeiros e autorizo a cobrança nas datas de vencimento.</p>
+            <p class="linha">6. Ao deixar de pagar, estará prejudicando a mim que pensei em você primeiro. Pense bem: eu confiei em você. Vamos honrar o compromisso!</p>
+            <p class="linha mt-6">São Paulo, ${new Date().toLocaleDateString('pt-BR')}.</p>
+            <p class="linha mt-8">Assinatura: ___________________________________________________</p>
+            <p class="linha">${proposta.nome || '---'}</p>
+            <p class="linha">CPF: ${formatarCPF(proposta.cpf || '')}</p>
         </div>
 
-        <div class="grade">
-            <div class="campo">
-                <label>Valor Total (R$)</label>
-                <input type="number" id="v-${p.id}" value="${valorTotal}" oninput="atualizar(${p.id})">
-            </div>
-            <div class="campo">
-                <label>Entrada (%)</label>
-                <input type="number" id="p-${p.id}" value="${percEnt}" oninput="atualizar(${p.id})">
-            </div>
-            <div class="campo">
-                <label>Entrada (R$)</label>
-                <input type="text" id="e-${p.id}" value="${real(valorEnt)}" readonly>
-            </div>
-            <div class="campo">
-                <label>Parcelas (1-48)</label>
-                <input type="number" id="par-${p.id}" value="${parcelas}" min="1" max="48" oninput="atualizar(${p.id})">
-            </div>
-            <div class="campo">
-                <label>Juros % ao mês</label>
-                <input type="number" id="j-${p.id}" value="${juros}" step="0.01" oninput="atualizar(${p.id})">
-            </div>
-            <div class="campo">
-                <label>Valor Parcela (R$)</label>
-                <input type="text" id="vp-${p.id}" value="${real(calc.valorParcela)}" readonly>
-            </div>
-        </div>
-
-        ${tabelaParcelas}
-
-        <div class="botoes">
-            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix</button>
-            <button class="btn btn-pagar-manual" onclick="marcarEntradaPaga(${p.id})" ${p.status==='Entrada Paga'?'disabled':''}>💰 Marcar Entrada Paga</button>
-            <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
-            <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})" ${!temTelefone?'disabled':''}>📱 WhatsApp</button>
-            <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
+        <div class="botoes-linha nao-imprimir">
+            <button onclick="window.print()" class="botao botao-imprimir flex-1">🖨️ Imprimir Contrato</button>
+            <button onclick="voltar()" class="botao botao-voltar flex-1">🔄 Consultar Outro</button>
         </div>
     </div>`;
+
+    document.getElementById('resultado').innerHTML = html;
+    document.getElementById('resultado').classList.remove('hidden');
+
+    if (!entradaPaga && proposta.status === 'Aprovada') {
+        setTimeout(() => {
+            const qrDiv = document.getElementById('qrcode-entrada');
+            if (qrDiv) {
+                new QRCode(qrDiv, {
+                    text: codigoPixEntrada,
+                    width: 220,
+                    height: 220,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            }
+            if (!jaAssinou) inicializarAssinatura();
+        }, 300);
+    }
 }
 
-function atualizar(id) {
-    const valor = Number(document.getElementById(`v-${id}`).value) || 0;
-    const perc = Number(document.getElementById(`p-${id}`).value) || 0;
-    const parcelas = Number(document.getElementById(`par-${id}`).value) || 0;
-    const juros = Number(document.getElementById(`j-${id}`).value) || 0;
-    const calc = calcularParcelas(valor, perc, parcelas, juros);
-    document.getElementById(`e-${id}`).value = real(calc.entrada);
-    document.getElementById(`vp-${id}`).value = real(calc.valorParcela);
+function copiarPix(codigo) {
+    navigator.clipboard.writeText(codigo).then(() => {
+        alert('✅ Código Pix copiado com sucesso!\n\nAbra o aplicativo do seu banco → Pix → Colar código → Confirmar.');
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = codigo;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        alert('✅ Código Pix copiado! Abra o app do banco e cole.');
+    });
 }
 
-async function aprovar(id) {
-    if (processando) { alert('⏳ Aguarde...'); return; }
-    const proposta = propostas.find(p => p.id === id);
-    if (!proposta) return;
+function pagarParcela(indice, codigoPix) {
+    copiarPix(codigoPix);
+}
 
-    const valor = Number(document.getElementById(`v-${id}`).value) || 0;
-    const perc = Number(document.getElementById(`p-${id}`).value) || 0;
-    const entrada = valor * perc / 100;
-    const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
-    const juros = Number(document.getElementById(`j-${id}`).value) || 0;
-    const calc = calcularParcelas(valor, perc, parcelas, juros);
-    const codigoUnicoFinal = proposta.codigo_unico ? proposta.codigo_unico : gerarCodigoUnico();
+function verificarLido() {
+    const lido = document.getElementById('liContrato').checked;
+    document.getElementById('areaAssinatura').classList.toggle('oculto', !lido);
+}
 
-    if (!confirm(`✅ Aprovar ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\nParcelas: ${parcelas}x de ${real(calc.valorParcela)}\nCódigo: ${codigoUnicoFinal}`)) return;
+function inicializarAssinatura() {
+    const canvas = document.getElementById('assinaturaCanvas');
+    if (!canvas) return;
+    assinaturaCanvas = canvas;
+    assinaturaCtx = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+    assinaturaCtx.lineWidth = 3;
+    assinaturaCtx.lineCap = 'round';
+    assinaturaCtx.lineJoin = 'round';
+    assinaturaCtx.strokeStyle = '#000000';
 
-    processando = true;
-    const btn = document.getElementById(`btn-aprovar-${id}`);
-    if (btn) btn.disabled = true;
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = ((e.touches ? e.touches[0].clientX : e.clientX) - rect.left) * scaleX;
+        const y = ((e.touches ? e.touches[0].clientY : e.clientY) - rect.top) * scaleY;
+        return { x, y };
+    }
+
+    function iniciar(e) {
+        e.preventDefault();
+        assinando = true;
+        assinaturaFeita = false;
+        const pos = getPos(e);
+        assinaturaCtx.beginPath();
+        assinaturaCtx.moveTo(pos.x, pos.y);
+    }
+
+    function desenhar(e) {
+        if (!assinando) return;
+        e.preventDefault();
+        assinaturaFeita = true;
+        const pos = getPos(e);
+        assinaturaCtx.lineTo(pos.x, pos.y);
+        assinaturaCtx.stroke();
+    }
+
+    function parar() {
+        assinando = false;
+        document.getElementById('btnConfirmarAssinatura').disabled = !assinaturaFeita;
+    }
+
+    canvas.addEventListener('mousedown', iniciar);
+    canvas.addEventListener('mousemove', desenhar);
+    canvas.addEventListener('mouseup', parar);
+    canvas.addEventListener('mouseout', parar);
+    canvas.addEventListener('touchstart', iniciar);
+    canvas.addEventListener('touchmove', desenhar);
+    canvas.addEventListener('touchend', parar);
+}
+
+function limparAssinatura() {
+    if (assinaturaCanvas && assinaturaCtx) {
+        assinaturaCtx.clearRect(0, 0, assinaturaCanvas.width, assinaturaCanvas.height);
+        assinaturaFeita = false;
+        document.getElementById('btnConfirmarAssinatura').disabled = true;
+    }
+}
+
+async function confirmarAssinatura() {
+    if (!assinaturaFeita) { alert('⚠️ Assine no quadro antes de confirmar!'); return; }
+    if (!confirm('✅ Confirmar minha assinatura no contrato?')) return;
 
     const { error } = await supabase.from('propostas').update({
-        status: 'Aprovada',
-        codigo_unico: codigoUnicoFinal,
-        valor_desejado: valor,
-        percentual_entrada: perc,
-        valor_entrada: entrada,
-        quantidade_parcelas: parcelas,
-        juros: juros,
-        lista_parcelas: calc.lista,
-        copia_cola_pix: CHAVE_PIX_FIXA
-    }).eq('id', id);
+        assinatura_assinada: true,
+        data_assinatura: new Date().toISOString()
+    }).eq('id', proposta.id);
 
-    processando = false;
-    if (btn) btn.disabled = false;
-    alert(error ? '❌ Erro: ' + error.message : '✅ APROVADA!');
-    carregar();
-}
-
-async function marcarEntradaPaga(id) {
-    const proposta = propostas.find(p => p.id === id);
-    if (!proposta) return;
-
-    const valor = Number(document.getElementById(`v-${id}`).value) || 0;
-    const perc = Number(document.getElementById(`p-${id}`).value) || 0;
-    const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
-    const juros = Number(document.getElementById(`j-${id}`).value) || 0;
-    const calc = calcularParcelas(valor, perc, parcelas, juros);
-    const codigoUnicoFinal = proposta.codigo_unico ? proposta.codigo_unico : gerarCodigoUnico();
-    const dataHoje = new Date().toISOString();
-
-    if (!confirm(`💰 MARCAR ENTRADA PAGA para ${proposta.nome}?`)) return;
-
-    const { error } = await supabase.from('propostas').update({
-        status: 'Entrada Paga',
-        entrada_paga: true,
-        codigo_unico: codigoUnicoFinal,
-        valor_desejado: valor,
-        percentual_entrada: perc,
-        valor_entrada: calc.entrada,
-        quantidade_parcelas: parcelas,
-        juros: juros,
-        lista_parcelas: calc.lista,
-        data_pagamento_entrada: dataHoje,
-        copia_cola_pix: 'ENTRADA PAGA'
-    }).eq('id', id);
-
-    if (error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Entrada marcada como paga!');
-    carregar();
-}
-
-async function marcarParcelaPaga(propostaId, indiceParcela) {
-    const proposta = propostas.find(p => p.id === propostaId);
-    if (!proposta) return;
-    const lista = proposta.lista_parcelas || [];
-    if (!lista[indiceParcela] || lista[indiceParcela].status === 'Paga') return;
-
-    if (!confirm(`✅ Marcar parcela ${indiceParcela + 1} como PAGA?\nValor: ${real(lista[indiceParcela].valor)}`)) return;
-    lista[indiceParcela].status = 'Paga';
-    lista[indiceParcela].data_pagamento = new Date().toISOString();
-
-    const { error } = await supabase.from('propostas').update({ lista_parcelas: lista }).eq('id', propostaId);
-    alert(error ? '❌ Erro: ' + error.message : '✅ Parcela marcada como PAGA!');
-    carregar();
-}
-
-function enviarCobranca(propostaId, indiceParcela) {
-    const proposta = propostas.find(p => p.id === propostaId);
-    if (!proposta) { alert('❌ Proposta não encontrada!'); return; }
-    const parcela = proposta.lista_parcelas?.[indiceParcela];
-    if (!parcela) { alert('❌ Parcela não encontrada!'); return; }
-
-    const telefone = (proposta.telefone || '').replace(/\D/g, '');
-    if (telefone.length < 10) { alert('⚠️ Telefone do cliente não foi informado!'); return; }
-
-    const link = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(proposta.cpf||'').replace(/\D/g,'')}`;
-    const mensagem = `Olá ${proposta.nome}! 👋\n\n📌 COBRANÇA - Parcela ${parcela.numero}\n💰 Valor: ${real(parcela.valor)}\n📅 Vencimento: ${formatarData(parcela.vencimento)}\n\n👉 Acesse para ver e pagar:\n${link}\n\nAgradecemos! 🙏`;
-    
-    window.open(`https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`, '_blank');
-}
-
-function gerarPixParcela(propostaId, indiceParcela) {
-    const proposta = propostas.find(p => p.id === propostaId);
-    if (!proposta) return;
-    const parcela = proposta.lista_parcelas?.[indiceParcela];
-    if (!parcela) return;
-
-    alert(`💳 PIX - Parcela ${parcela.numero}\n\n💰 Valor: ${real(parcela.valor)}\n📅 Vencimento: ${formatarData(parcela.vencimento)}\n\n🔑 Chave Pix: ${CHAVE_PIX_FIXA}\n\nCliente acessa pelo CPF para pagar!`);
-}
-
-function enviarWhatsApp(id) {
-    const p = propostas.find(x => x.id === id);
-    if (!p) { alert('❌ Proposta não encontrada!'); return; }
-
-    const telefone = (p.telefone || '').replace(/\D/g, '');
-    if (telefone.length < 10) { alert('⚠️ Telefone do cliente não foi informado!'); return; }
-
-    const link = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(p.cpf || '').replace(/\D/g, '')}`;
-    const valorTotal = Number(p.valor_desejado || 0);
-    const percEnt = Number(p.percentual_entrada || 20);
-    const valorEnt = valorTotal * percEnt / 100;
-    const parcelas = p.quantidade_parcelas || 0;
-
-    const mensagem = `Olá ${p.nome}! ✅ Sua proposta foi APROVADA!\n\n💰 Valor Total: ${real(valorTotal)}\n💵 Entrada: ${real(valorEnt)}\n📊 Parcelas: ${parcelas}x\n\n👉 Acesse abaixo para ver o Pix, assinar o contrato e acompanhar tudo:\n${link}\n\nAtenciosamente, Equipe FlashCred! 📋✨`;
-    
-    window.open(`https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`, '_blank');
-}
-
-async function reprovar(id) {
-    if (!confirm('Reprovar?')) return;
-    const { error } = await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
-    alert(error ? 'Erro: ' + error.message : '✅ Reprovada!');
-    carregar();
-}
-
-async function excluir(id) {
-    if (!confirm('⚠️ Tem certeza?')) return;
-    const { error } = await supabase.from('propostas').delete().eq('id', id);
-    alert(error ? 'Erro: ' + error.message : '✅ Excluída!');
-    carregar();
+    if (error) alert('❌ Erro ao salvar assinatura: ' + error.message);
+    else {
+        alert('✅ Contrato assinado com sucesso!\n\nAgora faça o pagamento da entrada pelo Pix acima.\n\nAssim que o banco confirmar, aparecerá automaticamente ✅ Entrada confirmada!');
+    }
 }
 </script>
 </body>
