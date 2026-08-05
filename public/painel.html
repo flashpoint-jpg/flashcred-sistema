@@ -281,6 +281,9 @@ function criarCard(p) {
     const selfieExibicao = p.selfie_cliente ? `<img src="${p.selfie_cliente}" class="img-preview" onclick="abrirImagem('${p.selfie_cliente}')" alt="Selfie">` : '<span style="color:#94a3b8; font-size:11px;">Não enviada</span>';
     const contratoExibicao = p.contrato_assinado ? `<img src="${p.contrato_assinado}" class="img-preview" onclick="abrirImagem('${p.contrato_assinado}')" alt="Contrato">` : '<span style="color:#94a3b8; font-size:11px;">Não assinado</span>';
 
+    // Link da página do cliente baseado no CPF limpo
+    const linkPaginaCliente = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(p.cpf || '').replace(/\D/g, '')}`;
+
     let htmlParcelasAdmin = '';
     const dadosSalvos = p.dados_parcelas || [];
     const hojeStr = new Date().toISOString().split('T')[0];
@@ -305,16 +308,17 @@ function criarCard(p) {
         let estiloBtnBaixa = paga ? 'btn-baixa-parcela btn-baixa-paga' : 'btn-baixa-parcela';
         let textoBtnBaixa = paga ? '✅ Paga' : '⏳ Dar Baixa';
 
-        let msgWpp = `Olá ${p.nome}, passando para lembrar da sua ${i}ª parcela no valor de ${real(valorItem)}, com vencimento em ${dataItem.split('-').reverse().join('/')}. Evite juros!`;
+        let dataFormatada = dataItem.split('-').reverse().join('/');
+        let msgWpp = `Olá ${p.nome}! 💳 Passando para lembrar da sua ${i}ª parcela no valor de ${real(valorItem)}, com vencimento em ${dataFormatada}.\n\nAcesse sua página para realizar o pagamento:\n${linkPaginaCliente}`;
         let linkWppParc = `https://wa.me/55${(p.telefone || '').replace(/\D/g, '')}?text=${encodeURIComponent(msgWpp)}`;
 
         htmlParcelasAdmin += `
         <div class="linha-parcela-edit ${classeCor}" id="linha-parc-${p.id}-${i}">
             <span><strong>${i}ª</strong></span>
-            <input type="number" step="0.01" id="p-val-${p.id}-${i}" value="${Number(valorItem).toFixed(2)}" style="width: 75px;" title="Valor">
-            <input type="date" id="p-data-${p.id}-${i}" value="${dataItem}" style="width: 115px;" title="Vencimento">
+            <input type="number" step="0.01" id="p-val-${p.id}-${i}" value="${Number(valorItem).toFixed(2)}" style="width: 75px;" title="Valor" oninput="atualizarValoresInputs(${p.id})">
+            <input type="date" id="p-data-${p.id}-${i}" value="${dataItem}" style="width: 115px;" title="Vencimento" onchange="atualizarValoresInputs(${p.id})">
             <button type="button" class="${estiloBtnBaixa}" id="btn-pago-${p.id}-${i}" onclick="alternarBaixaParcela(${p.id}, ${i})">${textoBtnBaixa}</button>
-            <a href="${linkWppParc}" target="_blank" class="btn-wpp-parcela" title="Enviar Cobrança no WhatsApp">💬 Cobrar</a>
+            <a href="${linkWppParc}" target="_blank" class="btn-wpp-parcela" id="wpp-link-${p.id}-${i}" title="Enviar Cobrança no WhatsApp">💬 Cobrar</a>
         </div>`;
     }
 
@@ -410,25 +414,54 @@ function atualizar(id) {
     document.getElementById(`vp-${id}`).value = real(valorParc);
 
     const container = document.getElementById(`container-parc-edit-${id}`);
-    if (container) {
-        let html = '';
-        const hoje = new Date();
-        
-        for (let i = 1; i <= parcelas; i++) {
-            let vencimentoPadrao = new Date();
-            vencimentoPadrao.setMonth(hoje.getMonth() + i);
-            let dataStr = vencimentoPadrao.toISOString().split('T')[0];
+    const proposta = propostas.find(x => x.id === id);
+    if (!container || !proposta) return;
 
-            html += `
-            <div class="linha-parcela-edit parc-avencer" id="linha-parc-${id}-${i}">
-                <span><strong>${i}ª</strong></span>
-                <input type="number" step="0.01" id="p-val-${id}-${i}" value="${valorParc.toFixed(2)}" style="width: 75px;" title="Valor">
-                <input type="date" id="p-data-${id}-${i}" value="${dataStr}" style="width: 115px;" title="Vencimento">
-                <button type="button" class="btn-baixa-parcela" id="btn-pago-${id}-${i}" onclick="alternarBaixaParcela(${id}, ${i})">⏳ Dar Baixa</button>
-                <a href="#" target="_blank" class="btn-wpp-parcela">💬 Cobrar</a>
-            </div>`;
+    const linkPaginaCliente = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(proposta.cpf || '').replace(/\D/g, '')}`;
+    let html = '';
+    const hoje = new Date();
+    
+    for (let i = 1; i <= parcelas; i++) {
+        let vencimentoPadrao = new Date();
+        vencimentoPadrao.setMonth(hoje.getMonth() + i);
+        let dataStr = vencimentoPadrao.toISOString().split('T')[0];
+        let dataFormatada = dataStr.split('-').reverse().join('/');
+
+        let msgWpp = `Olá ${proposta.nome}! 💳 Passando para lembrar da sua ${i}ª parcela no valor de ${real(valorParc)}, com vencimento em ${dataFormatada}.\n\nAcesse sua página para realizar o pagamento:\n${linkPaginaCliente}`;
+        let linkWppParc = `https://wa.me/55${(proposta.telefone || '').replace(/\D/g, '')}?text=${encodeURIComponent(msgWpp)}`;
+
+        html += `
+        <div class="linha-parcela-edit parc-avencer" id="linha-parc-${id}-${i}">
+            <span><strong>${i}ª</strong></span>
+            <input type="number" step="0.01" id="p-val-${id}-${i}" value="${valorParc.toFixed(2)}" style="width: 75px;" title="Valor" oninput="atualizarValoresInputs(${id})">
+            <input type="date" id="p-data-${id}-${i}" value="${dataStr}" style="width: 115px;" title="Vencimento" onchange="atualizarValoresInputs(${id})">
+            <button type="button" class="btn-baixa-parcela" id="btn-pago-${id}-${i}" onclick="alternarBaixaParcela(${id}, ${i})">⏳ Dar Baixa</button>
+            <a href="${linkWppParc}" target="_blank" class="btn-wpp-parcela" id="wpp-link-${id}-${i}" title="Enviar Cobrança no WhatsApp">💬 Cobrar</a>
+        </div>`;
+    }
+    container.innerHTML = html;
+}
+
+// Atualiza o link do WhatsApp dinamicamente se o usuário alterar o valor ou a data manualmente na linha da parcela
+function atualizarValoresInputs(idProposta) {
+    const proposta = propostas.find(x => x.id === idProposta);
+    if (!proposta) return;
+    const parcelasQtd = Number(document.getElementById(`par-${idProposta}`).value) || 1;
+    const linkPaginaCliente = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(proposta.cpf || '').replace(/\D/g, '')}`;
+
+    for (let i = 1; i <= parcelasQtd; i++) {
+        let inputVal = document.getElementById(`p-val-${idProposta}-${i}`);
+        let inputData = document.getElementById(`p-data-${idProposta}-${i}`);
+        let linkWpp = document.getElementById(`wpp-link-${idProposta}-${i}`);
+
+        if (inputVal && inputData && linkWpp) {
+            let valNum = Number(inputVal.value) || 0;
+            let dataStr = inputData.value || '';
+            let dataFormatada = dataStr ? dataStr.split('-').reverse().join('/') : '---';
+
+            let msgWpp = `Olá ${proposta.nome}! 💳 Passando para lembrar da sua ${i}ª parcela no valor de ${real(valNum)}, com vencimento em ${dataFormatada}.\n\nAcesse sua página para realizar o pagamento:\n${linkPaginaCliente}`;
+            linkWpp.href = `https://wa.me/55${(proposta.telefone || '').replace(/\D/g, '')}?text=${encodeURIComponent(msgWpp)}`;
         }
-        container.innerHTML = html;
     }
 }
 
