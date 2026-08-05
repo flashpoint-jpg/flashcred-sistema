@@ -170,7 +170,6 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SENHA = 'flash2026';
-const TOKEN_MP_PRODUCAO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 const SERVIDOR_URL = 'https://flashcred-sistema.onrender.com';
 
 let modo = 'producao';
@@ -179,17 +178,13 @@ let timer = null;
 let processando = false;
 let ultimaContagem = 0;
 
-function getTokenMP() {
-    return modo === 'producao' ? TOKEN_MP_PRODUCAO : '';
-}
-
 function entrar() {
     if (document.getElementById('senha').value === SENHA) {
         document.getElementById('telaLogin').style.display = 'none';
         document.getElementById('telaPainel').style.display = 'block';
         carregar();
         ultimaContagem = 0;
-        timer = setInterval(() => carregar(true), 15000); // ⏳ Atualiza a cada 15s (não pisca!)
+        timer = setInterval(() => carregar(true), 15000);
     } else {
         document.getElementById('erroLogin').style.display = 'block';
     }
@@ -199,7 +194,7 @@ function definirModo(m) {
     modo = m;
     document.querySelectorAll('.modo').forEach(b => b.classList.remove('modo-ativo'));
     event.target.classList.add('modo-ativo');
-    alert(`✅ Modo ${m.toUpperCase()} ativado!\nPix em produção: ${m === 'producao' ? '✅ Ativo' : '⚠️ Modo teste'}`);
+    alert(`✅ Modo ${m.toUpperCase()} ativado!`);
 }
 
 function real(valor) {
@@ -227,7 +222,6 @@ async function carregar(silencioso = false) {
     propostas = data || [];
     ultimaContagem = propostas.length;
 
-    // Calcula totais
     const totalEntradas = propostas.reduce((s, p) => s + (p.entrada_paga ? Number(p.valor_entrada || 0) : 0), 0);
     const totalRestante = propostas.reduce((s, p) => {
         if (!p.entrada_paga) return s;
@@ -242,7 +236,6 @@ async function carregar(silencioso = false) {
     document.getElementById('totalFalta').textContent = real(totalRestante);
     document.getElementById('totalParcelas').textContent = totalParc;
 
-    // Alerta de proposta nova
     if (silencioso && propostas.length > qtdAnt) {
         const alerta = document.getElementById('alertaNovas');
         alerta.style.display = 'block';
@@ -285,12 +278,11 @@ function criarCard(p) {
     const temPix = !!p.copia_cola_pix;
     const temContrato = !!p.assinatura_contrato;
 
-    // Gera linhas de parcelas se entrada paga
     let htmlParcelas = '';
     if (p.entrada_paga && parcelas > 0) {
         htmlParcelas = `
         <div class="parcelas-bloco">
-            <div class="parcelas-titulo">📋 ${parcelas}x Parcelas — clique para editar ou marcar como PAGA</div>
+            <div class="parcelas-titulo">📋 ${parcelas}x Parcelas</div>
             ${gerarLinhasParcelas(p, parcelas, valParc)}
         </div>`;
     }
@@ -412,18 +404,14 @@ async function aprovar(id) {
     const qtd = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    if (!confirm(`✅ APROVAR e GERAR PIX em PRODUÇÃO?\n\nCliente: ${p.nome}\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${qtd}x de ${real((valor - entrada) * (1 + juros/100) / qtd)}\n\nO Pix será gerado e liberado para o cliente!`)) return;
+    if (!confirm(`✅ APROVAR e GERAR PIX?\n\nCliente: ${p.nome}\nEntrada: ${real(entrada)}\n\nAguarde a mensagem de sucesso...`)) return;
 
     processando = true;
     const btn = document.getElementById(`btn-aprovar-${id}`);
     if (btn) btn.disabled = true;
 
-    let chavePix = '';
-    let qrImg = null;
-    let mensagem = '';
-
     try {
-        console.log('🔄 Chamando servidor para gerar Pix...');
+        console.log('🔄 Chamando servidor...');
         const resposta = await fetch(SERVIDOR_URL + '/api/criar-pagamento', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -436,47 +424,43 @@ async function aprovar(id) {
             })
         });
 
+        if (!resposta.ok) throw new Error('Servidor demorou demais');
+
         const dados = await resposta.json();
         if (dados.erro) throw new Error(dados.erro);
 
-        chavePix = dados.qr_code || '';
-        qrImg = dados.qr_code_base64 || null;
-        mensagem = '✅ PIX GERADO COM SUCESSO! Liberado para o cliente!';
+        const chavePix = dados.qr_code || '';
+        const qrImg = dados.qr_code_base64 || null;
+
+        const { error } = await supabase.from('propostas').update({
+            status: 'Aprovada',
+            valor_desejado: valor,
+            percentual_entrada: perc,
+            valor_entrada: entrada,
+            quantidade_parcelas: qtd,
+            parcelas_escolhidas: qtd,
+            juros: juros,
+            copia_cola_pix: chavePix,
+            qr_code_entrada: qrImg,
+            data_aprovacao: new Date().toISOString()
+        }).eq('id', id);
+
+        if (error) throw new Error('Banco: ' + error.message);
+
+        alert('✅ PIX GERADO COM SUCESSO!\nLiberado para o cliente!');
+        carregar();
 
     } catch (erro) {
         console.error(erro);
-        mensagem = '⚠️ Servidor acordando... tente em ~1 minuto e clique novamente em Aprovar';
-        alert(mensagem);
-        processando = false;
-        if (btn) btn.disabled = false;
-        return;
+        alert('⚠️ Servidor está acordando!\n\nEspere 1 minuto e CLIQUE NOVAMENTE em Aprovar.\n\nO servidor já está ligando, na próxima vez vai funcionar!');
     }
-
-    const { error } = await supabase.from('propostas').update({
-        status: 'Aprovada',
-        valor_desejado: valor,
-        percentual_entrada: perc,
-        valor_entrada: entrada,
-        quantidade_parcelas: qtd,
-        parcelas_escolhidas: qtd,
-        juros: juros,
-        copia_cola_pix: chavePix,
-        qr_code_entrada: qrImg,
-        data_aprovacao: new Date().toISOString()
-    }).eq('id', id);
 
     processando = false;
     if (btn) btn.disabled = false;
-
-    if (error) alert('❌ Erro: ' + error.message);
-    else {
-        alert(mensagem + '\n\n✅ O cliente já pode consultar e pagar o Pix!');
-        carregar();
-    }
 }
 
 async function marcarEntradaPaga(id) {
-    if (!confirm('💰 Marcar entrada como PAGA?\n\n✅ Libera o contrato e as parcelas para o cliente!')) return;
+    if (!confirm('💰 Marcar entrada como PAGA?\nLibera contrato e parcelas para o cliente!')) return;
     const { error } = await supabase.from('propostas').update({
         entrada_paga: true,
         data_pagamento_entrada: new Date().toISOString()
@@ -484,7 +468,7 @@ async function marcarEntradaPaga(id) {
 
     if (error) alert('❌ Erro: ' + error.message);
     else {
-        alert('✅ Entrada marcada como PAGA!\n📄 Contrato e parcelas LIBERADAS para o cliente!');
+        alert('✅ Entrada marcada como PAGA!\n📄 Contrato e parcelas LIBERADAS!');
         carregar();
     }
 }
@@ -497,14 +481,12 @@ async function marcarParcelaPaga(id, numParc) {
     else carregar();
 }
 
-async function alterarVencimento(id, numParc, novaData) {
-    alert(`✅ Vencimento da ${numParc}ª parcela alterado para: ${novaData}\n(Atualização salva)`);
-    // Aqui você pode salvar no banco se quiser adicionar o campo
+function alterarVencimento(id, numParc, novaData) {
+    alert(`✅ Vencimento da ${numParc}ª parcela: ${novaData}`);
 }
 
-async function alterarValorParcela(id, numParc, novoValor) {
-    alert(`✅ Valor da ${numParc}ª parcela alterado para: ${novoValor}\n(Atualização salva)`);
-    // Aqui você pode salvar no banco se quiser adicionar o campo
+function alterarValorParcela(id, numParc, novoValor) {
+    alert(`✅ Valor da ${numParc}ª parcela: ${novoValor}`);
 }
 
 function verContrato(id) {
