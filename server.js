@@ -9,14 +9,12 @@ const PORT = process.env.PORT || 10000;
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// IMPORTANTE: Isso diz ao servidor onde estão os seus arquivos HTML (como o painel.html)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rota de Teste
-app.get('/', (req, res) => {
-    res.send('Servidor FlashCred rodando com sucesso!');
-});
+// Rotas explícitas para garantir o carregamento das páginas
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/painel', (req, res) => res.sendFile(path.join(__dirname, 'public', 'painel.html')));
 
 // Rota Pix /api/criar-pagamento
 app.post('/api/criar-pagamento', async (req, res) => {
@@ -24,7 +22,10 @@ app.post('/api/criar-pagamento', async (req, res) => {
         const { valor, descricao, cpf, nome } = req.body;
         if (!valor) return res.status(400).json({ erro: "Valor não informado" });
 
-        const tokenApi = process.env.MERCADO_PAGO_TOKEN || 'APP_USR-seu-token-aqui';
+        const tokenApi = process.env.MERCADO_PAGO_TOKEN;
+        if (!tokenApi) {
+            return res.status(400).json({ erro: "Token do Mercado Pago não configurado nas variáveis de ambiente do Render." });
+        }
 
         const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
             method: 'POST',
