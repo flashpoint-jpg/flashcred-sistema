@@ -80,6 +80,7 @@
 
         .vazio { text-align: center; color: var(--texto-claro); padding: 40px; font-size: 15px; }
         .carregando { text-align: center; padding: 30px; color: var(--texto-claro); display: none; font-size: 14px; }
+        .qrcode-img { max-width: 100px; border-radius: 6px; margin-top: 6px; }
     </style>
 </head>
 <body>
@@ -165,7 +166,7 @@ function definirModo(m) {
     modo = m;
     document.querySelectorAll('.modo').forEach(b => b.classList.remove('modo-ativo'));
     event.target.classList.add('modo-ativo');
-    alert(`✅ Modo ${m.toUpperCase()} ativado!\nPix: ${CHAVE_PIX_AUTOMATICA}\nMercado Pago: ${getTokenMP() ? '✅ Ativo' : '⚠️ Sem Token'}`);
+    alert(`✅ Modo ${m.toUpperCase()} ativado!\nPix: ${CHAVE_PIX_AUTOMATICA}`);
 }
 
 function real(valor) {
@@ -228,7 +229,9 @@ function criarCard(p) {
     const valParc = parcelas ? resto * (1 + juros/100) / parcelas : 0;
 
     const cpf = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    const temQR = p.copia_cola_pix ? '✅ Pix configurado' : '⏳ Aguardando aprovação';
+    const qrExibicao = p.qr_code_entrada 
+        ? `<img src="${p.qr_code_entrada}" class="qrcode-img" alt="QR Code">` 
+        : '<span style="color:#94a3b8">Aguardando aprovação</span>';
 
     return `
     <div class="proposta">
@@ -236,7 +239,8 @@ function criarCard(p) {
             <div>
                 <div class="proposta-nome">${p.nome}</div>
                 <div class="proposta-info">Código: ${p.codigo_unico || '---'} | CPF: ${cpf}</div>
-                <div class="proposta-info">Pix: ${temQR}</div>
+                <div class="proposta-info">Chave Pix: ${p.copia_cola_pix ? '<span style="color:#10B981; font-weight:600">✅ Gerada</span>' : '<span style="color:#94a3b8">Aguardando</span>'}</div>
+                <div class="proposta-info">QR Code: ${qrExibicao}</div>
             </div>
             <span class="status ${statusCls}">${statusTxt}</span>
         </div>
@@ -269,7 +273,7 @@ function criarCard(p) {
         </div>
 
         <div class="botoes">
-            <button class="btn btn-aprovar" onclick="aprovar(${p.id})">✅ Aprovar</button>
+            <button class="btn btn-aprovar" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
             <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
@@ -291,7 +295,6 @@ function atualizar(id) {
     document.getElementById(`vp-${id}`).value = real(valorParc);
 }
 
-// ✅ APROVAR — SEM ERRO DE CAMPO!
 async function aprovar(id) {
     const proposta = propostas.find(p => p.id === id);
     if (!proposta) return;
@@ -302,10 +305,11 @@ async function aprovar(id) {
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${parcelas}x\n\nModo: ${modo.toUpperCase()}`)) return;
+    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${parcelas}x\nModo: ${modo.toUpperCase()}`)) return;
 
-    // ✅ GERA CHAVE PIX
     let chavePixGerada = CHAVE_PIX_AUTOMATICA;
+    let qrCodeImagem = null;
+    let linkPagamentoGerado = null;
 
     if (modo === 'producao' && getTokenMP()) {
         try {
@@ -324,16 +328,16 @@ async function aprovar(id) {
             });
 
             const dados = await resp.json();
-            if (dados.point_of_interaction && dados.point_of_interaction.transaction_data) {
+            if (dados.point_of_interaction?.transaction_data) {
                 chavePixGerada = dados.point_of_interaction.transaction_data.qr_code || CHAVE_PIX_AUTOMATICA;
+                qrCodeImagem = dados.point_of_interaction.transaction_data.qr_code_base64 || null;
+                linkPagamentoGerado = dados.init_point || null;
             }
-            console.log('✅ Pix gerado pelo Mercado Pago!');
         } catch (erro) {
             console.log('⚠️ Usando chave Pix fixa:', erro);
         }
     }
 
-    // ✅ SALVA SOMENTE OS CAMPOS QUE EXISTEM — SEM ERRO!
     const dadosParaSalvar = {
         status: 'Aprovada',
         valor_desejado: valor,
@@ -341,15 +345,17 @@ async function aprovar(id) {
         valor_entrada: entrada,
         quantidade_parcelas: parcelas,
         juros: juros,
-        copia_cola_pix: chavePixGerada
+        copia_cola_pix: chavePixGerada,
+        qr_code_entrada: qrCodeImagem,
+        link_pagamento: linkPagamentoGerado
     };
 
     const { error } = await supabase.from('propostas').update(dadosParaSalvar).eq('id', id);
 
     if (error) {
-        alert('❌ Erro: ' + error.message);
+        alert('❌ Erro: ' + error.message + '\n\n⚠️ Execute o SQL no Supabase primeiro!');
     } else {
-        alert(`✅ APROVADA!\n\n✅ Pix configurado!\n✅ Cliente já pode consultar e pagar!\nModo: ${modo.toUpperCase()}`);
+        alert(`✅ APROVADA!\n\n✅ Chave Pix gerada!\n✅ QR Code de imagem salvo!\nModo: ${modo.toUpperCase()}`);
         carregar();
     }
 }
@@ -365,12 +371,12 @@ async function enviarWhatsApp(id) {
     const p = propostas.find(x => x.id === id);
     if (!p) return;
     const link = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(p.cpf || '').replace(/\D/g, '')}`;
-    const msg = `Olá ${p.nome}! Tudo bem? ✅\n\nSua proposta foi APROVADA! 🎉\n\nValor: R$ ${(p.valor_desejado || 0).toLocaleString('pt-BR')}\nEntrada: R$ ${(p.valor_entrada || 0).toLocaleString('pt-BR')}\n\nAcesse abaixo para ver o Pix, assinar o contrato e pagar:\n${link}\n\nObrigado! 📋`;
+    const msg = `Olá ${p.nome}! ✅ Sua proposta foi APROVADA!\n\nValor: R$ ${real(p.valor_desejado || 0)}\nEntrada: R$ ${real(p.valor_entrada || 0)}\n\nAcesse: ${link}\n\nAssine o contrato e pague via Pix!`;
     window.open(`https://wa.me/55${p.telefone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
 async function excluir(id) {
-    if (!confirm('⚠️ Tem certeza? Essa ação não pode ser desfeita!')) return;
+    if (!confirm('⚠️ Tem certeza?')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if (error) alert('Erro: ' + error.message);
     else carregar();
