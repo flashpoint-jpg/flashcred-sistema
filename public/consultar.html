@@ -15,7 +15,11 @@
                         pix: '#32BCAD',
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
-                        fundo: '#F8FAFC'
+                        perigo: '#EF4444',
+                        fundo: '#F8FAFC',
+                        parcela-paga: '#D1FAE5',
+                        parcela-vencida: '#FEE2E2',
+                        parcela-a-vencer: '#FEF3C7'
                     }
                 }
             }
@@ -23,9 +27,6 @@
     </script>
     <style>
         * { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        .etapa { border-left: 3px solid #E2E8F0; padding-left: 16px; margin-bottom: 20px; }
-        .etapa-concluida { border-left-color: #10B981; background: #F0FDF4; border-radius: 0 10px 10px 0; padding: 12px 16px; }
-        .etapa-ativa { border-left-color: #0A2463; background: #EFF6FF; border-radius: 0 10px 10px 0; padding: 12px 16px; }
         .valor-destaque { background: linear-gradient(135deg, #0A2463, #2563EB); color: white; padding: 16px; border-radius: 12px; text-align: center; font-size: 22px; font-weight: 700; }
         .contrato { background: #FAFAFA; border: 1px solid #E2E8F0; border-radius: 10px; padding: 20px; max-height: 400px; overflow-y: auto; font-size: 14px; line-height: 1.7; color: #374151; }
         .pix-copia { background: #ECFDF5; border: 2px dashed #10B981; border-radius: 10px; padding: 14px; text-align: center; }
@@ -34,14 +35,22 @@
         .botao-primario:hover { background: #0c3499; }
         .botao-sucesso { background: #10B981; color: white; }
         .botao-sucesso:hover { background: #059669; }
+        .botao-alerta { background: #F59E0B; color: #1E293B; }
+        .botao-perigo { background: #EF4444; color: white; }
         .botao-secundario { background: #F1F5F9; color: #475569; }
         .botao-secundario:hover { background: #E2E8F0; }
-        .parcela-opcao { border: 2px solid #E2E8F0; border-radius: 10px; padding: 12px; margin: 8px 0; cursor: pointer; transition: all 0.2s; }
-        .parcela-opcao:hover, .parcela-opcao.selecionada { border-color: #0A2463; background: #EFF6FF; }
-        .valor-parcela { font-size: 18px; font-weight: 700; color: #0A2463; }
+        .parcela-card { border-radius: 10px; padding: 14px; margin: 8px 0; border-left: 4px solid; }
+        .parcela-paga { background: #D1FAE5; border-left-color: #10B981; }
+        .parcela-vencida { background: #FEE2E2; border-left-color: #EF4444; }
+        .parcela-a-vencer { background: #FEF3C7; border-left-color: #F59E0B; }
         .escondido { display: none !important; }
         .camera { width: 100%; border-radius: 10px; background: #1F2937; }
-        .carregando { text-align: center; padding: 20px; color: #64748B; }
+        .qrcode-img { max-width: 200px; margin: 12px auto; display: block; border-radius: 8px; border: 1px solid #ddd; }
+        .impressao { print-color-adjust: exact; }
+        @media print {
+            .sem-imprimir { display: none !important; }
+            .contrato { max-height: none; overflow: visible; }
+        }
     </style>
 </head>
 <body class="bg-fundo min-h-screen">
@@ -52,13 +61,37 @@
         <h2 class="text-xl font-bold text-primary mb-4 text-center">🔍 Consultar Proposta</h2>
         <label class="block text-sm font-semibold text-gray-600 mb-2">Digite seu CPF (somente números)</label>
         <input type="text" id="entradaBusca" placeholder="Ex: 12345678900" class="w-full p-3 border border-gray-200 rounded-lg text-lg" maxlength="11">
-        <button onclick="buscar()" class="botao botao-primario mt-2">🔍 Consultar Proposta</button>
+        <button onclick="buscar()" class="botao botao-primario mt-2 sem-imprimir">🔍 Consultar Proposta</button>
         <p id="aviso" class="text-center text-gray-500 mt-4"></p>
     </div>
 
     <!-- TELA DA PROPOSTA -->
     <div id="telaProposta" class="escondido">
-        <!-- APROVADA -->
+
+        <!-- ✅ ENTRADA PAGA → MOSTRA PARCELAS (NÃO MOSTRA PAGAMENTO DE ENTRADA!) -->
+        <div id="blocoEntradaPaga" class="escondido">
+            <div class="bg-green-50 border-2 border-green-200 rounded-2xl p-6 mb-6 text-center">
+                <div class="text-4xl mb-2">✅</div>
+                <h2 class="text-2xl font-bold text-green-700">Entrada Confirmada!</h2>
+                <p class="text-lg font-semibold text-green-600">Pagamento recebido com sucesso!</p>
+                <p class="text-sm text-gray-500 mt-2">Código Único: <span id="codigoUnicoPago"></span></p>
+            </div>
+
+            <!-- 📋 LISTA DE PARCELAS COM QR CODE INDIVIDUAL -->
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-primary mb-3">📋 Suas Parcelas</h3>
+                <div id="listaParcelasPagamento"></div>
+            </div>
+
+            <!-- 📄 CONTRATO -->
+            <div class="mb-6">
+                <h3 class="text-lg font-bold text-primary mb-3">📄 Contrato Assinado</h3>
+                <div class="contrato text-sm mb-4" id="contratoCompleto"></div>
+                <button onclick="imprimirContrato()" class="botao botao-secundario sem-imprimir">🖨️ Imprimir Contrato</button>
+            </div>
+        </div>
+
+        <!-- ⏳ APROVADA, AGUARDA PAGAMENTO DA ENTRADA -->
         <div id="blocoAprovada" class="escondido">
             <div class="bg-green-50 border-2 border-green-200 rounded-2xl p-6 mb-6 text-center">
                 <div class="text-4xl mb-2">🎉</div>
@@ -77,16 +110,16 @@
             </div>
 
             <!-- ETAPA 1: ESCOLHER PARCELAS -->
-            <div id="etapaParcelas" class="etapa-ativa mb-6">
+            <div id="etapaParcelas" class="mb-6">
                 <p class="font-bold text-primary mb-3">📅 Escolha em quantas vezes quer pagar</p>
-                <div id="listaParcelas"></div>
-                <button onclick="confirmarParcelas()" class="botao botao-primario mt-4">Confirmar Quantidade de Parcelas →</button>
+                <div id="listaParcelasEscolha"></div>
+                <button onclick="confirmarParcelas()" class="botao botao-primario mt-4 sem-imprimir">Confirmar Quantidade de Parcelas →</button>
             </div>
 
             <!-- ETAPA 2: LER E ACEITAR CONTRATO -->
             <div id="etapaContrato" class="escondido mb-6">
                 <p class="font-bold text-primary mb-3">📋 Leia o Contrato com Atenção</p>
-                <div class="contrato text-sm mb-4">
+                <div class="contrato text-sm mb-4" id="textoContrato">
                     <p class="font-bold text-center mb-4">CONTRATO DE COMPRA E VENDA DE MÓVEIS COM PAGAMENTO PARCELADO</p>
                     <p class="mb-2"><strong>1. OBJETO:</strong> A FlashCred / Flash Point vende os móveis escolhidos, mediante pagamento conforme condições abaixo.</p>
                     <p class="mb-2"><strong>2. VALOR E PAGAMENTO:</strong> O valor total será pago em entrada + parcelas mensais. O não pagamento de qualquer parcela constitui em mora imediata.</p>
@@ -95,39 +128,34 @@
                     <p class="mb-2"><strong>5. ACEITE:</strong> Ao assinar abaixo, o cliente declara que leu, compreendeu e aceita TODAS as condições deste contrato, comprometendo-se integralmente.</p>
                     <p class="text-right mt-4">Santo André / SP, <span id="dataHoje"></span></p>
                 </div>
-                <label class="flex items-center gap-2 mb-4 cursor-pointer">
+                <label class="flex items-center gap-2 mb-4 cursor-pointer sem-imprimir">
                     <input type="checkbox" id="liContrato" class="w-5 h-5">
                     <span class="font-semibold">Li e concordo com os termos do contrato</span>
                 </label>
-                <button onclick="avancarAssinatura()" class="botao botao-primario">Concordo e Vou Assinar →</button>
+                <button onclick="avancarAssinatura()" class="botao botao-primario sem-imprimir">Concordo e Vou Assinar →</button>
             </div>
 
-            <!-- ETAPA 3: ASSINAR — DUAS OPÇÕES -->
+            <!-- ETAPA 3: ASSINAR -->
             <div id="etapaAssinar" class="escondido mb-6">
                 <p class="font-bold text-primary mb-3">✍️ Assine para concluir</p>
-                
-                <div class="flex gap-2 mb-4">
+                <div class="flex gap-2 mb-4 sem-imprimir">
                     <button onclick="mostrarOpcao('selfie')" id="abaSelfie" class="botao botao-primario flex-1 py-2 text-sm">📸 Tirar Selfie</button>
                     <button onclick="mostrarOpcao('assinatura')" id="abaAssinatura" class="botao botao-secundario flex-1 py-2 text-sm">✍️ Assinar Nome</button>
                 </div>
-
-                <!-- OPÇÃO SELFIE -->
                 <div id="formSelfie" class="mb-4">
-                    <video id="camera" autoplay playsinline class="camera mb-3"></video>
-                    <button onclick="tirarFoto()" class="botao botao-sucesso">📸 Tirar Foto</button>
+                    <video id="camera" autoplay playsinline class="camera mb-3 sem-imprimir"></video>
+                    <button onclick="tirarFoto()" class="botao botao-sucesso sem-imprimir">📸 Tirar Foto</button>
                     <canvas id="fotoTirada" class="escondido w-full rounded-xl mt-2"></canvas>
-                    <button onclick="confirmarSelfie()" id="btnConfirmaFoto" class="botao botao-sucesso escondido">✅ Confirmar Foto como Assinatura</button>
+                    <button onclick="confirmarSelfie()" id="btnConfirmaFoto" class="botao botao-sucesso escondido sem-imprimir">✅ Confirmar Foto</button>
                 </div>
-
-                <!-- OPÇÃO ASSINATURA DIGITAL -->
                 <div id="formAssinatura" class="escondido mb-4">
-                    <label class="block text-sm font-semibold text-gray-600 mb-2">Digite seu nome completo como assinatura</label>
-                    <input type="text" id="nomeAssinatura" placeholder="Seu nome completo" class="w-full p-3 border border-gray-200 rounded-lg">
-                    <button onclick="confirmarAssinatura()" class="botao botao-sucesso mt-2">✅ Confirmar Assinatura</button>
+                    <label class="block text-sm font-semibold text-gray-600 mb-2 sem-imprimir">Digite seu nome completo como assinatura</label>
+                    <input type="text" id="nomeAssinatura" placeholder="Seu nome completo" class="w-full p-3 border border-gray-200 rounded-lg sem-imprimir">
+                    <button onclick="confirmarAssinatura()" class="botao botao-sucesso mt-2 sem-imprimir">✅ Confirmar Assinatura</button>
                 </div>
             </div>
 
-            <!-- ETAPA 4: PIX LIBERADO -->
+            <!-- ETAPA 4: PAGAMENTO DA ENTRADA (SÓ APARECE SE NÃO PAGOU!) -->
             <div id="etapaPagamento" class="escondido">
                 <div class="bg-sucesso/10 border-2 border-sucesso rounded-2xl p-6 text-center mb-6">
                     <div class="text-3xl mb-2">✅</div>
@@ -136,26 +164,34 @@
                 </div>
 
                 <p class="font-bold text-primary mb-3">💵 Pague a Entrada via Pix</p>
-                <div class="pix-copia mb-4">
-                    <p class="text-sm text-gray-500 mb-1">Chave Pix (Copia e Cola)</p>
-                    <p class="font-mono font-bold text-lg text-pix" id="chavePix">33552949852</p>
-                    <button onclick="copiarPix()" class="botao botao-sucesso py-2 mt-2">📋 Copiar Código Pix</button>
+                
+                <!-- QR Code do Mercado Pago -->
+                <div id="qrCodeBox" class="bg-white rounded-xl shadow p-4 text-center mb-4">
+                    <p class="text-sm text-gray-500 mb-2">Escaneie o QR Code</p>
+                    <img id="qrcodeImagem" src="" alt="QR Code de Pagamento" class="qrcode-img escondido">
+                    <p id="semQrCode" class="text-gray-400 text-sm">QR Code disponível após aprovação</p>
                 </div>
 
-                <div class="bg-gray-50 rounded-xl p-4 text-center text-sm text-gray-500">
-                    <p>💡 Após o pagamento, o sistema será notificado automaticamente e os móveis serão liberados para entrega.</p>
+                <div class="pix-copia mb-4">
+                    <p class="text-sm text-gray-500 mb-1">Ou copie a chave Pix abaixo:</p>
+                    <p class="font-mono font-bold text-lg text-pix" id="chavePix">33552949852</p>
+                    <button onclick="copiarPix()" class="botao botao-sucesso py-2 mt-2 sem-imprimir">📋 Copiar Código Pix</button>
+                </div>
+
+                <div class="bg-yellow-50 rounded-xl p-4 text-center text-sm text-yellow-700 border border-yellow-200">
+                    <p>⚠️ Após o pagamento, aguarde a confirmação. Quando confirmado, você verá suas parcelas aqui!</p>
                 </div>
             </div>
         </div>
 
-        <!-- AGUARDANDO -->
+        <!-- ⏳ AGUARDANDO -->
         <div id="blocoAguardando" class="escondido bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-6 text-center">
             <div class="text-4xl mb-2">⏳</div>
             <h2 class="text-xl font-bold text-yellow-700">Proposta em Análise</h2>
             <p class="text-yellow-600">Aguarde a aprovação. Você será avisado em breve!</p>
         </div>
 
-        <!-- REPROVADA -->
+        <!-- ❌ REPROVADA -->
         <div id="blocoReprovada" class="escondido bg-red-50 border-2 border-red-200 rounded-2xl p-6 text-center">
             <div class="text-4xl mb-2">❌</div>
             <h2 class="text-xl font-bold text-red-700">Proposta Reprovada</h2>
@@ -173,6 +209,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let proposta = null;
 let qtdParcelasEscolhida = null;
 let streamCamera = null;
+const CHAVE_PIX_FIXA = '33552949852';
 
 function hoje() {
     return new Date().toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' });
@@ -182,7 +219,13 @@ function real(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-// ✅ BUSCA CORRIGIDA — AGORA FUNCIONA!
+function formatarData(dataStr) {
+    if (!dataStr) return '--/--/----';
+    const d = new Date(dataStr);
+    return d.toLocaleDateString('pt-BR');
+}
+
+// ✅ BUSCA CORRIGIDA
 async function buscar() {
     const termo = document.getElementById('entradaBusca').value.replace(/\D/g, '');
     const aviso = document.getElementById('aviso');
@@ -197,11 +240,10 @@ async function buscar() {
     aviso.style.color = '#64748B';
 
     try {
-        // ✅ BUSCA EXATA PELO CPF — SEM ERRO!
         const { data, error } = await supabase
             .from('propostas')
             .select('*')
-            .eq('cpf', termo); // BUSCA EXATA = FUNCIONA!
+            .eq('cpf', termo);
 
         if (error) {
             aviso.textContent = '❌ Erro na busca: ' + error.message;
@@ -215,7 +257,6 @@ async function buscar() {
             return;
         }
 
-        // ✅ ENCONTROU! MOSTRA A PROPOSTA
         aviso.textContent = '✅ Proposta encontrada!';
         aviso.style.color = '#10B981';
         
@@ -233,16 +274,95 @@ function mostrarProposta() {
     document.getElementById('telaProposta').classList.remove('escondido');
     document.getElementById('dataHoje').textContent = hoje();
 
+    // ✅ REGRA DE OURO: SE ENTRADA JÁ FOI PAGA → MOSTRA SOMENTE PARCELAS!
+    if (proposta.entrada_paga === true) {
+        mostrarTelaParcelas();
+        return;
+    }
+
     if (proposta.status === 'Aprovada') {
         document.getElementById('blocoAprovada').classList.remove('escondido');
         document.getElementById('blocoAguardando').classList.add('escondido');
         document.getElementById('blocoReprovada').classList.add('escondido');
+        document.getElementById('blocoEntradaPaga').classList.add('escondido');
         preencherValores();
     } else if (proposta.status === 'Reprovada') {
         document.getElementById('blocoReprovada').classList.remove('escondido');
     } else {
         document.getElementById('blocoAguardando').classList.remove('escondido');
     }
+}
+
+// ✅ TELA DE PARCELAS — SÓ APARECE DEPOIS DE PAGO!
+function mostrarTelaParcelas() {
+    document.getElementById('blocoAprovada').classList.add('escondido');
+    document.getElementById('blocoAguardando').classList.add('escondido');
+    document.getElementById('blocoReprovada').classList.add('escondido');
+    document.getElementById('blocoEntradaPaga').classList.remove('escondido');
+
+    document.getElementById('codigoUnicoPago').textContent = proposta.codigo_unico || '---';
+    document.getElementById('contratoCompleto').innerHTML = `
+        <p class="font-bold text-center mb-4">CONTRATO DE COMPRA E VENDA DE MÓVEIS</p>
+        <p><strong>Cliente:</strong> ${proposta.nome || ''}</p>
+        <p><strong>CPF:</strong> ${(proposta.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
+        <p><strong>Valor Total:</strong> ${real(proposta.valor_desejado || 0)}</p>
+        <p><strong>Entrada Paga em:</strong> ${proposta.data_pagamento_entrada ? new Date(proposta.data_pagamento_entrada).toLocaleString('pt-BR') : '--'}</p>
+        <p><strong>Quantidade de Parcelas:</strong> ${proposta.parcelas_escolhidas || proposta.quantidade_parcelas || 0}x</p>
+        <hr class="my-3">
+        <p class="mb-2"><strong>Cláusulas Contratuais:</strong> O cliente se compromete a pagar todas as parcelas nas datas acordadas. Em caso de inadimplência, o nome será incluído nos órgãos de proteção ao crédito e os móveis poderão ser retomados. Após confirmação do pagamento, os móveis serão entregues conforme combinado.</p>
+        <p class="text-right mt-4">Santo André / SP</p>
+        <p class="text-right">Assinatura: ${proposta.assinatura_contrato || 'Registrada'}</p>
+    `;
+
+    gerarListaParcelas();
+}
+
+// ✅ GERA LISTA DE PARCELAS COM QR CODE POR PARCELA
+function gerarListaParcelas() {
+    const valorTotal = Number(proposta.valor_desejado || 0);
+    const percEnt = Number(proposta.percentual_entrada || 20);
+    const valorEnt = valorTotal * percEnt / 100;
+    const qtd = proposta.parcelas_escolhidas || proposta.quantidade_parcelas || 1;
+    const juros = Number(proposta.juros || 0);
+    const resto = valorTotal - valorEnt;
+    const valParc = resto * (1 + juros/100) / qtd;
+    const vencimentoBase = proposta.data_aprovacao ? new Date(proposta.data_aprovacao) : new Date();
+
+    let html = '';
+    for (let i = 1; i <= qtd; i++) {
+        const dataVenc = new Date(vencimentoBase);
+        dataVenc.setMonth(dataVenc.getMonth() + i);
+        const dataStr = formatarData(dataVenc);
+        
+        const parcelaPaga = proposta[`parcela_${i}_paga`] === true;
+        const classe = parcelaPaga ? 'parcela-paga' : 
+                       new Date() > dataVenc ? 'parcela-vencida' : 'parcela-a-vencer';
+        const status = parcelaPaga ? '✅ PAGO' : 
+                       new Date() > dataVenc ? '❌ Vencida' : '⏳ A Vencer';
+
+        html += `
+        <div class="parcela-card ${classe}">
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="font-bold">${i}ª Parcela de ${qtd}</p>
+                    <p class="text-sm">Vencimento: ${dataStr}</p>
+                    <p class="font-bold text-lg">${real(valParc)}</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm font-semibold">${status}</p>
+                    ${!parcelaPaga ? `
+                    <button onclick="gerarQRParcela(${i}, ${valParc})" class="botao botao-primario py-1 px-3 text-xs mt-2 sem-imprimir">💳 Pagar esta Parcela</button>
+                    ` : ''}
+                </div>
+            </div>
+        </div>`;
+    }
+    document.getElementById('listaParcelasPagamento').innerHTML = html;
+}
+
+// ✅ GERA QR CODE INDIVIDUAL POR PARCELA
+function gerarQRParcela(numero, valor) {
+    alert(`💳 Gerando QR Code para ${numero}ª Parcela — ${real(valor)}\n\nCopie e pague:\n${CHAVE_PIX_FIXA}\n\nValor: ${real(valor)}\nApós pagamento, atualize a página.`);
 }
 
 function preencherValores() {
@@ -256,26 +376,33 @@ function preencherValores() {
     document.getElementById('codigoUnico').textContent = proposta.codigo_unico || '---';
     document.getElementById('mostraTotal').textContent = real(valorTotal);
     document.getElementById('mostraEntrada').textContent = real(valorEnt);
-    document.getElementById('chavePix').textContent = proposta.copia_cola_pix || '33552949852';
+    
+    // ✅ MOSTRA QR CODE SE JÁ TIVER
+    if (proposta.qr_code_entrada) {
+        document.getElementById('qrcodeImagem').src = proposta.qr_code_entrada;
+        document.getElementById('qrcodeImagem').classList.remove('escondido');
+        document.getElementById('semQrCode').classList.add('escondido');
+    }
+    document.getElementById('chavePix').textContent = proposta.copia_cola_pix || CHAVE_PIX_FIXA;
 
     let html = '';
     for (let i = 1; i <= maxParc; i++) {
         const valParc = resto * (1 + juros/100) / i;
         html += `
-        <div class="parcela-opcao" onclick="escolherParcela(${i}, ${valParc})">
+        <div class="parcela-card parcela-a-vencer" onclick="escolherParcela(${i}, ${valParc})" style="cursor:pointer;">
             <div class="flex justify-between items-center">
                 <span>${i}x vezes</span>
-                <span class="valor-parcela">${real(valParc)}</span>
+                <span class="font-bold text-lg">${real(valParc)}</span>
             </div>
         </div>`;
     }
-    document.getElementById('listaParcelas').innerHTML = html;
+    document.getElementById('listaParcelasEscolha').innerHTML = html;
 }
 
 function escolherParcela(qtd, valor) {
     qtdParcelasEscolhida = qtd;
-    document.querySelectorAll('.parcela-opcao').forEach((el, idx) => {
-        el.classList.toggle('selecionada', idx + 1 === qtd);
+    document.querySelectorAll('.parcela-card').forEach((el, idx) => {
+        el.style.border = idx + 1 === qtd ? '3px solid #0A2463' : 'none';
     });
 }
 
@@ -295,8 +422,8 @@ function avancarAssinatura() {
 function mostrarOpcao(tipo) {
     document.getElementById('formSelfie').classList.toggle('escondido', tipo !== 'selfie');
     document.getElementById('formAssinatura').classList.toggle('escondido', tipo !== 'assinatura');
-    document.getElementById('abaSelfie').className = tipo === 'selfie' ? 'botao botao-primario flex-1 py-2 text-sm' : 'botao botao-secundario flex-1 py-2 text-sm';
-    document.getElementById('abaAssinatura').className = tipo === 'assinatura' ? 'botao botao-primario flex-1 py-2 text-sm' : 'botao botao-secundario flex-1 py-2 text-sm';
+    document.getElementById('abaSelfie').className = tipo === 'selfie' ? 'botao botao-primario flex-1 py-2 text-sm sem-imprimir' : 'botao botao-secundario flex-1 py-2 text-sm sem-imprimir';
+    document.getElementById('abaAssinatura').className = tipo === 'assinatura' ? 'botao botao-primario flex-1 py-2 text-sm sem-imprimir' : 'botao botao-secundario flex-1 py-2 text-sm sem-imprimir';
     if (tipo === 'selfie') iniciarCamera();
     else pararCamera();
 }
@@ -306,7 +433,7 @@ async function iniciarCamera() {
         streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
         document.getElementById('camera').srcObject = streamCamera;
     } catch {
-        document.getElementById('camera').insertAdjacentHTML('afterend', '<p class="text-red-500 text-sm mt-2">Câmera indisponível — use a opção de assinar com nome</p>');
+        document.getElementById('camera').insertAdjacentHTML('afterend', '<p class="text-red-500 text-sm mt-2 sem-imprimir">Câmera indisponível — use a opção de assinar com nome</p>');
     }
 }
 
@@ -354,6 +481,10 @@ async function registrarAssinatura(texto, temFoto) {
 function copiarPix() {
     navigator.clipboard.writeText(document.getElementById('chavePix').textContent);
     alert('✅ Chave Pix copiada! Cole no app do seu banco e pague!');
+}
+
+function imprimirContrato() {
+    window.print();
 }
 </script>
 </body>
