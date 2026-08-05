@@ -141,16 +141,24 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SENHA = 'flash2026';
 const CHAVE_PIX_FIXA = '33552949852';
-const TOKEN_MP_PRODUCAO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
-const TOKEN_MP_TESTE = '';
 
 let modo = 'producao';
 let propostas = [];
 let timer = null;
 let processando = false;
 
-function getTokenMP() {
-    return modo === 'producao' ? TOKEN_MP_PRODUCAO : TOKEN_MP_TESTE;
+// Função para gerar o Código Único automático (ex: FL-9A4B2)
+function gerarCodigoUnico() {
+    const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numeros = '0123456789';
+    let codigo = 'FL-';
+    for (let i = 0; i < 2; i++) {
+        codigo += letras.charAt(Math.floor(Math.random() * letras.length));
+    }
+    for (let i = 0; i < 3; i++) {
+        codigo += numeros.charAt(Math.floor(Math.random() * numeros.length));
+    }
+    return codigo;
 }
 
 function entrar() {
@@ -168,8 +176,7 @@ function definirModo(m) {
     modo = m;
     document.querySelectorAll('.modo').forEach(b => b.classList.remove('modo-ativo'));
     event.target.classList.add('modo-ativo');
-    const temToken = !!getTokenMP();
-    alert(`✅ Modo ${m.toUpperCase()} ativado!\nMercado Pago: ${temToken ? '✅ Token configurado' : '⚠️ Sem Token'}`);
+    alert(`✅ Modo ${m.toUpperCase()} ativado!`);
 }
 
 function real(valor) {
@@ -279,7 +286,7 @@ function criarCard(p) {
         </div>
 
         <div class="botoes">
-            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix (MP)</button>
+            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
             <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
@@ -316,7 +323,10 @@ async function aprovar(id) {
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${parcelas}x\nModo: ${modo.toUpperCase()}`)) return;
+    // Se a proposta não tiver código único ainda, gera um agora automaticamente
+    const codigoUnicoFinal = proposta.codigo_unico ? proposta.codigo_unico : gerarCodigoUnico();
+
+    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\nCódigo: ${codigoUnicoFinal}`)) return;
 
     processando = true;
     const btn = document.getElementById(`btn-aprovar-${id}`);
@@ -327,47 +337,43 @@ async function aprovar(id) {
     let linkPagamentoGerado = null;
     let mensagem = '';
 
-    if (modo === 'producao' && getTokenMP()) {
+    if (modo === 'producao') {
         try {
-            console.log('🔄 Chamando Mercado Pago...');
-            const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
+            console.log('🔄 Chamando Edge Function do Supabase...');
+            const resposta = await fetch(`${SUPABASE_URL}/functions/v1/criar-pagamento-mp`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${getTokenMP()}`,
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json'
+                    'Authorization': `Bearer ${SUPABASE_KEY}`
                 },
                 body: JSON.stringify({
                     transaction_amount: entrada,
-                    description: `Entrada - ${proposta.nome} - ${proposta.codigo_unico || ''}`,
-                    payment_method_id: 'pix',
-                    payer: { email: 'pagamento@flashcred.com.br' }
+                    description: `Entrada - ${proposta.nome} - ${codigoUnicoFinal}`
                 })
             });
 
             const dados = await resposta.json();
-            console.log('✅ Resposta Mercado Pago:', dados);
+            console.log('✅ Resposta:', dados);
 
             if (dados.point_of_interaction?.transaction_data) {
                 chavePixGerada = dados.point_of_interaction.transaction_data.qr_code;
                 qrCodeImagem = dados.point_of_interaction.transaction_data.qr_code_base64 || null;
                 linkPagamentoGerado = dados.init_point || null;
-                mensagem = '✅ PIX GERADO PELO MERCADO PAGO COM SUCESSO!\nQR Code e Chave Pix salvos!';
-            } else if (dados.error) {
-                mensagem = `⚠️ Erro MP: ${dados.message || dados.error}\n\nUsando chave Pix fixa.`;
+                mensagem = '✅ PIX GERADO PELO MERCADO PAGO COM SUCESSO!';
             } else {
-                mensagem = '⚠️ Mercado Pago não retornou Pix → Usando chave fixa';
+                mensagem = '⚠️ Erro na API do MP → Usando chave Pix fixa.';
             }
         } catch (erro) {
-            console.log('❌ Erro de conexão:', erro);
-            mensagem = '⚠️ Sem conexão com Mercado Pago → Usando chave fixa';
+            console.log('❌ Erro:', erro);
+            mensagem = '⚠️ Falha de conexão com a função → Usando chave fixa.';
         }
     } else {
-        mensagem = 'ℹ️ Usando chave Pix fixa';
+        mensagem = 'ℹ️ Modo manual/teste: Usando chave Pix fixa.';
     }
 
     const { error } = await supabase.from('propostas').update({
         status: 'Aprovada',
+        codigo_unico: codigoUnicoFinal,
         valor_desejado: valor,
         percentual_entrada: perc,
         valor_entrada: entrada,
