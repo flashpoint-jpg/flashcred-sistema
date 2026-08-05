@@ -42,8 +42,6 @@
             border-bottom: 2px solid #0A2463;
             padding-bottom: 10px;
         }
-        .contrato .linha { margin: 8px 0; }
-        .contrato .destaque { font-weight: 600; color: #0A2463; }
         .assinatura-area {
             border: 2px dashed #94a3b8;
             border-radius: 8px;
@@ -83,15 +81,13 @@
         .parcela-verde { border-left: 5px solid #22C55E; background: #F0FDF4; }
         .parcela-amarela { border-left: 5px solid #F59E0B; background: #FFFBEB; }
         .parcela-vermelha { border-left: 5px solid #EF4444; background: #FEF2F2; }
-        .parcela-paga { color: #16A34A; font-weight: 700; }
-        .parcela-pendente { color: #D97706; font-weight: 600; }
         .pix-copia {
             background: #f0fdf4;
             border: 1px solid #bbf7d0;
             border-radius: 8px;
             padding: 14px;
             word-break: break-all;
-            font-size: 13px;
+            font-size: 12px;
             color: #166534;
             cursor: pointer;
             transition: all 0.2s;
@@ -162,8 +158,6 @@
         .botao-voltar:hover { background: #E2E8F0; }
         .botao-imprimir { background: #8B5CF6; color: white; }
         .botao-imprimir:hover { background: #7C3AED; }
-        .botao-pagar-parcela { background: #10B981; color: white; padding: 6px 12px; font-size: 13px; border-radius: 6px; }
-        .botao-pagar-parcela:hover { background: #059669; }
         .botao:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .copia-nota {
             font-size: 12px;
@@ -192,30 +186,6 @@
         }
         .resumo-titulo { font-size: 13px; color: #64748B; font-weight: 600; }
         .resumo-valor { font-size: 22px; font-weight: 800; color: #0A2463; margin-top: 4px; }
-        .status-bolinha {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 6px;
-        }
-        .bolinha-verde { background: #22C55E; }
-        .bolinha-amarela { background: #F59E0B; }
-        .bolinha-vermelha { background: #EF4444; }
-        .botoes-linha { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-        .notificacao-pagamento {
-            background: #ECFDF5;
-            border: 2px solid #10B981;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 16px 0;
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-        }
         .etapa {
             display: flex;
             align-items: center;
@@ -262,7 +232,6 @@
     </button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
@@ -277,6 +246,7 @@ let assinaturaCtx = null;
 let assinando = false;
 let assinaturaFeita = false;
 let canalRealtime = null;
+let qrCodeGerado = null;
 
 function voltar() {
     if (canalRealtime) {
@@ -286,6 +256,7 @@ function voltar() {
     document.getElementById('resultado').classList.add('hidden');
     document.getElementById('telaConsulta').classList.remove('hidden');
     document.getElementById('cpf').value = '';
+    qrCodeGerado = null;
 }
 
 function formatarCPF(cpf) {
@@ -303,34 +274,22 @@ function real(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function calcularCorVencimento(dataVenc) {
-    if (!dataVenc) return 'parcela-verde';
-    const hoje = new Date(); hoje.setHours(0,0,0,0);
-    const ven = new Date(dataVenc); ven.setHours(0,0,0,0);
-    const dias = Math.ceil((ven - hoje) / (1000*60*60*24));
-    if (dias < 0) return 'parcela-vermelha';
-    if (dias <= 7) return 'parcela-vermelha';
-    if (dias <= 14) return 'parcela-amarela';
-    return 'parcela-verde';
+function calcularCRC16(s) {
+    let crc = 0xFFFF;
+    for (let i = 0; i < s.length; i++) {
+        crc ^= s.charCodeAt(i) << 8;
+        for (let j = 0; j < 8; j++) {
+            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+        }
+    }
+    return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
 }
 
-function calcularBolinha(dataVenc) {
-    if (!dataVenc) return 'bolinha-verde';
-    const hoje = new Date(); hoje.setHours(0,0,0,0);
-    const ven = new Date(dataVenc); ven.setHours(0,0,0,0);
-    const dias = Math.ceil((ven - hoje) / (1000*60*60*24));
-    if (dias < 0) return 'bolinha-vermelha';
-    if (dias <= 7) return 'bolinha-vermelha';
-    if (dias <= 14) return 'bolinha-amarela';
-    return 'bolinha-verde';
-}
-
-function gerarCodigoPix(valor, descricao = 'Pagamento') {
+function gerarCodigoPix(valor, descricao = 'Pagamento', txId = '***') {
     const valorStr = Number(valor || 0).toFixed(2);
     const chave = CHAVE_PIX_FIXA;
-    const nome = NOME_RECEBEDOR;
+    const nome = NOME_RECEBEDOR.replace(/[^A-Za-z0-9 ]/g, '').substring(0, 25).toUpperCase();
     const cidade = 'SAO PAULO';
-    const txId = '***';
 
     function montarParte(id, conteudo) {
         const s = String(conteudo || '');
@@ -338,33 +297,29 @@ function gerarCodigoPix(valor, descricao = 'Pagamento') {
     }
 
     const brCod = montarParte('00', 'BR-GOV.BCB.PIX') + montarParte('01', chave);
-    const valorParte = valorStr !== '0.00' ? montarParte('05', valorStr) : '';
-
     let payload = montarParte('00', '01')
         + montarParte('26', brCod)
         + montarParte('52', '0000')
-        + montarParte('53', '986')
-        + valorParte
-        + montarParte('59', nome)
+        + montarParte('53', '986');
+    
+    if (valorStr !== '0.00') {
+        payload += montarParte('54', valorStr);
+    }
+    
+    payload += montarParte('59', nome)
         + montarParte('60', cidade)
         + montarParte('62', montarParte('05', txId));
 
-    function calcularCRC16(s) {
-        let crc = 0xFFFF;
-        for (let i = 0; i < s.length; i++) {
-            crc ^= s.charCodeAt(i) << 8;
-            for (let j = 0; j < 8; j++) {
-                crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
-            }
-        }
-        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-    }
-    return payload + '6304' + calcularCRC16(payload + '6304');
+    const crc = calcularCRC16(payload + '6304');
+    return payload + '6304' + crc;
 }
 
 async function consultar() {
     let cpf = document.getElementById('cpf').value.replace(/\D/g, '');
-    if (cpf.length !== 11) { alert('⚠️ Digite um CPF válido com 11 dígitos!'); return; }
+    if (cpf.length !== 11) { 
+        alert('⚠️ Digite um CPF válido com 11 dígitos!'); 
+        return; 
+    }
 
     document.getElementById('telaConsulta').classList.add('hidden');
     document.getElementById('resultado').innerHTML = '<p class="text-center p-10 text-slate-500 text-lg">🔎 Buscando sua proposta...</p>';
@@ -410,60 +365,58 @@ function ativarNotificacaoTempoReal(propostaId) {
             (payload) => {
                 proposta = payload.new;
                 mostrarProposta();
-                tocarSomNotificacao();
             }
         )
         .subscribe();
 }
 
-function tocarSomNotificacao() {
-    try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const som = audioCtx.createOscillator();
-        const vol = audioCtx.createGain();
-        som.connect(vol);
-        vol.connect(audioCtx.destination);
-        som.type = 'sine';
-        som.frequency.value = 880;
-        vol.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        vol.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
-        som.start(audioCtx.currentTime);
-        som.stop(audioCtx.currentTime + 0.4);
-    } catch (e) {}
+function getStatusEtapas(status, assinada) {
+    const entradaPaga = proposta.valor_entrada_pago;
+    return [
+        { titulo: '📩 Proposta enviada', concluida: true },
+        { titulo: status === 'Aprovada' ? '✅ Proposta aprovada' : status === 'Reprovada' ? '❌ Reprovada' : '⏳ Em análise', concluida: status === 'Aprovada' || entradaPaga },
+        { titulo: assinada ? '✅ Contrato assinado' : '📄 Assinar contrato', concluida: assinada },
+        { titulo: entradaPaga ? '✅ Entrada confirmada' : '💳 Pagamento da entrada', concluida: entradaPaga },
+        { titulo: entradaPaga ? '📊 Parcelas liberadas' : '🔒 Parcelas após entrada', concluida: entradaPaga }
+    ];
 }
 
-function getStatusEtapas(status, assinada) {
-    return [
-        { titulo: 'Proposta enviada', concluida: true },
-        { titulo: status === 'Aprovada' ? '✅ Proposta aprovada' : status === 'Reprovada' ? '❌ Reprovada' : '⏳ Em análise', concluida: status === 'Aprovada' || status === 'Entrada Paga', andamento: status === 'Aguardando' },
-        { titulo: assinada ? '✅ Contrato assinado' : '📄 Assinar contrato', concluida: assinada },
-        { titulo: status === 'Entrada Paga' ? '✅ Entrada confirmada pelo banco' : '💳 Aguardando confirmação do pagamento', concluida: status === 'Entrada Paga', andamento: status === 'Aprovada' },
-        { titulo: status === 'Entrada Paga' ? '📊 Pagamento das parcelas' : '🔒 Parcelas liberadas após entrada', concluida: false, liberado: status === 'Entrada Paga' }
-    ];
+function copiarPix(texto) {
+    navigator.clipboard.writeText(texto).then(() => {
+        alert('✅ Código Pix copiado! Cole no app do banco para pagar.');
+    }).catch(() => {
+        const textarea = document.createElement('textarea');
+        textarea.value = texto;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        alert('✅ Código Pix copiado!');
+    });
 }
 
 function mostrarProposta() {
     const valorTotal = Number(proposta.valor_desejado || 0);
     const percEnt = Number(proposta.percentual_entrada || 20);
     const valorEntrada = valorTotal * percEnt / 100;
-    const parcelas = proposta.lista_parcelas || [];
-    const quantidadeParc = proposta.quantidade_parcelas || parcelas.length;
+    const quantidadeParc = proposta.quantidade_parcelas || 1;
     const juros = Number(proposta.juros || 0);
-    const codigoPixEntrada = gerarCodigoPix(valorEntrada, 'Entrada');
+    const entradaPaga = proposta.valor_entrada_pago;
+    const jaAssinou = proposta.assinatura_assinada;
+
+    const codigoPixEntrada = proposta.copia_cola_pix || gerarCodigoPix(valorEntrada, 'Entrada', proposta.codigo_unico);
 
     let statusTexto, statusCor;
-    if (proposta.status === 'Entrada Paga') {
-        statusTexto = '✅ ENTRADA CONFIRMADA — Pagamento identificado pelo banco!'; statusCor = 'text-green-600';
+    if (entradaPaga) {
+        statusTexto = '✅ ENTRADA CONFIRMADA!'; statusCor = 'text-green-600';
     } else if (proposta.status === 'Aprovada') {
-        statusTexto = '✅ APROVADA — Aguarda confirmação do pagamento'; statusCor = 'text-blue-600';
+        statusTexto = '✅ APROVADA — Pague a entrada abaixo'; statusCor = 'text-blue-600';
     } else if (proposta.status === 'Reprovada') {
         statusTexto = '❌ Reprovada'; statusCor = 'text-red-600';
     } else {
         statusTexto = '⏳ Aguardando Análise'; statusCor = 'text-yellow-600';
     }
 
-    const jaAssinou = proposta.assinatura_assinada;
-    const entradaPaga = proposta.status === 'Entrada Paga';
     const etapas = getStatusEtapas(proposta.status, jaAssinou);
 
     let html = `
@@ -496,245 +449,110 @@ function mostrarProposta() {
         </div>
 
         <div class="info-aviso">
-            <strong>📋 Situação da proposta:</strong>
+            <strong>📋 Situação:</strong>
             ${etapas.map(e => `
-                <div class="etapa ${e.concluida ? 'etapa-concluida' : e.andamento ? 'etapa-andamento' : 'etapa-pendente'}">
-                    ${e.concluida ? '✅' : e.andamento ? '⏳' : '⬜'} ${e.titulo}
+                <div class="etapa ${e.concluida ? 'etapa-concluida' : 'etapa-pendente'}">
+                    ${e.concluida ? '✅' : '⬜'} ${e.titulo}
                 </div>
             `).join('')}
         </div>`;
 
+    // PAGAMENTO DA ENTRADA
     if (!entradaPaga && proposta.status === 'Aprovada') {
         html += `
-        <div class="pagamento-entrada mt-6">
+        <div class="pagamento-entrada mt-6" id="areaPagamento">
             <h3 class="text-xl font-bold text-pix mb-4 text-center">💳 PAGAMENTO DA ENTRADA</h3>
             <p class="text-center font-semibold text-lg mb-4">Valor: <span class="text-2xl text-green-700 font-bold">${real(valorEntrada)}</span></p>
             
             <div class="qrcode-box">
                 <div id="qrcode-entrada"></div>
-                <p class="text-sm text-slate-500 mt-3">📱 Escaneie com a câmera do app do banco</p>
+                <p class="text-sm text-slate-500 mt-2">Escaneie ou copie o código abaixo</p>
             </div>
 
-            <div class="pix-copia" onclick="copiarPix('${codigoPixEntrada}')">
-                <strong>🔑 Chave Pix:</strong> ${CHAVE_PIX_FIXA}<br>
-                <span class="copia-nota">👆 Clique para copiar o código Pix e pagar no app do banco</span>
+            <div class="pix-copia" onclick="copiarPix('${codigoPixEntrada.replace(/'/g, "\\'")}')">
+                <strong>Copia e Cola Pix:</strong><br>
+                <span style="font-size:11px;">${codigoPixEntrada.substring(0, 60)}...</span>
+                <div class="copia-nota">👆 Clique para copiar</div>
             </div>
-        </div>
 
-        <div class="info-aviso">
-            🏦 <strong>Atenção:</strong> Após pagar, o banco pode levar até <strong>24h</strong> para notificar. Assim que confirmado, aparecerá abaixo: 
-            <strong>"✅ Entrada confirmada pelo banco"</strong> e as parcelas serão liberadas.
-        </div>`;
-
-        if (!jaAssinou) {
-            html += `
             <div class="lido-check">
-                <input type="checkbox" id="liContrato" onchange="verificarLido()">
-                <label for="liContrato">Li e concordo com o contrato abaixo. Declaro que os dados são verdadeiros e autorizo os pagamentos nas datas de vencimento.</label>
+                <input type="checkbox" id="liAceito" onchange="verificarAceito()">
+                <label for="liAceito">Li e concordo com o contrato abaixo. Após o pagamento, envie o comprovante ou aguarde a confirmação automática.</label>
             </div>
 
-            <div id="areaAssinatura" class="oculto">
-                <p class="font-bold text-sm text-slate-700 mb-2">✍️ Assine no quadro abaixo:</p>
-                <div class="assinatura-area">
-                    <canvas id="assinaturaCanvas" class="assinatura-canvas"></canvas>
-                </div>
-                <div class="botoes-linha">
-                    <button onclick="limparAssinatura()" class="botao botao-voltar flex-1">🗑️ Limpar</button>
-                    <button onclick="confirmarAssinatura()" id="btnConfirmarAssinatura" class="botao botao-sucesso flex-1" disabled>✅ Confirmar Assinatura</button>
-                </div>
-            </div>`;
-        } else {
-            html += `<div class="aviso">✅ Contrato assinado! Aguarde a confirmação do pagamento pelo banco.</div>`;
-        }
-    }
+            <div class="contrato nao-imprimir" id="areaContrato">
+                <h3>📄 CONTRATO DE PRESTAÇÃO</h3>
+                <p>Pelo presente instrumento, eu <strong>${proposta.nome}</strong>, CPF ${formatarCPF(proposta.cpf || '')}, declaro que solicito crédito junto à <strong>FLASH POINT / FLASHCRED</strong>.</p>
+                <p><strong>Valor Total:</strong> ${real(valorTotal)}<br>
+                <strong>Entrada:</strong> ${real(valorEntrada)}<br>
+                <strong>Parcelas:</strong> ${quantidadeParc}x<br>
+                <strong>Juros:</strong> ${juros}% ao mês</p>
+                <p>Declaro que os dados informados são verdadeiros e me comprometo a honrar o pagamento conforme combinado. O bem será entregue mediante confirmação do pagamento.</p>
+                <p style="margin-top:12px;"><strong>Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
+            </div>
 
-    if (entradaPaga && parcelas.length > 0) {
+            <div class="botoes-linha">
+                <button onclick="imprimirContrato()" class="botao botao-imprimir nao-imprimir">
+                    <i class="fas fa-print"></i> Imprimir Contrato
+                </button>
+            </div>
+        </div>`;
+    } else if (entradaPaga) {
         html += `
-        <div class="notificacao-pagamento">
-            ✅ <strong>PAGAMENTO CONFIRMADO!</strong> O banco notificou o recebimento. Suas parcelas foram liberadas 👇
+        <div class="sucesso-aviso mt-6">
+            <h3 class="text-xl font-bold text-green-700 mb-2">✅ ENTRADA PAGA — Parcelas Liberadas!</h3>
+            <p>Obrigado pelo pagamento! Confira abaixo os detalhes do seu crédito e as parcelas a pagar.</p>
         </div>
 
-        <h3 class="text-xl font-bold text-primary mt-6 mb-4">📊 SUAS PARCELAS</h3>
-        <p class="text-sm text-slate-500 mb-3">
-            <span class="status-bolinha bolinha-verde"></span> Em dia · 
-            <span class="status-bolinha bolinha-amarela"></span> Atenção · 
-            <span class="status-bolinha bolinha-vermelha"></span> Vencida
-        </p>
-        <table class="parcelas-tabela">
-            <thead>
-                <tr>
-                    <th>Nº</th>
-                    <th>Vencimento</th>
-                    <th>Valor</th>
-                    <th>Status</th>
-                    <th>Ação</th>
-                </tr>
-            </thead>
-            <tbody>`;
-        parcelas.forEach((p, idx) => {
-            const cor = calcularCorVencimento(p.vencimento);
-            const bolinha = calcularBolinha(p.vencimento);
-            const estaPaga = p.status === 'Paga';
-            const codigoPixParcela = gerarCodigoPix(p.valor, `Parcela ${p.numero}`);
-            html += `
-            <tr class="${cor}">
-                <td class="font-bold">${p.numero}</td>
-                <td>${formatarData(p.vencimento)}</td>
-                <td class="font-bold">${real(p.valor)}</td>
-                <td class="${estaPaga ? 'parcela-paga' : 'parcela-pendente'}">
-                    <span class="status-bolinha ${bolinha}"></span>
-                    ${estaPaga ? '✅ Paga' : '⏳ Pendente'}
-                </td>
-                <td>
-                    ${!estaPaga 
-                        ? `<button class="botao-pagar-parcela" onclick="pagarParcela(${idx}, '${codigoPixParcela}')">💳 Pagar</button>` 
-                        : '<span class="text-green-600 font-semibold">✓</span>'}
-                </td>
-            </tr>`;
-        });
-        html += `</tbody></table>`;
+        <div class="contrato">
+            <h3>📄 CONTRATO APROVADO</h3>
+            <p><strong>Cliente:</strong> ${proposta.nome}<br>
+            <strong>CPF:</strong> ${formatarCPF(proposta.cpf || '')}<br>
+            <strong>Valor Total:</strong> ${real(valorTotal)}<br>
+            <strong>Entrada Paga:</strong> ${real(valorEntrada)} ✅<br>
+            <strong>Restante:</strong> ${real(valorTotal - valorEntrada)}<br>
+            <strong>Parcelas:</strong> ${quantidadeParc}x de ${real((valorTotal - valorEntrada) * (1 + juros/100) / quantidadeParc)}<br>
+            <strong>Juros:</strong> ${juros}% ao mês</p>
+            <p style="margin-top:12px;">✅ Contrato assinado e entrada confirmada. As parcelas serão geradas mensalmente conforme combinado.</p>
+        </div>
+
+        <button onclick="imprimirContrato()" class="botao botao-imprimir w-full mt-4">
+            <i class="fas fa-print"></i> Imprimir Contrato
+        </button>`;
+    } else if (proposta.status === 'Reprovada') {
+        html += `<div class="aviso mt-6">❌ Sua proposta foi analisada e reprovada. Entre em contato para mais informações.</div>`;
+    } else {
+        html += `<div class="aviso mt-6">⏳ Sua proposta está em análise. Aguarde a aprovação para visualizar o Pix e o contrato.</div>`;
     }
 
-    html += `
-        <div class="contrato" id="contrato-impressao">
-            <h3>📄 CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h3>
-            <p class="linha">Pelo presente instrumento, <span class="destaque">${proposta.nome}</span>, CPF ${formatarCPF(proposta.cpf || '')}, abaixo assinado, aceita as condições:</p>
-            <p class="linha">1. Valor Total Contratado: <span class="destaque">${real(valorTotal)}</span></p>
-            <p class="linha">2. Entrada de <span class="destaque">${percEnt}% (${real(valorEntrada)})</span> e ${quantidadeParc} parcelas mensais com juros de ${juros}% ao mês.</p>
-            <p class="linha">3. O não pagamento no vencimento implicará em multa de 2% e juros de 1% ao mês.</p>
-            <p class="linha">4. A FlashCred / Distribuidora Flash Point se responsabiliza pela entrega dos móveis conforme combinado, após confirmação do pagamento da entrada.</p>
-            <p class="linha">5. Declaro que os dados informados são verdadeiros e autorizo a cobrança nas datas de vencimento.</p>
-            <p class="linha">6. Ao deixar de pagar, estará prejudicando a mim que pensei em você primeiro. Pense bem: eu confiei em você. Vamos honrar o compromisso!</p>
-            <p class="linha mt-6">São Paulo, ${new Date().toLocaleDateString('pt-BR')}.</p>
-            <p class="linha mt-8">Assinatura: ___________________________________________________</p>
-            <p class="linha">${proposta.nome}</p>
-            <p class="linha">CPF: ${formatarCPF(proposta.cpf || '')}</p>
-        </div>
-
-        <div class="botoes-linha nao-imprimir">
-            <button onclick="window.print()" class="botao botao-imprimir flex-1">🖨️ Imprimir Contrato</button>
-            <button onclick="voltar()" class="botao botao-voltar flex-1">🔄 Consultar Outro</button>
-        </div>
-    </div>`;
-
+    html += `</div>`;
     document.getElementById('resultado').innerHTML = html;
-    document.getElementById('resultado').classList.remove('hidden');
 
-    if (!entradaPaga && proposta.status === 'Aprovada') {
+    // Gerar QR Code
+    if (!entradaPaga && proposta.status === 'Aprovada' && codigoPixEntrada && window.QRCode) {
         setTimeout(() => {
-            const qrDiv = document.getElementById('qrcode-entrada');
-            if (qrDiv) {
-                new QRCode(qrDiv, {
+            const container = document.getElementById('qrcode-entrada');
+            if (container && !qrCodeGerado) {
+                container.innerHTML = '';
+                new QRCode(container, {
                     text: codigoPixEntrada,
-                    width: 220,
-                    height: 220,
-                    colorDark: '#000000',
-                    colorLight: '#ffffff',
+                    width: 200,
+                    height: 200,
                     correctLevel: QRCode.CorrectLevel.M
                 });
+                qrCodeGerado = true;
             }
-            if (!jaAssinou) inicializarAssinatura();
         }, 300);
     }
 }
 
-function copiarPix(codigo) {
-    navigator.clipboard.writeText(codigo).then(() => {
-        alert('✅ Código Pix copiado com sucesso!\n\nAbra o aplicativo do seu banco → Pix → Colar código → Confirmar.');
-    }).catch(() => {
-        const ta = document.createElement('textarea');
-        ta.value = codigo;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        alert('✅ Código Pix copiado! Abra o app do banco e cole.');
-    });
+function verificarAceito() {
+    const aceito = document.getElementById('liAceito').checked;
+    // Aqui pode habilitar botões extras se precisar
 }
 
-function pagarParcela(indice, codigoPix) {
-    copiarPix(codigoPix);
-}
-
-function verificarLido() {
-    const lido = document.getElementById('liContrato').checked;
-    document.getElementById('areaAssinatura').classList.toggle('oculto', !lido);
-}
-
-function inicializarAssinatura() {
-    const canvas = document.getElementById('assinaturaCanvas');
-    if (!canvas) return;
-    assinaturaCanvas = canvas;
-    assinaturaCtx = canvas.getContext('2d');
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-    assinaturaCtx.lineWidth = 3;
-    assinaturaCtx.lineCap = 'round';
-    assinaturaCtx.lineJoin = 'round';
-    assinaturaCtx.strokeStyle = '#000000';
-
-    function getPos(e) {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const x = ((e.touches ? e.touches[0].clientX : e.clientX) - rect.left) * scaleX;
-        const y = ((e.touches ? e.touches[0].clientY : e.clientY) - rect.top) * scaleY;
-        return { x, y };
-    }
-
-    function iniciar(e) {
-        e.preventDefault();
-        assinando = true;
-        assinaturaFeita = false;
-        const pos = getPos(e);
-        assinaturaCtx.beginPath();
-        assinaturaCtx.moveTo(pos.x, pos.y);
-    }
-
-    function desenhar(e) {
-        if (!assinando) return;
-        e.preventDefault();
-        assinaturaFeita = true;
-        const pos = getPos(e);
-        assinaturaCtx.lineTo(pos.x, pos.y);
-        assinaturaCtx.stroke();
-    }
-
-    function parar() {
-        assinando = false;
-        document.getElementById('btnConfirmarAssinatura').disabled = !assinaturaFeita;
-    }
-
-    canvas.addEventListener('mousedown', iniciar);
-    canvas.addEventListener('mousemove', desenhar);
-    canvas.addEventListener('mouseup', parar);
-    canvas.addEventListener('mouseout', parar);
-    canvas.addEventListener('touchstart', iniciar);
-    canvas.addEventListener('touchmove', desenhar);
-    canvas.addEventListener('touchend', parar);
-}
-
-function limparAssinatura() {
-    if (assinaturaCanvas && assinaturaCtx) {
-        assinaturaCtx.clearRect(0, 0, assinaturaCanvas.width, assinaturaCanvas.height);
-        assinaturaFeita = false;
-        document.getElementById('btnConfirmarAssinatura').disabled = true;
-    }
-}
-
-async function confirmarAssinatura() {
-    if (!assinaturaFeita) { alert('⚠️ Assine no quadro antes de confirmar!'); return; }
-    if (!confirm('✅ Confirmar minha assinatura no contrato?')) return;
-
-    const { error } = await supabase.from('propostas').update({
-        assinatura_assinada: true,
-        data_assinatura: new Date().toISOString()
-    }).eq('id', proposta.id);
-
-    if (error) alert('❌ Erro ao salvar assinatura: ' + error.message);
-    else {
-        alert('✅ Contrato assinado com sucesso!\n\nAgora faça o pagamento da entrada pelo Pix acima.\n\nAssim que o banco confirmar, aparecerá automaticamente ✅ Entrada confirmada!');
-    }
+function imprimirContrato() {
+    window.print();
 }
 </script>
 </body>
