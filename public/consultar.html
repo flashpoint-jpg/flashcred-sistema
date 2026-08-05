@@ -56,7 +56,7 @@
         .caixa-contrato { background: #F8FAFC; border: 1px solid var(--borda); border-radius: 8px; padding: 16px; max-height: 220px; overflow-y: auto; font-size: 12px; color: #475569; margin-bottom: 14px; line-height: 1.6; text-align: justify; }
         .caixa-contrato h4 { color: var(--primary); margin-bottom: 6px; font-size: 13px; text-align: left; }
 
-        /* BOTÃO DE SELFIE ESTILIZADO */
+        /* BOTÃO DA CÂMERA (SELFIE DIRETA) */
         .btn-selfie { background: #475569; color: white; padding: 10px; border-radius: 8px; text-align: center; display: block; font-weight: 600; font-size: 14px; cursor: pointer; margin-bottom: 8px; }
         .btn-selfie:hover { background: #334155; }
         input[type="file"] { display: none; }
@@ -109,7 +109,7 @@
             </div>
         </div>
 
-        <!-- CARD DE INFORMAÇÕES (SEM CÓDIGO ÚNICO, COM NOME, WHATSAPP, VALOR DESEJADO E JUROS) -->
+        <!-- CARD DE INFORMAÇÕES -->
         <div class="card-info">
             <p><strong>Nome:</strong> <span id="nomeCliente">-</span></p>
             <p><strong>WhatsApp:</strong> <span id="whatsappCliente">-</span></p>
@@ -156,8 +156,9 @@
             </div>
 
             <h3 style="margin-top: 15px;">📸 Selfie de Confirmação de Identidade</h3>
-            <label>Tire uma foto nítida do seu rosto (Obrigatório)</label>
-            <label for="inputSelfie" class="btn-selfie">📷 Tirar / Enviar Selfie</label>
+            <label>Tire uma foto do seu rosto agora (Obrigatório via Câmera)</label>
+            <label for="inputSelfie" class="btn-selfie">📷 Abrir Câmera para Selfie</label>
+            <!-- capture="environment/user" força estritamente o uso da câmera do celular e bloqueia a galeria -->
             <input type="file" id="inputSelfie" accept="image/*" capture="user" onchange="converterSelfie(this)">
             <div id="previewSelfieContainer" style="margin-top: 8px; display: none;">
                 <img id="imgSelfiePreview" style="max-width: 80px; border-radius: 6px; border: 1px solid var(--borda);">
@@ -216,24 +217,21 @@ window.onload = () => {
     canvas = document.getElementById('canvasAssinatura');
     ctx = canvas.getContext('2d');
     
-    // Configuração correta de tamanho e estilo do Canvas para evitar fundo transparente/branco invisível
-    function ajustarCanvas() {
+    function inicializarCanvas() {
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width || canvas.offsetWidth || 400;
         canvas.height = rect.height || canvas.offsetHeight || 160;
         
-        // Fundo branco sólido garantido
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        // Estilo do traço da assinatura
         ctx.strokeStyle = '#0A2463';
         ctx.lineWidth = 3;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
     }
     
-    setTimeout(ajustarCanvas, 200);
+    setTimeout(inicializarCanvas, 300);
 
     // Eventos do Mouse
     canvas.addEventListener('mousedown', iniciarDesenho);
@@ -353,7 +351,6 @@ function exibirDadosProposta() {
     etapaFluxoSeguinte.style.display = 'none';
 
     if (p.status === 'Aprovada') {
-        // TRAVA ABSOLUTA: Se o pagamento da entrada já foi efetuado/confirmado, bloqueia o Pix permanentemente e avança no fluxo!
         if (p.pagamento_entrada_efetuado === true || p.status_pagamento === 'pago' || p.status === 'Pago') {
             atualizarStepper(4);
             etapaFluxoSeguinte.style.display = 'block';
@@ -361,7 +358,6 @@ function exibirDadosProposta() {
         }
 
         if (p.contrato_assinado) {
-            // Etapa 3: Aguardando Pagamento da Entrada (Enquanto o banco/webhook não confirmar)
             atualizarStepper(3);
             etapaAguardandoPagamento.style.display = 'block';
             document.getElementById('valorEntradaPix').textContent = real(p.valor_entrada);
@@ -370,7 +366,6 @@ function exibirDadosProposta() {
                 document.getElementById('copiaColaPix').textContent = p.qr_code_entrada;
             }
         } else {
-            // Seleção de Parcelas ou Assinatura de Contrato
             if (subEtapaCliente === 'parcelas') {
                 atualizarStepper(2);
                 etapaParcelas.style.display = 'block';
@@ -389,7 +384,6 @@ function exibirDadosProposta() {
         etapaPendente.style.color = '#991B1B';
         etapaPendente.innerHTML = `<p>❌ Proposta reprovada pela administração.</p>`;
     } else {
-        // Etapa 1: Em Análise
         atualizarStepper(1);
         etapaPendente.style.display = 'block';
         etapaPendente.style.background = '#FEF3C7';
@@ -418,11 +412,8 @@ function recalcularSimulacaoCliente() {
     const saldoRemanescente = valorTotalDesejado - valorEntrada;
     const juros = Number(p.juros || 0);
     
-    // Valor total financiado com juros nas parcelas
     const valorTotalParcelasComJuros = saldoRemanescente * (1 + juros/100);
     const valorParcelaIndividual = valorTotalParcelasComJuros / qtdParcelas;
-
-    // SOMA DO VALOR TOTAL FINAL (Entrada + Total das parcelas com juros)
     const valorTotalFinalGeral = valorEntrada + valorTotalParcelasComJuros;
 
     document.getElementById('detalheValorEntrada').textContent = real(valorEntrada);
@@ -490,11 +481,10 @@ function converterSelfie(input) {
 
 async function concluirContrato() {
     if (!base64Selfie) {
-        alert('⚠️ Por favor, envie a selfie de identificação para continuar.');
+        alert('⚠️ Por favor, tire a selfie de identificação usando a câmera antes de continuar.');
         return;
     }
 
-    // Verifica se o canvas foi assinado comparando com um fundo totalmente branco
     const canvasTemp = document.createElement('canvas');
     canvasTemp.width = canvas.width;
     canvasTemp.height = canvas.height;
