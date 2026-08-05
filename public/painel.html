@@ -56,20 +56,19 @@
         .proposta { background: white; padding: 18px; border-radius: 12px; border: 1px solid var(--borda); margin-bottom: 14px; }
         .proposta-topo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
         .proposta-nome { font-size: 16px; font-weight: 700; color: var(--primary); }
-        .proposta-info { font-size: 12px; color: var(--texto-claro); margin-top: 3px; line-height: 1.4; }
-        .status { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .proposta-info { font-size: 12px; color: var(--texto-claro); margin-top: 3px; }
+        .status { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
         .status-nova { background: #FEF3C7; color: #92400E; }
         .status-aprovada { background: #D1FAE5; color: #065F46; }
         .status-reprovada { background: #FEE2E2; color: #991B1B; }
-        .status-paga { background: #D1FAE5; color: #065F46; border: 1px solid #10B981; }
 
         .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
         .campo label { font-size: 12px; color: var(--texto-claro); font-weight: 600; display: block; margin-bottom: 3px; }
         .campo input { padding: 8px 10px; margin: 0; border: 1px solid var(--borda); border-radius: 6px; font-size: 14px; width: 100%; }
         .campo input[readonly] { background: #F8FAFC; color: var(--sucesso); font-weight: 600; }
 
-        .botoes { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
-        .btn { padding: 8px 12px; font-size: 13px; border-radius: 7px; border: none; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+        .botoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+        .btn { padding: 8px 14px; font-size: 13px; border-radius: 7px; }
         .btn-aprovar { background: var(--sucesso); color: white; }
         .btn-aprovar:hover { background: #059669; }
         .btn-aprovar:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -79,16 +78,10 @@
         .btn-whatsapp:hover { background: #1fb85c; }
         .btn-excluir { background: #F1F5F9; color: #64748B; }
         .btn-excluir:hover { background: #E2E8F0; }
-        .btn-pago { background: #10B981; color: white; }
-        .btn-pago:hover { background: #059669; }
-        .btn-pago:disabled { background: #94A3B8; cursor: not-allowed; }
 
         .vazio { text-align: center; color: var(--texto-claro); padding: 40px; font-size: 15px; }
         .carregando { text-align: center; padding: 30px; color: var(--texto-claro); display: none; font-size: 14px; }
-        .qrcode-img { max-width: 120px; border-radius: 6px; margin-top: 6px; border: 1px solid #ddd; }
-        .navegacao { margin-bottom: 16px; display: flex; gap: 8px; }
-        .btn-voltar { background: #E2E8F0; color: #374151; padding: 8px 14px; font-size: 14px; }
-        .btn-voltar:hover { background: #D1D5DB; }
+        .qrcode-img { max-width: 120px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
     </style>
 </head>
 <body>
@@ -102,11 +95,6 @@
 </div>
 
 <div id="telaPainel" class="container">
-    <div class="navegacao">
-        <button onclick="window.location.href='index.html'" class="btn btn-voltar">🏠 Início</button>
-        <button onclick="window.location.href='consultar.html'" class="btn btn-voltar">🔍 Consultar Cliente</button>
-    </div>
-
     <div class="topo">
         <h1>📋 Painel de Controle</h1>
         <div class="modos">
@@ -152,22 +140,25 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SENHA = 'flash2026';
-const CHAVE_PIX_FIXA = '33552949852'; // Sua chave Pix
-const NOME_RECEBEDOR = 'FLASH POINT';
-const CIDADE = 'SAO PAULO';
+const CHAVE_PIX_FIXA = '33552949852';
+const TOKEN_MP_PRODUCAO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
+const TOKEN_MP_TESTE = '';
 
 let modo = 'producao';
 let propostas = [];
 let timer = null;
 let processando = false;
-let qtdAnterior = 0;
+
+function getTokenMP() {
+    return modo === 'producao' ? TOKEN_MP_PRODUCAO : TOKEN_MP_TESTE;
+}
 
 function entrar() {
     if (document.getElementById('senha').value === SENHA) {
         document.getElementById('telaLogin').style.display = 'none';
         document.getElementById('telaPainel').style.display = 'block';
         carregar();
-        timer = setInterval(() => carregar(true), 15000);
+        timer = setInterval(() => carregar(true), 10000);
     } else {
         document.getElementById('erroLogin').style.display = 'block';
     }
@@ -177,47 +168,12 @@ function definirModo(m) {
     modo = m;
     document.querySelectorAll('.modo').forEach(b => b.classList.remove('modo-ativo'));
     event.target.classList.add('modo-ativo');
-    alert(`✅ Modo ${m.toUpperCase()} ativado!`);
+    const temToken = !!getTokenMP();
+    alert(`✅ Modo ${m.toUpperCase()} ativado!\nMercado Pago: ${temToken ? '✅ Token configurado' : '⚠️ Sem Token'}`);
 }
 
 function real(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-// CRC16 para Pix válido
-function calcularCRC16(payload) {
-    let polinomio = 0x1021;
-    let resultado = 0xFFFF;
-    for (let i = 0; i < payload.length; i++) {
-        resultado ^= (payload.charCodeAt(i) << 8);
-        for (let j = 0; j < 8; j++) {
-            resultado = ((resultado & 0x8000) ? ((resultado << 1) ^ polinomio) : (resultado << 1)) & 0xFFFF;
-        }
-    }
-    return resultado.toString(16).toUpperCase().padStart(4, '0');
-}
-
-// Gera Pix Copia e Cola válido
-function gerarPayloadPix(chave, nome, cidade, valor, codigo) {
-    const limpar = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0,25);
-    nome = limpar(nome);
-    cidade = limpar(cidade);
-    const valorStr = Number(valor || 0).toFixed(2);
-    const id = (codigo || 'FLC001').substring(0,25);
-
-    let payload = "000201";
-    let conta = `0014br.gov.bcb.pix01${String(chave.length).padStart(2,'0')}${chave}`;
-    payload += `26${String(conta.length).padStart(2,'0')}${conta}`;
-    payload += "52040000";
-    payload += "5303986";
-    if (valorStr !== "0.00") payload += `54${String(valorStr.length).padStart(2,'0')}${valorStr}`;
-    payload += "5802BR";
-    payload += `59${String(nome.length).padStart(2,'0')}${nome}`;
-    payload += `60${String(cidade.length).padStart(2,'0')}${cidade}`;
-    let adicio = `05${String(id.length).padStart(2,'0')}${id}`;
-    payload += `62${String(adicio.length).padStart(2,'0')}${adicio}`;
-    payload += "6304";
-    return payload + calcularCRC16(payload);
 }
 
 async function carregar(silencioso = false) {
@@ -226,10 +182,10 @@ async function carregar(silencioso = false) {
     if (!silencioso) document.getElementById('carregando').style.display = 'none';
     if (error) { alert('Erro: ' + error.message); return; }
 
-    qtdAnterior = propostas.length;
+    const qtdAnt = propostas.length;
     propostas = data || [];
 
-    const totalEntradas = propostas.reduce((s, p) => s + Number(p.valor_entrada_pago ? p.valor_entrada : 0), 0);
+    const totalEntradas = propostas.reduce((s, p) => s + Number(p.valor_entrada || 0), 0);
     const totalRestante = propostas.reduce((s, p) => {
         const total = Number(p.valor_desejado || 0);
         const entrada = Number(p.valor_entrada || 0);
@@ -240,10 +196,10 @@ async function carregar(silencioso = false) {
     document.getElementById('totalEntradas').textContent = real(totalEntradas);
     document.getElementById('totalFalta').textContent = real(totalRestante);
 
-    if (silencioso && propostas.length > qtdAnterior) {
+    if (silencioso && propostas.length > qtdAnt) {
         const alerta = document.getElementById('alertaNovas');
         alerta.style.display = 'block';
-        setTimeout(() => alerta.style.display = 'none', 6000);
+        setTimeout(() => alerta.style.display = 'none', 5000);
     }
     filtrar();
 }
@@ -262,20 +218,10 @@ function filtrar() {
 }
 
 function criarCard(p) {
-    let statusCls, statusTxt;
-    if (p.valor_entrada_pago) {
-        statusCls = 'status-paga';
-        statusTxt = '💰 Entrada Paga';
-    } else if (p.status === 'Aprovada') {
-        statusCls = 'status-aprovada';
-        statusTxt = '✅ Aprovada';
-    } else if (p.status === 'Reprovada') {
-        statusCls = 'status-reprovada';
-        statusTxt = '❌ Reprovada';
-    } else {
-        statusCls = 'status-nova';
-        statusTxt = '⏳ Aguardando';
-    }
+    const statusCls = p.status === 'Aprovada' ? 'status-aprovada' : 
+                       p.status === 'Reprovada' ? 'status-reprovada' : 'status-nova';
+    const statusTxt = p.status === 'Aprovada' ? '✅ Aprovada' : 
+                      p.status === 'Reprovada' ? '❌ Reprovada' : '⏳ Aguardando';
 
     const valorTotal = Number(p.valor_desejado || 0);
     const percEnt = Number(p.percentual_entrada || 20);
@@ -286,26 +232,19 @@ function criarCard(p) {
     const valParc = parcelas ? resto * (1 + juros/100) / parcelas : 0;
 
     const cpf = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    
-    let qrExibicao = '<span style="color:#94a3b8">Aguardando</span>';
-    if (p.copia_cola_pix) {
-        const urlQr = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(p.copia_cola_pix)}`;
-        qrExibicao = `<img src="${urlQr}" class="qrcode-img" alt="QR Code">`;
-    }
+    const qrExibicao = p.qr_code_entrada 
+        ? `<img src="${p.qr_code_entrada}" class="qrcode-img" alt="QR Code">` 
+        : '<span style="color:#94a3b8">Aguardando geração</span>';
     const pixStatus = p.copia_cola_pix 
-        ? '<span style="color:#10B981; font-weight:600">✅ Pix Gerado</span>'
+        ? (p.copia_cola_pix.length > 40 ? '<span style="color:#10B981; font-weight:600">✅ MP - Pix Gerado</span>' : '<span style="color:#3B82F6">✅ Chave Pix</span>')
         : '<span style="color:#94a3b8">Aguardando</span>';
-
-    const botaoPagoDesabilitado = p.valor_entrada_pago ? 'disabled' : '';
-    const textoBotaoPago = p.valor_entrada_pago ? '✅ Entrada Confirmada' : '💰 Marcar Entrada Paga';
 
     return `
     <div class="proposta">
         <div class="proposta-topo">
             <div>
-                <div class="proposta-nome">${p.nome || '---'}</div>
-                <div class="proposta-info">Código: ${p.codigo_unico || '---'}</div>
-                <div class="proposta-info">CPF: ${cpf} | Tel: ${p.telefone || '---'}</div>
+                <div class="proposta-nome">${p.nome}</div>
+                <div class="proposta-info">Código: ${p.codigo_unico || '---'} | CPF: ${cpf}</div>
                 <div class="proposta-info">Pix: ${pixStatus}</div>
                 <div class="proposta-info">QR Code: ${qrExibicao}</div>
             </div>
@@ -340,8 +279,7 @@ function criarCard(p) {
         </div>
 
         <div class="botoes">
-            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})" ${p.status === 'Aprovada' ? 'disabled' : ''}>✅ Aprovar + Gerar Pix</button>
-            <button class="btn btn-pago" onclick="marcarEntradaPaga(${p.id})" ${botaoPagoDesabilitado}>${textoBotaoPago}</button>
+            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix (MP)</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
             <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
@@ -364,7 +302,10 @@ function atualizar(id) {
 }
 
 async function aprovar(id) {
-    if (processando) { alert('⏳ Aguarde...'); return; }
+    if (processando) {
+        alert('⏳ Aguarde, processando...');
+        return;
+    }
 
     const proposta = propostas.find(p => p.id === id);
     if (!proposta) return;
@@ -375,15 +316,55 @@ async function aprovar(id) {
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${parcelas}x`)) return;
+    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${parcelas}x\nModo: ${modo.toUpperCase()}`)) return;
 
     processando = true;
     const btn = document.getElementById(`btn-aprovar-${id}`);
     if (btn) btn.disabled = true;
 
-    // Gera Pix válido com valor exato
-    const copiaECola = gerarPayloadPix(CHAVE_PIX_FIXA, NOME_RECEBEDOR, CIDADE, entrada, proposta.codigo_unico);
-    const urlQr = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(copiaECola)}`;
+    let chavePixGerada = CHAVE_PIX_FIXA;
+    let qrCodeImagem = null;
+    let linkPagamentoGerado = null;
+    let mensagem = '';
+
+    if (modo === 'producao' && getTokenMP()) {
+        try {
+            console.log('🔄 Chamando Mercado Pago...');
+            const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${getTokenMP()}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    transaction_amount: entrada,
+                    description: `Entrada - ${proposta.nome} - ${proposta.codigo_unico || ''}`,
+                    payment_method_id: 'pix',
+                    payer: { email: 'pagamento@flashcred.com.br' }
+                })
+            });
+
+            const dados = await resposta.json();
+            console.log('✅ Resposta Mercado Pago:', dados);
+
+            if (dados.point_of_interaction?.transaction_data) {
+                chavePixGerada = dados.point_of_interaction.transaction_data.qr_code;
+                qrCodeImagem = dados.point_of_interaction.transaction_data.qr_code_base64 || null;
+                linkPagamentoGerado = dados.init_point || null;
+                mensagem = '✅ PIX GERADO PELO MERCADO PAGO COM SUCESSO!\nQR Code e Chave Pix salvos!';
+            } else if (dados.error) {
+                mensagem = `⚠️ Erro MP: ${dados.message || dados.error}\n\nUsando chave Pix fixa.`;
+            } else {
+                mensagem = '⚠️ Mercado Pago não retornou Pix → Usando chave fixa';
+            }
+        } catch (erro) {
+            console.log('❌ Erro de conexão:', erro);
+            mensagem = '⚠️ Sem conexão com Mercado Pago → Usando chave fixa';
+        }
+    } else {
+        mensagem = 'ℹ️ Usando chave Pix fixa';
+    }
 
     const { error } = await supabase.from('propostas').update({
         status: 'Aprovada',
@@ -392,34 +373,18 @@ async function aprovar(id) {
         valor_entrada: entrada,
         quantidade_parcelas: parcelas,
         juros: juros,
-        copia_cola_pix: copiaECola,
-        qr_code_entrada: urlQr
+        copia_cola_pix: chavePixGerada,
+        qr_code_entrada: qrCodeImagem,
+        link_pagamento: linkPagamentoGerado
     }).eq('id', id);
 
     processando = false;
     if (btn) btn.disabled = false;
 
-    if (error) alert('❌ Erro: ' + error.message);
-    else {
-        alert('✅ APROVADA!\nPix e QR Code gerados com sucesso!');
-        carregar();
-    }
-}
-
-async function marcarEntradaPaga(id) {
-    const proposta = propostas.find(p => p.id === id);
-    if (!proposta) return;
-
-    if (!confirm(`💰 Marcar entrada de ${proposta.nome} como PAGA?\nValor: ${real(proposta.valor_entrada || 0)}`)) return;
-
-    const { error } = await supabase.from('propostas').update({
-        valor_entrada_pago: true,
-        data_pagamento_entrada: new Date().toISOString()
-    }).eq('id', id);
-
-    if (error) alert('❌ Erro: ' + error.message);
-    else {
-        alert('✅ Entrada marcada como PAGA!\nO cliente já vê as parcelas disponíveis.');
+    if (error) {
+        alert('❌ Erro no banco:\n' + error.message);
+    } else {
+        alert(`✅ APROVADA!\n\n${mensagem}`);
         carregar();
     }
 }
@@ -431,30 +396,19 @@ async function reprovar(id) {
     else carregar();
 }
 
+async function enviarWhatsApp(id) {
+    const p = propostas.find(x => x.id === id);
+    if (!p) return;
+    const link = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(p.cpf || '').replace(/\D/g, '')}`;
+    const msg = `Olá ${p.nome}! ✅ Sua proposta foi APROVADA!\n\nValor: R$ ${real(p.valor_desejado || 0)}\nEntrada: R$ ${real(p.valor_entrada || 0)}\n\nAcesse abaixo para ver o Pix, QR Code e assinar o contrato:\n${link}\n\nObrigado! 📋`;
+    window.open(`https://wa.me/55${p.telefone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
 async function excluir(id) {
     if (!confirm('⚠️ Tem certeza? Essa ação não pode ser desfeita!')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if (error) alert('Erro: ' + error.message);
     else carregar();
-}
-
-function enviarWhatsApp(id) {
-    const p = propostas.find(x => x.id === id);
-    if (!p) return;
-    const tel = (p.telefone || '').replace(/\D/g, '');
-    const link = `${window.location.origin}/consultar.html?cpf=${(p.cpf || '').replace(/\D/g, '')}`;
-    const msg = `Olá ${p.nome}! ✅ Sua proposta foi APROVADA! 🎉
-
-Valor: ${real(p.valor_desejado || 0)}
-Entrada: ${real(p.valor_entrada || 0)}
-Parcelas: ${p.quantidade_parcelas || '---'}x
-
-Acesse abaixo para ver o Pix, QR Code e assinar o contrato:
-${link}
-
-Atenciosamente,
-📋 FlashCred - Distribuidora Flash Point`;
-    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 </script>
 </body>
