@@ -72,6 +72,8 @@
         .btn-aprovar { background: var(--sucesso); color: white; }
         .btn-aprovar:hover { background: #059669; }
         .btn-aprovar:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-manual { background: var(--alerta); color: #1E293B; }
+        .btn-manual:hover { background: #d9822b; }
         .btn-reprovar { background: var(--perigo); color: white; }
         .btn-reprovar:hover { background: #DC2626; }
         .btn-whatsapp { background: #25D366; color: white; }
@@ -137,21 +139,14 @@
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+const SERVIDOR_URL = 'https://flashcred-sistema.onrender.com';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SENHA = 'flash2026';
-const CHAVE_PIX_FIXA = '33552949852';
-const TOKEN_MP_PRODUCAO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
-const TOKEN_MP_TESTE = '';
-
 let modo = 'producao';
 let propostas = [];
 let timer = null;
 let processando = false;
-
-function getTokenMP() {
-    return modo === 'producao' ? TOKEN_MP_PRODUCAO : TOKEN_MP_TESTE;
-}
 
 function entrar() {
     if (document.getElementById('senha').value === SENHA) {
@@ -168,8 +163,7 @@ function definirModo(m) {
     modo = m;
     document.querySelectorAll('.modo').forEach(b => b.classList.remove('modo-ativo'));
     event.target.classList.add('modo-ativo');
-    const temToken = !!getTokenMP();
-    alert(`✅ Modo ${m.toUpperCase()} ativado!\nMercado Pago: ${temToken ? '✅ Token configurado' : '⚠️ Sem Token'}`);
+    alert(`✅ Modo ${m.toUpperCase()} ativado!`);
 }
 
 function real(valor) {
@@ -236,7 +230,7 @@ function criarCard(p) {
         ? `<img src="${p.qr_code_entrada}" class="qrcode-img" alt="QR Code">` 
         : '<span style="color:#94a3b8">Aguardando geração</span>';
     const pixStatus = p.copia_cola_pix 
-        ? (p.copia_cola_pix.length > 40 ? '<span style="color:#10B981; font-weight:600">✅ MP - Pix Gerado</span>' : '<span style="color:#3B82F6">✅ Chave Pix</span>')
+        ? '<span style="color:#10B981; font-weight:600">✅ Pix Gerado</span>' 
         : '<span style="color:#94a3b8">Aguardando</span>';
 
     return `
@@ -280,6 +274,7 @@ function criarCard(p) {
 
         <div class="botoes">
             <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix (MP)</button>
+            <button class="btn btn-manual" onclick="marcarEntradaManual(${p.id})">💰 Marcar Entrada Paga</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
             <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
@@ -301,6 +296,7 @@ function atualizar(id) {
     document.getElementById(`vp-${id}`).value = real(valorParc);
 }
 
+// 🟢 APROVAÇÃO COM CHAMADA SEGURA NO SERVIDOR (RENDER) PARA GERAR O PIX AUTOMÁTICO
 async function aprovar(id) {
     if (processando) {
         alert('⏳ Aguarde, processando...');
@@ -316,78 +312,56 @@ async function aprovar(id) {
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${parcelas}x\nModo: ${modo.toUpperCase()}`)) return;
+    if (!confirm(`✅ Aprovar proposta de ${proposta.nome} e gerar Pix automático?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}`)) return;
 
     processando = true;
     const btn = document.getElementById(`btn-aprovar-${id}`);
     if (btn) btn.disabled = true;
 
-    let chavePixGerada = CHAVE_PIX_FIXA;
-    let qrCodeImagem = null;
-    let linkPagamentoGerado = null;
-    let mensagem = '';
+    try {
+        // Atualiza primeiro os valores editados na tela no Supabase
+        await supabase.from('propostas').update({
+            valor_desejado: valor,
+            percentual_entrada: perc,
+            valor_entrada: entrada,
+            quantidade_parcelas: parcelas,
+            juros: juros
+        }).eq('id', id);
 
-    if (modo === 'producao' && getTokenMP()) {
-        try {
-            console.log('🔄 Chamando Mercado Pago...');
-            const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${getTokenMP()}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                body: JSON.stringify({
-                    transaction_amount: entrada,
-                    description: `Entrada - ${proposta.nome} - ${proposta.codigo_unico || ''}`,
-                    payment_method_id: 'pix',
-                    payer: { email: 'pagamento@flashcred.com.br' }
-                })
-            });
+        // Chama o servidor no Render para criar o Pix de forma segura
+        const resposta = await fetch(`${SERVIDOR_URL}/gerar-pix/${id}`, {
+            method: 'POST'
+        });
 
-            if (resposta.ok) {
-                const dados = await resposta.json();
-                console.log('✅ Resposta Mercado Pago:', dados);
-                if (dados.point_of_interaction?.transaction_data) {
-                    chavePixGerada = dados.point_of_interaction.transaction_data.qr_code;
-                    qrCodeImagem = dados.point_of_interaction.transaction_data.qr_code_base64 || null;
-                    linkPagamentoGerado = dados.init_point || null;
-                    mensagem = '✅ PIX GERADO PELO MERCADO PAGO COM SUCESSO!\nQR Code e Chave Pix salvos!';
-                } else {
-                    mensagem = '⚠️ Mercado Pago não retornou Pix → Usando chave fixa';
-                }
-            } else {
-                mensagem = '⚠️ Erro na API do Mercado Pago (CORS/Token) → Usando chave Pix fixa.';
-            }
-        } catch (erro) {
-            console.log('❌ Erro de conexão:', erro);
-            mensagem = '⚠️ Sem conexão com Mercado Pago → Usando chave fixa';
-        }
-    } else {
-        mensagem = 'ℹ️ Usando chave Pix fixa';
-    }
+        const dados = await resposta.json();
+        if (!resposta.ok) throw new Error(dados.erro || 'Erro ao gerar Pix no servidor');
 
-    // CORREÇÃO CRUCIAL: O Supabase SEMPRE executa e atualiza a proposta para 'Aprovada'
-    const { error } = await supabase.from('propostas').update({
-        status: 'Aprovada',
-        valor_desejado: valor,
-        percentual_entrada: perc,
-        valor_entrada: entrada,
-        quantidade_parcelas: parcelas,
-        juros: juros,
-        copia_cola_pix: chavePixGerada,
-        qr_code_entrada: qrCodeImagem,
-        link_pagamento: linkPagamentoGerado
-    }).eq('id', id);
-
-    processando = false;
-    if (btn) btn.disabled = false;
-
-    if (error) {
-        alert('❌ Erro no banco:\n' + error.message);
-    } else {
-        alert(`✅ APROVADA!\n\n${mensagem}`);
+        alert('✅ Proposta aprovada e Pix gerado com sucesso pelo Mercado Pago!');
         carregar();
+    } catch (erro) {
+        alert('❌ Erro ao aprovar: ' + erro.message);
+    } finally {
+        processando = false;
+        if (btn) btn.disabled = false;
+    }
+}
+
+// 💰 BOTÃO PARA DAR ENTRADA MANUAL (CASO O CLIENTE PAGUE EM DINHEIRO/OUTRO MEIO)
+async function marcarEntradaManual(id) {
+    if (!confirm('Deseja confirmar o recebimento da entrada manualmente (Dinheiro / Pix manual)?')) return;
+
+    try {
+        const { error } = await supabase.from('propostas').update({
+            status: 'Aprovada',
+            entrada_paga: true
+        }).eq('id', id);
+
+        if (error) throw error;
+
+        alert('✅ Entrada marcada como paga com sucesso!');
+        carregar();
+    } catch (erro) {
+        alert('❌ Erro ao atualizar: ' + erro.message);
     }
 }
 
