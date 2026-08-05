@@ -1,559 +1,89 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consultar Proposta | FlashCred</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0A2463',
-                        pix: '#32BCAD',
-                        sucesso: '#10B981',
-                        alerta: '#F59E0B',
-                        perigo: '#EF4444',
-                        fundo: '#F8FAFC'
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        .contrato {
-            background: white;
-            border: 1px solid #cbd5e1;
-            border-radius: 12px;
-            padding: 24px;
-            margin: 20px 0;
-            font-size: 14px;
-            line-height: 1.7;
-        }
-        .contrato h3 {
-            text-align: center;
-            color: #0A2463;
-            font-weight: 700;
-            margin-bottom: 20px;
-            border-bottom: 2px solid #0A2463;
-            padding-bottom: 10px;
-        }
-        .assinatura-area {
-            border: 2px dashed #94a3b8;
-            border-radius: 8px;
-            height: 120px;
-            margin: 16px 0;
-            position: relative;
-            background: #fafafa;
-            touch-action: none;
-        }
-        .assinatura-canvas {
-            width: 100%;
-            height: 100%;
-            cursor: crosshair;
-        }
-        .parcelas-tabela {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 16px 0;
-            background: white;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-        .parcelas-tabela th {
-            background: #0A2463;
-            color: white;
-            padding: 12px 10px;
-            text-align: left;
-            font-size: 13px;
-            font-weight: 600;
-        }
-        .parcelas-tabela td {
-            padding: 12px 10px;
-            border-top: 1px solid #e2e8f0;
-            font-size: 14px;
-        }
-        .parcela-verde { border-left: 5px solid #22C55E; background: #F0FDF4; }
-        .parcela-amarela { border-left: 5px solid #F59E0B; background: #FFFBEB; }
-        .parcela-vermelha { border-left: 5px solid #EF4444; background: #FEF2F2; }
-        .pix-copia {
-            background: #f0fdf4;
-            border: 1px solid #bbf7d0;
-            border-radius: 8px;
-            padding: 14px;
-            word-break: break-all;
-            font-size: 12px;
-            color: #166534;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .pix-copia:hover { background: #dcfce7; }
-        .pagamento-entrada {
-            border: 3px solid #32BCAD;
-            border-radius: 16px;
-            padding: 24px;
-            background: linear-gradient(135deg, #F0FDFA 0%, #CCFBF1 100%);
-        }
-        .oculto { display: none !important; }
-        .qrcode-box {
-            text-align: center;
-            padding: 24px;
-            background: white;
-            border-radius: 12px;
-            margin: 16px 0;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-        }
-        .aviso {
-            background: #FEF3C7;
-            border-left: 4px solid #F59E0B;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin: 16px 0;
-            font-size: 15px;
-        }
-        .sucesso-aviso {
-            background: #D1FAE5;
-            border-left: 4px solid #10B981;
-            padding: 16px;
-            border-radius: 8px;
-            margin: 16px 0;
-            font-size: 15px;
-        }
-        .info-aviso {
-            background: #EFF6FF;
-            border-left: 4px solid #3B82F6;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin: 16px 0;
-            font-size: 14px;
-        }
-        .botao {
-            padding: 12px 16px;
-            border-radius: 10px;
-            font-weight: 700;
-            border: none;
-            cursor: pointer;
-            margin: 6px 4px;
-            font-size: 15px;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .botao-principal { background: #0A2463; color: white; width: 100%; }
-        .botao-principal:hover { background: #0c3499; transform: translateY(-1px); }
-        .botao-sucesso { background: #10B981; color: white; flex: 1; }
-        .botao-sucesso:hover { background: #059669; }
-        .botao-pix { background: #32BCAD; color: white; flex: 1; }
-        .botao-pix:hover { background: #0d9488; }
-        .botao-whatsapp { background: #25D366; color: white; width: 100%; }
-        .botao-whatsapp:hover { background: #1fb85c; }
-        .botao-voltar { background: #F1F5F9; color: #475569; }
-        .botao-voltar:hover { background: #E2E8F0; }
-        .botao-imprimir { background: #8B5CF6; color: white; }
-        .botao-imprimir:hover { background: #7C3AED; }
-        .botao:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-        .copia-nota {
-            font-size: 12px;
-            color: #166534;
-            margin-top: 8px;
-        }
-        .lido-check {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            margin: 20px 0;
-            padding: 14px;
-            background: #EFF6FF;
-            border-radius: 10px;
-            border: 1px solid #BFDBFE;
-        }
-        .lido-check input { width: 22px; height: 22px; cursor: pointer; margin-top: 2px; }
-        .lido-check label { font-weight: 600; color: #1E40AF; cursor: pointer; font-size: 15px; line-height: 1.5; }
-        .resumo-card {
-            background: white;
-            border-radius: 12px;
-            padding: 16px;
-            margin: 12px 0;
-            border-left: 4px solid #0A2463;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-        }
-        .resumo-titulo { font-size: 13px; color: #64748B; font-weight: 600; }
-        .resumo-valor { font-size: 22px; font-weight: 800; color: #0A2463; margin-top: 4px; }
-        .etapa {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin: 4px 0;
-            font-size: 14px;
-        }
-        .etapa-concluida { background: #ECFDF5; color: #065F46; border-left: 3px solid #10B981; }
-        .etapa-andamento { background: #FEF9C3; color: #854D0E; border-left: 3px solid #FACC15; }
-        .etapa-pendente { background: #F3F4F6; color: #6B7280; border-left: 3px solid #D1D5DB; }
-        @media print {
-            body * { visibility: hidden; }
-            .contrato, .contrato * { visibility: visible; }
-            .contrato { position: absolute; left: 0; top: 0; width: 100%; border: none; }
-            .nao-imprimir { display: none !important; }
-        }
-    </style>
-</head>
-<body class="bg-fundo text-slate-700 min-h-screen">
-
-<div class="max-w-2xl mx-auto p-4">
-    <h1 class="text-[clamp(1.5rem,4vw,1.8rem)] font-bold text-primary mb-6 text-center">🔍 Consultar Proposta</h1>
-
-    <button onclick="voltar()" class="botao botao-voltar nao-imprimir mb-4">
-        <i class="fas fa-arrow-left"></i> Voltar
+<!-- Seletor de Opções -->
+<div class="flex gap-3 my-4">
+    <button onclick="gerarPagamentoMP('pix')" class="botao botao-pix flex-1">
+        <i class="fas fa-qrcode"></i> Pagar com Pix
     </button>
-
-    <div id="telaConsulta" class="bg-white rounded-xl shadow p-6 mb-6">
-        <label class="block font-semibold text-sm text-slate-500 mb-2">Digite seu CPF</label>
-        <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" 
-            class="w-full p-3 border border-slate-200 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
-        <button onclick="consultar()" class="botao botao-principal mt-4">
-            <i class="fas fa-search"></i> Consultar Proposta
-        </button>
-    </div>
-
-    <div id="resultado" class="hidden"></div>
-
-    <button onclick="window.open('https://wa.me/5511973294235?text=Olá! Preciso de suporte sobre minha proposta.', '_blank')" 
-        class="botao botao-whatsapp nao-imprimir mt-6">
-        <i class="fab fa-whatsapp"></i> Falar com Suporte
+    <button onclick="gerarPagamentoMP('boleto')" class="botao botao-principal flex-1">
+        <i class="fas fa-file-invoice-dollar"></i> Pagar com Boleto
     </button>
 </div>
 
+<!-- Indicador de Carregamento -->
+<div id="loadingPagamento" class="hidden text-center p-4 text-slate-500">
+    <i class="fas fa-spinner fa-spin"></i> Gerando cobrança no Mercado Pago...
+</div>
+
+<!-- Container do Pix -->
+<div id="containerPix" class="hidden qrcode-box">
+    <h4 class="font-bold text-pix mb-2">QR Code Pix</h4>
+    <div id="qrcode-mp" class="flex justify-center my-3"></div>
+    <div class="pix-copia mt-3" onclick="copiarPix(document.getElementById('pixCopiaCola').innerText)">
+        <strong>Copia e Cola Pix:</strong><br>
+        <span id="pixCopiaCola" style="font-size:11px;"></span>
+        <div class="copia-nota">👆 Clique para copiar</div>
+    </div>
+</div>
+
+<!-- Container do Boleto -->
+<div id="containerBoleto" class="hidden bg-white p-4 rounded-xl shadow border border-slate-200 text-center">
+    <h4 class="font-bold text-primary mb-2">Boleto Bancário Gerado</h4>
+    <p class="text-sm text-slate-600 mb-3">Clique no botão abaixo para visualizar, imprimir ou pagar o boleto:</p>
+    <a id="linkBoleto" href="#" target="_blank" class="botao botao-principal inline-block mb-3">
+        <i class="fas fa-external-link-alt"></i> Abrir Boleto Bancário
+    </a>
+    <p class="text-xs text-slate-500 mt-2">Linha Digitável:</p>
+    <code id="codigoBoleto" class="text-xs bg-slate-100 p-2 block rounded mt-1 break-all"></code>
+</div>
+
 <script>
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-const CHAVE_PIX_FIXA = '33552949852';
-const NOME_RECEBEDOR = 'FLASH POINT';
-
-let proposta = null;
-let assinaturaCanvas = null;
-let assinaturaCtx = null;
-let assinando = false;
-let assinaturaFeita = false;
-let canalRealtime = null;
-let qrCodeGerado = null;
-
-function voltar() {
-    if (canalRealtime) {
-        supabase.removeChannel(canalRealtime);
-        canalRealtime = null;
-    }
-    document.getElementById('resultado').classList.add('hidden');
-    document.getElementById('telaConsulta').classList.remove('hidden');
-    document.getElementById('cpf').value = '';
-    qrCodeGerado = null;
-}
-
-function formatarCPF(cpf) {
-    cpf = cpf.replace(/\D/g, '');
-    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-}
-
-function formatarData(data) {
-    if (!data) return '---';
-    const d = new Date(data);
-    return d.toLocaleDateString('pt-BR');
-}
-
-function real(valor) {
-    return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function calcularCRC16(s) {
-    let crc = 0xFFFF;
-    for (let i = 0; i < s.length; i++) {
-        crc ^= s.charCodeAt(i) << 8;
-        for (let j = 0; j < 8; j++) {
-            crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+async function gerarPagamentoMP(tipo) {
+    const valorEntrada = Number(proposta.valor_desejado || 0) * (Number(proposta.percentual_entrada) || 20) / 100;
+    
+    document.getElementById('loadingPagamento').classList.remove('hidden');
+    document.getElementById('containerPix').classList.add('hidden');
+    document.getElementById('containerBoleto').classList.add('hidden');
+    
+    try {
+        const res = await fetch('https://seu-servidor.com/api/criar-pagamento', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                valor: valorEntrada,
+                tipo: tipo,
+                cpf: proposta.cpf,
+                nome: proposta.nome,
+                email: proposta.email
+            })
+        });
+        
+        const data = await res.json();
+        document.getElementById('loadingPagamento').classList.add('hidden');
+        
+        if (!data.success) {
+            alert('Erro ao gerar pagamento: ' + JSON.stringify(data.error));
+            return;
         }
-    }
-    return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-}
-
-function gerarCodigoPix(valor, descricao = 'Pagamento', txId = '***') {
-    const valorStr = Number(valor || 0).toFixed(2);
-    const chave = CHAVE_PIX_FIXA;
-    const nome = NOME_RECEBEDOR.replace(/[^A-Za-z0-9 ]/g, '').substring(0, 25).toUpperCase();
-    const cidade = 'SAO PAULO';
-
-    function montarParte(id, conteudo) {
-        const s = String(conteudo || '');
-        return id + String(s.length).padStart(2, '0') + s;
-    }
-
-    const brCod = montarParte('00', 'BR-GOV.BCB.PIX') + montarParte('01', chave);
-    let payload = montarParte('00', '01')
-        + montarParte('26', brCod)
-        + montarParte('52', '0000')
-        + montarParte('53', '986');
-    
-    if (valorStr !== '0.00') {
-        payload += montarParte('54', valorStr);
-    }
-    
-    payload += montarParte('59', nome)
-        + montarParte('60', cidade)
-        + montarParte('62', montarParte('05', txId));
-
-    const crc = calcularCRC16(payload + '6304');
-    return payload + '6304' + crc;
-}
-
-async function consultar() {
-    let cpf = document.getElementById('cpf').value.replace(/\D/g, '');
-    if (cpf.length !== 11) { 
-        alert('⚠️ Digite um CPF válido com 11 dígitos!'); 
-        return; 
-    }
-
-    document.getElementById('telaConsulta').classList.add('hidden');
-    document.getElementById('resultado').innerHTML = '<p class="text-center p-10 text-slate-500 text-lg">🔎 Buscando sua proposta...</p>';
-    document.getElementById('resultado').classList.remove('hidden');
-
-    const { data, error } = await supabase
-        .from('propostas')
-        .select('*')
-        .filter('cpf', 'ilike', '%' + cpf + '%')
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-    if (error) {
-        document.getElementById('resultado').innerHTML = `
-            <div class="aviso">❌ Erro na busca: ${error.message}</div>
-            <button onclick="voltar()" class="botao botao-voltar w-full mt-4">Voltar e tentar novamente</button>`;
-        return;
-    }
-
-    if (!data || data.length === 0) {
-        document.getElementById('resultado').innerHTML = `
-            <div class="aviso">⚠️ Proposta não encontrada! Verifique o CPF digitado.</div>
-            <button onclick="voltar()" class="botao botao-voltar w-full mt-4">Voltar e corrigir</button>`;
-        return;
-    }
-
-    proposta = data[0];
-    mostrarProposta();
-    ativarNotificacaoTempoReal(proposta.id);
-}
-
-function ativarNotificacaoTempoReal(propostaId) {
-    canalRealtime = supabase
-        .channel('proposta-atualizada')
-        .on(
-            'postgres_changes',
-            {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'propostas',
-                filter: `id=eq.${propostaId}`
-            },
-            (payload) => {
-                proposta = payload.new;
-                mostrarProposta();
-            }
-        )
-        .subscribe();
-}
-
-function getStatusEtapas(status, assinada) {
-    const entradaPaga = proposta.valor_entrada_pago;
-    return [
-        { titulo: '📩 Proposta enviada', concluida: true },
-        { titulo: status === 'Aprovada' ? '✅ Proposta aprovada' : status === 'Reprovada' ? '❌ Reprovada' : '⏳ Em análise', concluida: status === 'Aprovada' || entradaPaga },
-        { titulo: assinada ? '✅ Contrato assinado' : '📄 Assinar contrato', concluida: assinada },
-        { titulo: entradaPaga ? '✅ Entrada confirmada' : '💳 Pagamento da entrada', concluida: entradaPaga },
-        { titulo: entradaPaga ? '📊 Parcelas liberadas' : '🔒 Parcelas após entrada', concluida: entradaPaga }
-    ];
-}
-
-function copiarPix(texto) {
-    navigator.clipboard.writeText(texto).then(() => {
-        alert('✅ Código Pix copiado! Cole no app do banco para pagar.');
-    }).catch(() => {
-        const textarea = document.createElement('textarea');
-        textarea.value = texto;
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
-        alert('✅ Código Pix copiado!');
-    });
-}
-
-function mostrarProposta() {
-    const valorTotal = Number(proposta.valor_desejado || 0);
-    const percEnt = Number(proposta.percentual_entrada || 20);
-    const valorEntrada = valorTotal * percEnt / 100;
-    const quantidadeParc = proposta.quantidade_parcelas || 1;
-    const juros = Number(proposta.juros || 0);
-    const entradaPaga = proposta.valor_entrada_pago;
-    const jaAssinou = proposta.assinatura_assinada;
-
-    const codigoPixEntrada = proposta.copia_cola_pix || gerarCodigoPix(valorEntrada, 'Entrada', proposta.codigo_unico);
-
-    let statusTexto, statusCor;
-    if (entradaPaga) {
-        statusTexto = '✅ ENTRADA CONFIRMADA!'; statusCor = 'text-green-600';
-    } else if (proposta.status === 'Aprovada') {
-        statusTexto = '✅ APROVADA — Pague a entrada abaixo'; statusCor = 'text-blue-600';
-    } else if (proposta.status === 'Reprovada') {
-        statusTexto = '❌ Reprovada'; statusCor = 'text-red-600';
-    } else {
-        statusTexto = '⏳ Aguardando Análise'; statusCor = 'text-yellow-600';
-    }
-
-    const etapas = getStatusEtapas(proposta.status, jaAssinou);
-
-    let html = `
-    <div class="bg-white rounded-xl shadow p-6">
-        <h2 class="text-xl font-bold text-primary mb-2">📋 Proposta de ${proposta.nome}</h2>
-        <p class="text-sm text-slate-500 mb-3">Código: ${proposta.codigo_unico || '---'}</p>
-        <p class="${statusCor} font-bold text-lg mb-6 p-3 bg-slate-50 rounded-lg">${statusTexto}</p>
-
-        <div class="resumo-card">
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <div class="resumo-titulo">💰 Valor Total</div>
-                    <div class="resumo-valor">${real(valorTotal)}</div>
-                </div>
-                <div>
-                    <div class="resumo-titulo">💵 Entrada (${percEnt}%)</div>
-                    <div class="resumo-valor text-green-600">${real(valorEntrada)}</div>
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4 mt-3">
-                <div>
-                    <div class="resumo-titulo">📊 Parcelas</div>
-                    <div class="resumo-valor text-blue-600">${quantidadeParc}x</div>
-                </div>
-                <div>
-                    <div class="resumo-titulo">📈 Juros</div>
-                    <div class="resumo-valor text-purple-600">${juros}% ao mês</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="info-aviso">
-            <strong>📋 Situação:</strong>
-            ${etapas.map(e => `
-                <div class="etapa ${e.concluida ? 'etapa-concluida' : 'etapa-pendente'}">
-                    ${e.concluida ? '✅' : '⬜'} ${e.titulo}
-                </div>
-            `).join('')}
-        </div>`;
-
-    // PAGAMENTO DA ENTRADA
-    if (!entradaPaga && proposta.status === 'Aprovada') {
-        html += `
-        <div class="pagamento-entrada mt-6" id="areaPagamento">
-            <h3 class="text-xl font-bold text-pix mb-4 text-center">💳 PAGAMENTO DA ENTRADA</h3>
-            <p class="text-center font-semibold text-lg mb-4">Valor: <span class="text-2xl text-green-700 font-bold">${real(valorEntrada)}</span></p>
+        
+        if (tipo === 'pix') {
+            document.getElementById('containerPix').classList.remove('hidden');
+            document.getElementById('pixCopiaCola').innerText = data.qr_code;
             
-            <div class="qrcode-box">
-                <div id="qrcode-entrada"></div>
-                <p class="text-sm text-slate-500 mt-2">Escaneie ou copie o código abaixo</p>
-            </div>
-
-            <div class="pix-copia" onclick="copiarPix('${codigoPixEntrada.replace(/'/g, "\\'")}')">
-                <strong>Copia e Cola Pix:</strong><br>
-                <span style="font-size:11px;">${codigoPixEntrada.substring(0, 60)}...</span>
-                <div class="copia-nota">👆 Clique para copiar</div>
-            </div>
-
-            <div class="lido-check">
-                <input type="checkbox" id="liAceito" onchange="verificarAceito()">
-                <label for="liAceito">Li e concordo com o contrato abaixo. Após o pagamento, envie o comprovante ou aguarde a confirmação automática.</label>
-            </div>
-
-            <div class="contrato nao-imprimir" id="areaContrato">
-                <h3>📄 CONTRATO DE PRESTAÇÃO</h3>
-                <p>Pelo presente instrumento, eu <strong>${proposta.nome}</strong>, CPF ${formatarCPF(proposta.cpf || '')}, declaro que solicito crédito junto à <strong>FLASH POINT / FLASHCRED</strong>.</p>
-                <p><strong>Valor Total:</strong> ${real(valorTotal)}<br>
-                <strong>Entrada:</strong> ${real(valorEntrada)}<br>
-                <strong>Parcelas:</strong> ${quantidadeParc}x<br>
-                <strong>Juros:</strong> ${juros}% ao mês</p>
-                <p>Declaro que os dados informados são verdadeiros e me comprometo a honrar o pagamento conforme combinado. O bem será entregue mediante confirmação do pagamento.</p>
-                <p style="margin-top:12px;"><strong>Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
-            </div>
-
-            <div class="botoes-linha">
-                <button onclick="imprimirContrato()" class="botao botao-imprimir nao-imprimir">
-                    <i class="fas fa-print"></i> Imprimir Contrato
-                </button>
-            </div>
-        </div>`;
-    } else if (entradaPaga) {
-        html += `
-        <div class="sucesso-aviso mt-6">
-            <h3 class="text-xl font-bold text-green-700 mb-2">✅ ENTRADA PAGA — Parcelas Liberadas!</h3>
-            <p>Obrigado pelo pagamento! Confira abaixo os detalhes do seu crédito e as parcelas a pagar.</p>
-        </div>
-
-        <div class="contrato">
-            <h3>📄 CONTRATO APROVADO</h3>
-            <p><strong>Cliente:</strong> ${proposta.nome}<br>
-            <strong>CPF:</strong> ${formatarCPF(proposta.cpf || '')}<br>
-            <strong>Valor Total:</strong> ${real(valorTotal)}<br>
-            <strong>Entrada Paga:</strong> ${real(valorEntrada)} ✅<br>
-            <strong>Restante:</strong> ${real(valorTotal - valorEntrada)}<br>
-            <strong>Parcelas:</strong> ${quantidadeParc}x de ${real((valorTotal - valorEntrada) * (1 + juros/100) / quantidadeParc)}<br>
-            <strong>Juros:</strong> ${juros}% ao mês</p>
-            <p style="margin-top:12px;">✅ Contrato assinado e entrada confirmada. As parcelas serão geradas mensalmente conforme combinado.</p>
-        </div>
-
-        <button onclick="imprimirContrato()" class="botao botao-imprimir w-full mt-4">
-            <i class="fas fa-print"></i> Imprimir Contrato
-        </button>`;
-    } else if (proposta.status === 'Reprovada') {
-        html += `<div class="aviso mt-6">❌ Sua proposta foi analisada e reprovada. Entre em contato para mais informações.</div>`;
-    } else {
-        html += `<div class="aviso mt-6">⏳ Sua proposta está em análise. Aguarde a aprovação para visualizar o Pix e o contrato.</div>`;
+            // Limpa QR Code anterior e gera novo
+            document.getElementById("qrcode-mp").innerHTML = "";
+            new QRCode(document.getElementById("qrcode-mp"), {
+                text: data.qr_code,
+                width: 180,
+                height: 180
+            });
+        } else {
+            document.getElementById('containerBoleto').classList.remove('hidden');
+            document.getElementById('linkBoleto').href = data.external_resource_url;
+            document.getElementById('codigoBoleto').innerText = data.barcode || 'Disponível no link acima';
+        }
+    } catch (e) {
+        document.getElementById('loadingPagamento').classList.add('hidden');
+        alert('Erro de conexão com o servidor de pagamento.');
     }
-
-    html += `</div>`;
-    document.getElementById('resultado').innerHTML = html;
-
-    // Gerar QR Code
-    if (!entradaPaga && proposta.status === 'Aprovada' && codigoPixEntrada && window.QRCode) {
-        setTimeout(() => {
-            const container = document.getElementById('qrcode-entrada');
-            if (container && !qrCodeGerado) {
-                container.innerHTML = '';
-                new QRCode(container, {
-                    text: codigoPixEntrada,
-                    width: 200,
-                    height: 200,
-                    correctLevel: QRCode.CorrectLevel.M
-                });
-                qrCodeGerado = true;
-            }
-        }, 300);
-    }
-}
-
-function verificarAceito() {
-    const aceito = document.getElementById('liAceito').checked;
-    // Aqui pode habilitar botões extras se precisar
-}
-
-function imprimirContrato() {
-    window.print();
 }
 </script>
-</body>
-</html>
+MN
