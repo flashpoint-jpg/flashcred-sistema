@@ -71,6 +71,7 @@
         .btn { padding: 8px 14px; font-size: 13px; border-radius: 7px; }
         .btn-aprovar { background: var(--sucesso); color: white; }
         .btn-aprovar:hover { background: #059669; }
+        .btn-aprovar:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-reprovar { background: var(--perigo); color: white; }
         .btn-reprovar:hover { background: #DC2626; }
         .btn-whatsapp { background: #25D366; color: white; }
@@ -80,7 +81,7 @@
 
         .vazio { text-align: center; color: var(--texto-claro); padding: 40px; font-size: 15px; }
         .carregando { text-align: center; padding: 30px; color: var(--texto-claro); display: none; font-size: 14px; }
-        .qrcode-img { max-width: 100px; border-radius: 6px; margin-top: 6px; }
+        .qrcode-img { max-width: 120px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
     </style>
 </head>
 <body>
@@ -134,25 +135,19 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
 <script>
-// ==============================================
-// ⚙️ CONFIGURAÇÕES — NÃO ALTERE A MENOS QUE SAIBA
-// ==============================================
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SENHA = 'flash2026';
-
-// ✅ SUA CHAVE PIX FIXA (USADA SE MERCADO PAGO FALHAR)
-const CHAVE_PIX_AUTOMATICA = '33552949852';
-
-// ✅ TOKEN MERCADO PAGO — PRODUÇÃO
+const CHAVE_PIX_FIXA = '33552949852';
 const TOKEN_MP_PRODUCAO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 const TOKEN_MP_TESTE = '';
 
 let modo = 'producao';
 let propostas = [];
 let timer = null;
+let processando = false;
 
 function getTokenMP() {
     return modo === 'producao' ? TOKEN_MP_PRODUCAO : TOKEN_MP_TESTE;
@@ -173,8 +168,8 @@ function definirModo(m) {
     modo = m;
     document.querySelectorAll('.modo').forEach(b => b.classList.remove('modo-ativo'));
     event.target.classList.add('modo-ativo');
-    const temToken = getTokenMP() && getTokenMP().length > 10;
-    alert(`✅ Modo ${m.toUpperCase()} ativado!\nPix: ${CHAVE_PIX_AUTOMATICA}\nMercado Pago: ${temToken ? '✅ Ativo' : '⚠️ Sem Token'}`);
+    const temToken = !!getTokenMP();
+    alert(`✅ Modo ${m.toUpperCase()} ativado!\nMercado Pago: ${temToken ? '✅ Token configurado' : '⚠️ Sem Token'}`);
 }
 
 function real(valor) {
@@ -239,9 +234,9 @@ function criarCard(p) {
     const cpf = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     const qrExibicao = p.qr_code_entrada 
         ? `<img src="${p.qr_code_entrada}" class="qrcode-img" alt="QR Code">` 
-        : '<span style="color:#94a3b8">Aguardando aprovação</span>';
+        : '<span style="color:#94a3b8">Aguardando geração</span>';
     const pixStatus = p.copia_cola_pix 
-        ? (p.copia_cola_pix.length > 30 ? '<span style="color:#10B981; font-weight:600">✅ Gerado pelo Mercado Pago</span>' : '<span style="color:#3B82F6">✅ Chave fixa</span>')
+        ? (p.copia_cola_pix.length > 40 ? '<span style="color:#10B981; font-weight:600">✅ MP - Pix Gerado</span>' : '<span style="color:#3B82F6">✅ Chave Pix</span>')
         : '<span style="color:#94a3b8">Aguardando</span>';
 
     return `
@@ -284,7 +279,7 @@ function criarCard(p) {
         </div>
 
         <div class="botoes">
-            <button class="btn btn-aprovar" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix</button>
+            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix (MP)</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
             <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
@@ -306,8 +301,12 @@ function atualizar(id) {
     document.getElementById(`vp-${id}`).value = real(valorParc);
 }
 
-// ✅ APROVAR — GERA PIX + QR CODE + FALLBACK PARA CHAVE FIXA
 async function aprovar(id) {
+    if (processando) {
+        alert('⏳ Aguarde, processando...');
+        return;
+    }
+
     const proposta = propostas.find(p => p.id === id);
     if (!proposta) return;
 
@@ -319,19 +318,24 @@ async function aprovar(id) {
 
     if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\n${parcelas}x\nModo: ${modo.toUpperCase()}`)) return;
 
-    let chavePixGerada = CHAVE_PIX_AUTOMATICA;
+    processando = true;
+    const btn = document.getElementById(`btn-aprovar-${id}`);
+    if (btn) btn.disabled = true;
+
+    let chavePixGerada = CHAVE_PIX_FIXA;
     let qrCodeImagem = null;
     let linkPagamentoGerado = null;
-    let origemPix = '🔑 Usando chave Pix fixa';
+    let mensagem = '';
 
     if (modo === 'producao' && getTokenMP()) {
         try {
             console.log('🔄 Chamando Mercado Pago...');
-            const resp = await fetch('https://api.mercadopago.com/v1/payments', {
+            const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${getTokenMP()}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({
                     transaction_amount: entrada,
@@ -341,24 +345,28 @@ async function aprovar(id) {
                 })
             });
 
-            const dados = await resp.json();
-            console.log('✅ Resposta MP:', dados);
+            const dados = await resposta.json();
+            console.log('✅ Resposta Mercado Pago:', dados);
 
             if (dados.point_of_interaction?.transaction_data) {
                 chavePixGerada = dados.point_of_interaction.transaction_data.qr_code;
                 qrCodeImagem = dados.point_of_interaction.transaction_data.qr_code_base64 || null;
                 linkPagamentoGerado = dados.init_point || null;
-                origemPix = '✅ Pix GERADO pelo Mercado Pago!';
+                mensagem = '✅ PIX GERADO PELO MERCADO PAGO COM SUCESSO!\nQR Code e Chave Pix salvos!';
             } else if (dados.error) {
-                origemPix = `⚠️ Erro MP: ${dados.message || dados.error} → Usando chave fixa`;
+                mensagem = `⚠️ Erro MP: ${dados.message || dados.error}\n\nUsando chave Pix fixa.`;
+            } else {
+                mensagem = '⚠️ Mercado Pago não retornou Pix → Usando chave fixa';
             }
         } catch (erro) {
             console.log('❌ Erro de conexão:', erro);
-            origemPix = '⚠️ Sem conexão com MP → Usando chave fixa';
+            mensagem = '⚠️ Sem conexão com Mercado Pago → Usando chave fixa';
         }
+    } else {
+        mensagem = 'ℹ️ Usando chave Pix fixa';
     }
 
-    const dadosParaSalvar = {
+    const { error } = await supabase.from('propostas').update({
         status: 'Aprovada',
         valor_desejado: valor,
         percentual_entrada: perc,
@@ -368,14 +376,15 @@ async function aprovar(id) {
         copia_cola_pix: chavePixGerada,
         qr_code_entrada: qrCodeImagem,
         link_pagamento: linkPagamentoGerado
-    };
+    }).eq('id', id);
 
-    const { error } = await supabase.from('propostas').update(dadosParaSalvar).eq('id', id);
+    processando = false;
+    if (btn) btn.disabled = false;
 
     if (error) {
-        alert('❌ Erro no banco:\n' + error.message + '\n\n⚠️ Execute o SQL no Supabase!');
+        alert('❌ Erro no banco:\n' + error.message);
     } else {
-        alert(`✅ APROVADA!\n\n${origemPix}\n\nChave Pix salva! Cliente já pode pagar!`);
+        alert(`✅ APROVADA!\n\n${mensagem}`);
         carregar();
     }
 }
