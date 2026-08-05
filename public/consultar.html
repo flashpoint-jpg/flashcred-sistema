@@ -68,6 +68,29 @@
 
         .erro { color: var(--perigo); text-align: center; font-size: 14px; margin-top: 10px; display: none; }
         .carregando { text-align: center; color: var(--texto-claro); display: none; margin: 15px 0; }
+        
+        .status-aguardando-aprovacao {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--alerta);
+            background: #FEF3C7;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-weight: 500;
+        }
+        .spinner-mini {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #F59E0B;
+            border-top: 2px solid transparent;
+            border-radius: 50%;
+            animation: girar 0.8s linear infinite;
+        }
+        @keyframes girar { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -173,9 +196,12 @@
                 <div class="copia-cola" id="copiaColaPix">Gerando Pix...</div>
                 <button type="button" style="background: var(--alerta); color: #1E293B; font-size: 13px; padding: 8px; margin-bottom: 8px;" onclick="copiarPix()">📋 Copiar Código Pix</button>
             </div>
-            <!-- Botão de verificação manual adicionado para forçar a atualização imediata -->
-            <button type="button" style="background: var(--sucesso); margin-top: 10px; font-size: 14px;" onclick="verificarStatusPagamentoManual()">🔄 Já fiz o pagamento / Atualizar Status</button>
-            <p style="font-size: 12px; color: var(--texto-claro); text-align: center; margin-top: 10px;">Caso tenha pago ou a administração tenha marcado como pago, clique no botão verde acima.</p>
+            
+            <!-- Indicador visual automático de que o sistema está aguardando a confirmação da administração -->
+            <div class="status-aguardando-aprovacao">
+                <div class="spinner-mini"></div>
+                <span>Aguardando confirmação do pagamento pela administração...</span>
+            </div>
         </div>
 
         <div id="etapaFluxoSeguinte" style="display:none;" class="secao-etapa" style="background: #F0FDF4; border-color: #BBF7D0;">
@@ -200,6 +226,7 @@ let propostaAtual = null;
 let base64Selfie = '';
 let canvas, ctx, desenhando = false;
 let subEtapaCliente = 'parcelas';
+let intervaloChecagem = null;
 
 window.onload = () => {
     canvas = document.getElementById('canvasAssinatura');
@@ -291,6 +318,7 @@ async function buscarPropostaAutomatica(cpfLimpo) {
     propostaAtual = data;
     exibirDadosProposta();
     escutarMudancasRealtime(data.id);
+    iniciarVerificacaoAutomatica(data.id);
 }
 
 function escutarMudancasRealtime(idProposta) {
@@ -302,19 +330,26 @@ function escutarMudancasRealtime(idProposta) {
         .subscribe();
 }
 
-// Função para buscar novamente no banco ao clicar no botão de checagem manual
-async function verificarStatusPagamentoManual() {
-    if (!propostaAtual || !propostaAtual.id) return;
-    document.getElementById('carregando').style.display = 'block';
+// Mecanismo redundante automático (Polling a cada 3 segundos) para garantir atualização imediata se o Realtime do Supabase falhar
+function iniciarVerificacaoAutomatica(idProposta) {
+    if (intervaloChecagem) clearInterval(intervaloChecagem);
     
-    const { data, error } = await supabase.from('propostas').select('*').eq('id', propostaAtual.id).maybeSingle();
-    document.getElementById('carregando').style.display = 'none';
+    intervaloChecagem = setInterval(async () => {
+        if (!propostaAtual || !propostaAtual.id) return;
+        
+        const { data, error } = await supabase.from('propostas').select('*').eq('id', idProposta).maybeSingle();
+        if (data) {
+            const mudouStatus = 
+                data.pagamento_entrada_efetuado !== propostaAtual.pagamento_entrada_efetuado ||
+                data.status_pagamento !== propostaAtual.status_pagamento ||
+                data.status !== propostaAtual.status;
 
-    if (data) {
-        propostaAtual = data;
-        exibirDadosProposta();
-        alert('🔄 Status atualizado com sucesso!');
-    }
+            if (mudouStatus) {
+                propostaAtual = data;
+                exibirDadosProposta();
+            }
+        }
+    }, 3000);
 }
 
 function atualizarStepper(etapaAtiva) {
@@ -356,7 +391,7 @@ function exibirDadosProposta() {
     const statusPagoGeral = String(p.status || '').toLowerCase();
     const statusPagamentoGeral = String(p.status_pagamento || '').toLowerCase();
 
-    // Checagem exaustiva de colunas comuns usadas para marcar pago
+    // Verificação detalhada de campos que indicam pagamento efetuado
     if (
         p.pagamento_entrada_efetuado === true || 
         p.pagamento_entrada_efetuado === 'true' ||
