@@ -177,19 +177,45 @@ let propostas = [];
 let timer = null;
 let processando = false;
 let ultimaContagem = 0;
+let servidorPronto = false;
 
-// ✅ ACORDA O SERVIDOR ASSIM QUE ENTRA NO PAINEL!
-function acordarServidor() {
-    fetch(SERVIDOR_URL, { method: 'GET', mode: 'no-cors' })
-        .then(() => console.log('✅ Servidor já acordando!'))
-        .catch(() => {});
+// Tenta acordar o servidor em background logo que a página abre
+window.addEventListener('DOMContentLoaded', () => {
+    fetch(SERVIDOR_URL, { method: 'GET', mode: 'no-cors' }).catch(() => {});
+});
+
+async function acordarServidor() {
+    const btnEntrar = document.querySelector('.btn-entrar');
+    btnEntrar.disabled = true;
+    btnEntrar.textContent = '⏳ Conectando ao servidor...';
+
+    for (let i = 0; i < 15; i++) {
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 4000);
+            await fetch(SERVIDOR_URL, { method: 'GET', mode: 'no-cors', signal: controller.signal });
+            clearTimeout(timeout);
+            servidorPronto = true;
+            break;
+        } catch (e) {
+            await new Promise(r => setTimeout(r, 2000));
+        }
+    }
+
+    btnEntrar.disabled = false;
+    btnEntrar.textContent = 'Entrar';
 }
 
-function entrar() {
+async function entrar() {
     if (document.getElementById('senha').value === SENHA) {
+        document.getElementById('erroLogin').style.display = 'none';
+        
+        if (!servidorPronto) {
+            await acordarServidor();
+        }
+
         document.getElementById('telaLogin').style.display = 'none';
         document.getElementById('telaPainel').style.display = 'block';
-        acordarServidor(); // ⚡ ACORDA O RENDER AGORA!
         carregar();
         ultimaContagem = 0;
         timer = setInterval(() => carregar(true), 15000);
@@ -402,7 +428,7 @@ function atualizarCalc(id) {
 }
 
 async function aprovar(id) {
-    if (processando) { alert('⏳ Aguarde...'); return; }
+    if (processando) { alert('⏳ Aguarde, processando requisição...'); return; }
     const p = propostas.find(x => x.id === id);
     if (!p) return;
 
@@ -412,16 +438,18 @@ async function aprovar(id) {
     const qtd = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    if (!confirm(`✅ APROVAR e GERAR PIX?\n\nCliente: ${p.nome}\nEntrada: ${real(entrada)}\n\nAguarde...`)) return;
+    if (!confirm(`✅ APROVAR e GERAR PIX?\n\nCliente: ${p.nome}\nEntrada: ${real(entrada)}`)) return;
 
     processando = true;
     const btn = document.getElementById(`btn-aprovar-${id}`);
-    if (btn) btn.disabled = true;
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Gerando Pix...';
+    }
 
     try {
-        console.log('🔄 Chamando servidor...');
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60000);
+        const timeout = setTimeout(() => controller.abort(), 90000);
 
         const resposta = await fetch(SERVIDOR_URL + '/api/criar-pagamento', {
             method: 'POST',
@@ -438,7 +466,7 @@ async function aprovar(id) {
 
         clearTimeout(timeout);
 
-        if (!resposta.ok) throw new Error('Servidor demorou demais');
+        if (!resposta.ok) throw new Error('Erro na resposta do servidor');
 
         const dados = await resposta.json();
         if (dados.erro) throw new Error(dados.erro);
@@ -466,11 +494,14 @@ async function aprovar(id) {
 
     } catch (erro) {
         console.error(erro);
-        alert('⚠️ Servidor ainda está acordando!\n\nESPERA 1 MINUTO e CLIQUE NOVAMENTE em Aprovar.\n\nNa próxima vez vai funcionar na hora!');
+        alert('⚠️ Erro ao gerar Pix. Verifique a conexão com o servidor e tente novamente.');
     }
 
     processando = false;
-    if (btn) btn.disabled = false;
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = '✅ Aprovar + Gerar Pix';
+    }
 }
 
 async function marcarEntradaPaga(id) {
