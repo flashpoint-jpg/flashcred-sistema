@@ -14,6 +14,8 @@
             --borda: #E2E8F0;
             --texto: #334155;
             --texto-claro: #64748B;
+            --pendente: #FBBF24;
+            --paga: #22C55E;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background: var(--bg-body); color: var(--texto); padding: 16px; line-height: 1.5; }
@@ -27,16 +29,17 @@
         .btn-entrar:hover { background: #0c3499; }
         .erro { color: var(--perigo); text-align: center; margin-top: 8px; display: none; font-size: 14px; }
 
-        .container { max-width: 1000px; margin: 0 auto; display: none; }
+        .container { max-width: 1100px; margin: 0 auto; display: none; }
         .topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 10px; }
         h1 { color: var(--primary); font-size: 20px; font-weight: 700; }
 
-        .caixa-totais { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+        .caixa-totais { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
         .total-card { background: white; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--borda); }
         .total-label { font-size: 12px; color: var(--texto-claro); font-weight: 600; }
         .total-valor { font-size: 20px; font-weight: 700; color: var(--primary); margin-top: 4px; }
         .total-ent { color: var(--sucesso); }
         .total-falta { color: var(--alerta); }
+        .total-parc { color: #8B5CF6; }
 
         .modos { display: flex; gap: 6px; }
         .modo { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
@@ -68,6 +71,15 @@
         .campo input { padding: 8px 10px; margin: 0; border: 1px solid var(--borda); border-radius: 6px; font-size: 14px; width: 100%; }
         .campo input[readonly] { background: #F8FAFC; color: var(--sucesso); font-weight: 600; }
 
+        .tabela-parcelas { width: 100%; border-collapse: collapse; margin-top: 14px; }
+        .tabela-parcelas th { background: #F1F5F9; padding: 8px 10px; text-align: left; font-size: 13px; color: var(--texto-claro); font-weight: 600; }
+        .tabela-parcelas td { padding: 8px 10px; border-top: 1px solid var(--borda); font-size: 14px; }
+        .tabela-parcelas tr:hover { background: #FAFBFC; }
+        .parcela-paga { color: var(--sucesso); font-weight: 600; }
+        .parcela-pendente { color: var(--alerta); font-weight: 600; }
+        .btn-marcar-paga { padding: 4px 8px; font-size: 12px; background: var(--sucesso); color: white; border-radius: 4px; }
+        .btn-marcar-paga:disabled { background: #D1FAE5; color: #166534; cursor: default; }
+
         .botoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
         .btn { padding: 8px 14px; font-size: 13px; border-radius: 7px; }
         .btn-aprovar { background: var(--sucesso); color: white; }
@@ -84,7 +96,12 @@
 
         .vazio { text-align: center; color: var(--texto-claro); padding: 40px; font-size: 15px; }
         .carregando { text-align: center; padding: 30px; color: var(--texto-claro); display: none; font-size: 14px; }
-        .qrcode-img { max-width: 120px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
+        .qrcode-img { max-width: 100px; border-radius: 6px; margin-top: 6px; border: 1px solid #ddd; }
+        .data-pagamento { background: #E0F2FE; padding: 6px 10px; border-radius: 6px; font-size: 13px; color: #0369A1; display: inline-block; margin-top: 4px; }
+        .btn-ver-parcelas { background: #8B5CF6; color: white; margin-left: 8px; }
+        .btn-ver-parcelas:hover { background: #7C3AED; }
+        .parcelas-container { margin-top: 14px; display: none; }
+        .parcelas-container.visivel { display: block; }
     </style>
 </head>
 <body>
@@ -109,7 +126,7 @@
 
     <div class="caixa-totais">
         <div class="total-card">
-            <div class="total-label">💰 Total de Propostas</div>
+            <div class="total-label">💰 Total Propostas</div>
             <div class="total-valor" id="totalPropostas">0</div>
         </div>
         <div class="total-card">
@@ -119,6 +136,10 @@
         <div class="total-card">
             <div class="total-label total-falta">⏳ Valor a Receber</div>
             <div class="total-valor total-falta" id="totalFalta">R$ 0,00</div>
+        </div>
+        <div class="total-card">
+            <div class="total-label total-parc">📊 Parcelas Pagas/Pendentes</div>
+            <div class="total-valor total-parc" id="totalParcelas">0 / 0</div>
         </div>
     </div>
 
@@ -160,6 +181,35 @@ function gerarCodigoUnico() {
     return codigo;
 }
 
+function formatarData(data) {
+    if (!data) return '---';
+    const d = new Date(data);
+    return d.toLocaleDateString('pt-BR');
+}
+
+function real(valor) {
+    return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function calcularParcelas(valorTotal, percEnt, qtdParcelas, juros) {
+    const entrada = valorTotal * percEnt / 100;
+    const resto = valorTotal - entrada;
+    const valorParcela = qtdParcelas > 0 ? resto * (1 + juros/100) / qtdParcelas : 0;
+    const lista = [];
+    const hoje = new Date();
+    for (let i = 1; i <= qtdParcelas; i++) {
+        const vencimento = new Date(hoje);
+        vencimento.setMonth(vencimento.getMonth() + i);
+        lista.push({
+            numero: i,
+            valor: valorParcela,
+            vencimento: vencimento.toISOString().split('T')[0],
+            status: 'Pendente'
+        });
+    }
+    return { entrada, valorParcela, lista };
+}
+
 function entrar() {
     if (document.getElementById('senha').value === SENHA) {
         document.getElementById('telaLogin').style.display = 'none';
@@ -178,10 +228,6 @@ function definirModo(m) {
     alert(`✅ Modo ${m.toUpperCase()} ativado!`);
 }
 
-function real(valor) {
-    return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
 async function carregar(silencioso = false) {
     if (!silencioso) document.getElementById('carregando').style.display = 'block';
     const { data, error } = await supabase.from('propostas').select('*').order('created_at', { ascending: false });
@@ -198,9 +244,17 @@ async function carregar(silencioso = false) {
         return s + (total - entrada);
     }, 0);
 
+    let totalPagas = 0, totalTodas = 0;
+    propostas.forEach(p => {
+        const parcelas = p.lista_parcelas || [];
+        totalTodas += parcelas.length;
+        totalPagas += parcelas.filter(x => x.status === 'Paga').length;
+    });
+
     document.getElementById('totalPropostas').textContent = propostas.length;
     document.getElementById('totalEntradas').textContent = real(totalEntradas);
     document.getElementById('totalFalta').textContent = real(totalRestante);
+    document.getElementById('totalParcelas').textContent = `${totalPagas} / ${totalTodas}`;
 
     if (silencioso && propostas.length > qtdAnt) {
         const alerta = document.getElementById('alertaNovas');
@@ -238,10 +292,9 @@ function criarCard(p) {
     const valorTotal = Number(p.valor_desejado || 0);
     const percEnt = Number(p.percentual_entrada || 20);
     const valorEnt = valorTotal * percEnt / 100;
-    const parcelas = p.quantidade_parcelas || '';
+    const parcelas = p.quantidade_parcelas || 0;
     const juros = Number(p.juros || 0);
-    const resto = valorTotal - valorEnt;
-    const valParc = parcelas ? resto * (1 + juros/100) / parcelas : 0;
+    const calc = calcularParcelas(valorTotal, percEnt, parcelas, juros);
 
     const cpf = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     const qrExibicao = p.qr_code_entrada 
@@ -253,6 +306,45 @@ function criarCard(p) {
            '<span style="color:#3B82F6">✅ Chave Pix</span>')
         : '<span style="color:#94a3b8">Aguardando</span>';
 
+    const dataPagamento = p.data_pagamento_entrada 
+        ? `<div class="data-pagamento">📅 Entrada paga em: ${formatarData(p.data_pagamento_entrada)}</div>` 
+        : '';
+
+    const listaParcelas = p.lista_parcelas || calc.lista;
+    const tabelaParcelas = p.status === 'Entrada Paga' || p.status === 'Aprovada' ? `
+    <div class="parcelas-container" id="parc-${p.id}">
+        <table class="tabela-parcelas">
+            <thead>
+                <tr>
+                    <th>Nº</th>
+                    <th>Vencimento</th>
+                    <th>Valor</th>
+                    <th>Status</th>
+                    <th>Ação</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${listaParcelas.map((parc, idx) => `
+                <tr>
+                    <td>${parc.numero}</td>
+                    <td>${formatarData(parc.vencimento)}</td>
+                    <td>${real(parc.valor)}</td>
+                    <td class="${parc.status === 'Paga' ? 'parcela-paga' : 'parcela-pendente'}">
+                        ${parc.status === 'Paga' ? '✅ Paga' : '⏳ Pendente'}
+                    </td>
+                    <td>
+                        <button class="btn-marcar-paga" 
+                            ${parc.status === 'Paga' ? 'disabled' : ''}
+                            onclick="marcarParcelaPaga(${p.id}, ${idx})">
+                            ${parc.status === 'Paga' ? '✓ Paga' : 'Marcar Paga'}
+                        </button>
+                    </td>
+                </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    </div>` : '';
+
     return `
     <div class="proposta">
         <div class="proposta-topo">
@@ -260,9 +352,12 @@ function criarCard(p) {
                 <div class="proposta-nome">${p.nome}</div>
                 <div class="proposta-info">Código: ${p.codigo_unico || '---'} | CPF: ${cpf}</div>
                 <div class="proposta-info">Pix: ${pixStatus}</div>
-                <div class="proposta-info">QR Code: ${qrExibicao}</div>
+                ${dataPagamento}
             </div>
-            <span class="status ${statusCls}">${statusTxt}</span>
+            <div>
+                <span class="status ${statusCls}">${statusTxt}</span>
+                ${parcelas > 0 && p.status !== 'Nova' ? `<button class="btn btn-ver-parcelas" onclick="document.getElementById('parc-${p.id}').classList.toggle('visivel')">📊 Ver Parcelas</button>` : ''}
+            </div>
         </div>
 
         <div class="grade">
@@ -287,10 +382,12 @@ function criarCard(p) {
                 <input type="number" id="j-${p.id}" value="${juros}" step="0.01" oninput="atualizar(${p.id})">
             </div>
             <div class="campo">
-                <label>Valor da Parcela (R$)</label>
-                <input type="text" id="vp-${p.id}" value="${real(valParc)}" readonly>
+                <label>Valor Parcela (R$)</label>
+                <input type="text" id="vp-${p.id}" value="${real(calc.valorParcela)}" readonly>
             </div>
         </div>
+
+        ${tabelaParcelas}
 
         <div class="botoes">
             <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix</button>
@@ -307,11 +404,9 @@ function atualizar(id) {
     const perc = Number(document.getElementById(`p-${id}`).value) || 0;
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 0;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
-    const entrada = valor * perc / 100;
-    const resto = valor - entrada;
-    const valorParc = parcelas > 0 ? resto * (1 + juros/100) / parcelas : 0;
-    document.getElementById(`e-${id}`).value = real(entrada);
-    document.getElementById(`vp-${id}`).value = real(valorParc);
+    const calc = calcularParcelas(valor, perc, parcelas, juros);
+    document.getElementById(`e-${id}`).value = real(calc.entrada);
+    document.getElementById(`vp-${id}`).value = real(calc.valorParcela);
 }
 
 async function aprovar(id) {
@@ -324,9 +419,10 @@ async function aprovar(id) {
     const entrada = valor * perc / 100;
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
+    const calc = calcularParcelas(valor, perc, parcelas, juros);
     const codigoUnicoFinal = proposta.codigo_unico ? proposta.codigo_unico : gerarCodigoUnico();
 
-    if (!confirm(`✅ Aprovar ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\nCódigo: ${codigoUnicoFinal}`)) return;
+    if (!confirm(`✅ Aprovar ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\nParcelas: ${parcelas}x de ${real(calc.valorParcela)}\nCódigo: ${codigoUnicoFinal}`)) return;
 
     processando = true;
     const btn = document.getElementById(`btn-aprovar-${id}`);
@@ -376,6 +472,7 @@ async function aprovar(id) {
         valor_entrada: entrada,
         quantidade_parcelas: parcelas,
         juros: juros,
+        lista_parcelas: calc.lista,
         copia_cola_pix: chavePixGerada,
         qr_code_entrada: qrCodeImagem
     }).eq('id', id);
@@ -390,14 +487,27 @@ async function marcarEntradaPaga(id) {
     const proposta = propostas.find(p => p.id === id);
     if (!proposta) return;
 
-    if (!confirm(`💰 MARCAR ENTRADA PAGA para ${proposta.nome}?\n\n→ Cliente NÃO verá mais tela de pagamento.\n→ Vai ver DIRETO: CONTRATO + PARCELAS + VENCIMENTOS.`)) return;
-
+    const valor = Number(document.getElementById(`v-${id}`).value) || 0;
+    const perc = Number(document.getElementById(`p-${id}`).value) || 0;
+    const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
+    const juros = Number(document.getElementById(`j-${id}`).value) || 0;
+    const calc = calcularParcelas(valor, perc, parcelas, juros);
     const codigoUnicoFinal = proposta.codigo_unico ? proposta.codigo_unico : gerarCodigoUnico();
+    const dataHoje = new Date().toISOString();
+
+    if (!confirm(`💰 MARCAR ENTRADA PAGA para ${proposta.nome}?\n\n→ Data de hoje registrada automaticamente.\n→ Parcelas geradas: ${parcelas}x\n→ Cliente NÃO verá mais tela de pagamento.\n→ Vai ver DIRETO: CONTRATO + PARCELAS + VENCIMENTOS.`)) return;
 
     const { error } = await supabase.from('propostas').update({
         status: 'Entrada Paga',
         entrada_paga: true,
         codigo_unico: codigoUnicoFinal,
+        valor_desejado: valor,
+        percentual_entrada: perc,
+        valor_entrada: calc.entrada,
+        quantidade_parcelas: parcelas,
+        juros: juros,
+        lista_parcelas: calc.lista,
+        data_pagamento_entrada: dataHoje,
         copia_cola_pix: 'ENTRADA PAGA - Pagamento em Dinheiro/Transferência',
         qr_code_entrada: null
     }).eq('id', id);
@@ -405,7 +515,29 @@ async function marcarEntradaPaga(id) {
     if (error) {
         alert('❌ Erro: ' + error.message);
     } else {
-        alert('✅ ENTRADA MARCADA COMO PAGA!\n\nCliente digita o CPF e verá DIRETO as PARCELAS e CONTRATO.');
+        alert(`✅ ENTRADA MARCADA COMO PAGA!\n\n📅 Data registrada: ${formatarData(dataHoje)}\n\nCliente digita o CPF e verá DIRETO:\n✅ Contrato\n✅ ${parcelas} parcelas com vencimentos\n✅ Valores\n✅ Opção de pagar cada parcela`);
+        carregar();
+    }
+}
+
+async function marcarParcelaPaga(propostaId, indiceParcela) {
+    const proposta = propostas.find(p => p.id === propostaId);
+    if (!proposta) return;
+
+    const lista = proposta.lista_parcelas || [];
+    if (!lista[indiceParcela] || lista[indiceParcela].status === 'Paga') return;
+
+    if (!confirm(`✅ Marcar parcela ${indiceParcela + 1} como PAGA?\nValor: ${real(lista[indiceParcela].valor)}`)) return;
+
+    lista[indiceParcela].status = 'Paga';
+    lista[indiceParcela].data_pagamento = new Date().toISOString();
+
+    const { error } = await supabase.from('propostas').update({ lista_parcelas: lista }).eq('id', propostaId);
+
+    if (error) {
+        alert('❌ Erro: ' + error.message);
+    } else {
+        alert('✅ Parcela marcada como PAGA!');
         carregar();
     }
 }
