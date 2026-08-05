@@ -72,6 +72,8 @@
         .btn-aprovar { background: var(--sucesso); color: white; }
         .btn-aprovar:hover { background: #059669; }
         .btn-aprovar:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-pagar-manual { background: #0284C7; color: white; }
+        .btn-pagar-manual:hover { background: #0369A1; }
         .btn-reprovar { background: var(--perigo); color: white; }
         .btn-reprovar:hover { background: #DC2626; }
         .btn-whatsapp { background: #25D366; color: white; }
@@ -141,6 +143,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SENHA = 'flash2026';
 const CHAVE_PIX_FIXA = '33552949852';
+const TOKEN_MP_PRODUCAO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 
 let modo = 'producao';
 let propostas = [];
@@ -287,6 +290,7 @@ function criarCard(p) {
 
         <div class="botoes">
             <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix</button>
+            <button class="btn btn-pagar-manual" onclick="marcarEntradaPaga(${p.id})">💰 Marcar Entrada Paga</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
             <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
@@ -305,7 +309,7 @@ function atualizar(id) {
     const valorParc = parcelas > 0 ? resto * (1 + juros/100) / parcelas : 0;
 
     document.getElementById(`e-${id}`).value = real(entrada);
-    document.getElementById(`vp-${id}`).value = real(valorParc);
+    document.getElementById(`vp-${id}`).value = real(valParc);
 }
 
 async function aprovar(id) {
@@ -323,7 +327,7 @@ async function aprovar(id) {
     const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    // Se a proposta não tiver código único ainda, gera um agora automaticamente
+    // Gera código único automaticamente caso não tenha
     const codigoUnicoFinal = proposta.codigo_unico ? proposta.codigo_unico : gerarCodigoUnico();
 
     if (!confirm(`✅ Aprovar proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}\nCódigo: ${codigoUnicoFinal}`)) return;
@@ -339,16 +343,21 @@ async function aprovar(id) {
 
     if (modo === 'producao') {
         try {
-            console.log('🔄 Chamando Edge Function do Supabase...');
-            const resposta = await fetch(`${SUPABASE_URL}/functions/v1/criar-pagamento-mp`, {
+            console.log('🔄 Chamando Mercado Pago via Proxy CORS...');
+            const urlAlvo = encodeURIComponent('https://api.mercadopago.com/v1/payments');
+            
+            const resposta = await fetch(`https://corsproxy.io/?${urlAlvo}`, {
                 method: 'POST',
                 headers: {
+                    'Authorization': `Bearer ${TOKEN_MP_PRODUCAO}`,
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${SUPABASE_KEY}`
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({
                     transaction_amount: entrada,
-                    description: `Entrada - ${proposta.nome} - ${codigoUnicoFinal}`
+                    description: `Entrada - ${proposta.nome} - ${codigoUnicoFinal}`,
+                    payment_method_id: 'pix',
+                    payer: { email: 'pagamento@flashcred.com.br' }
                 })
             });
 
@@ -365,7 +374,7 @@ async function aprovar(id) {
             }
         } catch (erro) {
             console.log('❌ Erro:', erro);
-            mensagem = '⚠️ Falha de conexão com a função → Usando chave fixa.';
+            mensagem = '⚠️ Falha de conexão com o MP → Usando chave fixa.';
         }
     } else {
         mensagem = 'ℹ️ Modo manual/teste: Usando chave Pix fixa.';
@@ -391,6 +400,29 @@ async function aprovar(id) {
         alert('❌ Erro no banco:\n' + error.message);
     } else {
         alert(`✅ APROVADA!\n\n${mensagem}`);
+        carregar();
+    }
+}
+
+// Nova função para marcar entrada paga manualmente
+async function marcarEntradaPaga(id) {
+    const proposta = propostas.find(p => p.id === id);
+    if (!proposta) return;
+
+    if (!confirm(`💰 Confirmar recebimento manual da entrada para ${proposta.nome}?`)) return;
+
+    const codigoUnicoFinal = proposta.codigo_unico ? proposta.codigo_unico : gerarCodigoUnico();
+
+    const { error } = await supabase.from('propostas').update({
+        status: 'Aprovada',
+        codigo_unico: codigoUnicoFinal,
+        copia_cola_pix: 'ENTRADA PAGA MANUALMENTE'
+    }).eq('id', id);
+
+    if (error) {
+        alert('❌ Erro ao atualizar: ' + error.message);
+    } else {
+        alert('✅ Entrada marcada como paga manualmente com sucesso!');
         carregar();
     }
 }
