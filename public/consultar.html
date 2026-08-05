@@ -29,7 +29,10 @@
         button { border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 15px; width: 100%; padding: 12px; background: var(--primary); color: white; }
         button:hover { background: #0c3499; }
 
-        .stepper { display: flex; justify-content: space-between; margin-bottom: 24px; position: relative; padding: 0 5px; }
+        .btn-sair { background: transparent; color: var(--texto-claro); border: 1px solid var(--borda); font-size: 12px; padding: 6px 12px; margin-bottom: 15px; width: auto; float: right; }
+        .btn-sair:hover { background: #F1F5F9; color: var(--perigo); }
+
+        .stepper { display: flex; justify-content: space-between; margin-bottom: 24px; position: relative; padding: 0 5px; clear: both; }
         .stepper::before { content: ''; position: absolute; top: 14px; left: 30px; right: 30px; height: 3px; background: var(--borda); z-index: 1; }
         .step { position: relative; z-index: 2; text-align: center; flex: 1; }
         .step-num { width: 30px; height: 30px; border-radius: 50%; background: #E2E8F0; color: var(--texto-claro); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; margin: 0 auto 6px; transition: all 0.3s; }
@@ -98,7 +101,7 @@
 <div class="container">
     <h2>🔍 Consultar Proposta</h2>
     
-    <div class="busca-box">
+    <div class="busca-box" id="caixaBuscaCpf">
         <label>Informe seu CPF</label>
         <input type="text" id="cpfConsulta" placeholder="000.000.000-00" maxlength="14" oninput="mascaraCpf(this)">
         <button onclick="buscarProposta()">Consultar Status</button>
@@ -107,6 +110,7 @@
     </div>
 
     <div id="detalhesProposta" class="detalhes-proposta">
+        <button class="btn-sair" onclick="limparSessaoCliente()">Sair / Outro CPF</button>
         
         <div class="stepper">
             <div class="step" id="step1">
@@ -224,7 +228,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let propostaAtual = null;
 let base64Selfie = '';
 let canvas, ctx, desenhando = false;
-let subEtapaCliente = 'parcelas';
+let subEtapaCliente = localStorage.getItem('subEtapaCliente') || 'parcelas';
 let intervaloChecagem = null;
 
 window.onload = () => {
@@ -266,11 +270,16 @@ window.onload = () => {
     
     canvas.addEventListener('touchend', pararDesenho);
 
+    // RESTAURAR SESSÃO AO DAR F5 OU CARREGAR A PÁGINA
     const urlParams = new URLSearchParams(window.location.search);
     const cpfUrl = urlParams.get('cpf');
-    if (cpfUrl) {
-        document.getElementById('cpfConsulta').value = formatarCpfInput(cpfUrl);
-        buscarPropostaAutomatica(cpfUrl);
+    const cpfSalvo = localStorage.getItem('cpfPropostaSalvo');
+
+    const cpfFinal = cpfUrl || cpfSalvo;
+
+    if (cpfFinal) {
+        document.getElementById('cpfConsulta').value = formatarCpfInput(cpfFinal);
+        buscarPropostaAutomatica(cpfFinal.replace(/\D/g, ''));
     }
 };
 
@@ -292,6 +301,13 @@ function real(v) {
     return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function limparSessaoCliente() {
+    localStorage.removeItem('cpfPropostaSalvo');
+    localStorage.removeItem('subEtapaCliente');
+    if (intervaloChecagem) clearInterval(intervaloChecagem);
+    window.location.href = window.location.pathname;
+}
+
 async function buscarProposta() {
     const cpfLimpo = document.getElementById('cpfConsulta').value.replace(/\D/g, '');
     if (cpfLimpo.length < 11) {
@@ -304,7 +320,6 @@ async function buscarProposta() {
 async function buscarPropostaAutomatica(cpfLimpo) {
     document.getElementById('carregando').style.display = 'block';
     document.getElementById('erroBusca').style.display = 'none';
-    document.getElementById('detalhesProposta').style.display = 'none';
 
     const { data, error } = await supabase.from('propostas').select('*').eq('cpf', cpfLimpo).maybeSingle();
     document.getElementById('carregando').style.display = 'none';
@@ -313,6 +328,10 @@ async function buscarPropostaAutomatica(cpfLimpo) {
         document.getElementById('erroBusca').style.display = 'block';
         return;
     }
+
+    // Salvar no navegador para sobreviver ao F5
+    localStorage.setItem('cpfPropostaSalvo', cpfLimpo);
+    document.getElementById('caixaBuscaCpf').style.display = 'none';
 
     propostaAtual = data;
     exibirDadosProposta();
@@ -379,7 +398,7 @@ function exibirDadosProposta() {
     etapaAguardandoPagamento.style.display = 'none';
     etapaFluxoSeguinte.style.display = 'none';
 
-    // Verificação Universal: checa todas as variações possíveis de colunas de pagamento/status
+    // Verificação Universal de Pagamento
     const st = String(p.status || '').toLowerCase();
     const stPag = String(p.status_pagamento || '').toLowerCase();
     const pagEfetuado = p.pagamento_entrada_efetuado;
@@ -470,6 +489,7 @@ function recalcularSimulacaoCliente() {
 
 function avancarParaContrato() {
     subEtapaCliente = 'contrato';
+    localStorage.setItem('subEtapaCliente', 'contrato');
     exibirDadosProposta();
 }
 
