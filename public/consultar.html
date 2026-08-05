@@ -143,23 +143,11 @@
             </div>
         </div>
 
-        <!-- SEÇÃO DE PARCELAS COM PIX REAL FUNCIONAL -->
+        <!-- SEÇÃO DE PARCELAS -->
         <div class="nao-imprimir">
             <h3 style="color: var(--primary); margin-bottom: 10px; font-size: 16px;">Gerenciamento de Parcelas</h3>
             <div id="listaParcelas" class="parcelas-container"></div>
         </div>
-    </div>
-</div>
-
-<!-- MODAL PARA EXIBIR O PIX DA PARCELA CLICADA -->
-<div id="modalPixParcela" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:999; justify-content:center; align-items:center; padding: 16px;">
-    <div style="background:#fff; padding:20px; border-radius:14px; max-width:400px; width:100%; text-align:center; position:relative;">
-        <h3 id="modalTituloParc" style="color:var(--primary); margin-bottom:10px; font-size:16px;">Pagamento da Parcela</h3>
-        <p style="font-size:12px; color:var(--texto-claro);">Escaneie o QR Code ou copie o código Pix abaixo:</p>
-        <div id="modalQrCodeImg" style="margin: 10px 0;"></div>
-        <div class="copia-cola-box" id="modalCopiaCola"></div>
-        <button onclick="copiarPix('modalCopiaCola')" style="margin-top: 10px; background:var(--sucesso);">📋 Copiar Copia e Cola</button>
-        <button onclick="fecharModalPix()" style="margin-top: 6px; background:#64748b;">Fechar</button>
     </div>
 </div>
 
@@ -170,6 +158,9 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const NUMERO_WHATSAPP_SUPORTE = '5511973294235';
+
+// Armazena quais parcelas foram marcadas como pagas nesta sessão
+let parcelasPagasCliente = {};
 
 function real(v) {
     return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -252,10 +243,13 @@ function gerarParcelasDinamicas(p) {
         const diffDias = Math.ceil((vencimento - hoje) / (1000 * 60 * 60 * 24));
         let classeCor = 'em-dia';
         let badgeVenc = '<span class="badge-vencimento bg-azul">Em dia</span>';
+        let botaoAcao = `<button class="btn-pix-parcela" onclick="pagarParcela(${i}, ${valorParc})">💳 Pagar via Pix</button>`;
 
-        if (p.entrada_paga && i === 1) {
+        // Se já foi paga ou marcada como paga pelo cliente
+        if ((p.entrada_paga && i === 1) || parcelasPagasCliente[i]) {
             classeCor = 'paga';
-            badgeVenc = '<span class="badge-vencimento bg-verde">Pago</span>';
+            badgeVenc = '<span class="badge-vencimento bg-verde">Pago (Observação: Pago)</span>';
+            botaoAcao = '<span style="font-size: 12px; color: var(--sucesso); font-weight: 700;">✅ Parcela Paga</span>';
         } else if (diffDias < 0) {
             classeCor = 'vencida';
             badgeVenc = '<span class="badge-vencimento bg-vermelho">Vencida</span>';
@@ -273,7 +267,7 @@ function gerarParcelasDinamicas(p) {
                 <div class="p-data">Vencimento: ${dataFormatada}</div>
                 ${badgeVenc}
             </div>
-            <button class="btn-pix-parcela" onclick="pagarParcela(${i}, ${valorParc})">💳 Pagar via Pix</button>
+            <div>${botaoAcao}</div>
         </div>`;
     }
 
@@ -281,17 +275,14 @@ function gerarParcelasDinamicas(p) {
 }
 
 function pagarParcela(num, valor) {
-    const payloadPix = `00020126580014br.gov.bcb.pix0136suporte@flashcred.com.br5204000053039865802BR5925FLASHCRED INSTITUICAO6009SAO PAULO62070503***6304`;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(payloadPix)}`;
-
-    document.getElementById('modalTituloParc').textContent = `Pagamento da ${num}ª Parcela (${real(valor)})`;
-    document.getElementById('modalCopiaCola').textContent = payloadPix;
-    document.getElementById('modalQrCodeImg').innerHTML = `<img src="${qrUrl}" alt="QR Code Pix" style="border-radius:6px; border:2px solid #e2e8f0;">`;
-    document.getElementById('modalPixParcela').style.display = 'flex';
-}
-
-function fecharModalPix() {
-    document.getElementById('modalPixParcela').style.display = 'none';
+    // Marca como paga localmente para alterar o status na hora para o cliente
+    parcelasPagasCliente[num] = true;
+    
+    // Mensagem de confirmação solicitada
+    alert(`Oh, muito obrigado pelo pagamento!\n\nObservação: Parcela ${num} marcada como paga.`);
+    
+    // Recarrega as parcelas para atualizar a tela instantaneamente
+    buscarProposta();
 }
 
 window.onload = function() {
