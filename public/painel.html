@@ -48,8 +48,6 @@
         .busca input { flex: 1; margin: 0; }
         .btn-busca { padding: 11px 18px; background: var(--primary); color: white; white-space: nowrap; }
 
-        .alerta-novo { background: #FEF3C7; border-left: 3px solid var(--alerta); padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; display: none; }
-
         .proposta { background: white; padding: 18px; border-radius: 12px; border: 1px solid var(--borda); margin-bottom: 14px; }
         .proposta-topo { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; flex-wrap: wrap; gap: 8px; }
         .proposta-nome { font-size: 16px; font-weight: 700; color: var(--primary); }
@@ -134,8 +132,6 @@
         </div>
     </div>
 
-    <div id="alertaNovas" class="alerta-novo">🔔 Você tem novas propostas!</div>
-
     <div class="busca">
         <label>🔍 Buscar por CPF ou Código Único</label>
         <div class="busca-linha">
@@ -157,7 +153,6 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let SENHA_ATUAL = localStorage.getItem('flash_senha') || 'flash2026';
 let modoAtual = localStorage.getItem('flash_modo') || 'producao';
 let propostas = [];
-let timer = null;
 let processando = false;
 
 window.onload = () => {
@@ -166,7 +161,6 @@ window.onload = () => {
         document.getElementById('telaLogin').style.display = 'none';
         document.getElementById('telaPainel').style.display = 'block';
         carregar();
-        timer = setInterval(() => carregar(true), 10000);
     }
 };
 
@@ -176,7 +170,6 @@ function entrar() {
         document.getElementById('telaLogin').style.display = 'none';
         document.getElementById('telaPainel').style.display = 'block';
         carregar();
-        timer = setInterval(() => carregar(true), 10000);
     } else {
         document.getElementById('erroLogin').style.display = 'block';
     }
@@ -184,7 +177,6 @@ function entrar() {
 
 function sair() {
     localStorage.removeItem('flash_logado');
-    clearInterval(timer);
     window.location.reload();
 }
 
@@ -201,6 +193,7 @@ function alternarModo() {
     modoAtual = modoAtual === 'producao' ? 'teste' : 'producao';
     localStorage.setItem('flash_modo', modoAtual);
     atualizarLabelModo();
+    carregar();
 }
 
 function atualizarLabelModo() {
@@ -220,15 +213,41 @@ function real(valor) {
     return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-async function carregar(silencioso = false) {
-    if (!silencioso) document.getElementById('carregando').style.display = 'block';
+async function carregar() {
+    document.getElementById('carregando').style.display = 'block';
+    
+    // Se estiver no modo de teste, injeta uma proposta simulada fixa para testes livres
+    if (modoAtual === 'teste') {
+        document.getElementById('carregando').style.display = 'none';
+        propostas = [{
+            id: 99999,
+            nome: 'Cliente de Teste (Simulação)',
+            codigo_unico: 'TESTE123',
+            cpf: '12345678901',
+            telefone: '11999999999',
+            status: 'Pendente',
+            valor_desejado: 5000,
+            percentual_entrada: 20,
+            quantidade_parcelas: 12,
+            juros: 3.5,
+            qr_code_entrada: '',
+            selfie_cliente: '',
+            contrato_assinado: '',
+            dados_parcelas: []
+        }];
+        processarExibicaoPropostas();
+        return;
+    }
+
     const { data, error } = await supabase.from('propostas').select('*').order('created_at', { ascending: false });
-    if (!silencioso) document.getElementById('carregando').style.display = 'none';
+    document.getElementById('carregando').style.display = 'none';
     if (error) { alert('Erro ao carregar: ' + error.message); return; }
 
-    const qtdAnt = propostas.length;
     propostas = data || [];
+    processarExibicaoPropostas();
+}
 
+function processarExibicaoPropostas() {
     const totalEntradas = propostas.reduce((s, p) => s + Number(p.valor_entrada || 0), 0);
     const totalRestante = propostas.reduce((s, p) => {
         const total = Number(p.valor_desejado || 0);
@@ -240,11 +259,6 @@ async function carregar(silencioso = false) {
     document.getElementById('totalEntradas').textContent = real(totalEntradas);
     document.getElementById('totalFalta').textContent = real(totalRestante);
 
-    if (silencioso && propostas.length > qtdAnt) {
-        const alerta = document.getElementById('alertaNovas');
-        alerta.style.display = 'block';
-        setTimeout(() => alerta.style.display = 'none', 5000);
-    }
     filtrar();
 }
 
@@ -325,7 +339,7 @@ function criarCard(p) {
     <div class="proposta">
         <div class="proposta-topo">
             <div>
-                <div class="proposta-nome">${p.nome}</div>
+                <div class="proposta-nome">${p.nome} ${modoAtual === 'teste' ? '🧪 (MODO TESTE)' : ''}</div>
                 <div class="proposta-info">Código: ${p.codigo_unico || '---'} | CPF: ${cpf}</div>
                 <div class="proposta-info">Telefone: ${p.telefone || '---'}</div>
             </div>
@@ -399,7 +413,7 @@ function abrirImagem(base64Str) {
     win.document.write(`<iframe src="${base64Str}" frameborder="0" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;"></iframe>`);
 }
 
-// Recacula valores gerais e atualiza as linhas de parcelas sem resetar o campo enquanto o usuário digita
+// Recalcula valores sem resetar a digitação do usuário
 function recalcularCampos(id) {
     const valor = Number(document.getElementById(`v-${id}`).value) || 0;
     const perc = Number(document.getElementById(`p-${id}`).value) || 0;
@@ -479,6 +493,11 @@ async function alternarBaixaParcela(idProposta, numParcela) {
         linha.className = 'linha-parcela-edit parc-paga';
     }
 
+    if (modoAtual === 'teste') {
+        alert('ℹ️ Modo Teste: Baixa simulada com sucesso (nenhum dado real alterado no banco).');
+        return;
+    }
+
     const proposta = propostas.find(p => p.id === idProposta);
     if (!proposta) return;
 
@@ -511,6 +530,11 @@ async function aprovar(id) {
     if (processando) return;
     const proposta = propostas.find(p => p.id === id);
     if (!proposta) return;
+
+    if (modoAtual === 'teste') {
+        alert('🧪 Modo Teste: Proposta simulada aprovada com sucesso! (Mude para o Modo Produção para aprovar clientes reais).');
+        return;
+    }
 
     const valor = Number(document.getElementById(`v-${id}`).value) || 0;
     const perc = Number(document.getElementById(`p-${id}`).value) || 0;
@@ -559,6 +583,10 @@ async function aprovar(id) {
 }
 
 async function marcarEntradaManual(id) {
+    if (modoAtual === 'teste') {
+        alert('🧪 Modo Teste: Entrada simulada marcada como paga.');
+        return;
+    }
     if (!confirm('Confirmar recebimento da entrada manualmente?')) return;
 
     try {
@@ -576,6 +604,10 @@ async function marcarEntradaManual(id) {
 }
 
 async function reprovar(id) {
+    if (modoAtual === 'teste') {
+        alert('🧪 Modo Teste: Proposta simulada reprovada.');
+        return;
+    }
     if (!confirm('Reprovar proposta?')) return;
     await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
     carregar();
@@ -590,6 +622,10 @@ async function enviarWhatsApp(id) {
 }
 
 async function excluir(id) {
+    if (modoAtual === 'teste') {
+        alert('🧪 Modo Teste: Não é possível excluir a proposta de simulação.');
+        return;
+    }
     if (!confirm('⚠️ Tem certeza que deseja excluir esta proposta do sistema?')) return;
     try {
         const { error } = await supabase.from('propostas').delete().eq('id', id);
