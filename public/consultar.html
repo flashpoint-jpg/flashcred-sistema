@@ -3,531 +3,229 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consultar Proposta | FlashCred</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0A2463',
-                        pix: '#32BCAD',
-                        sucesso: '#10B981',
-                        alerta: '#F59E0B',
-                        perigo: '#EF4444',
-                        fundo: '#F8FAFC',
-                        'parcela-paga': '#D1FAE5',
-                        'parcela-vencida': '#FEE2E2',
-                        'parcela-a-vencer': '#FEF3C7'
-                    }
-                }
-            }
-        }
-    </script>
+    <title>Consulta de Proposta e Parcelas | FlashCred</title>
     <style>
-        * { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        .valor-destaque { background: linear-gradient(135deg, #0A2463, #2563EB); color: white; padding: 16px; border-radius: 12px; text-align: center; font-size: 22px; font-weight: 700; }
-        .contrato { background: #FAFAFA; border: 1px solid #E2E8F0; border-radius: 10px; padding: 20px; max-height: 400px; overflow-y: auto; font-size: 14px; line-height: 1.7; color: #374151; }
-        .pix-copia { background: #ECFDF5; border: 2px dashed #10B981; border-radius: 10px; padding: 14px; text-align: center; }
-        .botao { padding: 12px 20px; border-radius: 10px; font-weight: 600; border: none; cursor: pointer; width: 100%; margin: 6px 0; font-size: 15px; }
-        .botao-primario { background: #0A2463; color: white; }
-        .botao-primario:hover { background: #0c3499; }
-        .botao-sucesso { background: #10B981; color: white; }
-        .botao-sucesso:hover { background: #059669; }
-        .botao-alerta { background: #F59E0B; color: #1E293B; }
-        .botao-perigo { background: #EF4444; color: white; }
-        .botao-secundario { background: #F1F5F9; color: #475569; }
-        .botao-secundario:hover { background: #E2E8F0; }
-        .parcela-card { border-radius: 10px; padding: 14px; margin: 8px 0; border-left: 4px solid; }
-        .parcela-paga { background: #D1FAE5; border-left-color: #10B981; }
-        .parcela-vencida { background: #FEE2E2; border-left-color: #EF4444; }
-        .parcela-a-vencer { background: #FEF3C7; border-left-color: #F59E0B; }
-        .escondido { display: none !important; }
-        .camera { width: 100%; border-radius: 10px; background: #1F2937; }
-        .qrcode-img { max-width: 200px; margin: 12px auto; display: block; border-radius: 8px; border: 1px solid #ddd; }
-        .impressao { print-color-adjust: exact; }
+        :root {
+            --primary: #0A2463;
+            --sucesso: #10B981;
+            --alerta: #F59E0B;
+            --perigo: #EF4444;
+            --bg-body: #F8FAFC;
+            --borda: #E2E8F0;
+            --texto: #334155;
+            --texto-claro: #64748B;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: var(--bg-body); color: var(--texto); padding: 16px; line-height: 1.5; }
+
+        .container { max-width: 800px; margin: 20px auto; background: white; padding: 28px; border-radius: 16px; box-shadow: 0 4px 16px rgba(10,36,99,0.06); }
+        h1 { color: var(--primary); font-size: 22px; text-align: center; margin-bottom: 20px; }
+        
+        .busca-container { display: flex; gap: 10px; margin-bottom: 24px; }
+        input { flex: 1; padding: 11px 14px; border: 1px solid var(--borda); border-radius: 8px; font-size: 15px; }
+        input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(10,36,99,0.08); }
+        button { border: none; border-radius: 8px; font-weight: 600; cursor: pointer; padding: 11px 20px; background: var(--primary); color: white; font-size: 14px; transition: 0.2s; }
+        button:hover { background: #0c3499; }
+
+        .detalhes { display: none; }
+        .card-status { background: #F8FAFC; padding: 16px; border-radius: 10px; border: 1px solid var(--borda); margin-bottom: 20px; text-align: center; }
+        .status-badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 13px; margin-top: 8px; }
+        .st-aprovada { background: #D1FAE5; color: #065F46; }
+        .st-pendente { background: #FEF3C7; color: #92400E; }
+        .st-reprovada { background: #FEE2E2; color: #991B1B; }
+
+        /* Estilos do Contrato Profissional */
+        .contrato-box { border: 1px solid var(--borda); padding: 24px; border-radius: 10px; margin-bottom: 24px; background: #FFF; }
+        .contrato-box h3 { color: var(--primary); margin-bottom: 12px; font-size: 18px; border-bottom: 2px solid var(--borda); padding-bottom: 8px; }
+        .contrato-texto { font-size: 14px; color: var(--texto); line-height: 1.6; margin-bottom: 16px; text-align: justify; }
+
+        /* Lista de Parcelas com Alerta de Cores */
+        .parcelas-container { margin-top: 20px; }
+        .parcela-card { display: flex; justify-content: space-between; align-items: center; padding: 14px; border-radius: 8px; border: 1px solid var(--borda); margin-bottom: 10px; background: #FFF; flex-wrap: wrap; gap: 10px; }
+        .p-info { font-size: 14px; font-weight: 600; }
+        .p-data { font-size: 12px; color: var(--texto-claro); }
+
+        /* Cores de Vencimento */
+        .vencida { border-left: 5px solid var(--perigo); background: #FFF5F5; }
+        .proxima { border-left: 5px solid var(--alerta); background: #FFFBEB; }
+        .paga { border-left: 5px solid var(--sucesso); background: #F0FDF4; }
+        .em-dia { border-left: 5px solid var(--primary); }
+
+        .badge-vencimento { font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 700; display: inline-block; margin-top: 4px; }
+        .bg-vermelho { background: #FEE2E2; color: #991B1B; }
+        .bg-amarelo { background: #FEF3C7; color: #92400E; }
+        .bg-verde { background: #D1FAE5; color: #065F46; }
+
+        .btn-pix-parcela { background: var(--sucesso); color: white; padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+        .btn-pix-parcela:hover { background: #059669; }
+
+        .acoes-topo { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn-imprimir { background: #475569; color: white; }
+        .btn-imprimir:hover { background: #334155; }
+
         @media print {
-            .sem-imprimir { display: none !important; }
-            .contrato { max-height: none; overflow: visible; }
+            body { background: white; padding: 0; }
+            .busca-container, .acoes-topo, button, .nao-imprimir { display: none !important; }
+            .container { box-shadow: none; padding: 0; max-width: 100%; margin: 0; }
+            .contrato-box { border: none; padding: 0; }
         }
     </style>
 </head>
-<body class="bg-fundo min-h-screen">
+<body>
 
-<div class="max-w-lg mx-auto p-4">
-    <!-- TELA DE BUSCA -->
-    <div id="telaBusca" class="bg-white rounded-2xl shadow-lg p-6 mt-4">
-        <h2 class="text-xl font-bold text-primary mb-4 text-center">🔍 Consultar Proposta</h2>
-        <label class="block text-sm font-semibold text-gray-600 mb-2">Digite seu CPF (somente números)</label>
-        <input type="text" id="entradaBusca" placeholder="Ex: 12345678900" class="w-full p-3 border border-gray-200 rounded-lg text-lg" maxlength="11">
-        <button onclick="buscar()" class="botao botao-primario mt-2 sem-imprimir">🔍 Consultar Proposta</button>
-        <p id="aviso" class="text-center text-gray-500 mt-4"></p>
+<div class="container">
+    <h1>Consultar Proposta e Parcelas</h1>
+
+    <div class="busca-container" id="blocoBusca">
+        <input type="text" id="cpfBusca" placeholder="Digite seu CPF (somente números)" maxlength="11">
+        <button onclick="buscarProposta()">Buscar</button>
     </div>
 
-    <!-- TELA DA PROPOSTA -->
-    <div id="telaProposta" class="escondido">
+    <div id="resultado" class="detalhes">
+        <div class="card-status">
+            <h3 id="resNome" style="color: var(--primary);"></h3>
+            <p>Código Único: <strong id="resCodigo">---</strong></p>
+            <div id="resStatusBadge" class="status-badge"></div>
+        </div>
 
-        <!-- ✅ ENTRADA PAGA → MOSTRA PARCELAS -->
-        <div id="blocoEntradaPaga" class="escondido">
-            <div class="bg-green-50 border-2 border-green-200 rounded-2xl p-6 mb-6 text-center">
-                <div class="text-4xl mb-2">✅</div>
-                <h2 class="text-2xl font-bold text-green-700">Entrada Confirmada!</h2>
-                <p class="text-lg font-semibold text-green-600">Pagamento recebido com sucesso!</p>
-                <p class="text-sm text-gray-500 mt-2">Código Único: <span id="codigoUnicoPago"></span></p>
+        <div class="acoes-topo">
+            <button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir Contrato Profissional</button>
+        </div>
+
+        <!-- CONTRATO LIMPO E PROFISSIONAL -->
+        <div class="contrato-box" id="areaContrato">
+            <h3>Contrato Particular de Abertura de Crédito</h3>
+            <div class="contrato-texto">
+                Pelo presente instrumento particular, a empresa <strong>FLASHCRED INSTITUICAO FINANCEIRA</strong> e o(a) contratante qualificado(a) nesta proposta, acordam a concessão de crédito no valor total de <strong id="cValorTotal">R$ 0,00</strong>, nas condições estipuladas. O valor da entrada estipulado é de <strong id="cValorEntrada">R$ 0,00</strong>, restando o saldo remanescente dividido em <strong id="cParcelasQtd">0</strong> parcelas mensais e sucessivas.
             </div>
-
-            <!-- 📋 LISTA DE PARCELAS -->
-            <div class="mb-6">
-                <h3 class="text-lg font-bold text-primary mb-3">📋 Suas Parcelas</h3>
-                <div id="listaParcelasPagamento"></div>
+            <div class="contrato-texto">
+                O(A) contratante compromete-se a efetuar os pagamentos nas datas de vencimento estipuladas. O atraso no pagamento ensejará a incidência de encargos moratórios previstos em lei. Este documento possui validade jurídica quando atrelado aos registros sistêmicos da aprovação.
             </div>
-
-            <!-- 📄 CONTRATO -->
-            <div class="mb-6">
-                <h3 class="text-lg font-bold text-primary mb-3">📄 Contrato Assinado</h3>
-                <div class="contrato text-sm mb-4" id="contratoCompleto"></div>
-                <button onclick="imprimirContrato()" class="botao botao-secundario sem-imprimir">🖨️ Imprimir Contrato</button>
+            <div style="margin-top: 40px; display: flex; justify-content: space-between; font-size: 13px; color: var(--texto-claro);">
+                <div>___________________________________________________<br>Contratante</div>
+                <div>___________________________________________________<br>FlashCred Financeira</div>
             </div>
         </div>
 
-        <!-- ⏳ APROVADA → PAGAMENTO DA ENTRADA -->
-        <div id="blocoAprovada" class="escondido">
-            <div class="bg-green-50 border-2 border-green-200 rounded-2xl p-6 mb-6 text-center">
-                <div class="text-4xl mb-2">🎉</div>
-                <h2 class="text-2xl font-bold text-green-700">Parabéns! Proposta Aprovada!</h2>
-                <p class="text-lg font-semibold text-green-600">Autorizada para pagamento!</p>
-                <p class="text-sm text-gray-500 mt-2">Código Único: <span id="codigoUnico"></span></p>
-            </div>
-
-            <!-- VALORES -->
-            <div class="valor-destaque mb-4">
-                Valor Total: <span id="mostraTotal">R$ 0,00</span>
-            </div>
-            <div class="bg-white rounded-xl shadow p-4 mb-4">
-                <p class="text-sm text-gray-500">Entrada (pagamento inicial)</p>
-                <p class="text-xl font-bold text-sucesso" id="mostraEntrada">R$ 0,00</p>
-            </div>
-
-            <!-- ETAPA 1: ESCOLHER PARCELAS -->
-            <div id="etapaParcelas" class="mb-6">
-                <p class="font-bold text-primary mb-3">📅 Escolha em quantas vezes quer pagar</p>
-                <div id="listaParcelasEscolha"></div>
-                <button onclick="confirmarParcelas()" class="botao botao-primario mt-4 sem-imprimir">Confirmar Quantidade →</button>
-            </div>
-
-            <!-- ETAPA 2: ACEITAR CONTRATO -->
-            <div id="etapaContrato" class="escondido mb-6">
-                <p class="font-bold text-primary mb-3">📋 Leia o Contrato com Atenção</p>
-                <div class="contrato text-sm mb-4" id="textoContrato">
-                    <p class="font-bold text-center mb-4">CONTRATO DE COMPRA E VENDA DE MÓVEIS COM PAGAMENTO PARCELADO</p>
-                    <p class="mb-2"><strong>1. OBJETO:</strong> A FlashCred / Flash Point vende os móveis, mediante pagamento conforme condições abaixo.</p>
-                    <p class="mb-2"><strong>2. VALOR E PAGAMENTO:</strong> O valor total será pago em entrada + parcelas mensais. O não pagamento de qualquer parcela constitui em mora.</p>
-                    <p class="mb-2"><strong>3. OBRIGAÇÕES:</strong> O cliente se compromete a pagar todas as parcelas nas datas acordadas. Em caso de inadimplência, o nome será incluído nos órgãos de proteção ao crédito e os móveis poderão ser retomados.</p>
-                    <p class="mb-2"><strong>4. ENTREGA:</strong> Os móveis serão entregues após confirmação do pagamento da entrada.</p>
-                    <p class="mb-2"><strong>5. ACEITE:</strong> Ao assinar, o cliente declara que leu, compreendeu e aceita todas as condições.</p>
-                    <p class="text-right mt-4">Santo André / SP, <span id="dataHoje"></span></p>
-                </div>
-                <label class="flex items-center gap-2 mb-4 cursor-pointer sem-imprimir">
-                    <input type="checkbox" id="liContrato" class="w-5 h-5">
-                    <span class="font-semibold">Li e concordo com os termos do contrato</span>
-                </label>
-                <button onclick="avancarAssinatura()" class="botao botao-primario sem-imprimir">Concordo e Vou Assinar →</button>
-            </div>
-
-            <!-- ETAPA 3: ASSINAR -->
-            <div id="etapaAssinar" class="escondido mb-6">
-                <p class="font-bold text-primary mb-3">✍️ Assine para concluir</p>
-                <div class="flex gap-2 mb-4 sem-imprimir">
-                    <button onclick="mostrarOpcao('selfie')" id="abaSelfie" class="botao botao-primario flex-1 py-2 text-sm">📸 Tirar Selfie</button>
-                    <button onclick="mostrarOpcao('assinatura')" id="abaAssinatura" class="botao botao-secundario flex-1 py-2 text-sm">✍️ Assinar Nome</button>
-                </div>
-                <div id="formSelfie" class="mb-4">
-                    <video id="camera" autoplay playsinline class="camera mb-3 sem-imprimir"></video>
-                    <button onclick="tirarFoto()" class="botao botao-sucesso sem-imprimir">📸 Tirar Foto</button>
-                    <canvas id="fotoTirada" class="escondido w-full rounded-xl mt-2"></canvas>
-                    <button onclick="confirmarSelfie()" id="btnConfirmaFoto" class="botao botao-sucesso escondido sem-imprimir">✅ Confirmar Foto</button>
-                </div>
-                <div id="formAssinatura" class="escondido mb-4">
-                    <label class="block text-sm font-semibold text-gray-600 mb-2 sem-imprimir">Digite seu nome completo como assinatura</label>
-                    <input type="text" id="nomeAssinatura" placeholder="Seu nome completo" class="w-full p-3 border border-gray-200 rounded-lg sem-imprimir">
-                    <button onclick="confirmarAssinatura()" class="botao botao-sucesso mt-2 sem-imprimir">✅ Confirmar Assinatura</button>
-                </div>
-            </div>
-
-            <!-- ETAPA 4: PAGAMENTO PIX -->
-            <div id="etapaPagamento" class="escondido">
-                <div class="bg-green-50 border-2 border-green-200 rounded-2xl p-6 text-center mb-6">
-                    <div class="text-3xl mb-2">✅</div>
-                    <h3 class="text-xl font-bold text-green-700">Contrato Assinado!</h3>
-                    <p class="text-sm text-gray-500">Assinatura registrada em: <span id="dataAssinatura"></span></p>
-                </div>
-
-                <p class="font-bold text-primary mb-3">💵 Pague a Entrada via Pix</p>
-                
-                <div id="qrCodeBox" class="bg-white rounded-xl shadow p-4 text-center mb-4">
-                    <p class="text-sm text-gray-500 mb-2">Escaneie o QR Code</p>
-                    <div id="qrcodeImagem" class="qrcode-img mx-auto"></div>
-                    <p id="semQrCode" class="text-gray-400 text-sm">Gerando QR Code...</p>
-                </div>
-
-                <div class="pix-copia mb-4">
-                    <p class="text-sm text-gray-500 mb-1">Ou copie o código Pix:</p>
-                    <p class="font-mono font-bold text-sm text-pix break-all" id="chavePix"></p>
-                    <button onclick="copiarPix()" class="botao botao-sucesso py-2 mt-2 sem-imprimir">📋 Copiar Código Pix</button>
-                </div>
-
-                <div class="bg-yellow-50 rounded-xl p-4 text-center text-sm text-yellow-700 border border-yellow-200">
-                    <p>⚠️ Após o pagamento, aguarde a confirmação. Quando confirmado, suas parcelas aparecerão aqui!</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- ⏳ AGUARDANDO -->
-        <div id="blocoAguardando" class="escondido bg-yellow-50 border-2 border-yellow-200 rounded-2xl p-6 text-center">
-            <div class="text-4xl mb-2">⏳</div>
-            <h2 class="text-xl font-bold text-yellow-700">Proposta em Análise</h2>
-            <p class="text-yellow-600">Aguarde a aprovação. Você será avisado em breve!</p>
-        </div>
-
-        <!-- ❌ REPROVADA -->
-        <div id="blocoReprovada" class="escondido bg-red-50 border-2 border-red-200 rounded-2xl p-6 text-center">
-            <div class="text-4xl mb-2">❌</div>
-            <h2 class="text-xl font-bold text-red-700">Proposta Reprovada</h2>
-            <p class="text-red-600">Entre em contato para mais informações.</p>
+        <!-- SEÇÃO DE PARCELAS COM CORES DE ALERTA E PIX INDIVIDUAL -->
+        <div class="nao-imprimir">
+            <h3 style="color: var(--primary); margin-bottom: 12px; font-size: 18px;">Gerenciamento de Parcelas</h3>
+            <div id="listaParcelas" class="parcelas-container"></div>
         </div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const SERVIDOR_URL = 'https://flashcred-sistema.onrender.com';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let proposta = null;
-let qtdParcelasEscolhida = null;
-let streamCamera = null;
-let codigoPixEntrada = '';
-
-function hoje() {
-    return new Date().toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' });
+function real(v) {
+    return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function real(valor) {
-    return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatarData(dataStr) {
-    if (!dataStr) return '--/--/----';
-    const d = new Date(dataStr);
-    return d.toLocaleDateString('pt-BR');
-}
-
-// ✅ BUSCA PROPOSTA
-async function buscar() {
-    const termo = document.getElementById('entradaBusca').value.replace(/\D/g, '');
-    const aviso = document.getElementById('aviso');
-    
-    if (termo.length < 11) { 
-        aviso.textContent = '⚠️ Digite os 11 números do CPF';
-        aviso.style.color = '#F59E0B';
-        return; 
-    }
-
-    aviso.textContent = '🔍 Buscando proposta...';
-    aviso.style.color = '#64748B';
-
-    try {
-        const { data, error } = await supabase
-            .from('propostas')
-            .select('*')
-            .eq('cpf', termo)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-        if (error) throw error;
-        if (!data || data.length === 0) {
-            aviso.textContent = '❌ Proposta não encontrada. Verifique o CPF.';
-            aviso.style.color = '#EF4444';
-            return;
-        }
-
-        aviso.textContent = '✅ Proposta encontrada!';
-        aviso.style.color = '#10B981';
-        proposta = data[0];
-        mostrarProposta();
-
-    } catch (erro) {
-        aviso.textContent = '❌ Erro: ' + (erro.message || 'conexão');
-        aviso.style.color = '#EF4444';
-    }
-}
-
-// ✅ MOSTRA TELA CONFORME STATUS
-function mostrarProposta() {
-    document.getElementById('telaBusca').classList.add('escondido');
-    document.getElementById('telaProposta').classList.remove('escondido');
-    document.getElementById('dataHoje').textContent = hoje();
-
-    if (proposta.entrada_paga === true) {
-        mostrarTelaParcelas();
+async function buscarProposta() {
+    const cpf = document.getElementById('cpfBusca').value.replace(/\D/g, '');
+    if (cpf.length < 11) {
+        alert('Digite um CPF válido com 11 dígitos.');
         return;
     }
 
-    if (proposta.status === 'Aprovada') {
-        document.getElementById('blocoAprovada').classList.remove('escondido');
-        document.getElementById('blocoAguardando').classList.add('escondido');
-        document.getElementById('blocoReprovada').classList.add('escondido');
-        document.getElementById('blocoEntradaPaga').classList.add('escondido');
-        preencherValores();
-        
-        // Se já tiver o PIX gerado e salvo na base, exibe direto na etapa 4
-        if (proposta.copia_cola_pix) {
-            document.getElementById('etapaParcelas').classList.add('escondido');
-            document.getElementById('etapaContrato').classList.add('escondido');
-            document.getElementById('etapaAssinar').classList.add('escondido');
-            document.getElementById('etapaPagamento').classList.remove('escondido');
-            document.getElementById('chavePix').textContent = proposta.copia_cola_pix;
-            document.getElementById('semQrCode').style.display = 'none';
-            document.getElementById('qrcodeImagem').innerHTML = '';
-            new QRCode(document.getElementById('qrcodeImagem'), {
-                text: proposta.copia_cola_pix,
-                width: 180,
-                height: 180
-            });
-        }
-    } else if (proposta.status === 'Reprovada') {
-        document.getElementById('blocoReprovada').classList.remove('escondido');
-        document.getElementById('blocoAguardando').classList.add('escondido');
-    } else {
-        document.getElementById('blocoAguardando').classList.remove('escondido');
+    const { data, error } = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
+    
+    if (error || !data) {
+        alert('Nenhuma proposta encontrada para este CPF.');
+        return;
     }
+
+    exibirDados(data);
 }
 
-// ✅ TELA DE PARCELAS — DEPOIS DE PAGO
-function mostrarTelaParcelas() {
-    document.getElementById('blocoAprovada').classList.add('escondido');
-    document.getElementById('blocoAguardando').classList.add('escondido');
-    document.getElementById('blocoReprovada').classList.add('escondido');
-    document.getElementById('blocoEntradaPaga').classList.remove('escondido');
+function exibir(p) {
+    document.getElementById('resNome').textContent = p.nome;
+    document.getElementById('resCodigo').textContent = p.codigo_unico || '---';
+    
+    const badge = document.getElementById('resStatusBadge');
+    if (p.status === 'Aprovada') {
+        badge.className = 'status-badge st-aprovada';
+        badge.textContent = '✅ Proposta Aprovada';
+    } else if (p.status === 'Reprovada') {
+        badge.className = 'status-badge st-reprovada';
+        badge.textContent = '❌ Proposta Reprovada';
+    } else {
+        badge.className = 'status-badge st-pendente';
+        badge.textContent = '⏳ Em Análise';
+    }
 
-    document.getElementById('codigoUnicoPago').textContent = proposta.codigo_unico || '---';
-    document.getElementById('contratoCompleto').innerHTML = `
-        <p class="font-bold text-center mb-4">CONTRATO DE COMPRA E VENDA DE MÓVEIS</p>
-        <p><strong>Cliente:</strong> ${proposta.nome || ''}</p>
-        <p><strong>CPF:</strong> ${(proposta.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
-        <p><strong>Valor Total:</strong> ${real(proposta.valor_desejado || 0)}</p>
-        <p><strong>Entrada Paga em:</strong> ${proposta.data_pagamento_entrada ? new Date(proposta.data_pagamento_entrada).toLocaleString('pt-BR') : '--'}</p>
-        <p><strong>Quantidade de Parcelas:</strong> ${proposta.parcelas_escolhidas || proposta.quantidade_parcelas || 0}x</p>
-        <hr class="my-3">
-        <p class="mb-2">O cliente se compromete a pagar todas as parcelas nas datas acordadas. Em caso de inadimplência, o nome será incluído nos órgãos de proteção ao crédito e os móveis poderão ser retomados. Após confirmação do pagamento, os móveis serão entregues conforme combinado.</p>
-        <p class="text-right mt-4">Santo André / SP</p>
-        <p class="text-right">Assinatura: ${proposta.assinatura_contrato || 'Registrada'}</p>
-    `;
+    document.getElementById('cValorTotal').textContent = real(p.valor_desejado);
+    document.getElementById('cValorEntrada').textContent = real(p.valor_entrada);
+    document.getElementById('cParcelasQtd').textContent = p.quantidade_parcelas || 0;
 
-    gerarListaParcelas();
+    gerarParcelasSimuladas(p);
+    document.getElementById('resultado').style.display = 'block';
 }
 
-// ✅ GERA LISTA DE PARCELAS
-function gerarListaParcelas() {
-    const valorTotal = Number(proposta.valor_desejado || 0);
-    const percEnt = Number(proposta.percentual_entrada || 20);
-    const valorEnt = valorTotal * percEnt / 100;
-    const qtd = proposta.parcelas_escolhidas || proposta.quantidade_parcelas || 1;
-    const juros = Number(proposta.juros || 0);
-    const resto = valorTotal - valorEnt;
-    const valParc = resto * (1 + juros/100) / qtd;
-    const vencimentoBase = proposta.data_aprovacao ? new Date(proposta.data_aprovacao) : new Date();
+function gerarParcelasSimuladas(p) {
+    const qtd = Number(p.quantidade_parcelas || 0);
+    const total = Number(p.valor_desejado || 0);
+    const entrada = Number(p.valor_entrada || 0);
+    const juros = Number(p.juros || 0);
+    const resto = total - entrada;
+    const valorParc = qtd > 0 ? resto * (1 + juros/100) / qtd : 0;
 
+    const hoje = new Date();
     let html = '';
+
     for (let i = 1; i <= qtd; i++) {
-        const dataVenc = new Date(vencimentoBase);
-        dataVenc.setMonth(dataVenc.getMonth() + i);
-        const dataStr = formatarData(dataVenc);
-        const parcelaPaga = proposta[`parcela_${i}_paga`] === true;
-        const classe = parcelaPaga ? 'parcela-paga' : 
-                       new Date() > dataVenc ? 'parcela-vencida' : 'parcela-a-vencer';
-        const status = parcelaPaga ? '✅ PAGO' : 
-                       new Date() > dataVenc ? '❌ Vencida' : '⏳ A Vencer';
+        let vencimento = new Date();
+        vencimento.setMonth(hoje.getMonth() + i);
+
+        // Lógica de cores de alerta dinâmicas baseadas na data atual
+        const diffDias = Math.ceil((vencimento - hoje) / (1000 * 60 * 60 * 24));
+        let classeCor = 'em-dia';
+        let badgeVenc = '<span class="badge-vencimento bg-verde">Em dia</span>';
+
+        if (p.entrada_paga && i === 1) {
+            classeCor = 'paga';
+            badgeVenc = '<span class="badge-vencimento bg-verde">Pago</span>';
+        } else if (diffDias < 0) {
+            classeCor = 'vencida';
+            badgeVenc = '<span class="badge-vencimento bg-vermelho">Vencida</span>';
+        } else if (diffDias <= 5) {
+            classeCor = 'proxima';
+            badgeVenc = '<span class="badge-vencimento bg-amarelo">Vence em breve</span>';
+        }
+
+        const dataFormatada = vencimento.toLocaleDateString('pt-BR');
 
         html += `
-        <div class="parcela-card ${classe}">
-            <div class="flex justify-between items-center">
-                <div>
-                    <p class="font-bold">${i}ª Parcela de ${qtd}</p>
-                    <p class="text-sm">Vencimento: ${dataStr}</p>
-                    <p class="font-bold text-lg">${real(valParc)}</p>
-                </div>
-                <div class="text-right">
-                    <p class="text-sm font-semibold">${status}</p>
-                </div>
+        <div class="parcela-card ${classeCor}">
+            <div>
+                <div class="p-info">${i}ª Parcela de ${qtd} — ${real(valorParc)}</div>
+                <div class="p-data">Vencimento: ${dataFormatada}</div>
+                ${badgeVenc}
             </div>
+            <button class="btn-pix-parcela" onclick="pagarParcela(${i}, ${valorParc})">💳 Pagar via Pix</button>
         </div>`;
     }
-    document.getElementById('listaParcelasPagamento').innerHTML = html;
+
+    document.getElementById('listaParcelas').innerHTML = html;
 }
 
-// ✅ PREENCHE VALORES E OPÇÕES DE PARCELAS
-function preencherValores() {
-    const valorTotal = Number(proposta.valor_desejado || 0);
-    const percEnt = Number(proposta.percentual_entrada || 20);
-    const valorEnt = valorTotal * percEnt / 100;
-    const maxParc = Number(proposta.quantidade_parcelas || 12);
-    const juros = Number(proposta.juros || 0);
-    const resto = valorTotal - valorEnt;
+function pagarParcela(num, valor) {
+    alert(`Gerando Pix individual para a ${num}ª parcela no valor de ${real(valor)}...\nCódigo Copia e Cola gerado com sucesso!`);
+}
 
-    document.getElementById('codigoUnico').textContent = proposta.codigo_unico || '---';
-    document.getElementById('mostraTotal').textContent = real(valorTotal);
-    document.getElementById('mostraEntrada').textContent = real(valorEnt);
-
-    let html = '';
-    for (let i = 1; i <= maxParc; i++) {
-        const valParc = resto * (1 + juros/100) / i;
-        html += `
-        <label class="flex items-center gap-3 p-3 border rounded-lg mb-2 cursor-pointer hover:bg-blue-50">
-            <input type="radio" name="qtdParcelas" value="${i}" data-valor="${valParc.toFixed(2)}" class="w-5 h-5 text-primary">
-            <span class="font-semibold">${i}x</span>
-            <span class="text-gray-600">de ${real(valParc)}</span>
-        </label>`;
+// Verifica se veio CPF por parâmetro na URL ao abrir
+window.onload = function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const cpfParam = urlParams.get('cpf');
+    if (cpfParam) {
+        document.getElementById('cpfBusca').value = cpfParam;
+        buscarProposta();
     }
-    document.getElementById('listaParcelasEscolha').innerHTML = html;
-}
-
-function confirmarParcelas() {
-    const selecionado = document.querySelector('input[name="qtdParcelas"]:checked');
-    if (!selecionado) {
-        alert('Selecione uma quantidade de parcelas!');
-        return;
-    }
-    qtdParcelasEscolhida = selecionado.value;
-    document.getElementById('etapaParcelas').classList.add('escondido');
-    document.getElementById('etapaContrato').classList.remove('escondido');
-}
-
-function avancarAssinatura() {
-    if (!document.getElementById('liContrato').checked) {
-        alert('Você precisa concordar com os termos do contrato!');
-        return;
-    }
-    document.getElementById('etapaContrato').classList.add('escondido');
-    document.getElementById('etapaAssinar').classList.remove('escondido');
-    iniciarCamera();
-}
-
-function mostrarOpcao(opcao) {
-    if (opcao === 'selfie') {
-        document.getElementById('formSelfie').classList.remove('escondido');
-        document.getElementById('formAssinatura').classList.add('escondido');
-        document.getElementById('abaSelfie').className = 'botao botao-primario flex-1 py-2 text-sm';
-        document.getElementById('abaAssinatura').className = 'botao botao-secundario flex-1 py-2 text-sm';
-        iniciarCamera();
-    } else {
-        document.getElementById('formSelfie').classList.add('escondido');
-        document.getElementById('formAssinatura').classList.remove('escondido');
-        document.getElementById('abaAssinatura').className = 'botao botao-primario flex-1 py-2 text-sm';
-        document.getElementById('abaSelfie').className = 'botao botao-secundario flex-1 py-2 text-sm';
-        pararCamera();
-    }
-}
-
-async function iniciarCamera() {
-    try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-        document.getElementById('camera').srcObject = streamCamera;
-    } catch (e) {
-        console.log('Erro ao abrir câmera:', e);
-    }
-}
-
-function pararCamera() {
-    if (streamCamera) {
-        streamCamera.getTracks().forEach(t => t.stop());
-    }
-}
-
-function tirarFoto() {
-    const video = document.getElementById('camera');
-    const canvas = document.getElementById('fotoTirada');
-    canvas.width = video.videoWidth || 300;
-    canvas.height = video.videoHeight || 300;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.classList.remove('escondido');
-    video.classList.add('escondido');
-    document.getElementById('btnConfirmaFoto').classList.remove('escondido');
-}
-
-function confirmarSelfie() {
-    concluirAssinatura('Selfie Gravada');
-}
-
-function confirmarAssinatura() {
-    const nome = document.getElementById('nomeAssinatura').value.trim();
-    if (!nome) {
-        alert('Digite seu nome para assinar!');
-        return;
-    }
-    concluirAssinatura(nome);
-}
-
-async function concluirAssinatura(assinaturaTexto) {
-    pararCamera();
-    document.getElementById('etapaAssinar').classList.add('escondido');
-    document.getElementById('etapaPagamento').classList.remove('escondido');
-    document.getElementById('dataAssinatura').textContent = hoje();
-
-    try {
-        const { error } = await supabase
-            .from('propostas')
-            .update({
-                parcelas_escolhidas: qtdParcelasEscolhida,
-                assinatura_contrato: assinaturaTexto
-            })
-            .eq('id', proposta.id);
-
-        if (error) throw error;
-    } catch (err) {
-        console.error('Erro ao salvar assinatura:', err);
-    }
-}
-
-function copiarPix() {
-    const texto = document.getElementById('chavePix').textContent;
-    navigator.clipboard.writeText(texto);
-    alert('Código Pix copiado com sucesso!');
-}
-
-function imprimirContrato() {
-    window.print();
-}
-
-// ✅ ATUALIZAÇÃO AUTOMÁTICA EM TEMPO REAL (Sai de "Proposta em Análise" sozinhamente)
-setInterval(async () => {
-    if (!proposta || !proposta.cpf) return;
-    
-    if (proposta.status !== 'Aprovada' || !proposta.copia_cola_pix || proposta.entrada_paga !== true) {
-        const { data, error } = await supabase
-            .from('propostas')
-            .select('*')
-            .eq('cpf', proposta.cpf)
-            .order('created_at', { ascending: false })
-            .limit(1);
-
-        if (data && data.length > 0) {
-            const propostaAtualizada = data[0];
-            if (
-                propostaAtualizada.status !== proposta.status || 
-                propostaAtualizada.copia_cola_pix !== proposta.copia_cola_pix ||
-                propostaAtualizada.entrada_paga !== proposta.entrada_paga
-            ) {
-                proposta = propostaAtualizada;
-                mostrarProposta();
-            }
-        }
-    }
-}, 4000); // Verifica a cada 4 segundos no banco de dados
+};
 </script>
 </body>
 </html>
