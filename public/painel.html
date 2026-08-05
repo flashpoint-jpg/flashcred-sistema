@@ -98,8 +98,6 @@
         .btn-pago:hover { background: #2563EB; }
         .btn-contrato { background: #8B5CF6; color: white; }
         .btn-contrato:hover { background: #7C3AED; }
-        .btn-cobranca { background: var(--alerta); color: #1E293B; }
-        .btn-cobranca:hover { background: #D97706; }
 
         .pix-bloco { background: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 10px; margin-top: 10px; font-size: 12px; }
         .pix-codigo { font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 6px; padding: 6px; background: white; border-radius: 4px; }
@@ -179,7 +177,6 @@ let processando = false;
 let ultimaContagem = 0;
 let servidorPronto = false;
 
-// Tenta acordar o servidor em background logo que a página abre
 window.addEventListener('DOMContentLoaded', () => {
     fetch(SERVIDOR_URL, { method: 'GET', mode: 'no-cors' }).catch(() => {});
 });
@@ -401,30 +398,13 @@ function gerarLinhasParcelas(p, qtd, valParc) {
         html += `
         <div class="parcela-linha ${classe}">
             <strong>${i}ª</strong>
-            <input type="text" value="${vencStr}" onchange="alterarVencimento(${p.id}, ${i}, this.value)">
-            <input type="text" value="${real(valParc)}" onchange="alterarValorParcela(${p.id}, ${i}, this.value)">
-            <span>${paga ? '✅ PAGO' : '⏳ Pendente'}${avisoProx}</span>
-            ${!paga ? `
-            <button class="btn btn-pago" onclick="marcarParcelaPaga(${p.id}, ${i})">✓ Pago</button>
-            <button class="btn btn-cobranca" onclick="enviarCobrancaParcela(${p.id}, ${i}, '${vencStr}', '${real(valParc)}')">📩 Cobrar</button>
-            ` : '<span>—</span>'}
+            <input type="text" value="${vencStr}" disabled>
+            <input type="text" value="${real(valParc)}" disabled>
+            <span>${paga ? '✅ Paga' : '⏳ Pendente'} ${avisoProx}</span>
+            <button class="btn ${paga ? 'btn-excluir' : 'btn-aprovar'}" onclick="alternarParcela(${p.id}, ${i}, ${!paga})">${paga ? 'Desfazer' : 'Dar Baixa'}</button>
         </div>`;
     }
     return html;
-}
-
-function atualizarCalc(id) {
-    const valor = Number(document.getElementById(`v-${id}`).value) || 0;
-    const perc = Number(document.getElementById(`p-${id}`).value) || 0;
-    const qtd = Number(document.getElementById(`par-${id}`).value) || 0;
-    const juros = Number(document.getElementById(`j-${id}`).value) || 0;
-
-    const entrada = valor * perc / 100;
-    const resto = valor - entrada;
-    const valParc = qtd ? resto * (1 + juros/100) / qtd : 0;
-
-    document.getElementById(`e-${id}`).value = real(entrada);
-    document.getElementById(`vp-${id}`).value = real(valParc);
 }
 
 async function aprovar(id) {
@@ -449,7 +429,7 @@ async function aprovar(id) {
 
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 90000);
+        const timeout = setTimeout(() => controller.abort(), 120000);
 
         const resposta = await fetch(SERVIDOR_URL + '/api/criar-pagamento', {
             method: 'POST',
@@ -489,7 +469,7 @@ async function aprovar(id) {
 
         if (error) throw new Error('Banco: ' + error.message);
 
-        alert('✅ PIX GERADO COM SUCESSO!\nLiberado para o cliente!');
+        alert('✅ PIX GERADO COM SUCESSO!');
         carregar();
 
     } catch (erro) {
@@ -505,69 +485,59 @@ async function aprovar(id) {
 }
 
 async function marcarEntradaPaga(id) {
-    if (!confirm('💰 Marcar entrada como PAGA?\nLibera contrato e parcelas para o cliente!')) return;
+    if (!confirm('Confirmar que a entrada foi paga manualmente?')) return;
     const { error } = await supabase.from('propostas').update({
         entrada_paga: true,
-        data_pagamento_entrada: new Date().toISOString()
+        status: 'Aprovada',
+        data_aprovacao: new Date().toISOString()
     }).eq('id', id);
 
-    if (error) alert('❌ Erro: ' + error.message);
-    else {
-        alert('✅ Entrada marcada como PAGA!\n📄 Contrato e parcelas LIBERADAS!');
-        carregar();
-    }
-}
-
-async function marcarParcelaPaga(id, numParc) {
-    if (!confirm(`✅ Marcar ${numParc}ª parcela como PAGA?`)) return;
-    const campo = `parcela_${numParc}_paga`;
-    const { error } = await supabase.from('propostas').update({ [campo]: true }).eq('id', id);
-    if (error) alert('❌ Erro: ' + error.message);
-    else carregar();
-}
-
-function alterarVencimento(id, numParc, novaData) {
-    alert(`✅ Vencimento da ${numParc}ª parcela: ${novaData}`);
-}
-
-function alterarValorParcela(id, numParc, novoValor) {
-    alert(`✅ Valor da ${numParc}ª parcela: ${novoValor}`);
-}
-
-function verContrato(id) {
-    const p = propostas.find(x => x.id === id);
-    if (!p) return;
-    alert(`📄 CONTRATO ASSINADO\n\nCliente: ${p.nome}\nCPF: ${(p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}\n\nValor Total: ${real(p.valor_desejado || 0)}\nEntrada: ${real(p.valor_entrada || 0)}\nParcelas: ${p.parcelas_escolhidas || 0}x\n\nAssinatura: ${p.assinatura_contrato || 'Registrada'}\nData: ${p.data_assinatura || '--'}`);
+    if (error) { alert('Erro: ' + error.message); return; }
+    alert('✅ Entrada marcada como paga!');
+    carregar();
 }
 
 async function reprovar(id) {
-    if (!confirm('❌ Reprovar esta proposta?')) return;
+    if (!confirm('Deseja realmente REPROVAR esta proposta?')) return;
     const { error } = await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
-    if (error) alert('Erro: ' + error.message);
-    else carregar();
+    if (error) { alert('Erro: ' + error.message); return; }
+    carregar();
+}
+
+async function excluir(id) {
+    if (!confirm('Deseja excluir permanentemente esta proposta?')) return;
+    const { error } = await supabase.from('propostas').delete().eq('id', id);
+    if (error) { alert('Erro: ' + error.message); return; }
+    carregar();
+}
+
+async function alternarParcela(id, numParcela, status) {
+    const campo = `parcela_${numParcela}_paga`;
+    const { error } = await supabase.from('propostas').update({ [campo]: status }).eq('id', id);
+    if (error) { alert('Erro: ' + error.message); return; }
+    carregar();
 }
 
 function enviarWhatsApp(id) {
     const p = propostas.find(x => x.id === id);
-    if (!p) return;
-    const link = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(p.cpf || '').replace(/\D/g, '')}`;
-    const msg = `Olá ${p.nome}! ✅ Sua proposta foi APROVADA!\n\n💰 Valor Total: ${real(p.valor_desejado || 0)}\n💵 Entrada: ${real(p.valor_entrada || 0)}\n📋 Parcelamento em ${p.parcelas_escolhidas || p.quantidade_parcelas || 0}x\n\nAcesse abaixo para ver o Pix, QR Code, assinar contrato e pagar:\n${link}\n\nAtenciosamente, FlashCred 📋`;
-    window.open(`https://wa.me/55${(p.telefone || '').replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+    if (!p || !p.telefone) { alert('Telefone não informado!'); return; }
+    const tel = p.telefone.replace(/\D/g, '');
+    const msg = encodeURIComponent(`Olá ${p.nome}, referente à sua proposta na FlashCred (${p.codigo_unico || ''})...`);
+    window.open(`https://wa.me/55${tel}?text=${msg}`, '_blank');
 }
 
-function enviarCobrancaParcela(id, numParc, venc, valor) {
+function verContrato(id) {
     const p = propostas.find(x => x.id === id);
-    if (!p) return;
-    const link = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(p.cpf || '').replace(/\D/g, '')}`;
-    const msg = `⚠️ COBRANÇA — ${numParc}ª Parcela\n\nOlá ${p.nome},\nA ${numParc}ª parcela vence em ${venc} no valor de ${valor}.\n\n🔗 Acesse para ver detalhes e pagar:\n${link}\n\nFlashCred — Agradecemos sua pontualidade!`;
-    window.open(`https://wa.me/55${(p.telefone || '').replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+    if (!p || !p.assinatura_contrato) { alert('Contrato ainda não assinado.'); return; }
+    const win = window.open('', '_blank');
+    win.document.write(`<iframe src="${p.assinatura_contrato}" style="width:100%; height:100%; border:none;"></iframe>`);
 }
 
-async function excluir(id) {
-    if (!confirm('⚠️ TEM CERTEZA? Essa ação NÃO pode ser desfeita!')) return;
-    const { error } = await supabase.from('propostas').delete().eq('id', id);
-    if (error) alert('❌ Erro: ' + error.message);
-    else carregar();
+function atualizarCalc(id) {
+    const v = Number(document.getElementById(`v-${id}`).value) || 0;
+    const p = Number(document.getElementById(`p-${id}`).value) || 0;
+    const ent = v * p / 100;
+    document.getElementById(`e-${id}`).value = real(ent);
 }
 </script>
 </body>
