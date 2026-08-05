@@ -407,137 +407,133 @@ function gerarLinhasParcelas(p, qtd, valParc) {
     return html;
 }
 
+function atualizarCalc(id) {
+    const v = Number(document.getElementById(`v-${id}`).value) || 0;
+    const p = Number(document.getElementById(`p-${id}`).value) || 0;
+    const par = Number(document.getElementById(`par-${id}`).value) || 1;
+    const j = Number(document.getElementById(`j-${id}`).value) || 0;
+
+    const ent = v * (p / 100);
+    const resto = v - ent;
+    const vp = par > 0 ? (resto * (1 + j / 100)) / par : 0;
+
+    document.getElementById(`e-${id}`).value = real(ent);
+    document.getElementById(`vp-${id}`).value = real(vp);
+}
+
 async function aprovar(id) {
-    if (processando) { alert('⏳ Aguarde, processando requisição...'); return; }
-    const p = propostas.find(x => x.id === id);
-    if (!p) return;
-
-    const valor = Number(document.getElementById(`v-${id}`).value) || 0;
-    const perc = Number(document.getElementById(`p-${id}`).value) || 0;
-    const entrada = valor * perc / 100;
-    const qtd = Number(document.getElementById(`par-${id}`).value) || 1;
-    const juros = Number(document.getElementById(`j-${id}`).value) || 0;
-
-    if (!confirm(`✅ APROVAR e GERAR PIX?\n\nCliente: ${p.nome}\nEntrada: ${real(entrada)}`)) return;
-
-    processando = true;
+    if (processando) return;
     const btn = document.getElementById(`btn-aprovar-${id}`);
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = '⏳ Gerando Pix...';
-    }
+    const textOrig = btn.textContent;
+    btn.textContent = '⏳ Gerando Pix...';
+    btn.disabled = true;
+    processando = true;
 
     try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 120000);
+        const p = propostas.find(x => x.id === id);
+        const valorTotal = Number(document.getElementById(`v-${id}`).value);
+        const percentualEntrada = Number(document.getElementById(`p-${id}`).value);
+        const valorEntrada = valorTotal * (percentualEntrada / 100);
+        const parcelas = Number(document.getElementById(`par-${id}`).value);
+        const juros = Number(document.getElementById(`j-${id}`).value);
 
-        const resposta = await fetch(SERVIDOR_URL + '/api/criar-pagamento', {
+        const res = await fetch(`${SERVIDOR_URL}/api/criar-pagamento`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
             body: JSON.stringify({
-                valor: Number(entrada.toFixed(2)),
-                tipo: 'pix',
-                cpf: (p.cpf || '').replace(/\D/g, ''),
+                valor: valorEntrada,
                 nome: p.nome,
-                descricao: `Entrada - ${p.nome} - ${p.codigo_unico || ''}`
+                cpf: p.cpf,
+                descricao: `Entrada FlashCred - ${p.nome}`
             })
         });
 
-        clearTimeout(timeout);
-
-        if (!resposta.ok) throw new Error('Erro na resposta do servidor');
-
-        const dados = await resposta.json();
-        if (dados.erro) throw new Error(dados.erro);
-
-        const chavePix = dados.qr_code || '';
-        const qrImg = dados.qr_code_base64 || null;
-
-        const { error } = await supabase.from('propostas').update({
-            status: 'Aprovada',
-            valor_desejado: valor,
-            percentual_entrada: perc,
-            valor_entrada: entrada,
-            quantidade_parcelas: qtd,
-            parcelas_escolhidas: qtd,
-            juros: juros,
-            copia_cola_pix: chavePix,
-            qr_code_entrada: qrImg,
-            data_aprovacao: new Date().toISOString()
-        }).eq('id', id);
-
-        if (error) throw new Error('Banco: ' + error.message);
-
-        alert('✅ PIX GERADO COM SUCESSO!');
-        carregar();
-
-    } catch (erro) {
-        console.error(erro);
-        alert('⚠️ Erro ao gerar Pix. Verifique a conexão com o servidor e tente novamente.');
+        const dados = await res.json();
+        
+        if (dados.success) {
+            await supabase.from('propostas').update({ 
+                status: 'Aprovada',
+                valor_desejado: valorTotal,
+                percentual_entrada: percentualEntrada,
+                valor_entrada: valorEntrada,
+                parcelas_escolhidas: parcelas,
+                quantidade_parcelas: parcelas,
+                juros: juros,
+                copia_cola_pix: dados.qr_code,
+                qr_code_entrada: dados.qr_code_base64,
+                data_aprovacao: new Date().toISOString()
+            }).eq('id', id);
+            
+            alert('✅ Pix gerado e proposta aprovada com sucesso!');
+            carregar(true);
+        } else {
+            alert('⚠️ Erro ao gerar Pix: ' + (dados.erro || 'Verifique a conexão.'));
+        }
+    } catch (e) {
+        alert('⚠️ Erro ao comunicar com o servidor: ' + e.message);
     }
 
+    btn.textContent = textOrig;
+    btn.disabled = false;
     processando = false;
-    if (btn) {
-        btn.disabled = false;
-        btn.textContent = '✅ Aprovar + Gerar Pix';
-    }
 }
 
 async function marcarEntradaPaga(id) {
-    if (!confirm('Confirmar que a entrada foi paga manualmente?')) return;
-    const { error } = await supabase.from('propostas').update({
-        entrada_paga: true,
-        status: 'Aprovada',
-        data_aprovacao: new Date().toISOString()
-    }).eq('id', id);
-
-    if (error) { alert('Erro: ' + error.message); return; }
-    alert('✅ Entrada marcada como paga!');
-    carregar();
-}
-
-async function reprovar(id) {
-    if (!confirm('Deseja realmente REPROVAR esta proposta?')) return;
-    const { error } = await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
-    if (error) { alert('Erro: ' + error.message); return; }
-    carregar();
-}
-
-async function excluir(id) {
-    if (!confirm('Deseja excluir permanentemente esta proposta?')) return;
-    const { error } = await supabase.from('propostas').delete().eq('id', id);
-    if (error) { alert('Erro: ' + error.message); return; }
-    carregar();
-}
-
-async function alternarParcela(id, numParcela, status) {
-    const campo = `parcela_${numParcela}_paga`;
-    const { error } = await supabase.from('propostas').update({ [campo]: status }).eq('id', id);
-    if (error) { alert('Erro: ' + error.message); return; }
-    carregar();
-}
-
-function enviarWhatsApp(id) {
-    const p = propostas.find(x => x.id === id);
-    if (!p || !p.telefone) { alert('Telefone não informado!'); return; }
-    const tel = p.telefone.replace(/\D/g, '');
-    const msg = encodeURIComponent(`Olá ${p.nome}, referente à sua proposta na FlashCred (${p.codigo_unico || ''})...`);
-    window.open(`https://wa.me/55${tel}?text=${msg}`, '_blank');
+    if (confirm('Tem certeza que deseja confirmar o pagamento da entrada manualmente?')) {
+        await supabase.from('propostas').update({ 
+            entrada_paga: true, 
+            status: 'Aprovada' 
+        }).eq('id', id);
+        carregar(true);
+    }
 }
 
 function verContrato(id) {
     const p = propostas.find(x => x.id === id);
-    if (!p || !p.assinatura_contrato) { alert('Contrato ainda não assinado.'); return; }
-    const win = window.open('', '_blank');
-    win.document.write(`<iframe src="${p.assinatura_contrato}" style="width:100%; height:100%; border:none;"></iframe>`);
+    if (p && p.assinatura_contrato) {
+        alert('Contrato assinado pelo cliente.');
+    } else {
+        alert('⏳ O cliente ainda não realizou a assinatura do contrato.');
+    }
 }
 
-function atualizarCalc(id) {
-    const v = Number(document.getElementById(`v-${id}`).value) || 0;
-    const p = Number(document.getElementById(`p-${id}`).value) || 0;
-    const ent = v * p / 100;
-    document.getElementById(`e-${id}`).value = real(ent);
+function enviarWhatsApp(id) {
+    const p = propostas.find(x => x.id === id);
+    if (!p || !p.telefone) {
+        return alert('Telefone do cliente não informado.');
+    }
+    
+    const tel = p.telefone.replace(/\D/g, '');
+    let msg = `Olá, *${p.nome}*! Sua proposta na FlashCred foi atualizada.`;
+    
+    if (p.copia_cola_pix && !p.entrada_paga) {
+        msg += `\n\nO seu Pix para pagamento da entrada foi liberado! \n\n*Chave Copia e Cola:*\n${p.copia_cola_pix}`;
+    } else if (p.entrada_paga) {
+        msg += `\n\nConfirmamos o pagamento da sua entrada. Agradecemos a preferência!`;
+    }
+    
+    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+async function reprovar(id) {
+    if (confirm('Deseja realmente REPROVAR esta proposta?')) {
+        await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
+        carregar(true);
+    }
+}
+
+async function excluir(id) {
+    if (confirm('ATENÇÃO: Deseja EXCLUIR DEFINITIVAMENTE esta proposta do banco de dados?')) {
+        await supabase.from('propostas').delete().eq('id', id);
+        carregar(true);
+    }
+}
+
+async function alternarParcela(id, num, statusPago) {
+    const update = {};
+    update[`parcela_${num}_paga`] = statusPago;
+    await supabase.from('propostas').update(update).eq('id', id);
+    carregar(true);
 }
 </script>
 </body>
