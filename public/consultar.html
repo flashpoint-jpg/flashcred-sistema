@@ -171,9 +171,11 @@
             <div class="qrcode-container">
                 <div id="qrCodeBox"></div>
                 <div class="copia-cola" id="copiaColaPix">Gerando Pix...</div>
-                <button type="button" style="background: var(--alerta); color: #1E293B; font-size: 13px; padding: 8px;" onclick="copiarPix()">📋 Copiar Código Pix</button>
+                <button type="button" style="background: var(--alerta); color: #1E293B; font-size: 13px; padding: 8px; margin-bottom: 8px;" onclick="copiarPix()">📋 Copiar Código Pix</button>
             </div>
-            <p style="font-size: 12px; color: var(--texto-claro); text-align: center; margin-top: 10px;">Assim que o banco confirmar o pagamento de forma automática, esta tela avançará sozinha.</p>
+            <!-- Botão de verificação manual adicionado para forçar a atualização imediata -->
+            <button type="button" style="background: var(--sucesso); margin-top: 10px; font-size: 14px;" onclick="verificarStatusPagamentoManual()">🔄 Já fiz o pagamento / Atualizar Status</button>
+            <p style="font-size: 12px; color: var(--texto-claro); text-align: center; margin-top: 10px;">Caso tenha pago ou a administração tenha marcado como pago, clique no botão verde acima.</p>
         </div>
 
         <div id="etapaFluxoSeguinte" style="display:none;" class="secao-etapa" style="background: #F0FDF4; border-color: #BBF7D0;">
@@ -292,13 +294,27 @@ async function buscarPropostaAutomatica(cpfLimpo) {
 }
 
 function escutarMudancasRealtime(idProposta) {
-    // Escuta qualquer atualização na tabela sem filtro rígido de payload para garantir a resposta imediata
     supabase.channel('public:propostas')
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `id=eq.${idProposta}` }, payload => {
             propostaAtual = payload.new;
             exibirDadosProposta();
         })
         .subscribe();
+}
+
+// Função para buscar novamente no banco ao clicar no botão de checagem manual
+async function verificarStatusPagamentoManual() {
+    if (!propostaAtual || !propostaAtual.id) return;
+    document.getElementById('carregando').style.display = 'block';
+    
+    const { data, error } = await supabase.from('propostas').select('*').eq('id', propostaAtual.id).maybeSingle();
+    document.getElementById('carregando').style.display = 'none';
+
+    if (data) {
+        propostaAtual = data;
+        exibirDadosProposta();
+        alert('🔄 Status atualizado com sucesso!');
+    }
 }
 
 function atualizarStepper(etapaAtiva) {
@@ -337,10 +353,10 @@ function exibirDadosProposta() {
     etapaAguardandoPagamento.style.display = 'none';
     etapaFluxoSeguinte.style.display = 'none';
 
-    // Verificação robusta abrangendo qualquer marcação de pagamento ou status pago
     const statusPagoGeral = String(p.status || '').toLowerCase();
     const statusPagamentoGeral = String(p.status_pagamento || '').toLowerCase();
 
+    // Checagem exaustiva de colunas comuns usadas para marcar pago
     if (
         p.pagamento_entrada_efetuado === true || 
         p.pagamento_entrada_efetuado === 'true' ||
@@ -360,7 +376,6 @@ function exibirDadosProposta() {
             etapaAguardandoPagamento.style.display = 'block';
             document.getElementById('valorEntradaPix').textContent = real(p.valor_entrada);
             if (p.qr_code_entrada) {
-                // Se o qr_code_entrada for o payload bruto, gera a imagem ou exibe
                 let qrUrl = p.qr_code_entrada;
                 if (!qrUrl.startsWith('http')) {
                     qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(p.qr_code_entrada)}`;
