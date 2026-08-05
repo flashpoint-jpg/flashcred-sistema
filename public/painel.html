@@ -38,13 +38,6 @@
         .total-ent { color: var(--sucesso); }
         .total-falta { color: var(--alerta); }
 
-        .modos { display: flex; gap: 6px; }
-        .modo { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; }
-        .modo-manual { background: #DBEAFE; color: #1E40AF; }
-        .modo-teste { background: #FEF3C7; color: #92400E; }
-        .modo-producao { background: #D1FAE5; color: #065F46; }
-        .modo-ativo { box-shadow: inset 0 0 0 2px rgba(0,0,0,0.15); }
-
         .busca { background: white; padding: 16px; border-radius: 12px; border: 1px solid var(--borda); margin-bottom: 18px; }
         .busca label { font-size: 13px; font-weight: 600; color: var(--texto-claro); display: block; margin-bottom: 6px; }
         .busca-linha { display: flex; gap: 10px; }
@@ -62,15 +55,26 @@
         .status-aprovada { background: #D1FAE5; color: #065F46; }
         .status-reprovada { background: #FEE2E2; color: #991B1B; }
 
+        /* Área de mídias do cliente (Selfie e Contrato) */
+        .grid-midias { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 12px 0; background: #F8FAFC; padding: 10px; border-radius: 8px; border: 1px solid var(--borda); }
+        .bloco-midia { text-align: center; }
+        .bloco-midia span { font-size: 11px; font-weight: 600; color: var(--texto-claro); display: block; margin-bottom: 4px; }
+        .img-preview { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1; cursor: pointer; transition: transform 0.2s; }
+        .img-preview:hover { transform: scale(1.05); }
+
         .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
         .campo label { font-size: 12px; color: var(--texto-claro); font-weight: 600; display: block; margin-bottom: 3px; }
         .campo input { padding: 8px 10px; margin: 0; border: 1px solid var(--borda); border-radius: 6px; font-size: 14px; width: 100%; }
         .campo input[readonly] { background: #F8FAFC; color: var(--sucesso); font-weight: 600; }
 
+        /* Parcelas com Scroll */
         .bloco-parcelas-admin { background: #f8fafc; border: 1px solid var(--borda); padding: 12px; border-radius: 8px; margin-top: 12px; }
-        .bloco-parcelas-admin h4 { font-size: 13px; color: var(--primary); margin-bottom: 8px; font-weight: 700; }
-        .linha-parcela-edit { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 12px; flex-wrap: wrap; }
-        .linha-parcela-edit input { padding: 4px 8px; font-size: 12px; border: 1px solid var(--borda); border-radius: 4px; }
+        .bloco-parcelas-admin h4 { font-size: 13px; color: var(--primary); margin-bottom: 8px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+        .lista-parcelas-scroll { max-height: 180px; overflow-y: auto; padding-right: 4px; }
+        .linha-parcela-edit { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; font-size: 12px; flex-wrap: wrap; background: #fff; padding: 6px; border: 1px solid var(--borda); border-radius: 6px; }
+        .linha-parcela-edit input { padding: 3px 6px; font-size: 12px; border: 1px solid var(--borda); border-radius: 4px; }
+        .btn-baixa-parcela { padding: 3px 8px; font-size: 11px; background: var(--alerta); color: #1E293B; border-radius: 4px; font-weight: 600; }
+        .btn-baixa-paga { background: var(--sucesso) !important; color: white !important; }
 
         .botoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
         .btn { padding: 8px 14px; font-size: 13px; border-radius: 7px; }
@@ -88,7 +92,7 @@
 
         .vazio { text-align: center; color: var(--texto-claro); padding: 40px; font-size: 15px; }
         .carregando { text-align: center; padding: 30px; color: var(--texto-claro); display: none; font-size: 14px; }
-        .qrcode-img { max-width: 120px; border-radius: 8px; margin-top: 8px; border: 1px solid #ddd; }
+        .qrcode-img { max-width: 100px; border-radius: 6px; border: 1px solid #ddd; }
     </style>
 </head>
 <body>
@@ -104,11 +108,6 @@
 <div id="telaPainel" class="container">
     <div class="topo">
         <h1>📋 Painel de Controle</h1>
-        <div class="modos">
-            <button class="modo modo-manual" onclick="definirModo('manual')">Manual</button>
-            <button class="modo modo-teste" onclick="definirModo('teste')">Teste</button>
-            <button class="modo modo-producao modo-ativo" onclick="definirModo('producao')">Produção</button>
-        </div>
     </div>
 
     <div class="caixa-totais">
@@ -147,7 +146,6 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const SENHA = 'flash2026';
-let modo = 'producao';
 let propostas = [];
 let timer = null;
 let processando = false;
@@ -161,13 +159,6 @@ function entrar() {
     } else {
         document.getElementById('erroLogin').style.display = 'block';
     }
-}
-
-function definirModo(m) {
-    modo = m;
-    document.querySelectorAll('.modo').forEach(b => b.classList.remove('modo-ativo'));
-    event.target.classList.add('modo-ativo');
-    alert(`✅ Modo ${m.toUpperCase()} ativado!`);
 }
 
 function real(valor) {
@@ -230,27 +221,35 @@ function criarCard(p) {
     const valParc = parcelasQtd > 0 ? resto * (1 + juros/100) / parcelasQtd : 0;
 
     const cpf = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-    const qrExibicao = p.qr_code_entrada 
-        ? `<img src="${p.qr_code_entrada}" class="qrcode-img" alt="QR Code">` 
-        : '<span style="color:#94a3b8">Aguardando geração</span>';
-    const pixStatus = p.copia_cola_pix 
-        ? '<span style="color:#10B981; font-weight:600">✅ Pix Gerado</span>' 
-        : '<span style="color:#94a3b8">Aguardando</span>';
+    
+    // QR Code, Selfie e Contrato Assinado
+    const qrExibicao = p.qr_code_entrada ? `<img src="${p.qr_code_entrada}" class="qrcode-img" alt="QR">` : '<span style="color:#94a3b8; font-size:11px;">Pendente</span>';
+    const selfieExibicao = p.selfie_cliente ? `<img src="${p.selfie_cliente}" class="img-preview" onclick="abrirImagem('${p.selfie_cliente}')" alt="Selfie">` : '<span style="color:#94a3b8; font-size:11px;">Não enviada</span>';
+    const contratoExibicao = p.contrato_assinado ? `<img src="${p.contrato_assinado}" class="img-preview" onclick="abrirImagem('${p.contrato_assinado}')" alt="Contrato">` : '<span style="color:#94a3b8; font-size:11px;">Não assinado</span>';
 
-    // Monta os campos editáveis de cada parcela para o administrador ajustar datas/valores
+    // Monta as parcelas em scroll
     let htmlParcelasAdmin = '';
+    const dadosSalvos = p.dados_parcelas || [];
     const hoje = new Date();
+
     for (let i = 1; i <= parcelasQtd; i++) {
+        let parcelaSalva = dadosSalvos.find(x => x.numero === i) || {};
+        let valorItem = parcelaSalva.valor !== undefined ? parcelaSalva.valor : valParc;
+        
         let vencimentoPadrao = new Date();
         vencimentoPadrao.setMonth(hoje.getMonth() + i);
-        let dataStr = vencimentoPadrao.toISOString().split('T')[0];
+        let dataItem = parcelaSalva.vencimento || vencimentoPadrao.toISOString().split('T')[0];
+        
+        let paga = parcelaSalva.paga ? true : false;
+        let estiloBtnBaixa = paga ? 'btn-baixa-parcela btn-baixa-paga' : 'btn-baixa-parcela';
+        let textoBtnBaixa = paga ? '✅ Paga' : '⏳ Dar Baixa';
 
         htmlParcelasAdmin += `
-        <div class="linha-parcela-edit">
+        <div class="linha-parcela-edit" id="linha-parc-${p.id}-${i}">
             <span><strong>${i}ª</strong></span>
-            <input type="number" step="0.01" id="p-val-${p.id}-${i}" value="${valParc.toFixed(2)}" style="width: 90px;" title="Valor da parcela">
-            <span>Venc:</span>
-            <input type="date" id="p-data-${p.id}-${i}" value="${dataStr}" style="width: 130px;" title="Data de vencimento">
+            <input type="number" step="0.01" id="p-val-${p.id}-${i}" value="${Number(valorItem).toFixed(2)}" style="width: 80px;" title="Valor">
+            <input type="date" id="p-data-${p.id}-${i}" value="${dataItem}" style="width: 120px;" title="Vencimento">
+            <button type="button" class="${estiloBtnBaixa}" id="btn-pago-${p.id}-${i}" onclick="alternarBaixaParcela(${p.id}, ${i})">${textoBtnBaixa}</button>
         </div>`;
     }
 
@@ -260,10 +259,25 @@ function criarCard(p) {
             <div>
                 <div class="proposta-nome">${p.nome}</div>
                 <div class="proposta-info">Código: ${p.codigo_unico || '---'} | CPF: ${cpf}</div>
-                <div class="proposta-info">Pix de Entrada: ${pixStatus}</div>
-                <div class="proposta-info">QR Code Entrada: ${qrExibicao}</div>
+                <div class="proposta-info">Telefone: ${p.telefone || '---'}</div>
             </div>
             <span class="status ${statusCls}">${statusTxt}</span>
+        </div>
+
+        <!-- Bloco visual para checar a Selfie e o Contrato do cliente -->
+        <div class="grid-midias">
+            <div class="bloco-midia">
+                <span>📸 Selfie de Rosto</span>
+                ${selfieExibicao}
+            </div>
+            <div class="bloco-midia">
+                <span>✍️ Contrato Assinado</span>
+                ${contratoExibicao}
+            </div>
+            <div class="bloco-midia">
+                <span>📌 QR Code Pix</span>
+                ${qrExibicao}
+            </div>
         </div>
 
         <div class="grade">
@@ -294,20 +308,29 @@ function criarCard(p) {
         </div>
 
         <div class="bloco-parcelas-admin">
-            <h4>📅 Detalhes e Vencimentos das Parcelas (Editável para o Cliente)</h4>
-            <div id="container-parc-edit-${p.id}">
+            <h4>
+                <span>📅 Cronograma de Parcelas (${parcelasQtd}x)</span>
+                <span style="font-size: 11px; color: var(--texto-claro);">Role para ver mais ↕️</span>
+            </h4>
+            <div class="lista-parcelas-scroll" id="container-parc-edit-${p.id}">
                 ${htmlParcelasAdmin}
             </div>
         </div>
 
         <div class="botoes">
-            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Gerar Pix</button>
+            <button class="btn btn-aprovar" id="btn-aprovar-${p.id}" onclick="aprovar(${p.id})">✅ Aprovar + Salvar</button>
             <button class="btn btn-manual" onclick="marcarEntradaManual(${p.id})">💰 Marcar Entrada Paga</button>
             <button class="btn btn-reprovar" onclick="reprovar(${p.id})">❌ Reprovar</button>
             <button class="btn btn-whatsapp" onclick="enviarWhatsApp(${p.id})">📱 WhatsApp</button>
             <button class="btn btn-excluir" onclick="excluir(${p.id})">🗑️ Excluir</button>
         </div>
     </div>`;
+}
+
+// Função para abrir a selfie ou contrato em tamanho grande numa nova aba se clicar neles
+function abrirImagem(base64Str) {
+    const win = window.open();
+    win.document.write(`<iframe src="${base64Str}" frameborder="0" style="border:0; top:0; left:0; bottom:0; right:0; width:100%; height:100%;" crossorigin></iframe>`);
 }
 
 function atualizar(id) {
@@ -323,7 +346,6 @@ function atualizar(id) {
     document.getElementById(`e-${id}`).value = real(entrada);
     document.getElementById(`vp-${id}`).value = real(valorParc);
 
-    // Atualiza dinamicamente as linhas de parcelas se o usuário mexer na quantidade
     const container = document.getElementById(`container-parc-edit-${id}`);
     if (container) {
         let html = '';
@@ -334,78 +356,59 @@ function atualizar(id) {
             let dataStr = vencimentoPadrao.toISOString().split('T')[0];
 
             html += `
-            <div class="linha-parcela-edit">
+            <div class="linha-parcela-edit" id="linha-parc-${id}-${i}">
                 <span><strong>${i}ª</strong></span>
-                <input type="number" step="0.01" id="p-val-${id}-${i}" value="${valorParc.toFixed(2)}" style="width: 90px;" title="Valor da parcela">
-                <span>Venc:</span>
-                <input type="date" id="p-data-${id}-${i}" value="${dataStr}" style="width: 130px;" title="Data de vencimento">
+                <input type="number" step="0.01" id="p-val-${id}-${i}" value="${valorParc.toFixed(2)}" style="width: 80px;" title="Valor">
+                <input type="date" id="p-data-${id}-${i}" value="${dataStr}" style="width: 120px;" title="Vencimento">
+                <button type="button" class="btn-baixa-parcela" id="btn-pago-${id}-${i}" onclick="alternarBaixaParcela(${id}, ${i})">⏳ Dar Baixa</button>
             </div>`;
         }
         container.innerHTML = html;
     }
 }
 
-// 🟢 APROVAR PROPOSTA E SALVAR DADOS
-async function aprovar(id) {
-    if (processando) {
-        alert('⏳ Aguarde, processando...');
-        return;
+async function alternarBaixaParcela(idProposta, numParcela) {
+    const btn = document.getElementById(`btn-pago-${idProposta}-${numParcela}`);
+    const jaEstaPaga = btn.classList.contains('btn-baixa-paga');
+    
+    if (jaEstaPaga) {
+        btn.classList.remove('btn-baixa-paga');
+        btn.textContent = '⏳ Dar Baixa';
+    } else {
+        btn.classList.add('btn-baixa-paga');
+        btn.textContent = '✅ Paga';
     }
 
-    const proposta = propostas.find(p => p.id === id);
+    const proposta = propostas.find(p => p.id === idProposta);
     if (!proposta) return;
 
-    const valor = Number(document.getElementById(`v-${id}`).value) || 0;
-    const perc = Number(document.getElementById(`p-${id}`).value) || 0;
-    const entrada = valor * perc / 100;
-    const parcelas = Number(document.getElementById(`par-${id}`).value) || 1;
-    const juros = Number(document.getElementById(`j-${id}`).value) || 0;
-
-    // Coleta as alterações feitas nas parcelas individuais se houver necessidade de salvar
+    const parcelasQtd = Number(document.getElementById(`par-${idProposta}`).value) || 1;
     let parcelasPersonalizadas = [];
-    for (let i = 1; i <= parcelas; i++) {
-        const inputVal = document.getElementById(`p-val-${id}-${i}`);
-        const inputData = document.getElementById(`p-data-${id}-${i}`);
-        if (inputVal && inputData) {
+
+    for (let i = 1; i <= parcelasQtd; i++) {
+        let inputVal = document.getElementById(`p-val-${idProposta}-${i}`);
+        let inputData = document.getElementById(`p-data-${idProposta}-${i}`);
+        let botaoItem = document.getElementById(`btn-pago-${idProposta}-${i}`);
+
+        if (inputVal && inputData && botaoItem) {
             parcelasPersonalizadas.push({
                 numero: i,
                 valor: Number(inputVal.value),
-                vencimento: inputData.value
+                vencimento: inputData.value,
+                paga: botaoItem.classList.contains('btn-baixa-paga')
             });
         }
     }
 
-    if (!confirm(`✅ Aprovar a proposta de ${proposta.nome}?\nValor: ${real(valor)}\nEntrada: ${real(entrada)}`)) return;
-
-    processando = true;
-    const btn = document.getElementById(`btn-aprovar-${id}`);
-    if (btn) btn.disabled = true;
-
     try {
-        const { error } = await supabase.from('propostas').update({
-            status: 'Aprovada',
-            valor_desejado: valor,
-            percentual_entrada: perc,
-            valor_entrada: entrada,
-            quantidade_parcelas: parcelas,
-            juros: juros,
-            dados_parcelas: parcelasPersonalizadas // Salva os valores/datas customizados no banco
-        }).eq('id', id);
-
-        if (error) throw error;
-
-        alert('✅ Proposta aprovada com sucesso!');
-        carregar();
-    } catch (erro) {
-        alert('❌ Erro ao aprovar: ' + erro.message);
-    } finally {
-        processando = false;
-        if (btn) btn.disabled = false;
+        await supabase.from('propostas').update({ dados_parcelas: parcelasPersonalizadas }).eq('id', idProposta);
+    } catch (err) {
+        console.error('Erro ao atualizar baixa:', err.message);
     }
 }
 
-// 💰 MARCAR ENTRADA MANUAL E SALVAR DADOS
-async function marcarEntradaManual(id) {
+async function aprovar(id) {
+    if (processando) return;
     const proposta = propostas.find(p => p.id === id);
     if (!proposta) return;
 
@@ -419,21 +422,24 @@ async function marcarEntradaManual(id) {
     for (let i = 1; i <= parcelas; i++) {
         const inputVal = document.getElementById(`p-val-${id}-${i}`);
         const inputData = document.getElementById(`p-data-${id}-${i}`);
+        const botaoItem = document.getElementById(`btn-pago-${id}-${i}`);
+        
         if (inputVal && inputData) {
             parcelasPersonalizadas.push({
                 numero: i,
                 valor: Number(inputVal.value),
-                vencimento: inputData.value
+                vencimento: inputData.value,
+                paga: botaoItem ? botaoItem.classList.contains('btn-baixa-paga') : false
             });
         }
     }
 
-    if (!confirm('Deseja confirmar o recebimento da entrada manualmente e aprovar a proposta?')) return;
+    if (!confirm(`✅ Aprovar a proposta de ${proposta.nome}?`)) return;
 
+    processando = true;
     try {
         const { error } = await supabase.from('propostas').update({
             status: 'Aprovada',
-            entrada_paga: true,
             valor_desejado: valor,
             percentual_entrada: perc,
             valor_entrada: entrada,
@@ -443,34 +449,53 @@ async function marcarEntradaManual(id) {
         }).eq('id', id);
 
         if (error) throw error;
-
-        alert('✅ Entrada marcada como paga e proposta aprovada com sucesso!');
+        alert('✅ Salvo com sucesso!');
         carregar();
     } catch (erro) {
-        alert('❌ Erro ao atualizar: ' + erro.message);
+        alert('❌ Erro: ' + erro.message);
+    } finally {
+        processando = false;
+    }
+}
+
+async function marcarEntradaManual(id) {
+    const proposta = propostas.find(p => p.id === id);
+    if (!proposta) return;
+
+    if (!confirm('Confirmar recebimento da entrada manualmente?')) return;
+
+    try {
+        const { error } = await supabase.from('propostas').update({
+            status: 'Aprovada',
+            entrada_paga: true
+        }).eq('id', id);
+
+        if (error) throw error;
+        alert('✅ Entrada marcada como paga!');
+        carregar();
+    } catch (erro) {
+        alert('❌ Erro: ' + erro.message);
     }
 }
 
 async function reprovar(id) {
-    if (!confirm('Reprovar esta proposta?')) return;
-    const { error } = await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
-    if (error) alert('Erro: ' + error.message);
-    else carregar();
+    if (!confirm('Reprovar proposta?')) return;
+    await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
+    carregar();
 }
 
 async function enviarWhatsApp(id) {
     const p = propostas.find(x => x.id === id);
     if (!p) return;
     const link = `${window.location.origin.replace('painel.', '')}/consultar.html?cpf=${(p.cpf || '').replace(/\D/g, '')}`;
-    const msg = `Olá ${p.nome}! ✅ Sua proposta foi APROVADA!\n\nValor: R$ ${real(p.valor_desejado || 0)}\nEntrada: R$ ${real(p.valor_entrada || 0)}\n\nAcesse abaixo para ver o Pix, QR Code e assinar o contrato:\n${link}\n\nObrigado! 📋`;
+    const msg = `Olá ${p.nome}! ✅ Sua proposta foi APROVADA!\nAcesse para ver o contrato e parcelas:\n${link}`;
     window.open(`https://wa.me/55${p.telefone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
 async function excluir(id) {
-    if (!confirm('⚠️ Tem certeza? Essa ação não pode ser desfeita!')) return;
-    const { error } = await supabase.from('propostas').delete().eq('id', id);
-    if (error) alert('Erro: ' + error.message);
-    else carregar();
+    if (!confirm('⚠️ Tem certeza que deseja excluir?')) return;
+    await supabase.from('propostas').delete().eq('id', id);
+    carregar();
 }
 </script>
 </body>
