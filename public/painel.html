@@ -404,7 +404,7 @@ async function aprovar(id) {
     const qtd = Number(document.getElementById(`par-${id}`).value) || 1;
     const juros = Number(document.getElementById(`j-${id}`).value) || 0;
 
-    if (!confirm(`✅ APROVAR e GERAR PIX?\n\nCliente: ${p.nome}\nEntrada: ${real(entrada)}\n\nAguarde a mensagem de sucesso...`)) return;
+    if (!confirm(`✅ APROVAR e GERAR PIX?\n\nCliente: ${p.nome}\nEntrada: ${real(entrada)}\n\nAguarde...`)) return;
 
     processando = true;
     const btn = document.getElementById(`btn-aprovar-${id}`);
@@ -412,9 +412,13 @@ async function aprovar(id) {
 
     try {
         console.log('🔄 Chamando servidor...');
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000); // ⏳ Espera até 60 segundos!
+
         const resposta = await fetch(SERVIDOR_URL + '/api/criar-pagamento', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
                 valor: Number(entrada.toFixed(2)),
                 tipo: 'pix',
@@ -424,7 +428,9 @@ async function aprovar(id) {
             })
         });
 
-        if (!resposta.ok) throw new Error('Servidor demorou demais');
+        clearTimeout(timeout);
+
+        if (!resposta.ok) throw new Error('Erro na resposta');
 
         const dados = await resposta.json();
         if (dados.erro) throw new Error(dados.erro);
@@ -452,7 +458,7 @@ async function aprovar(id) {
 
     } catch (erro) {
         console.error(erro);
-        alert('⚠️ Servidor está acordando!\n\nEspere 1 minuto e CLIQUE NOVAMENTE em Aprovar.\n\nO servidor já está ligando, na próxima vez vai funcionar!');
+        alert('⚠️ Servidor está respondendo devagar!\n\nESPERA 1 MINUTO e CLIQUE NOVAMENTE em Aprovar.\n\nO servidor já está ligado, na próxima vez vai funcionar!');
     }
 
     processando = false;
