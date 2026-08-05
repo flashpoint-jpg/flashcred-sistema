@@ -120,6 +120,22 @@
             margin: 16px 0;
             font-size: 15px;
         }
+        .sucesso-aviso {
+            background: #D1FAE5;
+            border-left: 4px solid #10B981;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            font-size: 15px;
+        }
+        .info-aviso {
+            background: #EFF6FF;
+            border-left: 4px solid #3B82F6;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            font-size: 14px;
+        }
         .botao {
             padding: 12px 16px;
             border-radius: 10px;
@@ -187,6 +203,31 @@
         .bolinha-amarela { background: #F59E0B; }
         .bolinha-vermelha { background: #EF4444; }
         .botoes-linha { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+        .notificacao-pagamento {
+            background: #ECFDF5;
+            border: 2px solid #10B981;
+            border-radius: 12px;
+            padding: 16px;
+            margin: 16px 0;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        .etapa {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin: 4px 0;
+            font-size: 14px;
+        }
+        .etapa-concluida { background: #ECFDF5; color: #065F46; border-left: 3px solid #10B981; }
+        .etapa-andamento { background: #FEF9C3; color: #854D0E; border-left: 3px solid #FACC15; }
+        .etapa-pendente { background: #F3F4F6; color: #6B7280; border-left: 3px solid #D1D5DB; }
         @media print {
             body * { visibility: hidden; }
             .contrato, .contrato * { visibility: visible; }
@@ -229,15 +270,19 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const CHAVE_PIX_FIXA = '33552949852';
 const NOME_RECEBEDOR = 'FLASH POINT';
-const WHATSAPP_SUPORTE = '5511973294235';
 
 let proposta = null;
 let assinaturaCanvas = null;
 let assinaturaCtx = null;
 let assinando = false;
 let assinaturaFeita = false;
+let canalRealtime = null;
 
 function voltar() {
+    if (canalRealtime) {
+        supabase.removeChannel(canalRealtime);
+        canalRealtime = null;
+    }
     document.getElementById('resultado').classList.add('hidden');
     document.getElementById('telaConsulta').classList.remove('hidden');
     document.getElementById('cpf').value = '';
@@ -293,7 +338,6 @@ function gerarCodigoPix(valor, descricao = 'Pagamento') {
     }
 
     const brCod = montarParte('00', 'BR-GOV.BCB.PIX') + montarParte('01', chave);
-    const merConta = montarParte('00', nome) + montarParte('01', cidade);
     const valorParte = valorStr !== '0.00' ? montarParte('05', valorStr) : '';
 
     let payload = montarParte('00', '01')
@@ -349,6 +393,53 @@ async function consultar() {
 
     proposta = data[0];
     mostrarProposta();
+    ativarNotificacaoTempoReal(proposta.id);
+}
+
+function ativarNotificacaoTempoReal(propostaId) {
+    canalRealtime = supabase
+        .channel('proposta-atualizada')
+        .on(
+            'postgres_changes',
+            {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'propostas',
+                filter: `id=eq.${propostaId}`
+            },
+            (payload) => {
+                proposta = payload.new;
+                mostrarProposta();
+                tocarSomNotificacao();
+            }
+        )
+        .subscribe();
+}
+
+function tocarSomNotificacao() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const som = audioCtx.createOscillator();
+        const vol = audioCtx.createGain();
+        som.connect(vol);
+        vol.connect(audioCtx.destination);
+        som.type = 'sine';
+        som.frequency.value = 880;
+        vol.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        vol.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+        som.start(audioCtx.currentTime);
+        som.stop(audioCtx.currentTime + 0.4);
+    } catch (e) {}
+}
+
+function getStatusEtapas(status, assinada) {
+    return [
+        { titulo: 'Proposta enviada', concluida: true },
+        { titulo: status === 'Aprovada' ? '✅ Proposta aprovada' : status === 'Reprovada' ? '❌ Reprovada' : '⏳ Em análise', concluida: status === 'Aprovada' || status === 'Entrada Paga', andamento: status === 'Aguardando' },
+        { titulo: assinada ? '✅ Contrato assinado' : '📄 Assinar contrato', concluida: assinada },
+        { titulo: status === 'Entrada Paga' ? '✅ Entrada confirmada pelo banco' : '💳 Aguardando confirmação do pagamento', concluida: status === 'Entrada Paga', andamento: status === 'Aprovada' },
+        { titulo: status === 'Entrada Paga' ? '📊 Pagamento das parcelas' : '🔒 Parcelas liberadas após entrada', concluida: false, liberado: status === 'Entrada Paga' }
+    ];
 }
 
 function mostrarProposta() {
@@ -362,9 +453,9 @@ function mostrarProposta() {
 
     let statusTexto, statusCor;
     if (proposta.status === 'Entrada Paga') {
-        statusTexto = '✅ ENTRADA PAGA — Aguardando pagamento das parcelas'; statusCor = 'text-green-600';
+        statusTexto = '✅ ENTRADA CONFIRMADA — Pagamento identificado pelo banco!'; statusCor = 'text-green-600';
     } else if (proposta.status === 'Aprovada') {
-        statusTexto = '✅ APROVADA — Faça o pagamento abaixo'; statusCor = 'text-blue-600';
+        statusTexto = '✅ APROVADA — Aguarda confirmação do pagamento'; statusCor = 'text-blue-600';
     } else if (proposta.status === 'Reprovada') {
         statusTexto = '❌ Reprovada'; statusCor = 'text-red-600';
     } else {
@@ -373,6 +464,7 @@ function mostrarProposta() {
 
     const jaAssinou = proposta.assinatura_assinada;
     const entradaPaga = proposta.status === 'Entrada Paga';
+    const etapas = getStatusEtapas(proposta.status, jaAssinou);
 
     let html = `
     <div class="bg-white rounded-xl shadow p-6">
@@ -401,6 +493,15 @@ function mostrarProposta() {
                     <div class="resumo-valor text-purple-600">${juros}% ao mês</div>
                 </div>
             </div>
+        </div>
+
+        <div class="info-aviso">
+            <strong>📋 Situação da proposta:</strong>
+            ${etapas.map(e => `
+                <div class="etapa ${e.concluida ? 'etapa-concluida' : e.andamento ? 'etapa-andamento' : 'etapa-pendente'}">
+                    ${e.concluida ? '✅' : e.andamento ? '⏳' : '⬜'} ${e.titulo}
+                </div>
+            `).join('')}
         </div>`;
 
     if (!entradaPaga && proposta.status === 'Aprovada') {
@@ -416,9 +517,13 @@ function mostrarProposta() {
 
             <div class="pix-copia" onclick="copiarPix('${codigoPixEntrada}')">
                 <strong>🔑 Chave Pix:</strong> ${CHAVE_PIX_FIXA}<br>
-                <strong>💳 Código Pix:</strong> (clique para copiar)<br>
-                <span class="copia-nota">👆 Copie e cole no app do banco para pagar</span>
+                <span class="copia-nota">👆 Clique para copiar o código Pix e pagar no app do banco</span>
             </div>
+        </div>
+
+        <div class="info-aviso">
+            🏦 <strong>Atenção:</strong> Após pagar, o banco pode levar até <strong>24h</strong> para notificar. Assim que confirmado, aparecerá abaixo: 
+            <strong>"✅ Entrada confirmada pelo banco"</strong> e as parcelas serão liberadas.
         </div>`;
 
         if (!jaAssinou) {
@@ -439,13 +544,17 @@ function mostrarProposta() {
                 </div>
             </div>`;
         } else {
-            html += `<div class="aviso">✅ Contrato assinado! Faça o pagamento da entrada acima.</div>`;
+            html += `<div class="aviso">✅ Contrato assinado! Aguarde a confirmação do pagamento pelo banco.</div>`;
         }
     }
 
     if (entradaPaga && parcelas.length > 0) {
         html += `
-        <h3 class="text-xl font-bold text-primary mt-8 mb-4">📊 SUAS PARCELAS</h3>
+        <div class="notificacao-pagamento">
+            ✅ <strong>PAGAMENTO CONFIRMADO!</strong> O banco notificou o recebimento. Suas parcelas foram liberadas 👇
+        </div>
+
+        <h3 class="text-xl font-bold text-primary mt-6 mb-4">📊 SUAS PARCELAS</h3>
         <p class="text-sm text-slate-500 mb-3">
             <span class="status-bolinha bolinha-verde"></span> Em dia · 
             <span class="status-bolinha bolinha-amarela"></span> Atenção · 
@@ -494,7 +603,7 @@ function mostrarProposta() {
             <p class="linha">2. Entrada de <span class="destaque">${percEnt}% (${real(valorEntrada)})</span> e ${quantidadeParc} parcelas mensais com juros de ${juros}% ao mês.</p>
             <p class="linha">3. O não pagamento no vencimento implicará em multa de 2% e juros de 1% ao mês.</p>
             <p class="linha">4. A FlashCred / Distribuidora Flash Point se responsabiliza pela entrega dos móveis conforme combinado, após confirmação do pagamento da entrada.</p>
-            <p class="linha">5. Declaro que os dados informados são verdadeiros e autorizo a cobrança automática nas datas de vencimento.</p>
+            <p class="linha">5. Declaro que os dados informados são verdadeiros e autorizo a cobrança nas datas de vencimento.</p>
             <p class="linha">6. Ao deixar de pagar, estará prejudicando a mim que pensei em você primeiro. Pense bem: eu confiei em você. Vamos honrar o compromisso!</p>
             <p class="linha mt-6">São Paulo, ${new Date().toLocaleDateString('pt-BR')}.</p>
             <p class="linha mt-8">Assinatura: ___________________________________________________</p>
@@ -624,8 +733,7 @@ async function confirmarAssinatura() {
 
     if (error) alert('❌ Erro ao salvar assinatura: ' + error.message);
     else {
-        alert('✅ Contrato assinado com sucesso!\n\nAgora faça o pagamento da entrada pelo Pix acima.');
-        mostrarProposta();
+        alert('✅ Contrato assinado com sucesso!\n\nAgora faça o pagamento da entrada pelo Pix acima.\n\nAssim que o banco confirmar, aparecerá automaticamente ✅ Entrada confirmada!');
     }
 }
 </script>
