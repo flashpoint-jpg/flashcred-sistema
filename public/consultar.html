@@ -292,6 +292,7 @@ async function buscarPropostaAutomatica(cpfLimpo) {
 }
 
 function escutarMudancasRealtime(idProposta) {
+    // Escuta qualquer atualização na tabela sem filtro rígido de payload para garantir a resposta imediata
     supabase.channel('public:propostas')
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `id=eq.${idProposta}` }, payload => {
             propostaAtual = payload.new;
@@ -336,14 +337,17 @@ function exibirDadosProposta() {
     etapaAguardandoPagamento.style.display = 'none';
     etapaFluxoSeguinte.style.display = 'none';
 
-    // Verificação ampliada para capturar qualquer alteração manual ou automática de pagamento
+    // Verificação robusta abrangendo qualquer marcação de pagamento ou status pago
+    const statusPagoGeral = String(p.status || '').toLowerCase();
+    const statusPagamentoGeral = String(p.status_pagamento || '').toLowerCase();
+
     if (
         p.pagamento_entrada_efetuado === true || 
-        p.status_pagamento === 'pago' || 
-        p.status_pagamento === 'Pago' || 
-        p.status === 'Pago' || 
-        p.status === 'pago' || 
-        p.status === 'APROVADO'
+        p.pagamento_entrada_efetuado === 'true' ||
+        statusPagamentoGeral === 'pago' || 
+        statusPagamentoGeral === 'aprovado' ||
+        statusPagoGeral === 'pago' || 
+        statusPagoGeral === 'aprovado'
     ) {
         atualizarStepper(4);
         etapaFluxoSeguinte.style.display = 'block';
@@ -356,7 +360,12 @@ function exibirDadosProposta() {
             etapaAguardandoPagamento.style.display = 'block';
             document.getElementById('valorEntradaPix').textContent = real(p.valor_entrada);
             if (p.qr_code_entrada) {
-                document.getElementById('qrCodeBox').innerHTML = `<img src="${p.qr_code_entrada}" alt="QR Code Pix">`;
+                // Se o qr_code_entrada for o payload bruto, gera a imagem ou exibe
+                let qrUrl = p.qr_code_entrada;
+                if (!qrUrl.startsWith('http')) {
+                    qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(p.qr_code_entrada)}`;
+                }
+                document.getElementById('qrCodeBox').innerHTML = `<img src="${qrUrl}" alt="QR Code Pix">`;
                 document.getElementById('copiaColaPix').textContent = p.qr_code_entrada;
             }
         } else {
@@ -540,7 +549,6 @@ async function concluirContrato() {
     const nomeRecebedor = "FlashCred Pagamentos";
 
     const copiaColaReal = gerarPayloadPix(chavePixRecebedor, nomeRecebedor, "Sao Paulo", valorEntrada);
-    const qrCodeGeradoReal = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(copiaColaReal)}`;
 
     let novasParcelas = [];
     const hoje = new Date();
@@ -568,7 +576,7 @@ async function concluirContrato() {
         if (error) throw error;
 
         propostaAtual.contrato_assinado = assinaturaBase64;
-        propostaAtual.qr_code_entrada = qrCodeGeradoReal;
+        propostaAtual.qr_code_entrada = copiaColaReal;
         propostaAtual.valor_entrada = valorEntrada;
 
         alert('✅ Contrato assinado com sucesso!');
