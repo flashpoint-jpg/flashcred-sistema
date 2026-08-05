@@ -35,7 +35,6 @@
         .status-aprovada { background: #D1FAE5; color: #065F46; border: 1px solid #6EE7B7; }
         .status-reprovada { background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5; }
 
-        /* Barra de carregamento para análise */
         .barra-carregando { width: 100%; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin-top: 10px; position: relative; }
         .barra-progresso-animada { width: 40%; height: 100%; background: var(--alerta); border-radius: 3px; position: absolute; animation: vaiVem 1.5s infinite ease-in-out; }
         @keyframes vaiVem {
@@ -48,13 +47,15 @@
         .campo label { font-size: 12px; color: var(--texto-claro); font-weight: 600; display: block; margin-bottom: 3px; }
         .campo input { background: #F8FAFC; color: var(--texto); font-weight: 600; }
 
-        /* Estilo para a bolinha rodando */
         .spinner-container { display: flex; align-items: center; justify-content: center; height: 44px; background: #F8FAFC; border: 1px solid var(--borda); border-radius: 8px; }
         .spinner { width: 20px; height: 20px; border: 3px solid #cbd5e1; border-top: 3px solid var(--primary); border-radius: 50%; animation: girar 0.8s linear infinite; }
         @keyframes girar { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
         .erro { color: var(--perigo); text-align: center; margin-top: 10px; font-size: 14px; display: none; }
         .detalhe-nome { font-size: 16px; font-weight: 700; color: var(--primary); margin-bottom: 12px; text-align: center; }
+        
+        .bloco-pix { text-align: center; background: #f8fafc; padding: 14px; border-radius: 10px; border: 1px solid var(--borda); margin-top: 15px; display: none; }
+        .pix-img { max-width: 140px; border-radius: 6px; border: 1px solid #cbd5e1; margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -82,7 +83,7 @@
                 <input type="text" id="resValor" readonly>
             </div>
             <div class="campo">
-                <label>Entrada (20%)</label>
+                <label>Entrada</label>
                 <div class="spinner-container" id="spinnerEntrada">
                     <div class="spinner"></div>
                 </div>
@@ -106,6 +107,11 @@
                 <input type="text" id="resValParc" style="display:none;" readonly>
             </div>
         </div>
+
+        <div id="blocoPixCliente" class="bloco-pix">
+            <label style="font-size: 13px; font-weight: 600; color: var(--primary);">📌 QR Code Pix da Entrada (Mercado Livre)</label>
+            <div id="containerQrPix"></div>
+        </div>
     </div>
 </div>
 
@@ -115,7 +121,9 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Se houver CPF na URL (vindo do link do WhatsApp), busca automaticamente
+let cpfAtivo = '';
+let canalRealtime = null;
+
 window.onload = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const cpfUrl = urlParams.get('cpf');
@@ -148,32 +156,52 @@ async function buscarProposta() {
         return;
     }
 
+    cpfAtivo = cpfLimpo;
     erroEl.style.display = 'none';
 
+    await carregarDadosCliente();
+
+    // Ativa escuta em tempo real para este CPF (atualiza instantaneamente sem F5)
+    if (canalRealtime) {
+        supabase.removeChannel(canalRealtime);
+    }
+    
+    canalRealtime = supabase
+        .channel('public:propostas_cliente')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpfAtivo}` }, payload => {
+            renderizarProposta(payload.new);
+        })
+        .subscribe();
+}
+
+async function carregarDadosCliente() {
     const { data, error } = await supabase
         .from('propostas')
         .select('*')
-        .eq('cpf', cpfLimpo)
+        .eq('cpf', cpfAtivo)
         .order('created_at', { ascending: false })
         .limit(1);
 
     if (error || !data || data.length === 0) {
-        erroEl.textContent = 'Nenhuma proposta encontrada para este CPF.';
-        erroEl.style.display = 'block';
-        resEl.style.display = 'none';
+        document.getElementById('erroMsg').textContent = 'Nenhuma proposta encontrada para este CPF.';
+        document.getElementById('erroMsg').style.display = 'block';
+        document.getElementById('resultadoProposta').style.display = 'none';
         return;
     }
 
-    const p = data[0];
+    renderizarProposta(data[0]);
+}
+
+function renderizarProposta(p) {
+    const resEl = document.getElementById('resultadoProposta');
     resEl.style.display = 'block';
     document.getElementById('detalheNome').textContent = `Cliente: ${p.nome}`;
-
-    // Mostra o valor solicitado que o cliente preencheu
     document.getElementById('resValor').value = real(p.valor_desejado);
 
     const caixaStatus = document.getElementById('caixaStatus');
-    
-    // Esconde os spinners e exibe os dados reais apenas se já estiver Aprovada
+    const blocoPix = document.getElementById('blocoPixCliente');
+    const containerQr = document.getElementById('containerQrPix');
+
     if (p.status === 'Aprovada') {
         caixaStatus.className = 'status-box status-aprovada';
         caixaStatus.innerHTML = '✅ Proposta Aprovada!';
@@ -199,12 +227,20 @@ async function buscarProposta() {
         document.getElementById('spinnerValParc').style.display = 'none';
         document.getElementById('resValParc').style.display = 'block';
 
+        // Exibe QR Code Pix se houver
+        if (p.qr_code_entrada) {
+            blocoPix.style.display = 'block';
+            containerQr.innerHTML = `<img src="${p.qr_code_entrada}" class="pix-img" alt="QR Code Pix">`;
+        } else {
+            blocoPix.style.display = 'none';
+        }
+
     } else if (p.status === 'Reprovada') {
         caixaStatus.className = 'status-box status-reprovada';
         caixaStatus.innerHTML = '❌ Proposta Reprovada.';
+        blocoPix.style.display = 'none';
         mostrarSpinners();
     } else {
-        // Aguardando análise com barrinha carregando e bolinhas nos demais campos
         caixaStatus.className = 'status-box status-pendente';
         caixaStatus.innerHTML = `
             ⏳ Aguardando análise do operador...
@@ -212,6 +248,7 @@ async function buscarProposta() {
                 <div class="barra-progresso-animada"></div>
             </div>
         `;
+        blocoPix.style.display = 'none';
         mostrarSpinners();
     }
 }
