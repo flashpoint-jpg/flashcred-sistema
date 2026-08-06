@@ -54,6 +54,17 @@
         .oculto { display: none !important; }
         .linha-dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .atualizando { text-align: center; font-size: 12px; color: #94A3B8; margin-top: 10px; }
+
+        /* Estilos da Barra de Progresso / Etapas */
+        .progresso-container { display: flex; justify-content: space-between; position: relative; margin-bottom: 24px; padding: 0 10px; }
+        .progresso-container::before { content: ''; position: absolute; top: 15px; left: 30px; right: 30px; height: 3px; background: #E2E8F0; z-index: 1; }
+        .etapa { position: relative; z-index: 2; text-align: center; flex: 1; }
+        .etapa-circulo { width: 32px; height: 32px; border-radius: 50%; background: #CBD5E1; color: white; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; margin: 0 auto 6px auto; transition: all 0.3s; }
+        .etapa-texto { font-size: 11px; color: #64748B; font-weight: 500; }
+        .etapa.ativa .etapa-circulo { background: #2563EB; box-shadow: 0 0 0 4px #DBEAFE; }
+        .etapa.ativa .etapa-texto { color: #2563EB; font-weight: 700; }
+        .etapa.concluida .etapa-circulo { background: #10B981; }
+        .etapa.concluida .etapa-texto { color: #10B981; font-weight: 600; }
     </style>
 </head>
 <body>
@@ -70,6 +81,33 @@
 
     <!-- 📋 TELA DA PROPOSTA -->
     <div id="telaProposta" class="oculto">
+        
+        <!-- 📊 BARRA DE PROGRESSO DAS ETAPAS -->
+        <div class="cartao" style="padding: 16px 12px 8px 12px;">
+            <div class="progresso-container">
+                <div id="etapa1" class="etapa">
+                    <div class="etapa-circulo">1</div>
+                    <div class="etapa-texto">Análise</div>
+                </div>
+                <div id="etapa2" class="etapa">
+                    <div class="etapa-circulo">2</div>
+                    <div class="etapa-texto">Parcelas</div>
+                </div>
+                <div id="etapa3" class="etapa">
+                    <div class="etapa-circulo">3</div>
+                    <div class="etapa-texto">Contrato</div>
+                </div>
+                <div id="etapa4" class="etapa">
+                    <div class="etapa-circulo">4</div>
+                    <div class="etapa-texto">Pagamento</div>
+                </div>
+                <div id="etapa5" class="etapa">
+                    <div class="etapa-circulo">5</div>
+                    <div class="etapa-texto">Concluído</div>
+                </div>
+            </div>
+        </div>
+
         <div class="cartao">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
                 <h2>👤 Dados da Proposta</h2>
@@ -144,7 +182,6 @@
                 <div class="codigopix" id="codigoPix"></div>
                 <button onclick="copiarPix()" class="botao botao-principal" style="margin-top:12px;">📋 Copiar Código Pix</button>
                 
-                <!-- BOTÃO DE SIMULAÇÃO/CONFIRMAÇÃO PARA O CLIENTE AVANÇAR -->
                 <button onclick="simularPagamentoEfetuado()" class="botao botao-sucesso" style="margin-top:12px;">✅ Já fiz o pagamento / Confirmar</button>
             </div>
 
@@ -249,6 +286,25 @@ async function consultar() {
     ativarRealtime(data.id);
 }
 
+// ==============================================
+// 📊 ATUALIZAR BARRA DE PROGRESSO DINÂMICA
+// ==============================================
+function atualizarProgresso(etapaAtual) {
+    for (let i = 1; i <= 5; i++) {
+        const el = document.getElementById(`etapa${i}`);
+        el.className = 'etapa';
+        if (i < etapaAtual) {
+            el.classList.add('concluida');
+            el.querySelector('.etapa-circulo').innerHTML = '<i class="fas fa-check"></i>';
+        } else if (i === etapaAtual) {
+            el.classList.add('ativa');
+            el.querySelector('.etapa-circulo').textContent = i;
+        } else {
+            el.querySelector('.etapa-circulo').textContent = i;
+        }
+    }
+}
+
 function exibirProposta(p) {
     document.getElementById('telaConsulta').classList.add('oculto');
     document.getElementById('telaProposta').classList.remove('oculto');
@@ -272,49 +328,60 @@ function exibirProposta(p) {
     );
 
     if(status === 'Reprovada') {
+        atualizarProgresso(1);
         document.getElementById('areaPagamento').innerHTML = '<div class="cartao aviso aviso-vermelho">❌ Sua proposta foi reprovada. Entre em contato conosco.</div>';
         return;
     }
 
-    if(status === 'Aprovada') {
-        document.getElementById('areaPagamento').classList.remove('oculto');
-        document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
+    // Se está em Análise (Nova)
+    if(status !== 'Aprovada') {
+        atualizarProgresso(1);
+        return;
+    }
 
-        // SE A ENTRADA JÁ FOI PAGA (BLOQUEIA TUDO E MOSTRA AS PARCELAS)
-        if(p.entrada_paga === true) {
-            document.getElementById('areaEscolhaParcelas').classList.add('oculto');
-            document.getElementById('avisoPrazo').classList.add('oculto');
-            document.getElementById('areaContrato').classList.add('oculto');
-            document.getElementById('areaQRCode').classList.add('oculto');
-            document.getElementById('areaParcelasPagas').classList.remove('oculto');
-            document.getElementById('avisoEntradaPaga').classList.remove('oculto');
-            exibirListaParcelas(p.dados_parcelas || []);
-            return;
-        }
+    // SE A ENTRADA JÁ FOI PAGA (ETAPA 5 - CONCLUÍDO)
+    if(p.entrada_paga === true) {
+        atualizarProgresso(5);
+        document.getElementById('areaEscolhaParcelas').classList.add('oculto');
+        document.getElementById('avisoPrazo').classList.add('oculto');
+        document.getElementById('areaContrato').classList.add('oculto');
+        document.getElementById('areaQRCode').classList.add('oculto');
+        document.getElementById('areaParcelasPagas').classList.remove('oculto');
+        document.getElementById('avisoEntradaPaga').classList.remove('oculto');
+        exibirListaParcelas(p.dados_parcelas || []);
+        return;
+    }
 
-        // SE JÁ ESCOLHEU AS PARCELAS MAS NÃO PAGOU A ENTRADA AINDA
-        if(p.quantidade_escolhida && p.quantidade_escolhida > 0) {
-            document.getElementById('areaEscolhaParcelas').classList.add('oculto');
-            document.getElementById('avisoPrazo').classList.remove('oculto');
-            document.getElementById('areaContrato').classList.remove('oculto');
+    // SE JÁ ESCOLHEU AS PARCELAS (ETAPA 3 ou 4)
+    if(p.quantidade_escolhida && p.quantidade_escolhida > 0) {
+        document.getElementById('areaEscolhaParcelas').classList.add('oculto');
+        document.getElementById('avisoPrazo').classList.remove('oculto');
+        document.getElementById('areaContrato').classList.remove('oculto');
+
+        // Se já gerou o Pix ou está na tela do QR Code, exibe a etapa 4 (Pagamento)
+        if(!document.getElementById('areaQRCode').classList.contains('oculto')) {
+            atualizarProgresso(4);
         } else {
-            // SE AINDA NÃO ESCOLHEU AS PARCELAS
-            document.getElementById('areaEscolhaParcelas').classList.remove('oculto');
-            document.getElementById('avisoPrazo').classList.add('oculto');
-            const qtdMax = p.quantidade_parcelas || 1;
-            const valorTotal = Number(p.valor_desejado || 0);
-            const valorEntrada = Number(p.valor_entrada || 0);
-            const financiado = valorTotal - valorEntrada;
-            const juros = Number(p.juros || 0) / 100;
+            atualizarProgresso(3); // Contrato
+        }
+    } else {
+        // APROVADA MAS NÃO ESCOLHEU PARCELAS (ETAPA 2)
+        atualizarProgresso(2);
+        document.getElementById('areaEscolhaParcelas').classList.remove('oculto');
+        document.getElementById('avisoPrazo').classList.add('oculto');
+        const qtdMax = p.quantidade_parcelas || 1;
+        const valorTotal = Number(p.valor_desejado || 0);
+        const valorEntrada = Number(p.valor_entrada || 0);
+        const financiado = valorTotal - valorEntrada;
+        const juros = Number(p.juros || 0) / 100;
 
-            const select = document.getElementById('selecionarParcela');
-            select.innerHTML = '<option value="">Selecione em quantas vezes quer pagar...</option>';
-            for(let i=1; i<=qtdMax; i++) {
-                let valorParcela;
-                if(juros === 0) valorParcela = financiado / i;
-                else valorParcela = financiado * (juros * Math.pow(1+juros, i)) / (Math.pow(1+juros, i) - 1);
-                select.innerHTML += `<option value="${i}">${i}x de R$ ${formatarMoeda(valorParcela)}</option>`;
-            }
+        const select = document.getElementById('selecionarParcela');
+        select.innerHTML = '<option value="">Selecione em quantas vezes quer pagar...</option>';
+        for(let i=1; i<=qtdMax; i++) {
+            let valorParcela;
+            if(juros === 0) valorParcela = financiado / i;
+            else valorParcela = financiado * (juros * Math.pow(1+juros, i)) / (Math.pow(1+juros, i) - 1);
+            select.innerHTML += `<option value="${i}">${i}x de R$ ${formatarMoeda(valorParcela)}</option>`;
         }
     }
 }
@@ -355,7 +422,6 @@ async function confirmarEscolha() {
 
     if(error) return alert('❌ Erro: ' + error.message);
 
-    alert(`✅ Parcelas confirmadas!\n\n📦 Prazo de entrega: ${prazoDias} dias.\n\nAgora leia o contrato e gere seu Pix.`);
     propostaAtual.quantidade_escolhida = qtd;
     propostaAtual.dados_parcelas = parcelas;
     exibirProposta(propostaAtual);
@@ -399,6 +465,8 @@ function gerarPix() {
     const codigoPix = payload + crc;
 
     document.getElementById('areaQRCode').classList.remove('oculto');
+    atualizarProgresso(4); // Atualiza para etapa Pagamento
+    
     document.getElementById('valorPix').textContent = valorEntrada;
     document.getElementById('codigoPix').textContent = codigoPix;
     document.getElementById('qrcode').innerHTML = '';
@@ -411,9 +479,6 @@ function gerarPix() {
     });
 }
 
-// ==============================================
-// ✅ CONFIRMAR PAGAMENTO DA ENTRADA NO BANCO
-// ==============================================
 async function simularPagamentoEfetuado() {
     const { error } = await supabase.from('propostas').update({
         entrada_paga: true
@@ -424,7 +489,6 @@ async function simularPagamentoEfetuado() {
         return;
     }
 
-    alert('✅ Pagamento confirmado com sucesso!');
     propostaAtual.entrada_paga = true;
     exibirProposta(propostaAtual);
 }
