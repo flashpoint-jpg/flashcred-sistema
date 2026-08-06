@@ -38,7 +38,7 @@
         .status-reprovada { background: #FEE2E2; color: #991B1B; }
         .status-paga { background: #D1FAE5; color: #065F46; }
         .area-senha { max-width: 420px; margin: 100px auto; text-align: center; }
-        input { padding: 14px; border: 1px solid var(--borda); border-radius: 10px; font-size: 17px; width: 100%; margin-bottom: 14px; }
+        input, select { padding: 10px; border: 1px solid var(--borda); border-radius: 8px; font-size: 15px; }
         .oculto { display: none !important; }
         .barra-superior { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 10px; }
         .resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
@@ -49,6 +49,9 @@
         h2 { font-size: 20px; color: var(--primary); margin-bottom: 10px; }
         h1 { font-size: 28px; color: var(--primary); margin-bottom: 20px; }
         .botao-grupo { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+        .editar-campo { display: flex; gap: 8px; align-items: center; margin-top: 4px; }
+        .editar-campo input { width: 80px; text-align: center; }
+        .prazo-entrega { background: #E0F2FE; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #0284C7; }
     </style>
 </head>
 <body>
@@ -57,7 +60,7 @@
     <!-- 🔐 TELA DE LOGIN -->
     <div id="telaLogin" class="area-senha">
         <h1>🔐 Painel Administrativo</h1>
-        <input type="password" id="senha" placeholder="Digite a senha de acesso">
+        <input type="password" id="senha" placeholder="Digite a senha de acesso" style="width:100%; padding:14px; font-size:17px;">
         <button onclick="entrar()" class="botao botao-sucesso" style="width:100%; font-size:17px;">Entrar</button>
         <p style="margin-top:14px; font-size:14px; color:var(--texto-claro);">Senha: flash2026</p>
     </div>
@@ -103,7 +106,7 @@ const SENHA = 'flash2026';
 let propostas = [];
 
 // ==============================================
-// ✅ MANTER LOGIN — NÃO VOLTA PRA TELA DE LOGIN AO APERTAR F5!
+// ✅ MANTER LOGIN — F5 NÃO PEDE SENHA DE NOVO!
 // ==============================================
 window.onload = function() {
     const logado = localStorage.getItem('painel_logado');
@@ -116,12 +119,12 @@ window.onload = function() {
 };
 
 // ==============================================
-// ✅ LOGIN — SALVA SESSÃO
+// ✅ LOGIN
 // ==============================================
 function entrar() {
     const senhaDigitada = document.getElementById('senha').value.trim();
     if(senhaDigitada === SENHA) {
-        localStorage.setItem('painel_logado', 'SIM'); // ✅ SALVA LOGIN!
+        localStorage.setItem('painel_logado', 'SIM');
         document.getElementById('telaLogin').classList.add('oculto');
         document.getElementById('telaPrincipal').classList.remove('oculto');
         carregarPropostas();
@@ -131,14 +134,14 @@ function entrar() {
     }
 }
 function sair() {
-    localStorage.removeItem('painel_logado'); // ✅ LIMPA SESSÃO AO SAIR
+    localStorage.removeItem('painel_logado');
     document.getElementById('senha').value = '';
     document.getElementById('telaLogin').classList.remove('oculto');
     document.getElementById('telaPrincipal').classList.add('oculto');
 }
 
 // ==============================================
-// ✅ CARREGAR PROPOSTAS — CORRIGE VALORES
+// ✅ CARREGAR PROPOSTAS
 // ==============================================
 async function carregarPropostas() {
     const {data, error} = await supabase
@@ -163,38 +166,78 @@ function ativarRealtime() {
 }
 
 // ==============================================
-// ✅ EXCLUIR — ATUALIZA SOZINHO
+// ✅ SALVAR PRAZO DE ENTREGA — VOCÊ ESCOLHE!
 // ==============================================
-async function excluirProposta(id) {
-    if(!confirm('⚠️ Tem CERTEZA? Esta ação NÃO tem retorno!')) return;
-    const { error } = await supabase.from('propostas').delete().eq('id', id);
-    if(error) { alert('❌ Erro: ' + error.message); return; }
-    alert('✅ Proposta EXCLUÍDA!');
-    carregarPropostas();
+async function salvarPrazoEntrega(id) {
+    const prazoInput = document.getElementById('prazo_' + id);
+    const prazo = parseInt(prazoInput.value);
+    
+    if(!prazo || prazo < 1) {
+        alert('⚠️ Digite um número de dias válido!');
+        return;
+    }
+
+    const { error } = await supabase
+        .from('propostas')
+        .update({ prazo_entrega_dias: prazo })
+        .eq('id', id);
+
+    if(error) {
+        alert('❌ Erro ao salvar: ' + error.message);
+    } else {
+        alert('✅ Prazo de entrega salvo: ' + prazo + ' dias!');
+        carregarPropostas();
+    }
 }
 
 // ==============================================
-// ✅ APROVAR / REPROVAR / MARCAR PAGA
+// ✅ APROVAR COM PRAZO DE ENTREGA
 // ==============================================
 async function aprovarProposta(id) {
-    const { error } = await supabase.from('propostas').update({status:'Aprovada'}).eq('id', id);
+    const prazoInput = document.getElementById('prazo_' + id);
+    const prazo = parseInt(prazoInput.value);
+    
+    if(!prazo || prazo < 1) {
+        alert('⚠️ Defina o prazo de entrega antes de aprovar!');
+        prazoInput.focus();
+        return;
+    }
+
+    const { error } = await supabase
+        .from('propostas')
+        .update({ 
+            status: 'Aprovada',
+            prazo_entrega_dias: prazo 
+        })
+        .eq('id', id);
+
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Proposta APROVADA! Cliente já vê a aprovação.');
+    else alert('✅ APROVADA!\nPrazo de entrega: ' + prazo + ' dias.\nCliente vai concordar com o prazo antes de pagar!');
 }
+
+// ==============================================
+// ✅ REPROVAR / EXCLUIR / MARCAR PAGA
+// ==============================================
 async function reprovarProposta(id) {
     if(!confirm('Reprovar esta proposta?')) return;
     const { error } = await supabase.from('propostas').update({status:'Reprovada'}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Proposta REPROVADA!');
+    else alert('✅ Reprovada!');
+}
+async function excluirProposta(id) {
+    if(!confirm('⚠️ Excluir? Não tem retorno!')) return;
+    const { error } = await supabase.from('propostas').delete().eq('id', id);
+    if(error) alert('❌ Erro: ' + error.message);
+    else { alert('✅ Excluída!'); carregarPropostas(); }
 }
 async function marcarEntradaPaga(id) {
     const { error } = await supabase.from('propostas').update({entrada_paga:true}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Entrada marcada como PAGA! Cliente vê as parcelas.');
+    else alert('✅ Entrada marcada como PAGA!');
 }
 
 // ==============================================
-// ✅ MOSTRAR LISTA COM TODOS OS BOTÕES E VALORES CORRETOS
+// ✅ MOSTRAR LISTA COM CAMPO DE PRAZO DE ENTREGA
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -202,7 +245,6 @@ function renderizarPropostas() {
     let qtdNovas=0, qtdAprovadas=0, qtdPendentes=0;
 
     propostas.forEach(p => {
-        // ✅ CORRIGINDO VALORES — PEGA O VALOR CERTO
         const valor = Number(p.valor_desejado || 0);
         const valorEntrada = Number(p.valor_entrada || 0);
         const qtdParc = Number(p.quantidade_parcelas || p.quantidade_escolhida || 0);
@@ -210,6 +252,7 @@ function renderizarPropostas() {
         const status = p.status || 'Nova';
         const entradaPaga = !!p.entrada_paga;
         const parcelas = p.dados_parcelas || [];
+        const prazoEntrega = p.prazo_entrega_dias || ''; // ✅ PRAZO SALVO
 
         if(status==='Nova') qtdNovas++;
         if(status==='Aprovada') { qtdAprovadas++; if(!entradaPaga) qtdPendentes++; }
@@ -238,28 +281,42 @@ function renderizarPropostas() {
                 <span class="valor">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
             </div>
             <div class="linha">
-                <span class="etiqueta">Quantidade de Parcelas:</span>
-                <span class="valor">${qtdParc}x</span>
-                <span class="etiqueta" style="margin-left:16px;">Juros:</span>
-                <span class="valor">${juros}% ao mês</span>
+                <span class="etiqueta">Parcelas / Juros:</span>
+                <span class="valor">${qtdParc}x · ${juros}% ao mês</span>
             </div>
+
+            <!-- ✅ CAMPO LIVRE: PRAZO DE ENTREGA --- VOCÊ ESCOLHE QUANTOS DIAS! -->
+            <div class="linha">
+                <span class="etiqueta">📦 Prazo de Entrega:</span>
+                <div class="editar-campo">
+                    <input type="number" id="prazo_${p.id}" value="${prazoEntrega}" placeholder="dias" min="1" style="width:90px;">
+                    <span style="color:var(--texto-claro); font-size:14px;">dias</span>
+                    ${status==='Nova'||status==='Aprovada'?`<button onclick="salvarPrazoEntrega(${p.id})" class="botao botao-azul botao-pequeno">💾 Salvar</button>`:''}
+                </div>
+            </div>
+
+            ${prazoEntrega ? `
+            <div class="prazo-entrega">
+                ✅ <strong>Entrega prevista: ${prazoEntrega} dia${prazoEntrega>1?'s':''}</strong> — O cliente precisará concordar antes de liberar o pagamento.
+            </div>` : ''}
+
             ${entradaPaga?'<div class="linha"><span class="status status-paga">✅ ENTRADA PAGA</span></div>':''}
 
             ${parcelas.length > 0 ? `
             <div class="separador"></div>
-            <h3 style="margin-bottom:10px; font-size:16px;">📋 Parcelas do Cliente:</h3>
+            <h3 style="margin-bottom:10px; font-size:16px;">📋 Parcelas:</h3>
             <div>${parcelas.map(parc => {
                 const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
                 const v = Number(parc.valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
                 const st = parc.paga ? '✅ PAGA' : '⏳ A vencer';
                 const corFundo = parc.paga ? '#D1FAE5' : '#FEF3C7';
-                return `<div class="info-parcela" style="background:${corFundo};">${parc.numero}ª Parcela · ${v} · Venc: ${dt} · ${st}</div>`;
+                return `<div class="info-parcela" style="background:${corFundo};">${parc.numero}ª · ${v} · Venc: ${dt} · ${st}</div>`;
             }).join('')}</div>` : ''}
 
             <div class="separador"></div>
             <div class="botao-grupo">
                 ${status === 'Nova' ? `
-                <button onclick="aprovarProposta(${p.id})" class="botao botao-sucesso">✅ Aprovar</button>
+                <button onclick="aprovarProposta(${p.id})" class="botao botao-sucesso">✅ Aprovar com Prazo</button>
                 <button onclick="reprovarProposta(${p.id})" class="botao botao-alerta">❌ Reprovar</button>
                 ` : ''}
                 ${status === 'Aprovada' && !entradaPaga ? `
