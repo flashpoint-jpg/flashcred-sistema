@@ -44,6 +44,7 @@
         .botao-whatsapp { background: #25D366; color: white; }
         .botao-secundario { background: #E2E8F0; color: #334155; }
         .botao-pequeno { padding:6px 10px; font-size:12px; }
+        .botao-manual { background: #8B5CF6; color: white; }
         .cartao { background: white; border-radius:12px; border:1px solid #E2E8F0; padding:16px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
         .grade { display:grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap:16px; }
         .etiqueta { display:inline-block; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:600; }
@@ -77,13 +78,12 @@
         .area-pdf .val { font-size:14px; font-weight:600; }
         .area-pdf .assinatura { margin-top:40px; text-align:center; }
         .area-pdf .linha-assinatura { border-bottom:1px solid #000; width:60%; margin:40px auto 8px; }
-        .som-pagamento { display:none; }
     </style>
 </head>
 <body>
 
 <!-- 🔊 SOM DE NOTIFICAÇÃO -->
-<audio id="somNotificacao" preload="auto" class="som-pagamento">
+<audio id="somNotificacao" preload="auto">
     <source src="https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3" type="audio/mpeg">
 
 
@@ -292,7 +292,7 @@ function renderizarPropostas() {
             <div class="linha"><span class="rotulo">WhatsApp:</span><span>${whats ? `<a href="https://wa.me/55${whats}" target="_blank" style="color:#25D366;">📲 ${whats}</a>` : 'Não informado'}</span></div>
             <div class="linha"><span class="rotulo">Endereço:</span><span style="font-size:12px;">${endereco}</span></div>
             <div class="linha"><span class="rotulo">Valor Produto:</span><span class="destaque">${valorProd}</span></div>
-            ${p.status==='Aprovada'||p.entrada_paga ? `
+            ${(status==='Aprovada'||p.entrada_paga) ? `
             <div class="linha"><span class="rotulo">Entrada:</span><span>${valorEnt} ${entradaPaga}</span></div>
             <div class="linha"><span class="rotulo">Parcelas:</span><span>${qtdParc}x</span></div>
             ` : ''}
@@ -305,11 +305,11 @@ function renderizarPropostas() {
                 <button onclick="aprovar('${p.id}')" class="botao botao-sucesso botao-pequeno">✅ Aprovar</button>
                 <button onclick="reprovar('${p.id}')" class="botao botao-perigo botao-pequeno">❌ Reprovar</button>
                 ` : ''}
-                ${status==='Aprovada'&&!p.entrada_paga ? `
-                <button onclick="marcarEntradaPaga('${p.id}')" class="botao botao-sucesso botao-pequeno">💰 Entrada Paga</button>
+                ${status==='Aprovada' && !p.entrada_paga ? `
+                <button onclick="marcarEntradaPagaManual('${p.id}')" class="botao botao-manual botao-pequeno">💰 Entrada Paga (Dinheiro)</button>
                 ` : ''}
                 <button onclick="abrirEditar('${p.id}')" class="botao botao-primario botao-pequeno">📝 Editar</button>
-                ${whats ? `<button onclick="enviarWhatsAppProposta('${whats}', '${p.nome||'Cliente'}', ${valorProd})" class="botao botao-whatsapp botao-pequeno">💬 WhatsApp</button>` : ''}
+                ${whats ? `<button onclick="enviarWhatsAppProposta('${whats}', '${p.nome||'Cliente'}', ${p.valor_desejado||0})" class="botao botao-whatsapp botao-pequeno">💬 WhatsApp</button>` : ''}
                 <button onclick="excluirProposta('${p.id}')" class="botao botao-perigo botao-pequeno">🗑️ Excluir</button>
             </div>
         </div>`;
@@ -375,25 +375,30 @@ async function reprovar(id) {
     await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
 }
 
-async function marcarEntradaPaga(id) {
-    if(!confirm('Marcar entrada como PAGA? Liberar parcelas?')) return;
+// ==============================================
+// ✅ MARCAR ENTRADA PAGA MANUALMENTE (DINHEIRO)
+// ==============================================
+async function marcarEntradaPagaManual(id) {
+    if(!confirm('💰 Cliente pagou a entrada EM DINHEIRO?\n\nIsso vai LIBERAR imediatamente as parcelas para o cliente!')) return;
+
     const p = propostas.find(x=>x.id===id);
     if(!p) return;
 
     const valorEnt = Number(p.valor_entrada||0);
     const qtd = Number(p.quantidade_parcelas||1);
     const juros = Number(p.juros_mensal||5)/100;
-    const valorTotal = Number(p.valor_total_final||0);
+    const valorTotal = Number(p.valor_total_final || (Number(p.valor_desejado) * (1 + juros)));
     const saldo = valorTotal - valorEnt;
 
-    // Gerar parcelas
+    // Gerar parcelas automaticamente
     const parcelas = [];
     const dtBase = new Date();
     for(let i=1; i<=qtd; i++) {
         let valorParc;
-        if(qtd===1) valorParc = valorTotal;
-        else {
-            valorParc = saldo * Math.pow(1+juros, qtd) * juros / (Math.pow(1+juros, qtd)-1);
+        if(qtd === 1) {
+            valorParc = valorTotal;
+        } else {
+            valorParc = saldo * Math.pow(1 + juros, qtd) * juros / (Math.pow(1 + juros, qtd) - 1);
         }
         const dtVenc = new Date(dtBase);
         dtVenc.setMonth(dtVenc.getMonth() + i);
@@ -405,12 +410,13 @@ async function marcarEntradaPaga(id) {
         });
     }
 
+    // Atualiza no banco → cliente vê na hora
     await supabase.from('propostas').update({
         entrada_paga: true,
         parcelas: parcelas
     }).eq('id', id);
 
-    alert('✅ Entrada marcada como PAGA! Parcelas liberadas!');
+    alert('✅ ENTRADA PAGA (Dinheiro)! Parcelas LIBERADAS para o cliente!');
 }
 
 // ==============================================
@@ -504,7 +510,7 @@ async function gerarPDFProposta() {
     elemento.classList.remove('oculto');
 
     const opt = { margin:10, filename:`Proposta-${p.nome||'Cliente'}.pdf`, image:'jpeg', html2canvas:{scale:2}, jsPDFUnit:'mm' };
-    const pdf = await html2pdf().set(opt).from(elemento).save();
+    await html2pdf().set(opt).from(elemento).save();
 
     elemento.classList.add('oculto');
     alert('✅ PDF gerado!');
