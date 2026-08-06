@@ -18,6 +18,7 @@
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444',
+                        whatsapp: '#25D366',
                         fundo: '#F8FAFC'
                     }
                 }
@@ -27,11 +28,11 @@
     <style>
         .bolinha-girando { animation: girar 1s linear infinite; }
         @keyframes girar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .etapa-pendente { opacity: 0.4; }
-        .etapa-ativa { opacity: 1; border-color: #2563eb; background: #EFF6FF; }
-        .etapa-concluida { border-color: #10B981; background: #F0FDF4; }
         canvas { border: 2px solid #CBD5E1; border-radius: 8px; background: white; touch-action: none; }
         video { border-radius: 8px; background: #000; }
+        .etapa-pendente { opacity: 0.5; }
+        .etapa-concluida { border-color: #10B981; background: #F0FDF4; }
+        .etapa-ativa { border-color: #2563EB; background: #EFF6FF; }
     </style>
 </head>
 <body class="bg-fundo min-h-screen pb-8">
@@ -39,8 +40,8 @@
 <div class="max-w-md mx-auto p-4">
     <h1 class="text-2xl font-bold text-primary text-center mb-6">🔍 Acompanhar Proposta</h1>
 
-    <!-- CONSULTA CPF -->
-    <div class="bg-white p-5 rounded-xl shadow mb-6">
+    <!-- CONSULTA CPF — SALVA AUTOMATICAMENTE -->
+    <div class="bg-white p-5 rounded-xl shadow mb-6" id="areaConsulta">
         <label class="block font-semibold mb-2 text-gray-700">Digite seu CPF</label>
         <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" 
             class="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-primary focus:outline-none">
@@ -61,14 +62,13 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-let cpfAtual = '';
+let cpfAtual = localStorage.getItem('ultimoCpf') || ''; // ✅ SALVA CPF!
 let canalRealtime = null;
-let etapaAtual = 0;
-let assinaturaCanvas = null;
-let streamCamera = null;
+let propostaAtual = null;
+let podeAssinar = { contrato:false, assinatura:false, foto:false };
 
 // ==============================================
-// INICIO — LER CPF DA URL
+// ✅ INICIO — LÊ CPF SALVO E DA URL
 // ==============================================
 window.onload = () => {
     const params = new URLSearchParams(window.location.search);
@@ -76,20 +76,26 @@ window.onload = () => {
     
     if(cpfUrl.length === 11) {
         cpfAtual = cpfUrl;
-        document.getElementById('cpf').value = cpfUrl.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+        localStorage.setItem('ultimoCpf', cpfAtual);
+    } else if(cpfAtual.length === 11) {
+        // ✅ USA CPF SALVO — NÃO PRECISA DIGITAR DE NOVO!
+    }
+
+    if(cpfAtual.length === 11) {
+        document.getElementById('cpf').value = cpfAtual.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
         consultar();
     }
 };
 
 // ==============================================
-// 🔄 TEMPO REAL — ATUALIZA SOZINHO
+// ✅ TEMPO REAL — NÃO PRECISA F5!
 // ==============================================
 function ativarRealtime() {
     if(!cpfAtual) return;
     if(canalRealtime) supabase.removeChannel(canalRealtime);
     
     canalRealtime = supabase.channel('atualizacao_cliente')
-        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'propostas', filter:`cpf=eq.${cpfAtual}` }, (payload) => {
+        .on('postgres_changes', { event:'*', schema:'public', table:'propostas', filter:`cpf=eq.${cpfAtual}` }, (payload) => {
             console.log('🔄 Atualizado!', payload.new);
             exibirProposta(payload.new);
         })
@@ -104,6 +110,9 @@ async function consultar() {
     if(cpf.length !== 11) { alert('Digite um CPF válido!'); return; }
 
     cpfAtual = cpf;
+    localStorage.setItem('ultimoCpf', cpf); // ✅ SALVA CPF PARA SEMPRE!
+    
+    document.getElementById('areaConsulta').classList.add('hidden');
     document.getElementById('resultado').innerHTML = '<p class="text-center p-8 text-gray-500"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Buscando...</p>';
 
     const {data, error} = await supabase
@@ -115,10 +124,12 @@ async function consultar() {
 
     if(error || !data || data.length === 0) {
         document.getElementById('resultado').innerHTML = '<p class="text-center p-8 text-red-500">❌ Proposta não encontrada.</p>';
+        document.getElementById('areaConsulta').classList.remove('hidden');
         return;
     }
 
-    exibirProposta(data[0]);
+    propostaAtual = data[0];
+    exibirProposta(propostaAtual);
     ativarRealtime();
 }
 
@@ -126,6 +137,7 @@ async function consultar() {
 // ✅ EXIBIR PROPOSTA — FLUXO COMPLETO
 // ==============================================
 function exibirProposta(p) {
+    propostaAtual = p;
     const status = p.status || 'Nova';
     const foiAprovada = status === 'Aprovada';
     const temContrato = !!p.contrato_assinado;
@@ -135,12 +147,13 @@ function exibirProposta(p) {
     // VALORES
     const valorTotal = Number(p.valor_desejado || 0);
     const valorEntrada = Number(p.valor_entrada || 0);
-    const qtdDefinida = Number(p.quantidade_parcelas || 0);
+    const qtdMaxima = Number(p.quantidade_parcelas || 1); // ✅ MÁXIMO DEFINIDO POR VOCÊ
     const juros = Number(p.juros || 0);
     const dadosParcelas = p.dados_parcelas || [];
+    const qtdEscolhida = Number(p.quantidade_escolhida || qtdMaxima); // ✅ ESCOLHIDA PELO CLIENTE
 
     // ==============================================
-    // ⏳ AGUARDANDO APROVAÇÃO — BOLINHA GIRANDO
+    // ⏳ AGUARDANDO APROVAÇÃO
     // ==============================================
     if(!foiAprovada) {
         document.getElementById('resultado').innerHTML = `
@@ -150,14 +163,14 @@ function exibirProposta(p) {
             </div>
             <h2 class="text-xl font-bold text-primary mb-2">🔔 Aguardando Aprovação</h2>
             <p class="text-gray-600 mb-4">Olá, ${p.nome || 'Cliente'}! Estamos analisando sua proposta.</p>
-            <p class="text-sm text-gray-500">Assim que aprovada, aparecerão aqui os valores, parcelas e contrato.</p>
+            <p class="text-sm text-gray-500">Assim que aprovada, aparecerão aqui os valores e opções de parcelamento.</p>
             <p class="text-xs text-green-600 mt-4">🔄 Atualização automática em tempo real</p>
         </div>`;
         return;
     }
 
     // ==============================================
-    // ✅ APROVADA — MOSTRA TUDO
+    // ✅ APROVADA — ESCOLHER PARCELAS (1 a N)
     // ==============================================
     let html = `
     <div class="bg-white p-5 rounded-xl shadow">
@@ -167,79 +180,63 @@ function exibirProposta(p) {
             </span>
         </div>
 
-        <!-- DADOS DO CLIENTE -->
+        <!-- DADOS -->
         <div class="mb-4">
             <h2 class="text-xl font-bold text-primary">👤 ${p.nome || 'Cliente'}</h2>
             <p class="text-sm text-gray-500">CPF: ${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
         </div>
 
-        <!-- VALORES DEFINIDOS PELO ADMIN -->
+        <!-- VALORES -->
         <div class="bg-gray-50 p-4 rounded-lg mb-4 border">
             <h3 class="font-bold text-primary mb-3">💰 Valores Contratados</h3>
             <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <p class="text-sm text-gray-500">Valor Total</p>
-                    <p class="font-bold text-lg">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
-                </div>
-                <div>
-                    <p class="text-sm text-gray-500">Entrada</p>
-                    <p class="font-bold text-lg text-pix">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
-                </div>
-                <div>
-                    <p class="text-sm text-gray-500">Juros</p>
-                    <p class="font-bold text-lg">${juros}% ao mês</p>
-                </div>
-                <div>
-                    <p class="text-sm text-gray-500">Parcelas</p>
-                    <p class="font-bold text-lg">${qtdDefinida}x</p>
-                </div>
+                <div><p class="text-sm text-gray-500">Valor Total</p><p class="font-bold text-lg">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p></div>
+                <div><p class="text-sm text-gray-500">Entrada</p><p class="font-bold text-lg text-pix">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p></div>
+                <div><p class="text-sm text-gray-500">Juros</p><p class="font-bold text-lg">${juros}% ao mês</p></div>
+                <div><p class="text-sm text-gray-500">Máximo de parcelas</p><p class="font-bold text-lg">${qtdMaxima}x</p></div>
             </div>
         </div>`;
 
     // ==============================================
-    // 📋 ETAPA 1: PARCELAS JÁ DEFINIDAS
+    // 📋 ETAPA 1: ESCOLHER QUANTIDADE DE PARCELAS (1 a N)
     // ==============================================
-    html += `
-        <div class="border-2 rounded-xl p-4 mb-4 etapa-ativa" id="etapa-parcelas">
-            <h3 class="font-bold text-lg text-primary mb-3">📋 Suas Parcelas</h3>
-            <p class="text-sm text-gray-600 mb-3">Valores e datas já definidos:</p>
-            <div class="space-y-2 max-h-64 overflow-y-auto">`;
-
-    if(dadosParcelas.length > 0) {
-        dadosParcelas.forEach((parc, idx) => {
-            const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
-            const vlr = Number(parc.valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-            html += `
-            <div class="p-3 rounded-lg border bg-gray-50">
-                <div class="flex justify-between font-semibold">
-                    <span>${parc.numero}ª Parcela</span>
-                    <span class="text-primary">${vlr}</span>
-                </div>
-                <div class="flex justify-between text-sm text-gray-500 mt-1">
-                    <span>Vencimento: ${dt}</span>
-                    <span>A vencer</span>
-                </div>
-            </div>`;
-        });
-    }
-    html += `</div>
-            <p class="text-green-600 font-semibold mt-3">✅ Parcelas definidas</p>
-        </div>`;
-
-    // ==============================================
-    // 📄 ETAPA 2: CONTRATO (OBRIGATÓRIO)
-    // ==============================================
-    html += `
-        <div class="border-2 rounded-xl p-4 mb-4 ${temContrato?'etapa-concluida':'etapa-pendente'}" id="etapa-contrato">
-            <h3 class="font-bold text-lg text-primary mb-3">📄 Passo 1 — Ler e Assinar Contrato</h3>`;
-
-    if(!temContrato) {
+    if(!temContrato && !entradaPaga) {
         html += `
+        <div class="border-2 rounded-xl p-4 mb-4 etapa-ativa">
+            <h3 class="font-bold text-lg text-primary mb-3">📋 Passo 1 — Escolha em quantas vezes quer pagar</h3>
+            <p class="text-sm text-gray-600 mb-3">Você pode escolher de <strong>1x até ${qtdMaxima}x</strong></p>
+            
+            <label class="block font-semibold mb-2">Quantidade de parcelas:</label>
+            <select id="selParcelas" onchange="calcularParcelaCliente(${qtdMaxima}, ${valorEntrada}, ${juros})" 
+                class="w-full p-3 border-2 border-primary rounded-lg text-lg font-bold">`;
+        
+        for(let i=1; i<=qtdMaxima; i++) {
+            const saldo = valorTotal - valorEntrada;
+            const valorParc = saldo * Math.pow(1 + juros/100, 1) / i;
+            html += `<option value="${i}" ${i==qtdEscolhida?'selected':''}>${i}x de ${valorParc.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</option>`;
+        }
+        
+        html += `</select>
+            <div id="resumoParcela" class="mt-3 p-3 bg-blue-50 rounded-lg hidden">
+                <p class="font-semibold">Valor de cada parcela: <span id="valorParcelaSelecionada" class="text-xl font-bold text-primary"></span></p>
+            </div>
+            <button onclick="salvarEscolhaParcelas(${p.id})" class="w-full mt-3 bg-primary text-white p-3 rounded-lg font-bold">
+                ✅ Confirmar quantidade de parcelas
+            </button>
+        </div>`;
+    }
+
+    // ==============================================
+    // 📄 ETAPA 2: CONTRATO
+    // ==============================================
+    if(qtdEscolhida > 0 && !temContrato) {
+        html += `
+        <div class="border-2 rounded-xl p-4 mb-4 etapa-ativa">
+            <h3 class="font-bold text-lg text-primary mb-3">📄 Passo 2 — Ler e Assinar Contrato</h3>
             <div class="bg-gray-50 p-4 rounded-lg mb-4 text-sm text-gray-700 max-h-60 overflow-y-auto border">
                 <p class="font-bold mb-2">CONTRATO DE CRÉDITO</p>
                 <p>Declaro que li e concordo com todos os termos do contrato de crédito firmado com FLASH POINT.</p>
-                <p class="mt-2">Comprometo-me a honrar o pagamento das parcelas nas datas acordadas. Estou ciente que o não pagamento pode prejudicar minha confiança e oportunidades futuras.</p>
-                <p class="mt-2">FlashCred foi criada para pessoas que buscam reconstruir sua confiança. Conte comigo. Vamos fazer um mundo melhor juntos.</p>
+                <p class="mt-2">Comprometo-me a honrar o pagamento das parcelas nas datas acordadas. Estou ciente que o não pagamento vai prejudicar sua confiança e oportunidades futuras. Pense bem: FlashCred foi feita pensando em pessoas que buscam reconstruir sua confiança. Pensei em você primeiro. Conte comigo. Vamos fazer um mundo melhor juntos.</p>
                 <p class="mt-2 font-semibold">Ao assinar abaixo, declaro que LI e CONCORDO com este contrato.</p>
             </div>
             <label class="flex items-center gap-2 mb-3 cursor-pointer">
@@ -251,222 +248,257 @@ function exibirProposta(p) {
             <div class="mt-3">
                 <p class="font-semibold mb-2">✍️ Assine abaixo:</p>
                 <canvas id="canvasAssinatura" width="400" height="150" class="w-full"></canvas>
-                <div class="flex gap-2 mt-2">
-                    <button onclick="limparAssinatura()" class="flex-1 bg-gray-200 p-2 rounded font-bold">🗑️ Limpar</button>
-                </div>
+                <button onclick="limparAssinatura()" class="mt-2 bg-gray-200 px-4 py-2 rounded font-bold">🗑️ Limpar</button>
             </div>
 
             <!-- SELFIE -->
             <div class="mt-4">
-                <p class="font-semibold mb-2">📸 Passo 2 — Tirar Foto (Selfie)</p>
-                <video id="videoCamera" autoplay playsinline class="w-full h-48 object-cover"></video>
+                <p class="font-semibold mb-2">📸 Passo 3 — Tirar Foto (Selfie)</p>
+                <video id="videoCamera" autoplay playsinline class="w-full h-48 object-cover rounded-lg"></video>
                 <div class="flex gap-2 mt-2">
                     <button onclick="abrirCamera()" id="btnAbrirCamera" class="flex-1 bg-primary text-white p-2 rounded font-bold">📷 Abrir Câmera</button>
                     <button onclick="tirarFoto()" id="btnTirarFoto" class="flex-1 bg-alerta text-white p-2 rounded font-bold hidden">📸 Tirar Foto</button>
                 </div>
                 <canvas id="canvasFoto" class="hidden"></canvas>
-                <div id="previewFoto" class="mt-2 hidden">
-                    <p class="text-green-600 font-semibold">✅ Foto tirada!</p>
-                </div>
+                <div id="previewFoto" class="mt-2 hidden text-green-600 font-semibold">✅ Foto enviada!</div>
             </div>
 
-            <button onclick="enviarAssinatura()" id="btnEnviarAssinatura" 
+            <button onclick="enviarAssinatura(${p.id})" id="btnEnviarAssinatura" 
                 class="w-full mt-4 bg-gray-300 text-gray-500 p-3 rounded-lg font-bold text-lg cursor-not-allowed" disabled>
                 ✍️ Enviar Assinatura e Foto
             </button>
-            <p class="text-xs text-gray-500 mt-2">⚠️ É obrigatório ler, assinar e enviar foto para liberar o pagamento.</p>`;
-    } else {
-        html += `
-            <p class="text-green-600 font-bold text-lg">✅ Contrato assinado e foto enviados!</p>
-            <p class="text-gray-500 mt-1">Aguardando liberação do pagamento...</p>`;
+        </div>`;
     }
-    html += `</div>`;
 
     // ==============================================
-    // 💳 ETAPA 3: PAGAMENTO (LIBERA APÓS ASSINAR)
+    // ✅ CONTRATO ASSINADO → MOSTRA PAGAMENTO DA ENTRADA
     // ==============================================
-    if(temContrato) {
+    if(temContrato && !entradaPaga) {
         html += `
-        <div class="border-2 rounded-xl p-4 bg-green-50 border-green-300" id="etapa-pix">
-            <h3 class="font-bold text-lg text-sucesso mb-3">💳 Pagamento da Entrada</h3>
-            <p class="text-2xl font-bold text-pix text-center mb-3">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>`;
+        <div class="border-2 rounded-xl p-4 mb-4 etapa-concluida">
+            <h3 class="font-bold text-lg text-sucesso mb-3">✅ Contrato assinado e foto enviados!</h3>
+            <p class="text-gray-600 mb-4">Agora pague a entrada para liberar suas parcelas:</p>
+        </div>
+
+        <div class="border-2 rounded-xl p-4 bg-pix/10 border-pix mb-4">
+            <h3 class="font-bold text-lg text-pix mb-3 text-center">💳 Pagamento da Entrada</h3>
+            <p class="text-3xl font-bold text-pix text-center mb-4">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>`;
         
-        if(!entradaPaga && p.qr_code_entrada) {
+        if(p.qr_code_entrada) {
             html += `
                 <div class="text-center">
                     <div id="qrcode" class="flex justify-center my-4"></div>
-                    <p class="text-sm text-gray-600 mb-2">Escaneie o QR Code ou copie o Pix:</p>
+                    <p class="text-sm text-gray-600 mb-2">Escaneie o QR Code ou copie o código Pix:</p>
                     <textarea readonly class="w-full p-3 text-xs border rounded-lg bg-white" rows="4">${p.qr_code_entrada}</textarea>
                     <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Copiado!')" 
                         class="mt-3 bg-pix text-white px-6 py-3 rounded-lg font-bold text-lg w-full">
                         📋 Copiar Código Pix
                     </button>
-                    <p class="text-xs text-green-600 mt-3">✅ Após pagamento, as parcelas serão liberadas automaticamente!</p>
-                </div>`;
-        } else if(entradaPaga) {
-            html += `
-                <div class="text-center">
-                    <p class="text-2xl font-bold text-sucesso">✅ ENTRADA PAGA!</p>
-                    <p class="text-gray-600 mt-2">Pagamento confirmado! Suas parcelas estão ativas.</p>
                 </div>`;
         } else {
-            html += `<p class="text-yellow-600">Aguardando geração do QR Code...</p>`;
+            html += `<p class="text-center text-yellow-600">Aguardando geração do QR Code...</p>`;
         }
         html += `</div>`;
+    }
+
+    // ==============================================
+    // ✅ ENTRADA PAGA → MOSTRA TODAS AS PARCELAS PARA PAGAR
+    // ==============================================
+    if(entradaPaga) {
+        html += `
+        <div class="border-2 rounded-xl p-4 bg-green-50 border-green-300 mb-4">
+            <h3 class="font-bold text-2xl text-sucesso text-center mb-4">✅ ENTRADA PAGA!</h3>
+            <p class="text-center text-gray-600 mb-6">Pagamento confirmado! Suas parcelas estão abaixo:</p>
+        </div>
+
+        <div class="border-2 rounded-xl p-4">
+            <h3 class="font-bold text-lg text-primary mb-4">📋 Suas Parcelas a Pagar</h3>
+            <div class="space-y-3">`;
+
+        if(dadosParcelas.length > 0) {
+            dadosParcelas.forEach((parc, idx) => {
+                const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
+                const vlr = Number(parc.valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+                const paga = parc.paga;
+                const hoje = new Date();
+                const venc = parc.vencimento ? new Date(parc.vencimento+'T00:00:00') : null;
+                const statusCor = paga ? 'border-green-400 bg-green-50' : 
+                                  (venc && venc < hoje) ? 'border-red-400 bg-red-50' : 'border-yellow-400 bg-yellow-50/20';
+                const statusTexto = paga ? '✅ PAGA' : (venc && venc < hoje) ? '⚠️ VENCIDA' : '⏳ A VENCER';
+                const statusTextoCor = paga ? 'text-green-700' : (venc && venc < hoje) ? 'text-red-700' : 'text-yellow-700';
+
+                html += `
+                <div class="p-4 rounded-lg border-2 ${statusCor}">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold text-lg">${parc.numero}ª Parcela</span>
+                        <span class="font-bold text-xl text-primary">${vlr}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-sm mb-3">
+                        <span>Vencimento: ${dt}</span>
+                        <span class="font-semibold ${statusTextoCor}">${statusTexto}</span>
+                    </div>`;
+
+                if(!paga) {
+                    html += `
+                    <div class="flex gap-2">
+                        <button onclick="alert('Gere o Pix para esta parcela e pague!')" 
+                            class="flex-1 bg-pix text-white p-2 rounded font-bold">💳 Gerar Pix</button>
+                        <a href="https://wa.me/55${p.telefone?.replace(/\D/g,'')}?text=Olá! Solicito o código Pix de pagamento da ${parc.numero}ª parcela no valor de ${vlr} - Vencimento: ${dt}" 
+                            target="_blank" class="flex-1 bg-whatsapp text-white p-2 rounded font-bold text-center">
+                            💬 Cobrar
+                        </a>
+                    </div>`;
+                } else {
+                    html += `<p class="text-center text-green-600 font-bold">✅ Pagamento confirmado!</p>`;
+                }
+                html += `</div>`;
+            });
+        }
+        html += `</div></div>`;
     }
 
     html += `</div>`;
     document.getElementById('resultado').innerHTML = html;
 
-    // INICIALIZAR ASSINATURA
-    if(!temContrato) {
-        setTimeout(() => {
-            inicializarAssinatura();
-        }, 100);
+    // INICIALIZAÇÕES
+    if(qtdEscolhida > 0 && !temContrato) {
+        setTimeout(() => inicializarAssinatura(), 100);
     }
-
-    // GERAR QR CODE
     if(temContrato && !entradaPaga && p.qr_code_entrada) {
         setTimeout(() => {
-            const container = document.getElementById('qrcode');
-            if(container) { container.innerHTML=''; new QRCode(container, { text:p.qr_code_entrada, width:200, height:200 }); }
+            const c = document.getElementById('qrcode');
+            if(c) { c.innerHTML=''; new QRCode(c, { text:p.qr_code_entrada, width:200, height:200 }); }
         }, 100);
     }
 }
 
 // ==============================================
-// ✅ FUNÇÕES DE ASSINATURA E CAMERA
+// ✅ CLIENTE ESCOLHE A QUANTIDADE
 // ==============================================
-let podeAssinar = { contrato:false, assinatura:false, foto:false };
+function calcularParcelaCliente(qtdMax, valorEntrada, juros) {
+    const qtd = parseInt(document.getElementById('selParcelas').value);
+    const valorTotal = propostaAtual.valor_desejado;
+    const saldo = valorTotal - valorEntrada;
+    const valorParc = saldo * Math.pow(1 + juros/100, 1) / qtd;
+    
+    document.getElementById('resumoParcela').classList.remove('hidden');
+    document.getElementById('valorParcelaSelecionada').textContent = valorParc.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+}
 
+async function salvarEscolhaParcelas(idProposta) {
+    const qtd = parseInt(document.getElementById('selParcelas').value);
+    const valorTotal = Number(propostaAtual.valor_desejado || 0);
+    const valorEntrada = Number(propostaAtual.valor_entrada || 0);
+    const juros = Number(propostaAtual.juros || 0);
+    const saldo = valorTotal - valorEntrada;
+    const valorParc = saldo * Math.pow(1 + juros/100, 1) / qtd;
+
+    // PEGA A DATA DA PRIMEIRA PARCELA JÁ DEFINIDA
+    const dadosOriginais = propostaAtual.dados_parcelas || [];
+    const dataInicio = dadosOriginais.length > 0 && dadosOriginais[0].vencimento 
+        ? new Date(dadosOriginais[0].vencimento + 'T00:00:00') 
+        : new Date();
+
+    // GERA NOVO CRONOGRAMA COM A QUANTIDADE ESCOLHIDA
+    const novasParcelas = [];
+    let data = new Date(dataInicio);
+    for(let i=1; i<=qtd; i++) {
+        const d = String(data.getDate()).padStart(2,'0');
+        const m = String(data.getMonth()+1).padStart(2,'0');
+        const a = data.getFullYear();
+        novasParcelas.push({
+            numero: i,
+            valor: Number(valorParc.toFixed(2)),
+            vencimento: `${a}-${m}-${d}`,
+            paga: false
+        });
+        data.setMonth(data.getMonth()+1);
+    }
+
+    // SALVA NO BANCO
+    const { error } = await supabase.from('propostas').update({
+        quantidade_escolhida: qtd,
+        dados_parcelas: novasParcelas
+    }).eq('id', idProposta);
+
+    if(error) alert('❌ Erro: ' + error.message);
+    else alert(`✅ Escolhido ${qtd}x! Atualizando...`);
+}
+
+// ==============================================
+// ASSINATURA E CÂMERA
+// ==============================================
 function verificarPodeAssinar() {
     podeAssinar.contrato = document.getElementById('liContrato')?.checked;
     atualizarBotaoEnviar();
 }
-
-function temAssinaturaAgora() {
-    podeAssinar.assinatura = true;
-    atualizarBotaoEnviar();
-}
-
-function temFotoAgora() {
-    podeAssinar.foto = true;
-    document.getElementById('previewFoto').classList.remove('hidden');
-    document.getElementById('btnTirarFoto').classList.add('hidden');
-    atualizarBotaoEnviar();
-}
-
+function temAssinaturaAgora() { podeAssinar.assinatura = true; atualizarBotaoEnviar(); }
+function temFotoAgora() { podeAssinar.foto = true; document.getElementById('previewFoto').classList.remove('hidden'); document.getElementById('btnTirarFoto').classList.add('hidden'); atualizarBotaoEnviar(); }
 function atualizarBotaoEnviar() {
     const btn = document.getElementById('btnEnviarAssinatura');
     if(!btn) return;
-    const tudoOk = podeAssinar.contrato && podeAssinar.assinatura && podeAssinar.foto;
-    btn.disabled = !tudoOk;
-    btn.className = tudoOk 
-        ? 'w-full mt-4 bg-sucesso text-white p-3 rounded-lg font-bold text-lg cursor-pointer'
-        : 'w-full mt-4 bg-gray-300 text-gray-500 p-3 rounded-lg font-bold text-lg cursor-not-allowed';
+    const ok = podeAssinar.contrato && podeAssinar.assinatura && podeAssinar.foto;
+    btn.disabled = !ok;
+    btn.className = ok ? 'w-full mt-4 bg-sucesso text-white p-3 rounded-lg font-bold text-lg' : 'w-full mt-4 bg-gray-300 text-gray-500 p-3 rounded-lg font-bold text-lg cursor-not-allowed';
 }
 
-// ASSINATURA CANVAS
 function inicializarAssinatura() {
     const canvas = document.getElementById('canvasAssinatura');
     if(!canvas) return;
     const ctx = canvas.getContext('2d');
-    ctx.lineWidth = 3;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#000';
-
-    let desenhando = false;
-    let xAnterior = 0, yAnterior = 0;
-
-    function posicao(e) {
-        const rect = canvas.getBoundingClientRect();
-        const t = e.touches ? e.touches[0] : e;
-        return { x: (t.clientX - rect.left) * (canvas.width / rect.width), 
-                 y: (t.clientY - rect.top) * (canvas.height / rect.height) };
+    ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#000';
+    let desenhando = false, x=0, y=0;
+    function pos(e) {
+        const r = canvas.getBoundingClientRect();
+        const t = e.touches?e.touches[0]:e;
+        return {x:(t.clientX-r.left)*(canvas.width/r.width), y:(t.clientY-r.top)*(canvas.height/r.height)};
     }
-
-    function iniciar(e) { e.preventDefault(); desenhando = true; const p = posicao(e); xAnterior=p.x; yAnterior=p.y; }
-    function parar() { desenhando = false; }
-    function desenhar(e) {
-        if(!desenhando) return; e.preventDefault();
-        const p = posicao(e);
-        ctx.beginPath(); ctx.moveTo(xAnterior, yAnterior); ctx.lineTo(p.x, p.y); ctx.stroke();
-        [xAnterior, yAnterior] = [p.x, p.y];
+    function ini(e){e.preventDefault(); desenhando=true; const p=pos(e); x=p.x; y=p.y;}
+    function fim(){desenhando=false;}
+    function desenha(e){
+        if(!desenhando)return; e.preventDefault();
+        const p=pos(e); ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(p.x,p.y); ctx.stroke(); x=p.x; y=p.y;
         temAssinaturaAgora();
     }
-
-    canvas.addEventListener('mousedown', iniciar);
-    canvas.addEventListener('mousemove', desenhar);
-    canvas.addEventListener('mouseup', parar);
-    canvas.addEventListener('mouseout', parar);
-    canvas.addEventListener('touchstart', iniciar);
-    canvas.addEventListener('touchmove', desenhar);
-    canvas.addEventListener('touchend', parar);
+    canvas.addEventListener('mousedown',ini); canvas.addEventListener('mousemove',desenha); canvas.addEventListener('mouseup',fim);
+    canvas.addEventListener('touchstart',ini); canvas.addEventListener('touchmove',desenha); canvas.addEventListener('touchend',fim);
 }
-
 function limparAssinatura() {
-    const canvas = document.getElementById('canvasAssinatura');
-    if(!canvas) return;
-    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
-    podeAssinar.assinatura = false;
-    atualizarBotaoEnviar();
+    const c = document.getElementById('canvasAssinatura'); if(!c)return; c.getContext('2d').clearRect(0,0,c.width,c.height);
+    podeAssinar.assinatura=false; atualizarBotaoEnviar();
 }
 
-// CÂMERA
 async function abrirCamera() {
     try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user' } });
-        const video = document.getElementById('videoCamera');
-        video.srcObject = streamCamera;
+        const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+        document.getElementById('videoCamera').srcObject = stream;
         document.getElementById('btnAbrirCamera').classList.add('hidden');
         document.getElementById('btnTirarFoto').classList.remove('hidden');
-    } catch(e) {
-        alert('❌ Não foi possível acessar a câmera. Verifique as permissões do navegador.');
-    }
+    } catch(e) { alert('❌ Não foi possível acessar a câmera.'); }
 }
-
 function tirarFoto() {
-    const video = document.getElementById('videoCamera');
-    const canvas = document.getElementById('canvasFoto');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
+    const v = document.getElementById('videoCamera');
+    const c = document.getElementById('canvasFoto');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v,0,0);
+    v.srcObject.getTracks().forEach(t=>t.stop());
     temFotoAgora();
-    if(streamCamera) streamCamera.getTracks().forEach(t=>t.stop());
 }
 
-// ENVIAR TUDO
-async function enviarAssinatura() {
-    if(!podeAssinar.contrato || !podeAssinar.assinatura || !podeAssinar.foto) {
-        alert('⚠️ É obrigatório: ler o contrato, assinar e tirar foto!');
-        return;
+async function enviarAssinatura(id) {
+    if(!podeAssinar.contrato||!podeAssinar.assinatura||!podeAssinar.foto) {
+        alert('⚠️ É obrigatório: ler, assinar e tirar foto!'); return;
     }
+    const assinatura = document.getElementById('canvasAssinatura').toDataURL('image/png');
+    const selfie = document.getElementById('canvasFoto').toDataURL('image/jpeg',0.8);
 
-    alert('📤 Enviando... Aguarde!');
+    const {error} = await supabase.from('propostas').update({
+        contrato_assinado: assinatura,
+        selfie_cliente: selfie
+    }).eq('id', id);
 
-    // PEGAR DADOS
-    const canvasAssinatura = document.getElementById('canvasAssinatura');
-    const canvasFoto = document.getElementById('canvasFoto');
-    const assinaturaUrl = canvasAssinatura.toDataURL('image/png');
-    const fotoUrl = canvasFoto.toDataURL('image/jpeg', 0.8);
-
-    // BUSCAR ID DA PROPOSTA
-    const {data: propostas} = await supabase.from('propostas').select('id').eq('cpf', cpfAtual).order('created_at', {descending:true}).limit(1);
-    if(!propostas || propostas.length===0) { alert('Proposta não encontrada!'); return; }
-    const idProposta = propostas[0].id;
-
-    // SALVAR NO BANCO
-    const { error } = await supabase.from('propostas').update({
-        contrato_assinado: assinaturaUrl,
-        selfie_cliente: fotoUrl
-    }).eq('id', idProposta);
-
-    if(error) {
-        alert('❌ Erro: ' + error.message);
-    } else {
-        alert('✅ ENVIADO COM SUCESSO!\n\n🔄 Atualizando...');
-        // Recarrega em tempo real automaticamente
-    }
+    if(error) alert('❌ Erro: '+error.message);
+    else alert('✅ ENVIADO! Atualizando...');
 }
 </script>
 </body>
