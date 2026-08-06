@@ -22,9 +22,9 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
         body { background: var(--bg-body); color: var(--texto); padding: 16px; min-height: 100vh; }
         .container { max-width: 1200px; margin: 0 auto; }
-        .cartao { background: white; border-radius: 12px; border: 1px solid var(--borda); padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
-        .etiqueta { font-weight: 600; color: var(--texto-claro); min-width: 100px; }
+        .cartao { background: white; border-radius: 12px; border: 1px solid var(--borda); padding: 18px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+        .etiqueta { font-weight: 600; color: var(--texto-claro); min-width: 130px; font-size: 14px; }
         .valor { font-weight: 700; font-size: 15px; }
         .botao { padding: 10px 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: all 0.2s; }
         .botao:hover { transform: translateY(-1px); }
@@ -35,6 +35,7 @@
         .botao-azul { background: var(--azul); color: white; }
         .botao-roxo { background: var(--roxo); color: white; }
         .botao-whatsapp { background: #25D366; color: white; }
+        .botao-cinza { background: #94A3B8; color: white; }
         .botao-pequeno { padding: 8px 12px; font-size: 13px; }
         .status { display: inline-block; padding: 5px 12px; border-radius: 20px; font-weight: 600; font-size: 13px; }
         .status-nova { background: #FEF3C7; color: #92400E; }
@@ -47,9 +48,16 @@
         .area-senha { max-width: 420px; margin: 80px auto; text-align: center; }
         input { padding: 10px 12px; border: 1px solid var(--borda); border-radius: 6px; font-size: 15px; }
         .oculto { display: none !important; }
-        .separador { border-bottom: 1px solid var(--borda); margin: 14px 0; }
+        .separador { border-bottom: 1px solid var(--borda); margin: 16px 0; }
         .info-parcela { font-size: 13px; padding: 7px 10px; border-radius: 6px; margin: 4px 0; }
         .titulo-secao { font-size: 18px; font-weight: bold; color: var(--primary); margin-bottom: 12px; }
+        .destaque { background: #F0FDF4; padding: 8px 12px; border-radius: 8px; border-left: 4px solid #10B981; }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+        .modal-conteudo { background: white; border-radius: 12px; padding: 24px; max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto; }
+        .form-linha { margin-bottom: 14px; }
+        .form-linha label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
+        .form-linha input { width: 100%; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     </style>
 </head>
 <body>
@@ -70,7 +78,7 @@
                 <span class="sino" onclick="filtrar('todas')" title="Atualizar">
                     🔔 <span id="badgeSino" class="sino-badge oculto">0</span>
                 </span>
-                <button onclick="filtrar('todas')" class="botao botao-pequeno" style="background:#E2E8F0; color:#334155;">Todas</button>
+                <button onclick="filtrar('todas')" class="botao botao-cinza botao-pequeno">Todas</button>
                 <button onclick="filtrar('Nova')" class="botao botao-alerta botao-pequeno">📄 Novas</button>
                 <button onclick="filtrar('Aprovada')" class="botao botao-sucesso botao-pequeno">✅ Aprovadas</button>
                 <button onclick="filtrar('Paga')" class="botao botao-azul botao-pequeno">💳 Pagas</button>
@@ -92,6 +100,18 @@
     </div>
 </div>
 
+<!-- ✏️ MODAL EDITAR -->
+<div id="modalEditar" class="modal oculto" onclick="fecharModalEditar(event)">
+    <div class="modal-conteudo" onclick="event.stopPropagation()">
+        <h3 class="titulo-secao" style="margin-bottom: 16px;">📝 Editar Proposta</h3>
+        <div id="formEditar"></div>
+        <div style="display:flex; gap:10px; margin-top:20px; flex-wrap:wrap; justify-content:flex-end;">
+            <button onclick="fecharModalEditar()" class="botao botao-cinza">Cancelar</button>
+            <button onclick="salvarEdicao()" class="botao botao-sucesso">💾 Salvar</button>
+        </div>
+    </div>
+</div>
+
 <script>
 // ==============================================
 // ✅ CONFIGURAÇÕES
@@ -101,9 +121,11 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
 const SENHA = 'flash2026';
+const LINK_CONSULTA = window.location.href.replace('painel.html','consulta.html');
 let propostas = [];
 let filtroAtual = 'todas';
 let canalRealtime = null;
+let propostaEditando = null;
 
 // ==============================================
 // ✅ LOGIN
@@ -179,14 +201,14 @@ function filtrar(f) {
 }
 
 // ==============================================
-// ✅ APROVAR
+// ✅ APROVAR + DIAS DE ENTREGA + WHATSAPP COM LINK!
 // ==============================================
 async function aprovarProposta(id) {
     const valorEnt = prompt('Valor da Entrada:');
     if(!valorEnt) return;
     const qtd = prompt('Quantidade máxima de parcelas:');
     if(!qtd) return;
-    const diasEntrega = prompt('Dias para entrega:','7');
+    const diasEntrega = prompt('📦 Quantos dias para entrega?','7');
     if(diasEntrega === null) return;
 
     const { error } = await supabase.from('propostas').update({
@@ -196,8 +218,19 @@ async function aprovarProposta(id) {
         dias_entrega: parseInt(diasEntrega||'7')
     }).eq('id', id);
 
-    if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ APROVADA! Já aparece pro cliente!');
+    if(error) { alert('❌ Erro: ' + error.message); return; }
+
+    // Pergunta se quer enviar mensagem pelo WhatsApp
+    const p = propostas.find(x=>x.id===id);
+    const whats = p ? String(p.whatsapp||'').replace(/\D/g,'') : '';
+    if(whats && confirm(`✅ Aprovada! Entrega em ${diasEntrega} dias.\n📲 Enviar mensagem pelo WhatsApp?`)) {
+        const valor = Number(p.valor_desejado||0);
+        const texto = encodeURIComponent(
+            `Olá ${p.nome || 'Cliente'}! 👋\n\n✅ Sua proposta foi APROVADA!\n\n💰 Valor: ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n📦 Entrega em ${diasEntrega} dias\n\n🔗 Acesse aqui para ver detalhes, assinar e gerar o Pix:\n${LINK_CONSULTA}?cpf=${(p.cpf||'').replace(/\D/g,'')}\n\nAtenciosamente,\nFlashCred ✅`
+        );
+        window.open(`https://wa.me/55${whats}?text=${texto}`, '_blank');
+    }
+    alert('✅ APROVADA!');
 }
 
 // ==============================================
@@ -211,10 +244,10 @@ async function reprovarProposta(id) {
 }
 
 // ==============================================
-// ✅ MARCAR ENTRADA PAGA
+// ✅ MARCAR ENTRADA PAGA (DINHEIRO) — BOTÃO JÁ ESTÁ LÁ!
 // ==============================================
 async function marcarEntradaPagaManual(id) {
-    if(!confirm('💰 Cliente pagou a entrada EM DINHEIRO?\n\nIsso LIBERA IMEDIATAMENTE as parcelas!')) return;
+    if(!confirm('💰 Cliente pagou a entrada EM DINHEIRO?\n\nIsso LIBERA IMEDIATAMENTE as parcelas para o cliente!')) return;
 
     const p = propostas.find(x=>x.id===id);
     if(!p) return;
@@ -225,6 +258,7 @@ async function marcarEntradaPagaManual(id) {
     const valorTotal = Number(p.valor_desejado||0) * (1 + juros);
     const saldo = valorTotal - valorEnt;
 
+    // Gerar parcelas automaticamente
     const parcelas = [];
     const dtBase = new Date();
     for(let i=1; i<=qtd; i++) {
@@ -250,31 +284,115 @@ async function marcarEntradaPagaManual(id) {
     }).eq('id', id);
 
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ ENTRADA PAGA! Parcelas LIBERADAS!');
+    else alert('✅ ENTRADA PAGA! Parcelas LIBERADAS para o cliente!');
 }
 
 // ==============================================
 // ✅ EXCLUIR
 // ==============================================
 async function excluirProposta(id) {
-    if(!confirm('⚠️ EXCLUIR? Não tem volta!')) return;
+    if(!confirm('⚠️ EXCLUIR? Essa ação não tem volta!')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
     else alert('✅ EXCLUÍDA!');
 }
 
 // ==============================================
-// ✅ ENVIAR WHATSAPP
+// ✅ EDITAR PROPOSTA
 // ==============================================
-function enviarWhatsApp(whats, nome, valor) {
-    const texto = encodeURIComponent(
-        `Olá ${nome}! 👋\n\nSua proposta foi APROVADA! ✅\n\n📄 Valor: ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n\nAcesse com seu CPF para ver detalhes e assinar o contrato!\n\nQualquer dúvida é só chamar! 💬`
-    );
-    window.open(`https://wa.me/55${whats}?text=${texto}`, '_blank');
+function abrirEditar(id) {
+    propostaEditando = propostas.find(x=>x.id===id);
+    if(!propostaEditando) return;
+
+    const valor = Number(propostaEditando.valor_desejado||0);
+    const juros = Number(propostaEditando.juros_mensal||5)/100;
+    const totalComJuros = valor * (1 + juros);
+
+    document.getElementById('formEditar').innerHTML = `
+        <div class="form-linha">
+            <label>Nome do Cliente</label>
+            <input type="text" id="edt_nome" value="${propostaEditando.nome||''}">
+        </div>
+        <div class="form-linha">
+            <label>CPF</label>
+            <input type="text" id="edt_cpf" value="${propostaEditando.cpf||''}">
+        </div>
+        <div class="form-linha">
+            <label>WhatsApp</label>
+            <input type="text" id="edt_whatsapp" value="${propostaEditando.whatsapp||''}">
+        </div>
+        <div class="form-linha">
+            <label>Endereço / CEP</label>
+            <input type="text" id="edt_endereco" value="${propostaEditando.endereco||''}">
+        </div>
+        <div class="grid-2">
+            <div class="form-linha">
+                <label>Valor Solicitado (R$)</label>
+                <input type="number" step="0.01" id="edt_valor" value="${valor}">
+            </div>
+            <div class="form-linha">
+                <label>Juros (% ao mês)</label>
+                <input type="number" step="0.1" id="edt_juros" value="${propostaEditando.juros_mensal||5}">
+            </div>
+        </div>
+        <div class="form-linha destaque">
+            <strong>Valor Total com Juros: R$ ${totalComJuros.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong>
+        </div>
+        <div class="grid-2">
+            <div class="form-linha">
+                <label>Valor da Entrada (R$)</label>
+                <input type="number" step="0.01" id="edt_entrada" value="${propostaEditando.valor_entrada||0}">
+            </div>
+            <div class="form-linha">
+                <label>Quantidade de Parcelas</label>
+                <input type="number" id="edt_qtdparc" value="${propostaEditando.quantidade_parcelas||0}">
+            </div>
+        </div>
+        <div class="form-linha">
+            <label>Dias para Entrega</label>
+            <input type="number" id="edt_diasentrega" value="${propostaEditando.dias_entrega||7}">
+        </div>
+    `;
+    document.getElementById('modalEditar').classList.remove('oculto');
+}
+
+async function salvarEdicao() {
+    if(!propostaEditando) return;
+
+    const valor = parseFloat(document.getElementById('edt_valor').value);
+    const juros = parseFloat(document.getElementById('edt_juros').value);
+    const entrada = parseFloat(document.getElementById('edt_entrada').value);
+    const qtd = parseInt(document.getElementById('edt_qtdparc').value);
+    const diasEntrega = parseInt(document.getElementById('edt_diasentrega').value);
+
+    const { error } = await supabase.from('propostas').update({
+        nome: document.getElementById('edt_nome').value,
+        cpf: document.getElementById('edt_cpf').value,
+        whatsapp: document.getElementById('edt_whatsapp').value,
+        endereco: document.getElementById('edt_endereco').value,
+        valor_desejado: valor,
+        juros_mensal: juros,
+        valor_entrada: entrada,
+        quantidade_parcelas: qtd,
+        dias_entrega: diasEntrega
+    }).eq('id', propostaEditando.id);
+
+    if(error) alert('❌ Erro: ' + error.message);
+    else {
+        alert('✅ SALVO! Valor recalculado!');
+        fecharModalEditar();
+        carregarPropostas();
+    }
+}
+
+function fecharModalEditar(e) {
+    if(e && e.target !== e.currentTarget) return;
+    document.getElementById('modalEditar').classList.add('oculto');
+    propostaEditando = null;
 }
 
 // ==============================================
-// ✅ RENDERIZAR LISTA — TODOS OS BOTÕES VOLTARAM!
+// ✅ RENDERIZAR LISTA — TEM TUDO!
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -288,10 +406,13 @@ function renderizarPropostas() {
 
     filtradas.forEach(p => {
         const valor = Number(p.valor_desejado || 0);
+        const juros = Number(p.juros_mensal || 5)/100;
+        const valorTotal = valor * (1 + juros);
         const status = p.status || 'Nova';
         const entradaPaga = !!p.entrada_paga;
         const whats = String(p.whatsapp||'').replace(/\D/g,'');
         const endereco = p.endereco || 'Não informado';
+        const diasEntrega = p.dias_entrega || 7;
         const dadosParcelas = p.parcelas || [];
 
         if(status === 'Nova') qtdNovas++;
@@ -317,18 +438,26 @@ function renderizarPropostas() {
                 <span class="valor">${whats ? `<a href="https://wa.me/55${whats}" target="_blank" style="color:#25D366; font-weight:bold;">📲 ${whats}</a>` : 'Não informado'}</span>
             </div>
             <div class="linha">
-                <span class="etiqueta">Endereço:</span>
+                <span class="etiqueta">Endereço/CEP:</span>
                 <span class="valor" style="font-size:13px;">${endereco}</span>
             </div>
             <div class="linha">
-                <span class="etiqueta">Valor Produto:</span>
+                <span class="etiqueta">Valor Solicitado:</span>
                 <span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
-                <span class="etiqueta" style="margin-left: 16px;">Entrada:</span>
-                <span class="valor">${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ${entradaPaga ? '✅' : ''}</span>
+            </div>
+            <div class="linha destaque">
+                <span class="etiqueta">💰 TOTAL COM JUROS:</span>
+                <span class="valor">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
             </div>
             <div class="linha">
-                <span class="etiqueta">Parcelas:</span>
+                <span class="etiqueta">Entrada:</span>
+                <span class="valor">${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ${entradaPaga ? '✅ PAGA' : ''}</span>
+                <span class="etiqueta" style="margin-left: 16px;">Parcelas:</span>
                 <span class="valor">${p.quantidade_parcelas || 0}x</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">📦 Entrega em:</span>
+                <span class="valor">${diasEntrega} dias</span>
                 <span class="etiqueta" style="margin-left: 16px;">Juros:</span>
                 <span class="valor">${p.juros_mensal || 5}% ao mês</span>
             </div>
@@ -360,16 +489,24 @@ function renderizarPropostas() {
                 ${status === 'Aprovada' && !entradaPaga ? `
                 <button onclick="marcarEntradaPagaManual(${p.id})" class="botao botao-roxo botao-pequeno">💰 Entrada Paga (Dinheiro)</button>
                 ` : ''}
-                ${whats ? `<button onclick="enviarWhatsApp('${whats}','${p.nome||'Cliente'}',${valor})" class="botao botao-whatsapp botao-pequeno">💬 WhatsApp</button>` : ''}
+                <button onclick="abrirEditar(${p.id})" class="botao botao-azul botao-pequeno">✏️ Editar</button>
+                ${whats ? `<button onclick="enviarWhatsApp('${whats}','${p.nome||'Cliente'}',${valorTotal},${diasEntrega})" class="botao botao-whatsapp botao-pequeno">💬 WhatsApp</button>` : ''}
                 <button onclick="excluirProposta(${p.id})" class="botao botao-perigo botao-pequeno">🗑️ Excluir</button>
             </div>
         </div>`;
     });
 
     lista.innerHTML = html || '<p style="text-align:center; padding:40px; color:var(--texto-claro);">Nenhuma proposta encontrada.</p>';
-
     document.getElementById('badgeSino').textContent = qtdNovas;
     document.getElementById('badgeSino').classList.toggle('oculto', qtdNovas === 0);
+}
+
+// Enviar WhatsApp manualmente
+function enviarWhatsApp(whats, nome, valorTotal, diasEntrega) {
+    const texto = encodeURIComponent(
+        `Olá ${nome}! 👋\n\n✅ Sua proposta foi APROVADA!\n\n💰 Valor Total: ${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n📦 Entrega em ${diasEntrega} dias\n\n🔗 Acesse aqui para ver detalhes, assinar e gerar o Pix:\n${LINK_CONSULTA}\n\nAtenciosamente,\nFlashCred ✅`
+    );
+    window.open(`https://wa.me/55${whats}?text=${texto}`, '_blank');
 }
 </script>
 </body>
