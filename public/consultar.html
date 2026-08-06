@@ -17,20 +17,29 @@
                         pix: '#32BCAD',
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
-                        pendente: '#94A3B8',
+                        perigo: '#EF4444',
                         fundo: '#F8FAFC'
                     }
                 }
             }
         }
     </script>
+    <style>
+        .bolinha-girando { animation: girar 1s linear infinite; }
+        @keyframes girar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .etapa-pendente { opacity: 0.4; }
+        .etapa-ativa { opacity: 1; border-color: #2563eb; background: #EFF6FF; }
+        .etapa-concluida { border-color: #10B981; background: #F0FDF4; }
+        canvas { border: 2px solid #CBD5E1; border-radius: 8px; background: white; touch-action: none; }
+        video { border-radius: 8px; background: #000; }
+    </style>
 </head>
 <body class="bg-fundo min-h-screen pb-8">
 
 <div class="max-w-md mx-auto p-4">
     <h1 class="text-2xl font-bold text-primary text-center mb-6">🔍 Acompanhar Proposta</h1>
 
-    <!-- CAMPO DE CONSULTA -->
+    <!-- CONSULTA CPF -->
     <div class="bg-white p-5 rounded-xl shadow mb-6">
         <label class="block font-semibold mb-2 text-gray-700">Digite seu CPF</label>
         <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" 
@@ -38,36 +47,6 @@
         <button onclick="consultar()" class="w-full mt-4 bg-primary text-white p-3 rounded-lg font-bold text-lg hover:bg-opacity-90">
             🔍 Consultar
         </button>
-    </div>
-
-    <!-- BARRA DE PROGRESSO -->
-    <div id="progresso" class="hidden bg-white p-5 rounded-xl shadow mb-6">
-        <h3 class="font-bold text-primary mb-4 text-center">📋 Andamento da Proposta</h3>
-        <div class="flex justify-between items-center mb-3 text-xs font-semibold text-center">
-            <div id="etapa1" class="flex-1">
-                <div class="w-10 h-10 mx-auto rounded-full flex items-center justify-center text-white bg-pendente">1</div>
-                <span class="block mt-1">Analisando</span>
-            </div>
-            <div id="etapa2" class="flex-1">
-                <div class="w-10 h-10 mx-auto rounded-full flex items-center justify-center text-white bg-pendente">2</div>
-                <span class="block mt-1">Parcelas</span>
-            </div>
-            <div id="etapa3" class="flex-1">
-                <div class="w-10 h-10 mx-auto rounded-full flex items-center justify-center text-white bg-pendente">3</div>
-                <span class="block mt-1">Contrato</span>
-            </div>
-            <div id="etapa4" class="flex-1">
-                <div class="w-10 h-10 mx-auto rounded-full flex items-center justify-center text-white bg-pendente">4</div>
-                <span class="block mt-1">Pagamento</span>
-            </div>
-            <div id="etapa5" class="flex-1">
-                <div class="w-10 h-10 mx-auto rounded-full flex items-center justify-center text-white bg-pendente">5</div>
-                <span class="block mt-1">Liberado</span>
-            </div>
-        </div>
-        <div class="h-2 bg-gray-200 rounded-full overflow-hidden mt-2">
-            <div id="barra" class="h-full bg-sucesso transition-all duration-700" style="width: 0%"></div>
-        </div>
     </div>
 
     <!-- RESULTADO -->
@@ -84,9 +63,12 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let cpfAtual = '';
 let canalRealtime = null;
+let etapaAtual = 0;
+let assinaturaCanvas = null;
+let streamCamera = null;
 
 // ==============================================
-// ✅ INICIALIZAÇÃO — LER CPF DA URL
+// INICIO — LER CPF DA URL
 // ==============================================
 window.onload = () => {
     const params = new URLSearchParams(window.location.search);
@@ -100,231 +82,390 @@ window.onload = () => {
 };
 
 // ==============================================
-// ✅ ATUALIZAÇÃO EM TEMPO REAL — SEM PRECISAR F5!
+// 🔄 TEMPO REAL — ATUALIZA SOZINHO
 // ==============================================
 function ativarRealtime() {
     if(!cpfAtual) return;
     if(canalRealtime) supabase.removeChannel(canalRealtime);
     
-    canalRealtime = supabase.channel('atualizacao_proposta')
-        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'propostas', filter:`cpf=eq.${cpfAtual}` }, () => {
-            console.log('🔄 Proposta atualizada! Atualizando...');
-            consultar();
+    canalRealtime = supabase.channel('atualizacao_cliente')
+        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'propostas', filter:`cpf=eq.${cpfAtual}` }, (payload) => {
+            console.log('🔄 Atualizado!', payload.new);
+            exibirProposta(payload.new);
         })
         .subscribe();
 }
 
 // ==============================================
-// ✅ ATUALIZAR BARRA DE PROGRESSO
-// ==============================================
-function atualizarProgresso(p) {
-    const etapas = [
-        { id:'etapa1', condicao: true }, // Sempre ativa
-        { id:'etapa2', condicao: p.quantidade_parcelas > 0 },
-        { id:'etapa3', condicao: !!p.contrato_assinado },
-        { id:'etapa4', condicao: !!p.qr_code_entrada || p.entrada_paga },
-        { id:'etapa5', condicao: p.entrada_paga }
-    ];
-
-    let concluida = 0;
-    etapas.forEach((etapa, idx) => {
-        const el = document.getElementById(etapa.id).querySelector('div');
-        if(etapa.condicao) {
-            el.classList.remove('bg-pendente', 'bg-alerta');
-            el.classList.add('bg-sucesso');
-            concluida = idx + 1;
-        } else {
-            el.classList.remove('bg-sucesso');
-            el.classList.add('bg-alerta');
-        }
-    });
-
-    const porcentagem = (concluida / 5) * 100;
-    document.getElementById('barra').style.width = porcentagem + '%';
-    document.getElementById('progresso').classList.remove('hidden');
-}
-
-// ==============================================
-// CONSULTAR PROPOSTA
+// CONSULTAR
 // ==============================================
 async function consultar() {
     let cpf = document.getElementById('cpf').value.replace(/\D/g, '');
-    
-    if(cpf.length !== 11) {
-        alert('Digite um CPF válido!');
-        return;
-    }
+    if(cpf.length !== 11) { alert('Digite um CPF válido!'); return; }
 
     cpfAtual = cpf;
-    document.getElementById('resultado').innerHTML = '<p class="text-center p-6 text-gray-500"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Buscando proposta...</p>';
+    document.getElementById('resultado').innerHTML = '<p class="text-center p-8 text-gray-500"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Buscando...</p>';
 
-    const { data, error } = await supabase
+    const {data, error} = await supabase
         .from('propostas')
         .select('*')
         .eq('cpf', cpf)
-        .order('created_at', { ascending: false })
+        .order('created_at', {ascending:false})
         .limit(1);
 
-    if(error) {
-        document.getElementById('resultado').innerHTML = '<p class="text-center p-6 text-red-500">❌ Erro ao buscar.</p>';
-        return;
-    }
-
-    if(!data || data.length === 0) {
-        document.getElementById('resultado').innerHTML = '<p class="text-center p-6 text-gray-500">❌ Nenhuma proposta encontrada.</p>';
-        document.getElementById('progresso').classList.add('hidden');
-        if(canalRealtime) supabase.removeChannel(canalRealtime);
+    if(error || !data || data.length === 0) {
+        document.getElementById('resultado').innerHTML = '<p class="text-center p-8 text-red-500">❌ Proposta não encontrada.</p>';
         return;
     }
 
     exibirProposta(data[0]);
-    ativarRealtime(); // 🔄 MONITORA ALTERAÇÕES AUTOMATICAMENTE!
+    ativarRealtime();
 }
 
 // ==============================================
-// EXIBIR PROPOSTA — VALORES CORRIGIDOS
+// ✅ EXIBIR PROPOSTA — FLUXO COMPLETO
 // ==============================================
 function exibirProposta(p) {
-    atualizarProgresso(p); // ✅ ATUALIZA BARRA DE PROGRESSO
-
     const status = p.status || 'Nova';
+    const foiAprovada = status === 'Aprovada';
+    const temContrato = !!p.contrato_assinado;
+    const temSelfie = !!p.selfie_cliente;
+    const entradaPaga = !!p.entrada_paga;
+
+    // VALORES
     const valorTotal = Number(p.valor_desejado || 0);
-    const percEnt = Number(p.percentual_entrada || 0);
-    const valorEntrada = Number(p.valor_entrada) || (valorTotal * percEnt / 100); // ✅ CORRIGIDO!
-    const qtd = Number(p.quantidade_parcelas || 0);
+    const valorEntrada = Number(p.valor_entrada || 0);
+    const qtdDefinida = Number(p.quantidade_parcelas || 0);
     const juros = Number(p.juros || 0);
-    const saldo = valorTotal - valorEntrada;
-    const valParc = qtd > 0 ? saldo * Math.pow(1 + juros/100, 1) / qtd : 0;
+    const dadosParcelas = p.dados_parcelas || [];
 
-    const statusCor = status === 'Aprovada' ? 'bg-green-100 text-green-700' : 
-                      status === 'Reprovada' ? 'bg-red-100 text-red-700' : 
-                      'bg-yellow-100 text-yellow-700';
+    // ==============================================
+    // ⏳ AGUARDANDO APROVAÇÃO — BOLINHA GIRANDO
+    // ==============================================
+    if(!foiAprovada) {
+        document.getElementById('resultado').innerHTML = `
+        <div class="bg-white p-6 rounded-xl shadow text-center">
+            <div class="w-20 h-20 mx-auto mb-4 flex items-center justify-center rounded-full bg-blue-100">
+                <i class="fas fa-circle-notch text-4xl text-primary bolinha-girando"></i>
+            </div>
+            <h2 class="text-xl font-bold text-primary mb-2">🔔 Aguardando Aprovação</h2>
+            <p class="text-gray-600 mb-4">Olá, ${p.nome || 'Cliente'}! Estamos analisando sua proposta.</p>
+            <p class="text-sm text-gray-500">Assim que aprovada, aparecerão aqui os valores, parcelas e contrato.</p>
+            <p class="text-xs text-green-600 mt-4">🔄 Atualização automática em tempo real</p>
+        </div>`;
+        return;
+    }
 
-    const dados = p.dados_parcelas || [];
-    let listaParcelas = '';
-    if(dados.length > 0) {
-        listaParcelas = `
-        <div class="mt-4">
-            <h4 class="font-bold text-gray-700 mb-2">📋 Suas Parcelas</h4>
-            <div class="space-y-2">`;
-        dados.forEach(parc => {
+    // ==============================================
+    // ✅ APROVADA — MOSTRA TUDO
+    // ==============================================
+    let html = `
+    <div class="bg-white p-5 rounded-xl shadow">
+        <div class="text-center mb-6">
+            <span class="inline-block bg-green-100 text-green-700 px-4 py-2 rounded-full font-bold text-lg">
+                ✅ PROPOSTA APROVADA!
+            </span>
+        </div>
+
+        <!-- DADOS DO CLIENTE -->
+        <div class="mb-4">
+            <h2 class="text-xl font-bold text-primary">👤 ${p.nome || 'Cliente'}</h2>
+            <p class="text-sm text-gray-500">CPF: ${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
+        </div>
+
+        <!-- VALORES DEFINIDOS PELO ADMIN -->
+        <div class="bg-gray-50 p-4 rounded-lg mb-4 border">
+            <h3 class="font-bold text-primary mb-3">💰 Valores Contratados</h3>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <p class="text-sm text-gray-500">Valor Total</p>
+                    <p class="font-bold text-lg">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Entrada</p>
+                    <p class="font-bold text-lg text-pix">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Juros</p>
+                    <p class="font-bold text-lg">${juros}% ao mês</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500">Parcelas</p>
+                    <p class="font-bold text-lg">${qtdDefinida}x</p>
+                </div>
+            </div>
+        </div>`;
+
+    // ==============================================
+    // 📋 ETAPA 1: PARCELAS JÁ DEFINIDAS
+    // ==============================================
+    html += `
+        <div class="border-2 rounded-xl p-4 mb-4 etapa-ativa" id="etapa-parcelas">
+            <h3 class="font-bold text-lg text-primary mb-3">📋 Suas Parcelas</h3>
+            <p class="text-sm text-gray-600 mb-3">Valores e datas já definidos:</p>
+            <div class="space-y-2 max-h-64 overflow-y-auto">`;
+
+    if(dadosParcelas.length > 0) {
+        dadosParcelas.forEach((parc, idx) => {
             const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
             const vlr = Number(parc.valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-            const paga = parc.paga;
-            listaParcelas += `
-            <div class="p-3 rounded-lg border ${paga?'bg-green-50 border-green-200':'bg-gray-50 border-gray-200'}">
+            html += `
+            <div class="p-3 rounded-lg border bg-gray-50">
                 <div class="flex justify-between font-semibold">
                     <span>${parc.numero}ª Parcela</span>
-                    <span class="${paga?'text-green-600':''}">${vlr}</span>
+                    <span class="text-primary">${vlr}</span>
                 </div>
                 <div class="flex justify-between text-sm text-gray-500 mt-1">
-                    <span>Venc: ${dt}</span>
-                    <span>${paga?'✅ Paga':'⏳ A vencer'}</span>
+                    <span>Vencimento: ${dt}</span>
+                    <span>A vencer</span>
                 </div>
             </div>`;
         });
-        listaParcelas += `</div></div>`;
     }
+    html += `</div>
+            <p class="text-green-600 font-semibold mt-3">✅ Parcelas definidas</p>
+        </div>`;
 
-    // QR CODE PIX
-    let qrHtml = '';
-    if(p.qr_code_entrada && !p.entrada_paga) {
-        qrHtml = `
-        <div class="mt-6 bg-pix/10 p-5 rounded-xl text-center border border-pix/30">
-            <h3 class="font-bold text-lg mb-2">💳 Pagamento da Entrada</h3>
-            <p class="text-2xl font-bold text-pix mb-3">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
-            <div id="qrcode" class="flex justify-center my-4"></div>
-            <p class="text-sm text-gray-500 mb-2">Escaneie ou copie o código Pix abaixo:</p>
-            <textarea readonly class="w-full p-3 text-xs border rounded-lg bg-gray-50" rows="4">${p.qr_code_entrada}</textarea>
-            <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Código copiado!')" 
-                class="mt-3 bg-pix text-white px-6 py-2.5 rounded-lg font-bold text-lg">
-                📋 Copiar Código Pix
+    // ==============================================
+    // 📄 ETAPA 2: CONTRATO (OBRIGATÓRIO)
+    // ==============================================
+    html += `
+        <div class="border-2 rounded-xl p-4 mb-4 ${temContrato?'etapa-concluida':'etapa-pendente'}" id="etapa-contrato">
+            <h3 class="font-bold text-lg text-primary mb-3">📄 Passo 1 — Ler e Assinar Contrato</h3>`;
+
+    if(!temContrato) {
+        html += `
+            <div class="bg-gray-50 p-4 rounded-lg mb-4 text-sm text-gray-700 max-h-60 overflow-y-auto border">
+                <p class="font-bold mb-2">CONTRATO DE CRÉDITO</p>
+                <p>Declaro que li e concordo com todos os termos do contrato de crédito firmado com FLASH POINT.</p>
+                <p class="mt-2">Comprometo-me a honrar o pagamento das parcelas nas datas acordadas. Estou ciente que o não pagamento pode prejudicar minha confiança e oportunidades futuras.</p>
+                <p class="mt-2">FlashCred foi criada para pessoas que buscam reconstruir sua confiança. Conte comigo. Vamos fazer um mundo melhor juntos.</p>
+                <p class="mt-2 font-semibold">Ao assinar abaixo, declaro que LI e CONCORDO com este contrato.</p>
+            </div>
+            <label class="flex items-center gap-2 mb-3 cursor-pointer">
+                <input type="checkbox" id="liContrato" onchange="verificarPodeAssinar()" class="w-5 h-5">
+                <span class="font-semibold">Declaro que LI o contrato e concordo com os termos</span>
+            </label>
+
+            <!-- ASSINATURA -->
+            <div class="mt-3">
+                <p class="font-semibold mb-2">✍️ Assine abaixo:</p>
+                <canvas id="canvasAssinatura" width="400" height="150" class="w-full"></canvas>
+                <div class="flex gap-2 mt-2">
+                    <button onclick="limparAssinatura()" class="flex-1 bg-gray-200 p-2 rounded font-bold">🗑️ Limpar</button>
+                </div>
+            </div>
+
+            <!-- SELFIE -->
+            <div class="mt-4">
+                <p class="font-semibold mb-2">📸 Passo 2 — Tirar Foto (Selfie)</p>
+                <video id="videoCamera" autoplay playsinline class="w-full h-48 object-cover"></video>
+                <div class="flex gap-2 mt-2">
+                    <button onclick="abrirCamera()" id="btnAbrirCamera" class="flex-1 bg-primary text-white p-2 rounded font-bold">📷 Abrir Câmera</button>
+                    <button onclick="tirarFoto()" id="btnTirarFoto" class="flex-1 bg-alerta text-white p-2 rounded font-bold hidden">📸 Tirar Foto</button>
+                </div>
+                <canvas id="canvasFoto" class="hidden"></canvas>
+                <div id="previewFoto" class="mt-2 hidden">
+                    <p class="text-green-600 font-semibold">✅ Foto tirada!</p>
+                </div>
+            </div>
+
+            <button onclick="enviarAssinatura()" id="btnEnviarAssinatura" 
+                class="w-full mt-4 bg-gray-300 text-gray-500 p-3 rounded-lg font-bold text-lg cursor-not-allowed" disabled>
+                ✍️ Enviar Assinatura e Foto
             </button>
-        </div>`;
-    } else if(p.entrada_paga) {
-        qrHtml = `
-        <div class="mt-6 bg-green-50 p-5 rounded-xl text-center border border-green-200">
-            <h3 class="font-bold text-lg text-sucesso">✅ ENTRADA PAGA!</h3>
-            <p class="text-gray-600 mt-2">Pagamento confirmado! Aproveite suas parcelas abaixo.</p>
-        </div>`;
-    } else if(status === 'Aprovada' && !p.qr_code_entrada) {
-        qrHtml = `
-        <div class="mt-6 bg-yellow-50 p-5 rounded-xl text-center border border-yellow-200">
-            <h3 class="font-bold text-lg text-alerta">⏳ Aguardando geração do Pix...</h3>
-            <p class="text-gray-600 mt-2">Aguarde um momento e recarregue a página se necessário.</p>
-        </div>`;
+            <p class="text-xs text-gray-500 mt-2">⚠️ É obrigatório ler, assinar e enviar foto para liberar o pagamento.</p>`;
+    } else {
+        html += `
+            <p class="text-green-600 font-bold text-lg">✅ Contrato assinado e foto enviados!</p>
+            <p class="text-gray-500 mt-1">Aguardando liberação do pagamento...</p>`;
+    }
+    html += `</div>`;
+
+    // ==============================================
+    // 💳 ETAPA 3: PAGAMENTO (LIBERA APÓS ASSINAR)
+    // ==============================================
+    if(temContrato) {
+        html += `
+        <div class="border-2 rounded-xl p-4 bg-green-50 border-green-300" id="etapa-pix">
+            <h3 class="font-bold text-lg text-sucesso mb-3">💳 Pagamento da Entrada</h3>
+            <p class="text-2xl font-bold text-pix text-center mb-3">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>`;
+        
+        if(!entradaPaga && p.qr_code_entrada) {
+            html += `
+                <div class="text-center">
+                    <div id="qrcode" class="flex justify-center my-4"></div>
+                    <p class="text-sm text-gray-600 mb-2">Escaneie o QR Code ou copie o Pix:</p>
+                    <textarea readonly class="w-full p-3 text-xs border rounded-lg bg-white" rows="4">${p.qr_code_entrada}</textarea>
+                    <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Copiado!')" 
+                        class="mt-3 bg-pix text-white px-6 py-3 rounded-lg font-bold text-lg w-full">
+                        📋 Copiar Código Pix
+                    </button>
+                    <p class="text-xs text-green-600 mt-3">✅ Após pagamento, as parcelas serão liberadas automaticamente!</p>
+                </div>`;
+        } else if(entradaPaga) {
+            html += `
+                <div class="text-center">
+                    <p class="text-2xl font-bold text-sucesso">✅ ENTRADA PAGA!</p>
+                    <p class="text-gray-600 mt-2">Pagamento confirmado! Suas parcelas estão ativas.</p>
+                </div>`;
+        } else {
+            html += `<p class="text-yellow-600">Aguardando geração do QR Code...</p>`;
+        }
+        html += `</div>`;
     }
 
-    // CONTRATO
-    let contratoHtml = '';
-    if(p.contrato_assinado) {
-        contratoHtml = `
-        <div class="mt-6 bg-white p-5 rounded-xl border border-green-200">
-            <h3 class="font-bold text-lg mb-2">📄 Contrato Assinado</h3>
-            <p class="text-green-600 font-semibold mb-3">✅ Assinado e validado</p>
-            <a href="${p.contrato_assinado}" target="_blank" class="inline-block bg-primary text-white px-4 py-2 rounded-lg font-bold">
-                📄 Ver / Imprimir Contrato
-            </a>
-        </div>`;
-    } else if(status === 'Aprovada') {
-        contratoHtml = `
-        <div class="mt-6 bg-yellow-50 p-5 rounded-xl border border-yellow-200">
-            <h3 class="font-bold text-lg mb-2">✍️ Assinar Contrato</h3>
-            <p class="text-gray-600 mb-3">Leia e assine para liberar o pagamento</p>
-            <button onclick="window.location.href='assinatura.html?cpf=${p.cpf}'" class="bg-alerta text-white px-4 py-2 rounded-lg font-bold">
-                ✍️ Assinar Agora
-            </button>
-        </div>`;
+    html += `</div>`;
+    document.getElementById('resultado').innerHTML = html;
+
+    // INICIALIZAR ASSINATURA
+    if(!temContrato) {
+        setTimeout(() => {
+            inicializarAssinatura();
+        }, 100);
     }
-
-    const resultado = `
-    <div class="bg-white p-5 rounded-xl shadow">
-        <div class="flex justify-between items-start mb-4 pb-3 border-b">
-            <div>
-                <h2 class="text-xl font-bold text-primary">👤 ${p.nome || 'Proposta'}</h2>
-                <p class="text-gray-500 text-sm">CPF: ${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
-            </div>
-            <span class="px-3 py-1 rounded-full text-sm font-bold ${statusCor}">${status}</span>
-        </div>
-
-        <!-- VALORES CORRIGIDOS -->
-        <div class="grid grid-cols-2 gap-3 mt-2">
-            <div class="bg-gray-50 p-3 rounded-lg">
-                <p class="text-sm text-gray-500">Valor Total</p>
-                <p class="font-bold text-lg">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
-            </div>
-            <div class="bg-pix/5 p-3 rounded-lg border border-pix/20">
-                <p class="text-sm text-gray-500">Entrada (${percEnt}%)</p>
-                <p class="font-bold text-lg text-pix">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
-            </div>
-            <div class="bg-gray-50 p-3 rounded-lg">
-                <p class="text-sm text-gray-500">Parcelas</p>
-                <p class="font-bold text-lg">${qtd}x</p>
-            </div>
-            <div class="bg-gray-50 p-3 rounded-lg">
-                <p class="text-sm text-gray-500">Juros</p>
-                <p class="font-bold text-lg">${juros}% ao mês</p>
-            </div>
-            ${qtd>0?`
-            <div class="bg-green-50 p-3 rounded-lg border border-green-100 col-span-2">
-                <p class="text-sm text-gray-500">Valor de cada parcela</p>
-                <p class="font-bold text-lg text-center text-sucesso">${valParc.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
-            </div>`:''}
-        </div>
-
-        ${listaParcelas}
-        ${contratoHtml}
-        ${qrHtml}
-    </div>`;
-
-    document.getElementById('resultado').innerHTML = resultado;
 
     // GERAR QR CODE
-    if(p.qr_code_entrada && !p.entrada_paga) {
+    if(temContrato && !entradaPaga && p.qr_code_entrada) {
         setTimeout(() => {
-            const c = document.getElementById('qrcode');
-            if(c) { c.innerHTML=''; new QRCode(c, { text:p.qr_code_entrada, width:180, height:180 }); }
+            const container = document.getElementById('qrcode');
+            if(container) { container.innerHTML=''; new QRCode(container, { text:p.qr_code_entrada, width:200, height:200 }); }
         }, 100);
+    }
+}
+
+// ==============================================
+// ✅ FUNÇÕES DE ASSINATURA E CAMERA
+// ==============================================
+let podeAssinar = { contrato:false, assinatura:false, foto:false };
+
+function verificarPodeAssinar() {
+    podeAssinar.contrato = document.getElementById('liContrato')?.checked;
+    atualizarBotaoEnviar();
+}
+
+function temAssinaturaAgora() {
+    podeAssinar.assinatura = true;
+    atualizarBotaoEnviar();
+}
+
+function temFotoAgora() {
+    podeAssinar.foto = true;
+    document.getElementById('previewFoto').classList.remove('hidden');
+    document.getElementById('btnTirarFoto').classList.add('hidden');
+    atualizarBotaoEnviar();
+}
+
+function atualizarBotaoEnviar() {
+    const btn = document.getElementById('btnEnviarAssinatura');
+    if(!btn) return;
+    const tudoOk = podeAssinar.contrato && podeAssinar.assinatura && podeAssinar.foto;
+    btn.disabled = !tudoOk;
+    btn.className = tudoOk 
+        ? 'w-full mt-4 bg-sucesso text-white p-3 rounded-lg font-bold text-lg cursor-pointer'
+        : 'w-full mt-4 bg-gray-300 text-gray-500 p-3 rounded-lg font-bold text-lg cursor-not-allowed';
+}
+
+// ASSINATURA CANVAS
+function inicializarAssinatura() {
+    const canvas = document.getElementById('canvasAssinatura');
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000';
+
+    let desenhando = false;
+    let xAnterior = 0, yAnterior = 0;
+
+    function posicao(e) {
+        const rect = canvas.getBoundingClientRect();
+        const t = e.touches ? e.touches[0] : e;
+        return { x: (t.clientX - rect.left) * (canvas.width / rect.width), 
+                 y: (t.clientY - rect.top) * (canvas.height / rect.height) };
+    }
+
+    function iniciar(e) { e.preventDefault(); desenhando = true; const p = posicao(e); xAnterior=p.x; yAnterior=p.y; }
+    function parar() { desenhando = false; }
+    function desenhar(e) {
+        if(!desenhando) return; e.preventDefault();
+        const p = posicao(e);
+        ctx.beginPath(); ctx.moveTo(xAnterior, yAnterior); ctx.lineTo(p.x, p.y); ctx.stroke();
+        [xAnterior, yAnterior] = [p.x, p.y];
+        temAssinaturaAgora();
+    }
+
+    canvas.addEventListener('mousedown', iniciar);
+    canvas.addEventListener('mousemove', desenhar);
+    canvas.addEventListener('mouseup', parar);
+    canvas.addEventListener('mouseout', parar);
+    canvas.addEventListener('touchstart', iniciar);
+    canvas.addEventListener('touchmove', desenhar);
+    canvas.addEventListener('touchend', parar);
+}
+
+function limparAssinatura() {
+    const canvas = document.getElementById('canvasAssinatura');
+    if(!canvas) return;
+    canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+    podeAssinar.assinatura = false;
+    atualizarBotaoEnviar();
+}
+
+// CÂMERA
+async function abrirCamera() {
+    try {
+        streamCamera = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user' } });
+        const video = document.getElementById('videoCamera');
+        video.srcObject = streamCamera;
+        document.getElementById('btnAbrirCamera').classList.add('hidden');
+        document.getElementById('btnTirarFoto').classList.remove('hidden');
+    } catch(e) {
+        alert('❌ Não foi possível acessar a câmera. Verifique as permissões do navegador.');
+    }
+}
+
+function tirarFoto() {
+    const video = document.getElementById('videoCamera');
+    const canvas = document.getElementById('canvasFoto');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    temFotoAgora();
+    if(streamCamera) streamCamera.getTracks().forEach(t=>t.stop());
+}
+
+// ENVIAR TUDO
+async function enviarAssinatura() {
+    if(!podeAssinar.contrato || !podeAssinar.assinatura || !podeAssinar.foto) {
+        alert('⚠️ É obrigatório: ler o contrato, assinar e tirar foto!');
+        return;
+    }
+
+    alert('📤 Enviando... Aguarde!');
+
+    // PEGAR DADOS
+    const canvasAssinatura = document.getElementById('canvasAssinatura');
+    const canvasFoto = document.getElementById('canvasFoto');
+    const assinaturaUrl = canvasAssinatura.toDataURL('image/png');
+    const fotoUrl = canvasFoto.toDataURL('image/jpeg', 0.8);
+
+    // BUSCAR ID DA PROPOSTA
+    const {data: propostas} = await supabase.from('propostas').select('id').eq('cpf', cpfAtual).order('created_at', {descending:true}).limit(1);
+    if(!propostas || propostas.length===0) { alert('Proposta não encontrada!'); return; }
+    const idProposta = propostas[0].id;
+
+    // SALVAR NO BANCO
+    const { error } = await supabase.from('propostas').update({
+        contrato_assinado: assinaturaUrl,
+        selfie_cliente: fotoUrl
+    }).eq('id', idProposta);
+
+    if(error) {
+        alert('❌ Erro: ' + error.message);
+    } else {
+        alert('✅ ENVIADO COM SUCESSO!\n\n🔄 Atualizando...');
+        // Recarrega em tempo real automaticamente
     }
 }
 </script>
