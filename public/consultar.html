@@ -71,12 +71,59 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-const CHAVE_PIX = '33552949852'; // Sua chave Pix
+const CHAVE_PIX = '33552949852'; // ✅ Sua chave Pix correta
 
 let cpfAtual = localStorage.getItem('ultimoCpf') || '';
 let canalRealtime = null;
 let propostaAtual = null;
 let podeAssinar = { contrato:false, assinatura:false, foto:false };
+
+// ==============================================
+// ✅ GERAR CÓDIGO PIX CORRIGIDO — VALOR REAL!
+// ==============================================
+function gerarCodigoPix(valor, descricao) {
+    // ✅ CORRIGIDO: Garante que o valor é número e formatado corretamente
+    const valorNumerico = Number(valor) || 0;
+    if(valorNumerico <= 0) {
+        console.error('Valor inválido para Pix:', valor);
+        return '';
+    }
+    const valorStr = valorNumerico.toFixed(2); // Ex: "318.00"
+    const nome = 'FLASH POINT';
+    const cidade = 'SAO PAULO';
+    const chave = CHAVE_PIX;
+    
+    function pad(id, campo) {
+        const texto = String(campo);
+        return String(texto.length).padStart(2,'0') + texto;
+    }
+    
+    // ✅ Código padrão Pix BR
+    let pix = '000201';
+    pix += '26' + pad(('0014br.gov.bcb.pix01' + String(chave.length).padStart(2,'0') + chave), '0014br.gov.bcb.pix01' + String(chave.length).padStart(2,'0') + chave);
+    pix += '52040000';
+    pix += '5303986';
+    pix += '54' + pad(valorStr, valorStr); // ✅ VALOR CORRIGIDO AQUI!
+    pix += '5802BR';
+    pix += '59' + pad(nome, nome);
+    pix += '60' + pad(cidade, cidade);
+    pix += '62' + pad(descricao, descricao);
+    pix += '6304';
+    
+    // ✅ CRC16 correto
+    function crc16(s) {
+        let crc = 0xFFFF;
+        for(let i=0; i<s.length; i++) {
+            crc ^= s.charCodeAt(i) << 8;
+            for(let j=0; j<8; j++) crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+        }
+        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4,'0');
+    }
+    
+    const codigoFinal = pix + crc16(pix);
+    console.log('✅ Pix gerado:', valorStr, codigoFinal);
+    return codigoFinal;
+}
 
 // ==============================================
 // ✅ INICIO — LÊ CPF SALVO
@@ -142,41 +189,7 @@ async function consultar() {
 }
 
 // ==============================================
-// ✅ GERAR CÓDIGO PIX
-// ==============================================
-function gerarCodigoPix(valor, descricao) {
-    const valorStr = Number(valor).toFixed(2);
-    const nome = 'FLASH POINT';
-    const cidade = 'SAO PAULO';
-    const chave = CHAVE_PIX;
-    
-    function pad(id, campo) {
-        return String(campo.length).padStart(2,'0') + campo;
-    }
-    
-    let pix = '000201';
-    pix += '26' + pad(('0014br.gov.bcb.pix01' + String(chave.length).padStart(2,'0') + chave).length, '0014br.gov.bcb.pix01' + String(chave.length).padStart(2,'0') + chave);
-    pix += '52040000';
-    pix += '5303986';
-    pix += '5802BR';
-    pix += '59' + pad(nome.length, nome);
-    pix += '60' + pad(cidade.length, cidade);
-    pix += '62' + pad(descricao.length + 4, '05' + String(descricao.length).padStart(2,'0') + descricao);
-    pix += '6304';
-    
-    function crc16(s) {
-        let crc = 0xFFFF;
-        for(let i=0; i<s.length; i++) {
-            crc ^= s.charCodeAt(i) << 8;
-            for(let j=0; j<8; j++) crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
-        }
-        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4,'0');
-    }
-    return pix + crc16(pix);
-}
-
-// ==============================================
-// ✅ EXIBIR PROPOSTA
+// ✅ EXIBIR PROPOSTA — TUDO CORRIGIDO!
 // ==============================================
 function exibirProposta(p) {
     propostaAtual = p;
@@ -339,7 +352,7 @@ function exibirProposta(p) {
     }
 
     // ==============================================
-    // ✅ ENTRADA PAGA → MOSTRA PARCELAS (SÓ GERAR PIX)
+    // ✅ ENTRADA PAGA → MOSTRA PARCELAS (COM PIX CORRIGIDO!)
     // ==============================================
     if(entradaPaga) {
         html += `
@@ -355,7 +368,7 @@ function exibirProposta(p) {
         if(dadosParcelas.length > 0) {
             dadosParcelas.forEach((parc, idx) => {
                 const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
-                const vlr = Number(parc.valor||0);
+                const vlr = Number(parc.valor || 0); // ✅ Valor limpo
                 const vlrFormatado = vlr.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
                 const paga = parc.paga;
                 const hoje = new Date();
@@ -377,6 +390,7 @@ function exibirProposta(p) {
                     </div>`;
 
                 if(!paga) {
+                    // ✅ PIX GERADO COM VALOR CORRETO!
                     const codigoPixParcela = gerarCodigoPix(vlr, `${parc.numero}ª Parcela - FlashCred`);
                     html += `
                     <div>
@@ -386,9 +400,9 @@ function exibirProposta(p) {
                         </button>
                         <div id="pix-parcela-${idx}" class="hidden mt-3 p-3 bg-white rounded-lg border">
                             <p class="text-sm text-gray-600 mb-2">Copie o código abaixo e pague pelo seu banco:</p>
-                            <textarea readonly class="w-full p-2 text-xs border rounded bg-gray-50" rows="5">${codigoPixParcela}</textarea>
-                            <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Código copiado! Pague pelo app do seu banco.')" 
-                                class="w-full mt-2 bg-sucesso text-white p-2 rounded font-bold">
+                            <textarea readonly class="w-full p-3 text-xs border rounded bg-gray-50" rows="5">${codigoPixParcela || '⚠️ Erro ao gerar Pix'}</textarea>
+                            <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Código copiado! Valor: ${vlrFormatado} — Pague pelo app do seu banco.')" 
+                                class="w-full mt-2 bg-sucesso text-white p-3 rounded-lg font-bold">
                                 📋 Copiar Código Pix
                             </button>
                         </div>
