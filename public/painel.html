@@ -27,7 +27,7 @@
         .container { max-width: 1200px; margin: 0 auto; }
         .cartao { background: white; border-radius: 12px; border: 1px solid var(--borda); padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0; }
-        .etiqueta { font-weight: 600; color: var(--texto-claro); min-width: 110px; }
+        .etiqueta { font-weight: 600; color: var(--texto-claro); min-width: 140px; }
         .valor { font-weight: 700; font-size: 15px; }
         .botao { padding: 9px 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px; transition: all 0.2s; }
         .botao:hover { transform: translateY(-1px); }
@@ -40,9 +40,10 @@
         .botao-pequeno { padding: 6px 10px; font-size: 12px; }
         .status { display: inline-block; padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 13px; }
         .status-nova { background: #E0E7FF; color: #3730A3; }
-        .status-aprovada { background: #D1FAE5; color: #065F46; }
+        .status-aprovada { background: #E0F2FE; color: #0369A1; }
         .status-reprovada { background: #FEE2E2; color: #991B1B; }
         .status-paga { background: var(--pago); color: #065F46; }
+        .status-pendente { background: var(--pendente); color: #92400E; }
         .barra-superior { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .sino { font-size: 22px; position: relative; }
         .sino-badge { position: absolute; top: -8px; right: -8px; background: var(--perigo); color: white; font-size: 11px; font-weight: bold; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
@@ -58,6 +59,15 @@
         .info-parcela { font-size: 13px; padding: 6px 10px; border-radius: 6px; margin: 4px 0; }
         h1 { color: var(--primary); font-size: 24px; margin-bottom: 8px; }
         .caixa-edicao { background: #F0F4FF; border: 2px dashed #CBD5E1; padding: 14px; border-radius: 8px; margin: 12px 0; }
+        .calculo-rapido { background: #ECFDF5; padding: 10px; border-radius: 6px; margin-top: 8px; font-size: 14px; }
+        .aviso-pagamento { background: #D1FAE5; border-left: 4px solid #10B981; padding: 8px 12px; border-radius: 4px; margin: 8px 0; animation: piscar 1.5s infinite; }
+        .entrega { background: #EFF6FF; border-left: 4px solid #3B82F6; padding: 8px 12px; border-radius: 4px; margin: 8px 0; }
+        @keyframes piscar { 0%{opacity:1;}50%{opacity:0.6;}100%{opacity:1;} }
+        .modal-fundo { position: fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:999; }
+        .modal { background:white; padding:24px; border-radius:12px; max-width:400px; width:90%; }
+        .tipo-entrada { display:flex; gap:8px; margin:8px 0; }
+        .tipo-entrada label { padding:6px 12px; border:1px solid var(--borda); border-radius:6px; cursor:pointer; }
+        .tipo-entrada label.ativo { background:var(--azul); color:white; border-color:var(--azul); }
     </style>
 </head>
 <body>
@@ -78,6 +88,7 @@
             <div style="display:flex; gap:8px; align-items:center;">
                 <span class="sino">🔔 <span id="badgeSino" class="sino-badge oculto">0</span></span>
                 <button onclick="carregarPropostas()" class="botao botao-pequeno">🔄 Atualizar</button>
+                <button onclick="abrirModalSenha()" class="botao botao-azul botao-pequeno">🔑 Trocar Senha</button>
                 <button onclick="sair()" class="botao botao-perigo botao-pequeno">Sair</button>
             </div>
         </div>
@@ -91,7 +102,7 @@
                 <h3 id="qtdAprovadas">0</h3><p>Aprovadas</p>
             </div>
             <div class="resumo-cartao" style="background:#FEF3C7;">
-                <h3 id="qtdPendentes">0</h3><p>Aguardando</p>
+                <h3 id="qtdPendentes">0</h3><p>Aguardando Pagto</p>
             </div>
             <div class="resumo-cartao" style="background:#F3E8FF;">
                 <h3 id="valorTotal">R$ 0</h3><p>Total</p>
@@ -112,6 +123,20 @@
     </div>
 </div>
 
+<!-- 🔐 MODAL TROCAR SENHA -->
+<div id="modalSenha" class="modal-fundo oculto" onclick="fecharModalSenha(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h3 style="margin-bottom:16px;">🔑 Alterar Senha</h3>
+        <input type="password" id="senhaAtual" placeholder="Senha atual" style="width:100%; margin-bottom:10px;">
+        <input type="password" id="senhaNova1" placeholder="Nova senha" style="width:100%; margin-bottom:10px;">
+        <input type="password" id="senhaNova2" placeholder="Repetir nova senha" style="width:100%; margin-bottom:14px;">
+        <div class="linha">
+            <button onclick="salvarSenha()" class="botao botao-sucesso">✅ Salvar</button>
+            <button onclick="fecharModalSenha()" class="botao botao-alerta">❌ Cancelar</button>
+        </div>
+    </div>
+</div>
+
 <script>
 // ==============================================
 // ✅ CONFIGURAÇÕES
@@ -120,13 +145,14 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-const SENHA_CORRETA = 'flash2026';
+let SENHA_CORRETA = localStorage.getItem('senhaFlashCred') || 'flash2026';
 const LINK_CONSULTA = window.location.origin + window.location.pathname.replace('painel.html','consulta.html').replace('painel','consulta');
 
 let propostas = [];
 let hashAnterior = '';
 let canalRealtime = null;
 let idEmEdicao = null;
+let tipoEntrada = 'porcentagem';
 
 // ==============================================
 // ✅ LOGIN
@@ -170,6 +196,27 @@ function sair() {
 }
 
 // ==============================================
+// ✅ TROCAR SENHA
+// ==============================================
+function abrirModalSenha() { document.getElementById('modalSenha').classList.remove('oculto'); }
+function fecharModalSenha(e) { if(!e || e.target.id==='modalSenha') document.getElementById('modalSenha').classList.add('oculto'); }
+function salvarSenha() {
+    const atual = document.getElementById('senhaAtual').value.trim();
+    const s1 = document.getElementById('senhaNova1').value.trim();
+    const s2 = document.getElementById('senhaNova2').value.trim();
+    if(atual !== SENHA_CORRETA) { alert('❌ Senha atual incorreta!'); return; }
+    if(!s1 || s1.length < 4) { alert('⚠️ Nova senha muito curta! Mínimo 4 caracteres.'); return; }
+    if(s1 !== s2) { alert('❌ As senhas não coincidem!'); return; }
+    SENHA_CORRETA = s1;
+    localStorage.setItem('senhaFlashCred', s1);
+    alert('✅ Senha alterada com sucesso!');
+    fecharModalSenha();
+    document.getElementById('senhaAtual').value='';
+    document.getElementById('senhaNova1').value='';
+    document.getElementById('senhaNova2').value='';
+}
+
+// ==============================================
 // ✅ SALVAR TOKEN
 // ==============================================
 function salvarToken() {
@@ -180,7 +227,64 @@ function salvarToken() {
 }
 
 // ==============================================
-// ✅ CARREGAR PROPOSTAS
+// ✅ CÁLCULOS AUTOMÁTICOS
+// ==============================================
+function calcularValores(id) {
+    const valorTxt = document.getElementById(`edt_valor_${id}`).value.replace(/\D/g,'');
+    const valor = valorTxt ? parseFloat(valorTxt) / 100 : 0;
+    const parcelaQtd = parseInt(document.getElementById(`edt_parcelas_${id}`).value) || 1;
+    const juros = parseFloat(document.getElementById(`edt_juros_${id}`).value) || 0;
+    const diasEntrega = parseInt(document.getElementById(`edt_entrega_${id}`)?.value) || 0;
+
+    let entradaValor = 0;
+    if(tipoEntrada === 'porcentagem') {
+        const entradaPct = parseFloat(document.getElementById(`edt_entrada_pct_${id}`)?.value || 0);
+        entradaValor = valor * (entradaPct / 100);
+    } else {
+        const entradaReais = document.getElementById(`edt_entrada_val_${id}`)?.value.replace(/\D/g,'');
+        entradaValor = entradaReais ? parseFloat(entradaReais) / 100 : 0;
+    }
+
+    const saldo = valor - entradaValor;
+    const taxa = juros / 100;
+    const valorParcela = taxa === 0 ? saldo / parcelaQtd : saldo * (taxa * Math.pow(1+taxa, parcelaQtd)) / (Math.pow(1+taxa, parcelaQtd) - 1);
+
+    let dataEntrega = '';
+    if(diasEntrega > 0) {
+        const dt = new Date();
+        dt.setDate(dt.getDate() + diasEntrega);
+        dataEntrega = dt.toLocaleDateString('pt-BR');
+    }
+
+    const el = document.getElementById(`calc_${id}`);
+    if(el) {
+        el.innerHTML = `
+            💰 Valor Total: ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}<br>
+            💵 Entrada: ${entradaValor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}<br>
+            📊 ${parcelaQtd}x de: <strong>${isNaN(valorParcela)?'---':valorParcela.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</strong> (${juros}% ao mês)<br>
+            📦 Entrega: ${diasEntrega>0?`${diasEntrega} dias → ${dataEntrega}`:'Não informada'}
+        `;
+    }
+}
+
+function trocarTipoEntrada(id, tipo) {
+    tipoEntrada = tipo;
+    renderizarPropostas();
+    setTimeout(() => {
+        const p = propostas.find(x => x.id === id);
+        if(p) {
+            document.getElementById(`edt_valor_${id}`).value = Number(p.valor_desejado||0).toFixed(2).replace('.',',');
+            document.getElementById(`edt_parcelas_${id}`).value = p.quantidade_parcelas||1;
+            document.getElementById(`edt_juros_${id}`).value = p.juros||0;
+            if(document.getElementById(`edt_entrega_${id}`)) {
+                document.getElementById(`edt_entrega_${id}`).value = p.dias_entrega||'';
+            }
+        }
+    },10);
+}
+
+// ==============================================
+// ✅ CARREGAR PROPOSTAS + TEMPO REAL
 // ==============================================
 async function carregarPropostas() {
     const {data, error} = await supabase
@@ -192,22 +296,40 @@ async function carregarPropostas() {
     const hashNova = JSON.stringify(data || []);
     if(hashNova === hashAnterior) return;
     hashAnterior = hashNova;
+
+    // ✅ DETECTA PAGAMENTO AUTOMÁTICO
+    if(propostas.length > 0) {
+        data.forEach(nova => {
+            const antiga = propostas.find(x => x.id === nova.id);
+            if(antiga && !antiga.entrada_paga && nova.entrada_paga) {
+                new AudioContext().resume();
+                alert(`🔔 PAGAMENTO RECEBIDO! ✅\n\nCliente: ${nova.nome || '---'}\nCPF: ${formatarCPF(nova.cpf)}\n\nEntrada confirmada! 💰`);
+            }
+        });
+    }
+
     propostas = data || [];
     renderizarPropostas();
 }
 
 // ==============================================
-// ✅ TEMPO REAL
+// ✅ TEMPO REAL — DETECTA PAGAMENTO
 // ==============================================
 function ativarRealtime() {
     if(canalRealtime) supabase.removeChannel(canalRealtime);
     canalRealtime = supabase.channel('painel_atualizacao')
-        .on('postgres_changes', { event:'*', schema:'public', table:'propostas' }, () => carregarPropostas())
+        .on('postgres_changes', { event:'*', schema:'public', table:'propostas' }, (payload) => {
+            if(payload.new && !payload.old?.entrada_paga && payload.new.entrada_paga) {
+                new AudioContext().resume();
+                alert(`🔔 PAGAMENTO RECEBIDO! ✅\n\nCliente: ${payload.new.nome || '---'}\nCPF: ${formatarCPF(payload.new.cpf)}\n\nEntrada confirmada! 💰`);
+            }
+            carregarPropostas();
+        })
         .subscribe();
 }
 
 // ==============================================
-// ✅ EDITAR PROPOSTA — CONSERTADO
+// ✅ EDITAR PROPOSTA — COM PRAZO DE ENTREGA
 // ==============================================
 function editarProposta(id) {
     idEmEdicao = id;
@@ -216,23 +338,53 @@ function editarProposta(id) {
 
 async function salvarEdicao(id) {
     const valorTxt = document.getElementById(`edt_valor_${id}`).value.replace(/\D/g,'');
-    const entradaTxt = document.getElementById(`edt_entrada_${id}`).value.replace(/\D/g,'');
     const valor = valorTxt ? parseFloat(valorTxt) / 100 : 0;
-    const entrada = entradaTxt ? parseFloat(entradaTxt) / 100 : 0;
+    let entradaValor = 0;
+
+    if(tipoEntrada === 'porcentagem') {
+        const pct = parseFloat(document.getElementById(`edt_entrada_pct_${id}`).value) || 0;
+        entradaValor = valor * (pct / 100);
+    } else {
+        const val = document.getElementById(`edt_entrada_val_${id}`).value.replace(/\D/g,'');
+        entradaValor = val ? parseFloat(val) / 100 : 0;
+    }
+
     const parcelas = parseInt(document.getElementById(`edt_parcelas_${id}`).value);
     const juros = parseFloat(document.getElementById(`edt_juros_${id}`).value);
+    const diasEntrega = parseInt(document.getElementById(`edt_entrega_${id}`).value) || 0;
 
     if(!valor || !parcelas) { alert('⚠️ Valor e parcelas são obrigatórios!'); return; }
 
+    const saldo = valor - entradaValor;
+    const taxa = juros / 100;
+    const valorParcela = taxa === 0 ? saldo / parcelas : saldo * (taxa * Math.pow(1+taxa, parcelas)) / (Math.pow(1+taxa, parcelas) - 1);
+
+    const hoje = new Date();
+    hoje.setMonth(hoje.getMonth() + 1);
+    hoje.setDate(5);
+    const parcelasGeradas = [];
+    for(let i=1; i<=parcelas; i++) {
+        const dt = new Date(hoje);
+        dt.setMonth(hoje.getMonth() + i - 1);
+        parcelasGeradas.push({
+            numero: i,
+            valor: parseFloat(valorParcela.toFixed(2)),
+            vencimento: dt.toISOString().split('T')[0],
+            paga: false
+        });
+    }
+
     const { error } = await supabase.from('propostas').update({
         valor_desejado: valor,
-        valor_entrada: entrada,
+        valor_entrada: entradaValor,
         quantidade_parcelas: parcelas,
-        juros: juros
+        juros: juros,
+        dias_entrega: diasEntrega,
+        dados_parcelas: parcelasGeradas
     }).eq('id', id);
 
     if(error) { alert('❌ Erro: ' + error.message); return; }
-    alert('✅ Proposta atualizada!');
+    alert(`✅ Salvo! Entrega em ${diasEntrega>0?diasEntrega+' dias':'não informada'}`);
     idEmEdicao = null;
     carregarPropostas();
 }
@@ -243,31 +395,36 @@ function cancelarEdicao() {
 }
 
 // ==============================================
-// ✅ WHATSAPP COM LINK DE CONSULTA
+// ✅ WHATSAPP COM LINK
 // ==============================================
 function enviarWhatsApp(p) {
     const telefone = String(p.telefone || p.celular || p.cpf || '').replace(/\D/g,'').slice(-11);
     if(!telefone || telefone.length < 10) { alert('⚠️ Telefone não encontrado!'); return; }
-
     const valor = Number(p.valor_desejado || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
     const cpf = String(p.cpf || '').replace(/\D/g,'');
     const link = `${LINK_CONSULTA}?cpf=${cpf}`;
 
+    let textoEntrega = '';
+    if(p.dias_entrega > 0) {
+        const dt = new Date();
+        dt.setDate(dt.getDate() + p.dias_entrega);
+        textoEntrega = `\n📦 Entrega: ${p.dias_entrega} dias (previsto ${dt.toLocaleDateString('pt-BR')})`;
+    }
+
     const mensagem = `Olá ${p.nome || 'Cliente'}! ✅ Sua proposta foi APROVADA! 🎉
 
-Valor: ${valor}
+Valor: ${valor}${textoEntrega}
 
-👉 Acesse pelo link abaixo para ver as condições, assinar o contrato e gerar o Pix:
+👉 Acesse aqui para ver as parcelas, assinar o contrato e gerar o Pix:
 ${link}
 
 Atenciosamente,
-FlashCred — Crédito rápido e confiável 💙`;
-
+FlashCred 💙`;
     window.open(`https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`, '_blank');
 }
 
 // ==============================================
-// ✅ APROVAR → GERA PARCELAS
+// ✅ APROVAR
 // ==============================================
 async function aprovarProposta(id) {
     const p = propostas.find(x => x.id === id);
@@ -276,6 +433,7 @@ async function aprovarProposta(id) {
     const valorEntrada = Number(p.valor_entrada || 0);
     const qtd = Number(p.quantidade_parcelas || 1);
     const juros = Number(p.juros || 0);
+    const diasEntrega = p.dias_entrega || 0;
     const saldo = valorTotal - valorEntrada;
     const taxa = juros / 100;
     const valorParcela = taxa === 0 ? saldo / qtd : saldo * (taxa * Math.pow(1+taxa, qtd)) / (Math.pow(1+taxa, qtd) - 1);
@@ -287,21 +445,17 @@ async function aprovarProposta(id) {
     for(let i=1; i<=qtd; i++) {
         const dt = new Date(hoje);
         dt.setMonth(hoje.getMonth() + i - 1);
-        parcelas.push({
-            numero: i,
-            valor: parseFloat(valorParcela.toFixed(2)),
-            vencimento: dt.toISOString().split('T')[0],
-            paga: false
-        });
+        parcelas.push({ numero:i, valor:parseFloat(valorParcela.toFixed(2)), vencimento:dt.toISOString().split('T')[0], paga:false });
     }
 
     const { error } = await supabase.from('propostas').update({
         status: 'Aprovada',
-        dados_parcelas: parcelas
+        dados_parcelas: parcelas,
+        dias_entrega: diasEntrega
     }).eq('id', id);
 
     if(error) alert('❌ Erro: ' + error.message);
-    else alert(`✅ APROVADA! ${qtd}x de R$ ${valorParcela.toFixed(2)}`);
+    else alert(`✅ APROVADA! ${qtd}x de R$ ${valorParcela.toFixed(2)}${diasEntrega>0?`\n📦 Entrega em ${diasEntrega} dias`:''}`);
 }
 
 async function reprovarProposta(id) {
@@ -311,21 +465,26 @@ async function reprovarProposta(id) {
     else alert('✅ Reprovada!');
 }
 
+// ==============================================
+// ✅ MARCAR ENTRADA PAGA — MANUAL
+// ==============================================
 async function marcarEntradaPaga(id) {
-    if(!confirm('💰 Marcar entrada como PAGA?')) return;
-    const { error } = await supabase.from('propostas').update({entrada_paga:true}).eq('id', id);
+    if(!confirm('💰 Marcar entrada como PAGA MANUALMENTE?')) return;
+    const { error } = await supabase.from('propostas').update({
+        entrada_paga: true,
+        data_pagamento_entrada: new Date().toISOString()
+    }).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Entrada marcada!');
+    else alert('✅ Entrada marcada como PAGA!');
 }
 
 // ==============================================
-// ✅ EXCLUIR — SOME NA HORA SEM F5
+// ✅ EXCLUIR — SOME NA HORA
 // ==============================================
 async function excluirProposta(id) {
     if(!confirm('⚠️ EXCLUIR? Não tem volta!')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if(error) { alert('❌ Erro: ' + error.message); return; }
-    // Remove da lista NA HORA sem precisar F5
     propostas = propostas.filter(x => x.id !== id);
     renderizarPropostas();
     alert('✅ Excluída!');
@@ -338,7 +497,7 @@ function formatarCPF(cpf) {
 }
 
 // ==============================================
-// ✅ RENDERIZAR LISTA
+// ✅ RENDERIZAR LISTA — COM PRAZO DE ENTREGA
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -354,7 +513,16 @@ function renderizarPropostas() {
         const parcelas = p.dados_parcelas || [];
         const qtd = p.quantidade_escolhida || p.quantidade_parcelas || 0;
         const juros = p.juros || 0;
+        const diasEntrega = p.dias_entrega || 0;
         const estaEditando = idEmEdicao === p.id;
+
+        // Calcula data de entrega
+        let dataEntregaTexto = '';
+        if(diasEntrega > 0) {
+            const dt = new Date(p.created_at || new Date());
+            dt.setDate(dt.getDate() + diasEntrega);
+            dataEntregaTexto = dt.toLocaleDateString('pt-BR');
+        }
 
         if(status==='Nova') qtdNovas++;
         if(status==='Aprovada') { qtdAprovadas++; if(!entradaPaga) qtdPendentes++; }
@@ -369,40 +537,74 @@ function renderizarPropostas() {
                 <span class="status ${classeStatus}">${status}</span>
             </div>
 
+            ${entradaPaga ? `
+            <div class="aviso-pagamento">
+                ✅ <strong>ENTRADA PAGA</strong> — ${p.data_pagamento_entrada ? new Date(p.data_pagamento_entrada).toLocaleString('pt-BR') : ''}
+            </div>` : ''}
+
+            ${diasEntrega > 0 ? `
+            <div class="entrega">
+                📦 <strong>Prazo de Entrega:</strong> ${diasEntrega} dias → previsto para ${dataEntregaTexto}
+            </div>` : ''}
+
             ${!estaEditando ? `
             <div class="linha"><span class="etiqueta">CPF:</span><span class="valor">${formatarCPF(p.cpf)}</span></div>
             <div class="linha">
                 <span class="etiqueta">Valor Total:</span><span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
-                <span class="etiqueta" style="margin-left:16px;">Entrada:</span><span class="valor">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                <span class="etiqueta" style="margin-left:16px;">Entrada:</span><span class="valor">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ${entradaPaga?'✅':'⏳ Pendente'}</span>
             </div>
             <div class="linha"><span class="etiqueta">Parcelas:</span><span class="valor">${qtd}x · ${juros}% ao mês</span></div>
             ` : `
             <div class="caixa-edicao">
-                <p style="font-weight:700; margin-bottom:12px; color:var(--primary);">✏️ EDITAR PROPOSTA</p>
+                <p style="font-weight:700; margin-bottom:12px; color:var(--primary);">✏️ EDITAR PROPOSTA — Cálculo Automático</p>
+
                 <div class="linha">
-                    <span class="etiqueta">Valor R$:</span>
-                    <input type="text" id="edt_valor_${p.id}" value="${valor.toFixed(2).replace('.',',')}" style="width:140px;">
+                    <span class="etiqueta">Valor Total R$:</span>
+                    <input type="text" id="edt_valor_${p.id}" value="${valor.toFixed(2).replace('.',',')}" oninput="calcularValores(${p.id})" style="width:140px;">
                 </div>
+
+                <div class="linha">
+                    <span class="etiqueta">Entrada por:</span>
+                    <div class="tipo-entrada">
+                        <label onclick="trocarTipoEntrada(${p.id},'porcentagem')" class="${tipoEntrada==='porcentagem'?'ativo':''}">% Porcentagem</label>
+                        <label onclick="trocarTipoEntrada(${p.id},'valor')" class="${tipoEntrada==='valor'?'ativo':''}">R$ Valor</label>
+                    </div>
+                </div>
+
+                ${tipoEntrada==='porcentagem'?`
+                <div class="linha">
+                    <span class="etiqueta">Entrada %:</span>
+                    <input type="number" id="edt_entrada_pct_${p.id}" value="${valor>0 ? Math.round((valorEntrada/valor)*100):0}" oninput="calcularValores(${p.id})" style="width:80px;">%
+                </div>`:`
                 <div class="linha">
                     <span class="etiqueta">Entrada R$:</span>
-                    <input type="text" id="edt_entrada_${p.id}" value="${valorEntrada.toFixed(2).replace('.',',')}" style="width:140px;">
-                </div>
+                    <input type="text" id="edt_entrada_val_${p.id}" value="${valorEntrada.toFixed(2).replace('.',',')}" oninput="calcularValores(${p.id})" style="width:140px;">
+                </div>`}
+
                 <div class="linha">
                     <span class="etiqueta">Parcelas:</span>
-                    <input type="number" id="edt_parcelas_${p.id}" value="${qtd}" min="1" max="60" style="width:80px;">
+                    <input type="number" id="edt_parcelas_${p.id}" value="${qtd}" min="1" max="60" oninput="calcularValores(${p.id})" style="width:80px;">
                 </div>
                 <div class="linha">
                     <span class="etiqueta">Juros %:</span>
-                    <input type="number" id="edt_juros_${p.id}" value="${juros}" step="0.01" style="width:80px;">
+                    <input type="number" id="edt_juros_${p.id}" value="${juros}" step="0.01" oninput="calcularValores(${p.id})" style="width:80px;">
                 </div>
+
+                <div class="linha">
+                    <span class="etiqueta">📦 Prazo de Entrega (dias):</span>
+                    <input type="number" id="edt_entrega_${p.id}" value="${diasEntrega>0?diasEntrega:''}" placeholder="Ex: 7" min="1" max="180" oninput="calcularValores(${p.id})" style="width:80px;">
+                </div>
+
+                <div id="calc_${p.id}" class="calculo-rapido">
+                    💡 Digite os valores acima e o cálculo aparece aqui...
+                </div>
+
                 <div class="linha" style="margin-top:12px;">
                     <button onclick="salvarEdicao(${p.id})" class="botao botao-sucesso">✅ Salvar Alterações</button>
                     <button onclick="cancelarEdicao()" class="botao botao-alerta">❌ Cancelar</button>
                 </div>
             </div>
             `}
-
-            ${entradaPaga ? `<div class="linha" style="margin-top:8px;"><span class="status status-paga">✅ ENTRADA PAGA</span></div>` : ''}
 
             ${parcelas.length>0 ? `<div class="separador"></div><h4 style="margin-bottom:8px; font-size:14px;">📋 Parcelas:</h4><div style="display:grid; gap:4px;">${parcelas.map(parc=>{
                 const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
@@ -422,7 +624,7 @@ function renderizarPropostas() {
                 ${!estaEditando ? `<button onclick="editarProposta(${p.id})" class="botao botao-azul">✏️ Editar</button>` : ''}
                 <button onclick='enviarWhatsApp(${JSON.stringify(p).replace(/'/g,"&#39;")})' class="botao botao-whatsapp">📱 WhatsApp</button>
                 ${status==='Nova'&&!estaEditando?`<button onclick="aprovarProposta(${p.id})" class="botao botao-sucesso">✅ Aprovar</button><button onclick="reprovarProposta(${p.id})" class="botao botao-alerta">❌ Reprovar</button>`:''}
-                ${status==='Aprovada'&&!entradaPaga&&!estaEditando?`<button onclick="marcarEntradaPaga(${p.id})" class="botao botao-azul">💰 Entrada Paga</button>`:''}
+                ${status==='Aprovada'&&!entradaPaga&&!estaEditando?`<button onclick="marcarEntradaPaga(${p.id})" class="botao botao-azul">💰 Entrada PAGA (Manual)</button>`:''}
                 <button onclick="excluirProposta(${p.id})" class="botao botao-perigo">🗑️ Excluir</button>
             </div>
         </div>`;
@@ -434,8 +636,8 @@ function renderizarPropostas() {
     document.getElementById('qtdAprovadas').textContent = qtdAprovadas;
     document.getElementById('qtdPendentes').textContent = qtdPendentes;
     document.getElementById('valorTotal').textContent = valorTotalGeral.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-    document.getElementById('badgeSino').textContent = qtdNovas;
-    document.getElementById('badgeSino').classList.toggle('oculto', qtdNovas===0);
+    document.getElementById('badgeSino').textContent = qtdNovas + qtdPendentes;
+    document.getElementById('badgeSino').classList.toggle('oculto', (qtdNovas+qtdPendentes)===0);
 }
 </script>
 </body>
