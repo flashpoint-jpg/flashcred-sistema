@@ -55,12 +55,6 @@
         .oculto { display: none !important; }
         .linha-dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .atualizando { text-align: center; font-size: 12px; color: #94A3B8; margin-top: 10px; }
-        .piscando { animation: piscar 1s infinite; }
-        @keyframes piscar {
-            0% { opacity: 1; }
-            50% { opacity: 0.4; }
-            100% { opacity: 1; }
-        }
     </style>
 </head>
 <body>
@@ -110,7 +104,6 @@
                 </div>
             </div>
 
-            <!-- ⏱️ Atualização em tempo real -->
             <div class="atualizando">
                 <span id="indicadorAtualizacao">🔄 Atualizando em tempo real...</span>
             </div>
@@ -127,7 +120,6 @@
 
         <!-- 📄 PRAZO + CONTRATO + PIX -->
         <div id="areaPagamento" class="oculto">
-            <!-- ⏰ MENSAGEM DO PRAZO DE ENTREGA -->
             <div id="avisoPrazo" class="cartao aviso aviso-azul oculto">
                 <strong>📦 Prazo de entrega:</strong> Seu produto será entregue em até <span id="diasPrazo"></span> dias úteis após confirmação do pagamento.
             </div>
@@ -154,7 +146,6 @@
                 <button onclick="copiarPix()" class="botao botao-principal" style="margin-top:12px;">📋 Copiar Código Pix</button>
             </div>
 
-            <!-- ✅ APÓS PAGAMENTO -->
             <div id="avisoEntradaPaga" class="cartao aviso aviso-verde oculto">
                 ✅ Entrada paga! Veja suas parcelas abaixo.
             </div>
@@ -177,7 +168,6 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-// ✅ DADOS DO RECEBEDOR — SEU CPF E NOME
 const CHAVE_PIX = '33552949852';
 const NOME_RECEBEDOR = 'FELIPE COSTA';
 const CIDADE = 'SAO PAULO';
@@ -185,9 +175,6 @@ const CIDADE = 'SAO PAULO';
 let propostaAtual = null;
 let inscricaoRealtime = null;
 
-// ==============================================
-// ✅ F5 NÃO PERDE MAIS — SALVA CPF AUTOMÁTICO
-// ==============================================
 window.onload = function() {
     const parametros = new URLSearchParams(window.location.search);
     let cpfDaUrl = parametros.get('cpf');
@@ -206,9 +193,6 @@ function salvarCpfUrl(cpf) {
     history.replaceState({}, '', '?cpf=' + cpf);
 }
 
-// ==============================================
-// ✅ CRC16 — PADRÃO OFICIAL BANCO CENTRAL
-// ==============================================
 function calcularCRC16(dados) {
     let valor = 0xFFFF;
     const polinomio = 0x8005;
@@ -227,29 +211,21 @@ function calcularCRC16(dados) {
     return res;
 }
 
-// ==============================================
-// ✅ FORMATAR VALORES
-// ==============================================
 function formatarCPF(cpf) {
     if(!cpf) return '';
     const n = cpf.replace(/\D/g,'');
     if(n.length===11) return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
     return cpf;
 }
+
 function limparCPF(cpf) {
     return (cpf||'').replace(/\D/g,'');
 }
+
 function formatarMoeda(valor) {
     return Number(valor||0).toLocaleString('pt-BR', {minimumFractionDigits:2});
 }
-function formatarData(data) {
-    if(!data) return '';
-    return data.split('-').reverse().join('/');
-}
 
-// ==============================================
-// ✅ CONSULTAR PROPOSTA
-// ==============================================
 async function consultar() {
     let cpf = limparCPF(document.getElementById('cpf').value);
     if(cpf.length!==11) return alert('⚠️ Digite um CPF válido!');
@@ -274,9 +250,6 @@ async function consultar() {
     ativarRealtime(data.id);
 }
 
-// ==============================================
-// ✅ EXIBIR PROPOSTA
-// ==============================================
 function exibirProposta(p) {
     document.getElementById('telaConsulta').classList.add('oculto');
     document.getElementById('telaProposta').classList.remove('oculto');
@@ -342,9 +315,6 @@ function exibirProposta(p) {
     }
 }
 
-// ==============================================
-// ✅ CONFIRMAR ESCOLHA DE PARCELAS
-// ==============================================
 async function confirmarEscolha() {
     const qtd = parseInt(document.getElementById('selecionarParcela').value);
     if(!qtd) return alert('⚠️ Selecione a quantidade de parcelas!');
@@ -389,125 +359,101 @@ async function confirmarEscolha() {
 }
 
 // ==============================================
-// ✅ GERAR PIX — 100% VÁLIDO! PADRÃO BCB!
+// ✅ GERAR PIX — PADRÃO OFICIAL BANCO CENTRAL
 // ==============================================
 function gerarPix() {
     if(!document.getElementById('liContrato').checked) 
         return alert('⚠️ Primeiro leia e concorde com o contrato!');
 
-    const valorEntrada = Number(propostaAtual.valor_entrada || 0);
-    const valorFormatado = valorEntrada.toFixed(2); // "3.00"
+    const valorEntrada = Number(propostaAtual.valor_entrada || 0).toFixed(2);
 
-    // ✅ MONTAGEM EXATA DO PADRÃO BANCO CENTRAL
-    const campos = [];
-    campos.push('000201'); // Formato
+    const campo = (id, valor) => {
+        const tamanho = String(valor.length).padStart(2, '0');
+        return `${id}${tamanho}${valor}`;
+    };
 
-    // Dados da conta recebedora
-    const campoChave = `0014br.gov.bcb.pix0111${CHAVE_PIX}`;
-    campos.push(`26${String(campoChave.length).padStart(2,'0')}${campoChave}`);
+    let payload = campo('00', '01');
+    const gui = campo('00', 'br.gov.bcb.pix');
+    const chave = campo('01', CHAVE_PIX);
+    payload += campo('26', gui + chave);
+    payload += campo('52', '0000');
+    payload += campo('53', '986');
 
-    campos.push('52040000'); // Categoria
-    campos.push('5303986');  // Moeda = BRL
-
-    // Valor
-    if (valorEntrada > 0) {
-        const amt = valorFormatado.padStart(10, '0');
-        campos.push(`5406${amt}`);
+    if (Number(valorEntrada) > 0) {
+        payload += campo('54', valorEntrada);
     }
 
-    // Nome e Cidade
-    const nomeLimpo = NOME_RECEBEDOR.replace(/[^A-Z ]/gi, '').toUpperCase().slice(0,25);
-    campos.push(`59${String(nomeLimpo.length).padStart(2,'0')}${nomeLimpo}`);
+    payload += campo('58', 'BR');
 
-    const cidadeLimpa = CIDADE.replace(/[^A-Z]/gi, '').toUpperCase().slice(0,15);
-    campos.push(`60${String(cidadeLimpa.length).padStart(2,'0')}${cidadeLimpa}`);
+    const nomeLimpo = NOME_RECEBEDOR.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z ]/gi, "").toUpperCase().slice(0, 25);
+    payload += campo('59', nomeLimpo);
 
-    // Dados adicionais
-    campos.push('62070503***');
+    const cidadeLimpa = CIDADE.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z ]/gi, "").toUpperCase().slice(0, 15);
+    payload += campo('60', cidadeLimpa);
 
-    // ✅ Junta tudo e calcula CRC
-    const corpo = campos.join('') + '6304';
-    const crc = calcularCRC16(corpo);
-    const codigoPix = corpo + crc;
+    const txid = campo('05', '***');
+    payload += campo('62', txid);
 
-    // ✅ EXIBIR
+    payload += '6304';
+    const crc = calcularCRC16(payload);
+    const codigoPix = payload + crc;
+
     document.getElementById('areaQRCode').classList.remove('oculto');
-    document.getElementById('valorPix').textContent = valorFormatado;
+    document.getElementById('valorPix').textContent = valorEntrada;
     document.getElementById('codigoPix').textContent = codigoPix;
     document.getElementById('qrcode').innerHTML = '';
+    
     new QRCode(document.getElementById('qrcode'), { 
         text: codigoPix, 
         width: 240, 
         height: 240,
         correctLevel: QRCode.CorrectLevel.M
     });
-
-    console.log('✅ Pix gerado:', codigoPix);
 }
 
 function copiarPix() {
     const codigo = document.getElementById('codigoPix').textContent;
     navigator.clipboard.writeText(codigo).then(() => {
-        alert('✅ Código copiado! Cole no app do seu banco.');
-    }).catch(() => {
-        alert('⚠️ Não foi possível copiar. Selecione e copie manualmente.');
+        alert('📋 Código Pix copiado com sucesso!');
+    }).catch(err => {
+        alert('❌ Erro ao copiar código.');
     });
 }
 
-// ==============================================
-// ✅ EXIBIR LISTA DE PARCELAS
-// ==============================================
-function exibirListaParcelas(parcelas) {
-    const el = document.getElementById('listaParcelas');
-    el.innerHTML = parcelas.map(p => `
-        <div style="padding:12px; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <span style="font-weight:500;">${p.numero}ª parcela</span>
-            <span style="font-weight:700; color:#0A2463;">R$ ${formatarMoeda(p.valor)}</span>
-            <span style="color:${p.paga?'#059669':'#F59E0B'}; font-weight:500;">${p.vencimento?.split('-').reverse().join('/')||'---'} · ${p.paga?'✅ PAGA':'⏳ Pendente'}</span>
-        </div>
-    `).join('');
-}
-
-// ==============================================
-// ✅ TEMPO REAL — ALTEROU → JÁ APARECE NA HORA!
-// ==============================================
-function ativarRealtime(idProposta) {
-    if(inscricaoRealtime) inscricaoRealtime.unsubscribe();
-
-    inscricaoRealtime = supabase.channel('atualizacao-' + idProposta)
-        .on('postgres_changes', {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'propostas',
-            filter: `id=eq.${idProposta}`
-        }, (mudanca) => {
-            propostaAtual = mudanca.new;
-            exibirProposta(mudanca.new);
-            const indicador = document.getElementById('indicadorAtualizacao');
-            indicador.textContent = '✅ Atualizado agora!';
-            indicador.classList.add('piscando');
-            setTimeout(() => {
-                indicador.textContent = '🔄 Atualizando em tempo real...';
-                indicador.classList.remove('piscando');
-            }, 3000);
-        })
-        .subscribe();
-}
-
-// ==============================================
-// ✅ VOLTAR
-// ==============================================
 function voltar() {
-    if(inscricaoRealtime) inscricaoRealtime.unsubscribe();
     localStorage.removeItem('ultimo_cpf');
-    propostaAtual = null;
-    window.location.search = '';
+    history.replaceState({}, '', window.location.pathname);
     document.getElementById('telaProposta').classList.add('oculto');
     document.getElementById('telaConsulta').classList.remove('oculto');
     document.getElementById('cpf').value = '';
 }
 
-function atualizarValorParcela() {}
+function ativarRealtime(id) {
+    if(inscricaoRealtime) supabase.removeChannel(inscricaoRealtime);
+    inscricaoRealtime = supabase
+        .channel('public:propostas:id=eq.' + id)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `id=eq.${id}` }, payload => {
+            propostaAtual = payload.new;
+            exibirProposta(propostaAtual);
+        })
+        .subscribe();
+}
+
+function exibirListaParcelas(lista) {
+    const container = document.getElementById('listaParcelas');
+    container.innerHTML = '';
+    lista.forEach(p => {
+        container.innerHTML += `<div class="dado">
+            <div class="dado-label">Parcela ${p.numero} - Vencimento: ${formatarData(p.vencimento)}</div>
+            <div class="dado-valor">R$ ${formatarMoeda(p.valor)}</div>
+        </div>`;
+    });
+}
+
+function formatarData(data) {
+    if(!data) return '';
+    return data.split('-').reverse().join('/');
+}
 </script>
 </body>
 </html>
