@@ -127,9 +127,10 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
 const SENHA = 'flash2026';
+const URL_CONSULTA = 'https://flashcred-sistema.onrender.com/consulta.html'; // ✅ Link de acompanhamento
 let propostas = [];
 let editandoId = null;
-let prazoTemp = {}; // Guarda prazo sem salvar no banco
+let prazoTemp = {};
 
 // ==============================================
 // ✅ LOGIN
@@ -174,16 +175,38 @@ function formatarTelefone(tel) {
 function formatarCPF(cpf) {
     if(!cpf) return '';
     const n = cpf.replace(/\D/g,'');
-    return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
+    if(n.length===11) return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
+    return cpf;
 }
 function formatarCEP(cep) {
     if(!cep) return '';
     const n = cep.replace(/\D/g,'');
-    return `${n.slice(0,5)}-${n.slice(5)}`;
+    if(n.length===8) return `${n.slice(0,5)}-${n.slice(5)}`;
+    return cep;
 }
 
 // ==============================================
-// ✅ CALCULAR PARCELAS COM JUROS E DATAS
+// ✅ MONTAR ENDEREÇO COMPLETO
+// ==============================================
+function montarEndereco(p) {
+    const rua = p.rua || p.logradouro || p.endereco || '';
+    const numero = p.numero || p.numero_endereco || '';
+    const bairro = p.bairro || p.bairro_endereco || '';
+    const cidade = p.cidade || p.cidade_endereco || '';
+    const uf = p.uf || p.estado || p.estado_endereco || '';
+
+    const partes = [];
+    if(rua) partes.push(rua);
+    if(numero) partes.push(', ' + numero);
+    if(bairro) partes.push(' — ' + bairro);
+    if(cidade) partes.push(' — ' + cidade + (uf ? '/' + uf : ''));
+
+    const enderecoCompleto = partes.join('').trim();
+    return enderecoCompleto || 'Não informado';
+}
+
+// ==============================================
+// ✅ CALCULAR PARCELAS
 // ==============================================
 function calcularParcelas(valorTotal, valorEntrada, qtd, juros) {
     if(!valorTotal || !qtd || qtd<=0) return [];
@@ -227,7 +250,7 @@ function ativarRealtime() {
 }
 
 // ==============================================
-// ✅ SALVAR ALTERAÇÕES — SEM COLUNA QUE NÃO EXISTE!
+// ✅ SALVAR ALTERAÇÕES
 // ==============================================
 async function salvarEdicao(id) {
     const valor = (document.getElementById('edt_valor_'+id).value.replace(/\D/g,''))/100;
@@ -238,12 +261,9 @@ async function salvarEdicao(id) {
 
     if(!valor || qtd<=0) return alert('⚠️ Valor e quantidade de parcelas são obrigatórios!');
 
-    // ✅ GUARDA PRAZO NA MEMÓRIA, NÃO SALVA NO BANCO AINDA
     prazoTemp[id] = prazo;
-
     const parcelas = calcularParcelas(valor, entrada, qtd, juros);
 
-    // ✅ SALVA SOMENTE COLUNAS QUE EXISTEM — SEM ERRO!
     const {error} = await supabase.from('propostas').update({
         valor_desejado: valor,
         valor_entrada: entrada,
@@ -257,7 +277,7 @@ async function salvarEdicao(id) {
 }
 
 // ==============================================
-// ✅ GERAR PDF DA PROPOSTA COMPLETA
+// ✅ GERAR PDF
 // ==============================================
 async function gerarPDF(proposta) {
     const valor = Number(proposta.valor_desejado||0);
@@ -275,9 +295,9 @@ async function gerarPDF(proposta) {
         <h3>👤 DADOS DO CLIENTE</h3>
         <p><strong>Nome:</strong> ${proposta.nome || proposta.nome_completo || 'Não informado'}</p>
         <p><strong>CPF:</strong> ${formatarCPF(proposta.cpf)}</p>
-        <p><strong>Telefone:</strong> ${formatarTelefone(proposta.telefone || proposta.celular || '')}</p>
+        <p><strong>Telefone:</strong> ${formatarTelefone(proposta.telefone || proposta.celular || proposta.whatsapp || '')}</p>
         <p><strong>CEP:</strong> ${formatarCEP(proposta.cep)}</p>
-        <p><strong>Endereço:</strong> ${[proposta.rua||proposta.logradouro||'', proposta.numero?`, ${proposta.numero}`:'', proposta.bairro?` — ${proposta.bairro}`:'', proposta.cidade?` — ${proposta.cidade}/${proposta.uf||''}`:''].join('').trim() || 'Não informado'}</p>
+        <p><strong>Endereço:</strong> ${montarEndereco(proposta)}</p>
         <hr>
         <h3>💰 CONDIÇÕES DO CRÉDITO</h3>
         <p><strong>Valor Solicitado:</strong> ${formatarMoeda(valor)}</p>
@@ -296,7 +316,6 @@ async function gerarPDF(proposta) {
         <p style="text-align:center; margin-top:20px; font-style:italic;">FlashCred — Crédito rápido e confiável<br>Data de emissão: ${new Date().toLocaleDateString('pt-BR')}</p>
     `;
 
-    // ✅ CONVERTE PARA PDF E BAIXA
     const canvas = await html2canvas(doc, {scale:2});
     const imgData = canvas.toDataURL('image/png');
     const {jsPDF} = window.jspdf;
@@ -304,14 +323,14 @@ async function gerarPDF(proposta) {
     const w = pdf.internal.pageSize.getWidth();
     const h = (canvas.height * w) / canvas.width;
     pdf.addImage(imgData, 'PNG', 0, 0, w, h);
-    pdf.save(`Proposta_${proposta.nome?.replace(/\s+/g,'_')||'SemNome'}_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.pdf`);
+    pdf.save(`Proposta_${(proposta.nome||'SemNome').replace(/\s+/g,'_')}_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.pdf`);
 }
 
 // ==============================================
-// ✅ ENVIAR PROPOSTA + PDF NO WHATSAPP
+// ✅ ENVIAR PROPOSTA NO WHATSAPP — COM LINK!
 // ==============================================
 async function enviarPropostaWhatsApp(proposta) {
-    const tel = (proposta.telefone || proposta.celular || '').replace(/\D/g,'');
+    const tel = (proposta.telefone || proposta.celular || proposta.whatsapp || '').replace(/\D/g,'');
     if(!tel || tel.length<11) return alert('⚠️ Telefone do cliente não encontrado!');
 
     const valor = Number(proposta.valor_desejado||0);
@@ -321,6 +340,8 @@ async function enviarPropostaWhatsApp(proposta) {
     const parcelas = proposta.dados_parcelas || calcularParcelas(valor, entrada, qtd, juros);
     const valorParc = parcelas[0]?.valor || 0;
     const prazo = prazoTemp[proposta.id] || 'A definir';
+    const cpfLimpo = (proposta.cpf||'').replace(/\D/g,'');
+    const linkAcompanhamento = `${URL_CONSULTA}?cpf=${cpfLimpo}`; // ✅ Link direto
 
     const mensagem = `📄 *PROPOSTA DE CRÉDITO — FLASHCRED*
 
@@ -328,6 +349,7 @@ Olá ${proposta.nome}! Segue sua proposta detalhada:
 
 👤 *Seus Dados:*
 CPF: ${formatarCPF(proposta.cpf)}
+Endereço: ${montarEndereco(proposta)}
 
 💰 *Condições:*
 • Valor solicitado: ${formatarMoeda(valor)}
@@ -341,10 +363,11 @@ CPF: ${formatarCPF(proposta.cpf)}
 ${parcelas.map(p => `• ${p.numero}ª: ${formatarMoeda(p.valor)} — Vence ${p.vencimento?.split('-').reverse().join('/')||'---'}`).join('\n')}
 
 ✅ Proposta em análise. Em breve retornaremos com a aprovação!
-Acesse com seu CPF para acompanhar.
+
+🔍 *Acompanhe aqui:* ${linkAcompanhamento}
+Basta informar seu CPF para ver tudo!
 `;
 
-    // ✅ Gera PDF e depois abre WhatsApp
     await gerarPDF(proposta);
     setTimeout(() => {
         window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(mensagem)}`, '_blank');
@@ -417,14 +440,12 @@ function renderizarPropostas() {
         const estaEditando = editandoId===p.id;
         const prazo = prazoTemp[p.id] || '';
 
-        // Dados do cliente
         const nome = p.nome||p.nome_completo||'Não informado';
         const cpf = formatarCPF(p.cpf);
-        const telefone = formatarTelefone(p.telefone||p.celular||'');
-        const cep = formatarCEP(p.cep);
-        const endereco = [p.rua||p.logradouro||'', p.numero?`, ${p.numero}`:'', p.bairro?` — ${p.bairro}`:'', p.cidade?` — ${p.cidade}/${p.uf||''}`:''].join('').trim()||'Não informado';
+        const telefone = formatarTelefone(p.telefone||p.celular||p.whatsapp||'');
+        const cep = formatarCEP(p.cep||p.cep_endereco||'');
+        const enderecoCompleto = montarEndereco(p);
 
-        // Cálculos
         const financiado = valor - entrada;
         let parcelaValor = 0;
         if(qtd>0 && financiado>0) {
@@ -432,7 +453,6 @@ function renderizarPropostas() {
             parcelaValor = taxa===0 ? financiado/qtd : financiado*(taxa*Math.pow(1+taxa,qtd))/(Math.pow(1+taxa,qtd)-1);
         }
 
-        // Contadores
         if(entradaPaga) totalEntrado += entrada;
         const falta = valor - (entradaPaga?entrada:0);
         if(falta>0) totalFalta += falta;
@@ -448,16 +468,14 @@ function renderizarPropostas() {
                 <span class="status ${classeStatus}">${status}</span>
             </div>
 
-            <!-- ✅ DADOS DO CLIENTE -->
             <div class="dados-cliente">
                 <div class="linha"><span class="etiqueta">📋 CPF:</span><span class="valor">${cpf}</span></div>
                 ${telefone?`<div class="linha"><span class="etiqueta">📱 Telefone:</span><span class="valor">${telefone}</span></div>`:''}
                 <div class="linha"><span class="etiqueta">📮 CEP:</span><span class="valor">${cep}</span></div>
-                <div class="linha"><span class="etiqueta">🏠 Endereço:</span><span class="valor">${endereco}</span></div>
+                <div class="linha"><span class="etiqueta">🏠 Endereço:</span><span class="valor">${enderecoCompleto}</span></div>
             </div>
 
             ${!estaEditando ? `
-            <!-- VISUALIZAÇÃO -->
             <div class="linha"><span class="etiqueta">Valor Solicitado:</span><span class="valor">${formatarMoeda(valor)}</span></div>
             <div class="linha"><span class="etiqueta">Valor da Entrada:</span><span class="valor">${formatarMoeda(entrada)} ${entradaPaga?'✅ PAGA':'⏳ Pendente'}</span></div>
             <div class="linha"><span class="etiqueta">Parcelas / Juros:</span><span class="valor">${qtd}x · ${juros}% ao mês</span></div>
@@ -471,7 +489,6 @@ function renderizarPropostas() {
                 <div class="linha"><span class="etiqueta">Falta Receber:</span><span class="valor">${formatarMoeda(falta)}</span></div>
             </div>
             ` : `
-            <!-- EDIÇÃO -->
             <div class="modo-edicao">
                 <div class="linha"><span class="etiqueta">Valor Solicitado R$:</span><input type="text" id="edt_valor_${p.id}" class="input-editar" value="${valor.toFixed(2).replace('.',',')}" oninput="atualizarCalculo(${p.id})"></div>
                 <div class="linha"><span class="etiqueta">Valor Entrada R$:</span><input type="text" id="edt_entrada_${p.id}" class="input-editar" value="${entrada.toFixed(2).replace('.',',')}" oninput="atualizarCalculo(${p.id})"></div>
@@ -511,7 +528,6 @@ function renderizarPropostas() {
 
     lista.innerHTML = html || '<p style="text-align:center; padding:50px; color:var(--texto-claro);">Nenhuma proposta recebida ainda.</p>';
 
-    // Atualiza resumo
     document.getElementById('qtdNovas').textContent = qtdNovas;
     document.getElementById('qtdAprovadas').textContent = qtdAprovadas;
     document.getElementById('qtdPendentes').textContent = qtdPendentes;
