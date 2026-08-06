@@ -67,6 +67,11 @@
         .area-pdf table { width: 100%; border-collapse: collapse; margin: 15px 0; }
         .area-pdf th, .area-pdf td { border: 1px solid #CCC; padding: 8px; text-align: left; font-size: 13px; }
         .area-pdf th { background: #E0E7FF; }
+        .sino-badge { position: relative; }
+        .sino-badge span { position: absolute; top: -8px; right: -8px; background: red; color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .som-notificacao { display: none; }
+        .novo-piscando { animation: piscar 1s infinite; border-left: 4px solid #2563EB !important; }
+        @keyframes piscar { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
@@ -85,7 +90,7 @@
         <div class="barra-superior">
             <h1>📋 Propostas Recebidas</h1>
             <div style="display:flex; gap:10px; align-items:center;">
-                <span>🔔 <span id="badgeSino" style="background:red; color:white; border-radius:50%; padding:3px 8px; font-size:12px; font-weight:bold;">0</span></span>
+                <span class="sino-badge">🔔 <span id="badgeSino">0</span></span>
                 <button onclick="carregarPropostas()" class="botao botao-pequeno">🔄 Atualizar</button>
                 <button onclick="sair()" class="botao botao-perigo botao-pequeno">Sair</button>
             </div>
@@ -115,6 +120,11 @@
     </div>
 </div>
 
+<!-- 🔊 SOM DE NOTIFICAÇÃO -->
+<audio id="somNotificacao" preload="auto" class="som-notificacao">
+    <source src="https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3" type="audio/mpeg">
+
+
 <!-- 📄 ÁREA OCULTA PARA GERAR PDF -->
 <div id="areaPDF" class="area-pdf"></div>
 
@@ -127,10 +137,10 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
 const SENHA = 'flash2026';
-const URL_CONSULTA = 'https://flashcred-sistema.onrender.com/consulta.html'; // ✅ Link de acompanhamento
+const URL_CONSULTA = 'https://flashcred-sistema.onrender.com/consulta.html';
 let propostas = [];
 let editandoId = null;
-let prazoTemp = {};
+let qtdAnterior = 0;
 
 // ==============================================
 // ✅ LOGIN
@@ -141,7 +151,7 @@ window.onload = function() {
         document.getElementById('telaLogin').classList.add('oculto');
         document.getElementById('telaPrincipal').classList.remove('oculto');
         carregarPropostas();
-        ativarRealtime();
+        ativarRealtimeTotal(); // ⚡ LIGA TEMPO REAL!
     }
 };
 function entrar() {
@@ -151,7 +161,7 @@ function entrar() {
         document.getElementById('telaLogin').classList.add('oculto');
         document.getElementById('telaPrincipal').classList.remove('oculto');
         carregarPropostas();
-        ativarRealtime();
+        ativarRealtimeTotal(); // ⚡ LIGA AGORA!
     } else alert('❌ Senha incorreta!');
 }
 function sair() {
@@ -186,7 +196,7 @@ function formatarCEP(cep) {
 }
 
 // ==============================================
-// ✅ MONTAR ENDEREÇO COMPLETO
+// ✅ MONTAR ENDEREÇO
 // ==============================================
 function montarEndereco(p) {
     const rua = p.rua || p.logradouro || p.endereco || '';
@@ -194,15 +204,12 @@ function montarEndereco(p) {
     const bairro = p.bairro || p.bairro_endereco || '';
     const cidade = p.cidade || p.cidade_endereco || '';
     const uf = p.uf || p.estado || p.estado_endereco || '';
-
     const partes = [];
     if(rua) partes.push(rua);
     if(numero) partes.push(', ' + numero);
     if(bairro) partes.push(' — ' + bairro);
     if(cidade) partes.push(' — ' + cidade + (uf ? '/' + uf : ''));
-
-    const enderecoCompleto = partes.join('').trim();
-    return enderecoCompleto || 'Não informado';
+    return partes.join('').trim() || 'Não informado';
 }
 
 // ==============================================
@@ -243,37 +250,61 @@ async function carregarPropostas() {
 }
 
 // ==============================================
-// ✅ TEMPO REAL
+// ⚡ TEMPO REAL TOTAL — AQUI É A MAGIA!
 // ==============================================
-function ativarRealtime() {
-    supabase.channel('painel').on('postgres_changes', {event:'*', schema:'public', table:'propostas'}, carregarPropostas).subscribe();
+function ativarRealtimeTotal() {
+    // Escuta TUDO: INSERIR, ALTERAR, EXCLUIR
+    supabase.channel('mudancas-propostas')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'propostas' }, (nova) => {
+            console.log('📥 NOVA PROPOSTA CHEGOU!', nova);
+            tocarSomNotificacao();
+            carregarPropostas(); // ⚡ ATUALIZA NA HORA!
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas' }, (mudou) => {
+            console.log('🔄 PROPOSTA ALTERADA!', mudou);
+            carregarPropostas(); // ⚡ ATUALIZA NA HORA!
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'propostas' }, () => {
+            carregarPropostas();
+        })
+        .subscribe();
+}
+
+// 🔊 TOCAR SOM QUANDO CHEGAR NOVA PROPOSTA
+function tocarSomNotificacao() {
+    const som = document.getElementById('somNotificacao');
+    som.currentTime = 0;
+    som.play().catch(() => {
+        console.log('🔇 Som bloqueado pelo navegador');
+    });
 }
 
 // ==============================================
-// ✅ SALVAR ALTERAÇÕES
+// ✅ SALVAR ALTERAÇÕES — INCLUINDO PRAZO!
 // ==============================================
 async function salvarEdicao(id) {
     const valor = (document.getElementById('edt_valor_'+id).value.replace(/\D/g,''))/100;
     const entrada = (document.getElementById('edt_entrada_'+id).value.replace(/\D/g,''))/100;
     const qtd = parseInt(document.getElementById('edt_parcelas_'+id).value);
     const juros = parseFloat(document.getElementById('edt_juros_'+id).value);
-    const prazo = parseInt(document.getElementById('edt_prazo_'+id)?.value || 0);
+    const prazo = parseInt(document.getElementById('edt_prazo_'+id)?.value || 18); // ✅ PRAZO DE ENTREGA!
 
     if(!valor || qtd<=0) return alert('⚠️ Valor e quantidade de parcelas são obrigatórios!');
 
-    prazoTemp[id] = prazo;
     const parcelas = calcularParcelas(valor, entrada, qtd, juros);
 
+    // ✅ SALVA TUDO — INCLUINDO O PRAZO!
     const {error} = await supabase.from('propostas').update({
         valor_desejado: valor,
         valor_entrada: entrada,
         quantidade_parcelas: qtd,
         juros: juros,
+        prazo_entrega: prazo, // ✅ CAMPO DO PRAZO!
         dados_parcelas: parcelas
     }).eq('id', id);
 
     if(error) alert('❌ Erro: ' + error.message);
-    else { alert('✅ Salvo! Parcelas e datas geradas!'); editandoId=null; carregarPropostas(); }
+    else { alert('✅ Salvo! Cliente já vê as alterações em tempo real! ⚡'); editandoId=null; }
 }
 
 // ==============================================
@@ -285,7 +316,7 @@ async function gerarPDF(proposta) {
     const qtd = Number(proposta.quantidade_parcelas||0);
     const juros = Number(proposta.juros||0);
     const parcelas = proposta.dados_parcelas || calcularParcelas(valor, entrada, qtd, juros);
-    const prazo = prazoTemp[proposta.id] || 'A definir';
+    const prazo = proposta.prazo_entrega || proposta.prazo || 18;
 
     const doc = document.getElementById('areaPDF');
     doc.innerHTML = `
@@ -296,15 +327,13 @@ async function gerarPDF(proposta) {
         <p><strong>Nome:</strong> ${proposta.nome || proposta.nome_completo || 'Não informado'}</p>
         <p><strong>CPF:</strong> ${formatarCPF(proposta.cpf)}</p>
         <p><strong>Telefone:</strong> ${formatarTelefone(proposta.telefone || proposta.celular || proposta.whatsapp || '')}</p>
-        <p><strong>CEP:</strong> ${formatarCEP(proposta.cep)}</p>
         <p><strong>Endereço:</strong> ${montarEndereco(proposta)}</p>
         <hr>
         <h3>💰 CONDIÇÕES DO CRÉDITO</h3>
         <p><strong>Valor Solicitado:</strong> ${formatarMoeda(valor)}</p>
         <p><strong>Valor da Entrada:</strong> ${formatarMoeda(entrada)}</p>
-        <p><strong>Valor Financiado:</strong> ${formatarMoeda(valor - entrada)}</p>
         <p><strong>Quantidade de Parcelas:</strong> ${qtd}x</p>
-        <p><strong>Taxa de Juros:</strong> ${juros}% ao mês</p>
+        <p><strong>Juros:</strong> ${juros}% ao mês</p>
         <p><strong>Prazo de Entrega:</strong> ${prazo} dias</p>
         <hr>
         <h3>📋 PARCELAS</h3>
@@ -312,8 +341,6 @@ async function gerarPDF(proposta) {
             <tr><th>Parcela</th><th>Valor</th><th>Vencimento</th></tr>
             ${parcelas.map(p=>`<tr><td>${p.numero}ª</td><td>${formatarMoeda(p.valor)}</td><td>${p.vencimento?.split('-').reverse().join('/')||'---'}</td></tr>`).join('')}
         </table>
-        <hr>
-        <p style="text-align:center; margin-top:20px; font-style:italic;">FlashCred — Crédito rápido e confiável<br>Data de emissão: ${new Date().toLocaleDateString('pt-BR')}</p>
     `;
 
     const canvas = await html2canvas(doc, {scale:2});
@@ -327,7 +354,7 @@ async function gerarPDF(proposta) {
 }
 
 // ==============================================
-// ✅ ENVIAR PROPOSTA NO WHATSAPP — COM LINK!
+// ✅ ENVIAR PROPOSTA NO WHATSAPP — COM LINK
 // ==============================================
 async function enviarPropostaWhatsApp(proposta) {
     const tel = (proposta.telefone || proposta.celular || proposta.whatsapp || '').replace(/\D/g,'');
@@ -339,33 +366,25 @@ async function enviarPropostaWhatsApp(proposta) {
     const juros = Number(proposta.juros||0);
     const parcelas = proposta.dados_parcelas || calcularParcelas(valor, entrada, qtd, juros);
     const valorParc = parcelas[0]?.valor || 0;
-    const prazo = prazoTemp[proposta.id] || 'A definir';
+    const prazo = proposta.prazo_entrega || proposta.prazo || 18;
     const cpfLimpo = (proposta.cpf||'').replace(/\D/g,'');
-    const linkAcompanhamento = `${URL_CONSULTA}?cpf=${cpfLimpo}`; // ✅ Link direto
+    const linkAcompanhamento = `${URL_CONSULTA}?cpf=${cpfLimpo}`;
 
     const mensagem = `📄 *PROPOSTA DE CRÉDITO — FLASHCRED*
 
 Olá ${proposta.nome}! Segue sua proposta detalhada:
 
-👤 *Seus Dados:*
-CPF: ${formatarCPF(proposta.cpf)}
-Endereço: ${montarEndereco(proposta)}
-
 💰 *Condições:*
 • Valor solicitado: ${formatarMoeda(valor)}
 • Entrada: ${formatarMoeda(entrada)}
-• Financiado: ${formatarMoeda(valor - entrada)}
 • ${qtd}x de ${formatarMoeda(valorParc)}
 • Juros: ${juros}% ao mês
-• Prazo de entrega: ${prazo} dias
+• 📦 Prazo de entrega: ${prazo} dias
 
-📋 *Parcelas:*
-${parcelas.map(p => `• ${p.numero}ª: ${formatarMoeda(p.valor)} — Vence ${p.vencimento?.split('-').reverse().join('/')||'---'}`).join('\n')}
-
-✅ Proposta em análise. Em breve retornaremos com a aprovação!
+✅ Assim que aprovado, você escolhe as parcelas, assina o contrato e gera seu Pix!
 
 🔍 *Acompanhe aqui:* ${linkAcompanhamento}
-Basta informar seu CPF para ver tudo!
+Basta acessar e ver tudo atualizado em tempo real!
 `;
 
     await gerarPDF(proposta);
@@ -390,7 +409,7 @@ window.atualizarCalculo = function(id) {
         parcela = taxa===0 ? financiado/qtd : financiado*(taxa*Math.pow(1+taxa,qtd))/(Math.pow(1+taxa,qtd)-1);
     }
     const el = document.getElementById('calculo_'+id);
-    if(el) el.innerHTML = `💡 Valor de cada parcela: <strong>${formatarMoeda(parcela)}</strong> · ${qtd}x · Juros: ${juros}%`;
+    if(el) el.innerHTML = `💡 Valor de cada parcela: <strong>${formatarMoeda(parcela)}</strong> · ${qtd}x · Juros: ${juros}% · Prazo: ${document.getElementById('edt_prazo_'+id)?.value||18} dias`;
 };
 async function aprovarProposta(id) {
     const p = propostas.find(x=>x.id===id);
@@ -401,7 +420,7 @@ async function aprovarProposta(id) {
     const parcelas = p.dados_parcelas?.length?p.dados_parcelas:calcularParcelas(valor, entrada, qtd, juros);
     const {error} = await supabase.from('propostas').update({status:'Aprovada', dados_parcelas: parcelas}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ APROVADA!');
+    else alert('✅ APROVADA! Cliente já vê em tempo real! ⚡');
 }
 async function reprovarProposta(id) {
     if(!confirm('Reprovar?')) return;
@@ -413,12 +432,12 @@ async function excluirProposta(id) {
     if(!confirm('Excluir? Sem retorno!')) return;
     const {error} = await supabase.from('propostas').delete().eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else { alert('✅ Excluída!'); carregarPropostas(); }
+    else alert('✅ Excluída!');
 }
 async function marcarEntradaPaga(id) {
     const {error} = await supabase.from('propostas').update({entrada_paga:true}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Entrada marcada como PAGA!');
+    else alert('✅ Entrada marcada como PAGA! Cliente já vê! ⚡');
 }
 
 // ==============================================
@@ -438,12 +457,11 @@ function renderizarPropostas() {
         const entradaPaga = !!p.entrada_paga;
         const parcelas = p.dados_parcelas||[];
         const estaEditando = editandoId===p.id;
-        const prazo = prazoTemp[p.id] || '';
+        const prazo = p.prazo_entrega || p.prazo || 18;
 
         const nome = p.nome||p.nome_completo||'Não informado';
         const cpf = formatarCPF(p.cpf);
         const telefone = formatarTelefone(p.telefone||p.celular||p.whatsapp||'');
-        const cep = formatarCEP(p.cep||p.cep_endereco||'');
         const enderecoCompleto = montarEndereco(p);
 
         const financiado = valor - entrada;
@@ -462,7 +480,7 @@ function renderizarPropostas() {
         const classeStatus = status==='Aprovada'?'status-aprovada':status==='Reprovada'?'status-reprovada':'status-nova';
 
         html += `
-        <div class="cartao">
+        <div class="cartao ${status==='Nova'?'novo-piscando':''}">
             <div class="linha" style="justify-content:space-between;">
                 <h2>👤 ${nome}</h2>
                 <span class="status ${classeStatus}">${status}</span>
@@ -471,7 +489,6 @@ function renderizarPropostas() {
             <div class="dados-cliente">
                 <div class="linha"><span class="etiqueta">📋 CPF:</span><span class="valor">${cpf}</span></div>
                 ${telefone?`<div class="linha"><span class="etiqueta">📱 Telefone:</span><span class="valor">${telefone}</span></div>`:''}
-                <div class="linha"><span class="etiqueta">📮 CEP:</span><span class="valor">${cep}</span></div>
                 <div class="linha"><span class="etiqueta">🏠 Endereço:</span><span class="valor">${enderecoCompleto}</span></div>
             </div>
 
@@ -479,8 +496,8 @@ function renderizarPropostas() {
             <div class="linha"><span class="etiqueta">Valor Solicitado:</span><span class="valor">${formatarMoeda(valor)}</span></div>
             <div class="linha"><span class="etiqueta">Valor da Entrada:</span><span class="valor">${formatarMoeda(entrada)} ${entradaPaga?'✅ PAGA':'⏳ Pendente'}</span></div>
             <div class="linha"><span class="etiqueta">Parcelas / Juros:</span><span class="valor">${qtd}x · ${juros}% ao mês</span></div>
+            <div class="prazo-entrega">📦 Prazo de entrega: <strong>${prazo} dias</strong></div>
             <div class="calculo-resultado">💡 Valor aproximado de cada parcela: <strong>${formatarMoeda(parcelaValor)}</strong></div>
-            ${prazo?`<div class="prazo-entrega">📦 Prazo de entrega: <strong>${prazo} dias</strong></div>`:''}
 
             <div class="resumo-financeiro">
                 <h4>📊 Resumo desta Proposta</h4>
@@ -497,7 +514,7 @@ function renderizarPropostas() {
                 <div class="linha"><span class="etiqueta">📦 Prazo Entrega (dias):</span><input type="number" id="edt_prazo_${p.id}" class="input-editar" value="${prazo}" min="1" style="width:80px;"></div>
                 <div id="calculo_${p.id}" class="calculo-resultado">💡 Valor de cada parcela: <strong>Calculando...</strong></div>
                 <div class="linha" style="margin-top:10px;">
-                    <button onclick="salvarEdicao(${p.id})" class="botao botao-sucesso">💾 Salvar e Gerar Parcelas</button>
+                    <button onclick="salvarEdicao(${p.id})" class="botao botao-sucesso">💾 Salvar e Atualizar</button>
                     <button onclick="editandoId=null; renderizarPropostas();" class="botao botao-perigo">❌ Cancelar</button>
                 </div>
             </div>
