@@ -57,7 +57,7 @@
         .separador { border-bottom: 1px solid var(--borda); margin: 14px 0; }
         .info-parcela { font-size: 13px; padding: 6px 10px; border-radius: 6px; margin: 4px 0; }
         h1 { color: var(--primary); font-size: 24px; margin-bottom: 8px; }
-        .caixa-edicao { background: #F8FAFC; border: 1px dashed #CBD5E1; padding: 12px; border-radius: 8px; margin: 10px 0; }
+        .caixa-edicao { background: #F0F4FF; border: 2px dashed #CBD5E1; padding: 14px; border-radius: 8px; margin: 12px 0; }
     </style>
 </head>
 <body>
@@ -98,7 +98,7 @@
             </div>
         </div>
 
-        <!-- ⚙️ SOMENTE TOKEN MERCADO PAGO -->
+        <!-- ⚙️ TOKEN MERCADO PAGO -->
         <div class="cartao">
             <h3 style="margin-bottom:10px;">⚙️ Token Mercado Pago (Produção)</h3>
             <div class="painel-config">
@@ -107,7 +107,7 @@
             </div>
         </div>
 
-        <!-- 📑 LISTA DE PROPOSTAS -->
+        <!-- 📑 LISTA -->
         <div id="listaPropostas"></div>
     </div>
 </div>
@@ -121,6 +121,8 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
 const SENHA_CORRETA = 'flash2026';
+const LINK_CONSULTA = window.location.origin + window.location.pathname.replace('painel.html','consulta.html').replace('painel','consulta');
+
 let propostas = [];
 let hashAnterior = '';
 let canalRealtime = null;
@@ -178,7 +180,7 @@ function salvarToken() {
 }
 
 // ==============================================
-// ✅ CARREGAR PROPOSTAS — SEM PISCAR
+// ✅ CARREGAR PROPOSTAS
 // ==============================================
 async function carregarPropostas() {
     const {data, error} = await supabase
@@ -205,60 +207,63 @@ function ativarRealtime() {
 }
 
 // ==============================================
-// ✅ EDITAR PROPOSTA
+// ✅ EDITAR PROPOSTA — CONSERTADO
 // ==============================================
 function editarProposta(id) {
     idEmEdicao = id;
-    carregarPropostas(); // Atualiza e mostra os campos de edição
+    renderizarPropostas();
 }
 
 async function salvarEdicao(id) {
-    const valor = parseFloat(document.getElementById(`edt_valor_${id}`).value.replace(/\D/g,'')) / 100;
-    const entrada = parseFloat(document.getElementById(`edt_entrada_${id}`).value.replace(/\D/g,'')) / 100;
+    const valorTxt = document.getElementById(`edt_valor_${id}`).value.replace(/\D/g,'');
+    const entradaTxt = document.getElementById(`edt_entrada_${id}`).value.replace(/\D/g,'');
+    const valor = valorTxt ? parseFloat(valorTxt) / 100 : 0;
+    const entrada = entradaTxt ? parseFloat(entradaTxt) / 100 : 0;
     const parcelas = parseInt(document.getElementById(`edt_parcelas_${id}`).value);
     const juros = parseFloat(document.getElementById(`edt_juros_${id}`).value);
 
-    if(!valor || !parcelas) { alert('⚠️ Valor e quantidade de parcelas são obrigatórios!'); return; }
+    if(!valor || !parcelas) { alert('⚠️ Valor e parcelas são obrigatórios!'); return; }
 
     const { error } = await supabase.from('propostas').update({
         valor_desejado: valor,
-        valor_entrada: entrada || 0,
+        valor_entrada: entrada,
         quantidade_parcelas: parcelas,
-        juros: juros || 0
+        juros: juros
     }).eq('id', id);
 
-    if(error) alert('❌ Erro ao salvar: ' + error.message);
-    else {
-        alert('✅ Proposta atualizada!');
-        idEmEdicao = null;
-        carregarPropostas();
-    }
-}
-
-function cancelarEdicao() {
+    if(error) { alert('❌ Erro: ' + error.message); return; }
+    alert('✅ Proposta atualizada!');
     idEmEdicao = null;
     carregarPropostas();
 }
 
+function cancelarEdicao() {
+    idEmEdicao = null;
+    renderizarPropostas();
+}
+
 // ==============================================
-// ✅ ENVIAR PROPOSTA POR WHATSAPP
+// ✅ WHATSAPP COM LINK DE CONSULTA
 // ==============================================
 function enviarWhatsApp(p) {
-    const telefone = String(p.cpf || '').replace(/\D/g,'').length >= 11 
-        ? String(p.cpf).replace(/\D/g,'').slice(-11) 
-        : String(p.telefone || p.celular || '').replace(/\D/g,'').slice(-11);
-    
-    if(!telefone || telefone.length < 10) { alert('⚠️ Número de telefone não encontrado nesta proposta!'); return; }
+    const telefone = String(p.telefone || p.celular || p.cpf || '').replace(/\D/g,'').slice(-11);
+    if(!telefone || telefone.length < 10) { alert('⚠️ Telefone não encontrado!'); return; }
 
     const valor = Number(p.valor_desejado || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-    const entrada = Number(p.valor_entrada || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-    const qtd = p.quantidade_parcelas || 0;
-    const juros = p.juros || 0;
+    const cpf = String(p.cpf || '').replace(/\D/g,'');
+    const link = `${LINK_CONSULTA}?cpf=${cpf}`;
 
-    const mensagem = `Olá ${p.nome || 'Cliente'}! 👋\n\nSua proposta foi recebida! 📋\n\n💰 Valor solicitado: ${valor}\n💵 Entrada: ${entrada}\n📊 Parcelas: ${qtd}x\n📈 Juros: ${juros}% ao mês\n\nAguarde a análise! Em breve retornaremos com a resposta. ✅\n\nAtenciosamente,\nFlashCred ✨`;
+    const mensagem = `Olá ${p.nome || 'Cliente'}! ✅ Sua proposta foi APROVADA! 🎉
 
-    const link = `https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`;
-    window.open(link, '_blank');
+Valor: ${valor}
+
+👉 Acesse pelo link abaixo para ver as condições, assinar o contrato e gerar o Pix:
+${link}
+
+Atenciosamente,
+FlashCred — Crédito rápido e confiável 💙`;
+
+    window.open(`https://wa.me/55${telefone}?text=${encodeURIComponent(mensagem)}`, '_blank');
 }
 
 // ==============================================
@@ -300,24 +305,30 @@ async function aprovarProposta(id) {
 }
 
 async function reprovarProposta(id) {
-    if(!confirm('❌ Reprovar esta proposta?')) return;
+    if(!confirm('❌ Reprovar?')) return;
     const { error } = await supabase.from('propostas').update({status:'Reprovada'}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Proposta Reprovada!');
+    else alert('✅ Reprovada!');
 }
 
 async function marcarEntradaPaga(id) {
     if(!confirm('💰 Marcar entrada como PAGA?')) return;
     const { error } = await supabase.from('propostas').update({entrada_paga:true}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Entrada marcada como PAGA!');
+    else alert('✅ Entrada marcada!');
 }
 
+// ==============================================
+// ✅ EXCLUIR — SOME NA HORA SEM F5
+// ==============================================
 async function excluirProposta(id) {
-    if(!confirm('⚠️ EXCLUIR proposta? Essa ação não tem retorno!')) return;
+    if(!confirm('⚠️ EXCLUIR? Não tem volta!')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
-    if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Proposta Excluída!');
+    if(error) { alert('❌ Erro: ' + error.message); return; }
+    // Remove da lista NA HORA sem precisar F5
+    propostas = propostas.filter(x => x.id !== id);
+    renderizarPropostas();
+    alert('✅ Excluída!');
 }
 
 function formatarCPF(cpf) {
@@ -327,7 +338,7 @@ function formatarCPF(cpf) {
 }
 
 // ==============================================
-// ✅ EXIBIR LISTA COM BOTÕES EDITAR + WHATSAPP
+// ✅ RENDERIZAR LISTA
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -367,7 +378,7 @@ function renderizarPropostas() {
             <div class="linha"><span class="etiqueta">Parcelas:</span><span class="valor">${qtd}x · ${juros}% ao mês</span></div>
             ` : `
             <div class="caixa-edicao">
-                <p style="font-weight:600; margin-bottom:8px;">✏️ Editar Proposta</p>
+                <p style="font-weight:700; margin-bottom:12px; color:var(--primary);">✏️ EDITAR PROPOSTA</p>
                 <div class="linha">
                     <span class="etiqueta">Valor R$:</span>
                     <input type="text" id="edt_valor_${p.id}" value="${valor.toFixed(2).replace('.',',')}" style="width:140px;">
@@ -384,14 +395,14 @@ function renderizarPropostas() {
                     <span class="etiqueta">Juros %:</span>
                     <input type="number" id="edt_juros_${p.id}" value="${juros}" step="0.01" style="width:80px;">
                 </div>
-                <div class="linha" style="margin-top:10px;">
-                    <button onclick="salvarEdicao(${p.id})" class="botao botao-sucesso">✅ Salvar</button>
+                <div class="linha" style="margin-top:12px;">
+                    <button onclick="salvarEdicao(${p.id})" class="botao botao-sucesso">✅ Salvar Alterações</button>
                     <button onclick="cancelarEdicao()" class="botao botao-alerta">❌ Cancelar</button>
                 </div>
             </div>
             `}
 
-            ${entradaPaga ? `<div class="linha" style="margin-top:6px;"><span class="status status-paga">✅ ENTRADA PAGA</span></div>` : ''}
+            ${entradaPaga ? `<div class="linha" style="margin-top:8px;"><span class="status status-paga">✅ ENTRADA PAGA</span></div>` : ''}
 
             ${parcelas.length>0 ? `<div class="separador"></div><h4 style="margin-bottom:8px; font-size:14px;">📋 Parcelas:</h4><div style="display:grid; gap:4px;">${parcelas.map(parc=>{
                 const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
@@ -409,7 +420,7 @@ function renderizarPropostas() {
             <div class="separador"></div>
             <div class="linha">
                 ${!estaEditando ? `<button onclick="editarProposta(${p.id})" class="botao botao-azul">✏️ Editar</button>` : ''}
-                <button onclick="enviarWhatsApp(${JSON.stringify(p).replace(/"/g,'&quot;')})" class="botao botao-whatsapp">📱 WhatsApp</button>
+                <button onclick='enviarWhatsApp(${JSON.stringify(p).replace(/'/g,"&#39;")})' class="botao botao-whatsapp">📱 WhatsApp</button>
                 ${status==='Nova'&&!estaEditando?`<button onclick="aprovarProposta(${p.id})" class="botao botao-sucesso">✅ Aprovar</button><button onclick="reprovarProposta(${p.id})" class="botao botao-alerta">❌ Reprovar</button>`:''}
                 ${status==='Aprovada'&&!entradaPaga&&!estaEditando?`<button onclick="marcarEntradaPaga(${p.id})" class="botao botao-azul">💰 Entrada Paga</button>`:''}
                 <button onclick="excluirProposta(${p.id})" class="botao botao-perigo">🗑️ Excluir</button>
