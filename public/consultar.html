@@ -393,7 +393,6 @@ function mostrarProposta(p) {
 
     // Se já escolheu parcelas
     if(p.quantidade_escolhida > 0) {
-        // Trava para não deixar o cliente gerar/pagar novamente se já gerou o Pix ou se aguarda confirmação
         if(p.pix_copia_e_cola) {
             atualizarEtapa(4);
             document.getElementById('areaQRCode').classList.remove('oculto');
@@ -579,7 +578,7 @@ function mostrarParcelasCliente(parcelas) {
 }
 
 // ==============================================
-// ⚙️ PAINEL ADMINISTRATIVO (COM BOTÃO DE WATSAPP E EDIÇÃO DE PARCELAS)
+// ⚙️ PAINEL ADMINISTRATIVO
 // ==============================================
 async function carregarPainelAdmin() {
     const container = document.getElementById('listaPainelAdmin');
@@ -618,10 +617,10 @@ async function carregarPainelAdmin() {
                     </button>
                 </div>
 
-                <!-- 📋 PARCELAS E BOTÕES DO PAINEL -->
+                <!-- 📋 PARCELAS COM BOTÃO DE PIX/PAGAR + EDITAR + WHATSAPP BEM EM FRENTE -->
                 <div style="background:white; padding:12px; border-radius:8px; border:1px solid #E2E8F0;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <strong style="font-size:14px; color:#0A2463;">Parcelas Escolhidas (${p.quantidade_escolhida || 0}x):</strong>
+                        <strong style="font-size:14px; color:#0A2463;">Parcelas (${p.quantidade_escolhida || 0}x):</strong>
                     </div>
                     ${renderizarListaParcelasPainel(p)}
                 </div>
@@ -641,16 +640,25 @@ function renderizarListaParcelasPainel(p) {
         const nomeCliente = p.nome || p.nome_completo || 'Cliente';
         const msgZap = encodeURIComponent(`Olá ${nomeCliente}, passando para lembrar do vencimento da parcela ${parc.numero} no valor de R$ ${Number(parc.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})} com vencimento em ${parc.vencimento.split('-').reverse().join('/')}. Evite encargos!`);
         const telCliente = (p.telefone || p.whatsapp || '').replace(/\D/g, '');
+        const parcelaPaga = parc.paga === true;
 
         html += `
-            <div style="display:flex; justify-content:space-between; align-items:center; background:#F1F5F9; padding:8px; border-radius:6px; font-size:13px;">
-                <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#F1F5F9; padding:8px 10px; border-radius:6px; font-size:13px; gap:8px;">
+                <div style="flex:1;">
                     <strong>P.${parc.numero}</strong>: R$ <span id="val_p_${p.id}_${index}">${Number(parc.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span> 
-                    <small style="color:#64748B;">(Venc: ${parc.vencimento.split('-').reverse().join('/')})</small>
+                    <small style="color:#64748B;">(${parc.vencimento.split('-').reverse().join('/')})</small>
                 </div>
-                <div style="display:flex; gap:6px;">
-                    <button onclick="editarParcelaValor('${p.id}', ${index})" class="botao" style="padding:4px 8px; font-size:12px; background:#CBD5E1; color:#1E293B; width:auto;">✏️ Editar</button>
-                    ${telCliente ? `<a href="https://wa.me/55${telCliente}?text=${msgZap}" target="_blank" class="botao botao-whatsapp" style="padding:4px 10px; font-size:12px; text-decoration:none; display:inline-flex; align-items:center; width:auto;"><i class="fab fa-whatsapp"></i> Cobrar</a>` : ''}
+                <div style="display:flex; gap:4px; align-items:center;">
+                    <!-- BOTÃO GERAR PIX / PAGAR ESTA PARCELA ESPECÍFICA BEM EM FRENTE -->
+                    <button onclick="gerarPixParcelaAdmin('${p.id}', ${index})" class="botao" style="padding:4px 8px; font-size:11px; background:${parcelaPaga ? '#10B981' : '#2563EB'}; color:white; width:auto;" title="Gerar Pix QR Code desta parcela">
+                        ${parcelaPaga ? '✅ Paga' : '💳 Pagar / Pix'}
+                    </button>
+                    <!-- EDITAR VALOR -->
+                    <button onclick="editarParcelaValor('${p.id}', ${index})" class="botao" style="padding:4px 6px; font-size:11px; background:#CBD5E1; color:#1E293B; width:auto;" title="Editar valor">
+                        ✏️
+                    </button>
+                    <!-- BOTÃO WHATSAPP -->
+                    ${telCliente ? `<a href="https://wa.me/55${telCliente}?text=${msgZap}" target="_blank" class="botao botao-whatsapp" style="padding:4px 8px; font-size:11px; text-decoration:none; display:inline-flex; align-items:center; width:auto;" title="Cobrar no WhatsApp"><i class="fab fa-whatsapp"></i></a>` : ''}
                 </div>
             </div>`;
     });
@@ -689,6 +697,19 @@ async function editarParcelaValor(idProposta, indexParcela) {
 
     if(error) alert('❌ Erro ao atualizar valor: ' + error.message);
     else carregarPainelAdmin();
+}
+
+async function gerarPixParcelaAdmin(idProposta, indexParcela) {
+    const { data: prop } = await supabase.from('propostas').select('*').eq('id', idProposta).single();
+    if(!prop || !prop.dados_parcelas) return;
+
+    let parcelas = prop.dados_parcelas;
+    let parc = parcelas[indexParcela];
+
+    const pixPayload = gerarPixPayload(CHAVE_PIX, NOME, CIDADE, Number(parc.valor));
+    
+    // Abre um modal rápido ou alerta com o Copia e Cola da parcela
+    prompt(`📋 Pix Cópia e Cola da Parcela ${parc.numero} (R$ ${Number(parc.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}):`, pixPayload);
 }
 </script>
 </body>
