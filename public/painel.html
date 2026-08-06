@@ -29,6 +29,7 @@
         .linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0; }
         .etiqueta { font-weight: 600; color: var(--texto-claro); min-width: 140px; }
         .valor { font-weight: 700; font-size: 15px; }
+        .valor-total-final { color: var(--primary); font-size: 18px; font-weight: 800; padding: 8px 12px; background: #EFF6FF; border-radius: 6px; margin-top: 8px; }
         .botao { padding: 9px 12px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px; transition: all 0.2s; }
         .botao:hover { transform: translateY(-1px); }
         .botao-primario { background: var(--primary); color: white; }
@@ -59,7 +60,7 @@
         .info-parcela { font-size: 13px; padding: 6px 10px; border-radius: 6px; margin: 4px 0; }
         h1 { color: var(--primary); font-size: 24px; margin-bottom: 8px; }
         .caixa-edicao { background: #F0F4FF; border: 2px dashed #CBD5E1; padding: 14px; border-radius: 8px; margin: 12px 0; }
-        .calculo-rapido { background: #ECFDF5; padding: 10px; border-radius: 6px; margin-top: 8px; font-size: 14px; }
+        .calculo-rapido { background: #ECFDF5; padding: 12px; border-radius: 6px; margin-top: 8px; font-size: 14px; line-height: 1.6; }
         .aviso-pagamento { background: #D1FAE5; border-left: 4px solid #10B981; padding: 8px 12px; border-radius: 4px; margin: 8px 0; animation: piscar 1.5s infinite; }
         .entrega { background: #EFF6FF; border-left: 4px solid #3B82F6; padding: 8px 12px; border-radius: 4px; margin: 8px 0; }
         @keyframes piscar { 0%{opacity:1;}50%{opacity:0.6;}100%{opacity:1;} }
@@ -227,7 +228,7 @@ function salvarToken() {
 }
 
 // ==============================================
-// ✅ CÁLCULOS AUTOMÁTICOS
+// ✅ CÁLCULOS AUTOMÁTICOS — COM VALOR TOTAL FINAL
 // ==============================================
 function calcularValores(id) {
     const valorTxt = document.getElementById(`edt_valor_${id}`).value.replace(/\D/g,'');
@@ -249,6 +250,10 @@ function calcularValores(id) {
     const taxa = juros / 100;
     const valorParcela = taxa === 0 ? saldo / parcelaQtd : saldo * (taxa * Math.pow(1+taxa, parcelaQtd)) / (Math.pow(1+taxa, parcelaQtd) - 1);
 
+    // ✅ VALOR TOTAL FINAL = ENTRADA + SOMA DAS PARCELAS
+    const somaParcelas = isNaN(valorParcela) ? 0 : valorParcela * parcelaQtd;
+    const valorTotalFinal = entradaValor + somaParcelas;
+
     let dataEntrega = '';
     if(diasEntrega > 0) {
         const dt = new Date();
@@ -259,10 +264,11 @@ function calcularValores(id) {
     const el = document.getElementById(`calc_${id}`);
     if(el) {
         el.innerHTML = `
-            💰 Valor Total: ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}<br>
+            💰 Valor do Produto/Serviço: ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}<br>
             💵 Entrada: ${entradaValor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}<br>
             📊 ${parcelaQtd}x de: <strong>${isNaN(valorParcela)?'---':valorParcela.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</strong> (${juros}% ao mês)<br>
-            📦 Entrega: ${diasEntrega>0?`${diasEntrega} dias → ${dataEntrega}`:'Não informada'}
+            📦 Entrega: ${diasEntrega>0?`${diasEntrega} dias → ${dataEntrega}`:'Não informada'}<br>
+            <div class="valor-total-final">✅ VALOR TOTAL A PAGAR: ${valorTotalFinal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>
         `;
     }
 }
@@ -279,6 +285,7 @@ function trocarTipoEntrada(id, tipo) {
             if(document.getElementById(`edt_entrega_${id}`)) {
                 document.getElementById(`edt_entrega_${id}`).value = p.dias_entrega||'';
             }
+            calcularValores(id);
         }
     },10);
 }
@@ -329,7 +336,7 @@ function ativarRealtime() {
 }
 
 // ==============================================
-// ✅ EDITAR PROPOSTA — COM PRAZO DE ENTREGA
+// ✅ EDITAR PROPOSTA — COM PRAZO DE ENTREGA E VALOR TOTAL
 // ==============================================
 function editarProposta(id) {
     idEmEdicao = id;
@@ -358,6 +365,7 @@ async function salvarEdicao(id) {
     const saldo = valor - entradaValor;
     const taxa = juros / 100;
     const valorParcela = taxa === 0 ? saldo / parcelas : saldo * (taxa * Math.pow(1+taxa, parcelas)) / (Math.pow(1+taxa, parcelas) - 1);
+    const valorTotalFinal = entradaValor + (valorParcela * parcelas);
 
     const hoje = new Date();
     hoje.setMonth(hoje.getMonth() + 1);
@@ -380,11 +388,20 @@ async function salvarEdicao(id) {
         quantidade_parcelas: parcelas,
         juros: juros,
         dias_entrega: diasEntrega,
+        valor_total_final: parseFloat(valorTotalFinal.toFixed(2)),
         dados_parcelas: parcelasGeradas
     }).eq('id', id);
 
-    if(error) { alert('❌ Erro: ' + error.message); return; }
-    alert(`✅ Salvo! Entrega em ${diasEntrega>0?diasEntrega+' dias':'não informada'}`);
+    if(error) {
+        if(error.message.includes('dias_entrega') || error.message.includes('valor_total_final')) {
+            alert(`⚠️ ${error.message}\n\n👉 Vá no Supabase → SQL Editor e execute o comando que te passei pra criar as colunas!`);
+        } else {
+            alert('❌ Erro: ' + error.message);
+        }
+        return;
+    }
+
+    alert(`✅ Salvo!\n💰 Valor Total: ${valorTotalFinal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n📦 Entrega em ${diasEntrega>0?diasEntrega+' dias':'não informada'}`);
     idEmEdicao = null;
     carregarPropostas();
 }
@@ -401,6 +418,7 @@ function enviarWhatsApp(p) {
     const telefone = String(p.telefone || p.celular || p.cpf || '').replace(/\D/g,'').slice(-11);
     if(!telefone || telefone.length < 10) { alert('⚠️ Telefone não encontrado!'); return; }
     const valor = Number(p.valor_desejado || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    const totalFinal = Number(p.valor_total_final || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
     const cpf = String(p.cpf || '').replace(/\D/g,'');
     const link = `${LINK_CONSULTA}?cpf=${cpf}`;
 
@@ -413,7 +431,8 @@ function enviarWhatsApp(p) {
 
     const mensagem = `Olá ${p.nome || 'Cliente'}! ✅ Sua proposta foi APROVADA! 🎉
 
-Valor: ${valor}${textoEntrega}
+Valor do produto: ${valor}
+💰 Valor total a pagar: ${totalFinal}${textoEntrega}
 
 👉 Acesse aqui para ver as parcelas, assinar o contrato e gerar o Pix:
 ${link}
@@ -437,6 +456,7 @@ async function aprovarProposta(id) {
     const saldo = valorTotal - valorEntrada;
     const taxa = juros / 100;
     const valorParcela = taxa === 0 ? saldo / qtd : saldo * (taxa * Math.pow(1+taxa, qtd)) / (Math.pow(1+taxa, qtd) - 1);
+    const valorTotalFinal = valorEntrada + (valorParcela * qtd);
 
     const hoje = new Date();
     hoje.setMonth(hoje.getMonth() + 1);
@@ -451,11 +471,12 @@ async function aprovarProposta(id) {
     const { error } = await supabase.from('propostas').update({
         status: 'Aprovada',
         dados_parcelas: parcelas,
-        dias_entrega: diasEntrega
+        dias_entrega: diasEntrega,
+        valor_total_final: parseFloat(valorTotalFinal.toFixed(2))
     }).eq('id', id);
 
     if(error) alert('❌ Erro: ' + error.message);
-    else alert(`✅ APROVADA! ${qtd}x de R$ ${valorParcela.toFixed(2)}${diasEntrega>0?`\n📦 Entrega em ${diasEntrega} dias`:''}`);
+    else alert(`✅ APROVADA!\n💰 Valor Total: ${valorTotalFinal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n📦 ${qtd}x de R$ ${valorParcela.toFixed(2)}${diasEntrega>0?`\n📦 Entrega em ${diasEntrega} dias`:''}`);
 }
 
 async function reprovarProposta(id) {
@@ -497,7 +518,7 @@ function formatarCPF(cpf) {
 }
 
 // ==============================================
-// ✅ RENDERIZAR LISTA — COM PRAZO DE ENTREGA
+// ✅ RENDERIZAR LISTA — COM VALOR TOTAL FINAL
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -507,7 +528,8 @@ function renderizarPropostas() {
     propostas.forEach(p => {
         const valor = Number(p.valor_desejado || 0);
         const valorEntrada = Number(p.valor_entrada || 0);
-        valorTotalGeral += valor;
+        const valorTotalFinal = Number(p.valor_total_final || 0);
+        valorTotalGeral += valorTotalFinal || valor;
         const status = p.status || 'Nova';
         const entradaPaga = !!p.entrada_paga;
         const parcelas = p.dados_parcelas || [];
@@ -550,16 +572,21 @@ function renderizarPropostas() {
             ${!estaEditando ? `
             <div class="linha"><span class="etiqueta">CPF:</span><span class="valor">${formatarCPF(p.cpf)}</span></div>
             <div class="linha">
-                <span class="etiqueta">Valor Total:</span><span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
-                <span class="etiqueta" style="margin-left:16px;">Entrada:</span><span class="valor">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ${entradaPaga?'✅':'⏳ Pendente'}</span>
+                <span class="etiqueta">Valor Produto:</span><span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
             </div>
-            <div class="linha"><span class="etiqueta">Parcelas:</span><span class="valor">${qtd}x · ${juros}% ao mês</span></div>
+            <div class="linha">
+                <span class="etiqueta">Entrada:</span><span class="valor">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ${entradaPaga?'✅':'⏳ Pendente'}</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">Parcelas:</span><span class="valor">${qtd}x · ${juros}% ao mês</span>
+            </div>
+            ${valorTotalFinal>0?`<div class="linha valor-total-final" style="margin-top:8px;">💰 TOTAL A PAGAR: ${valorTotalFinal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>`:''}
             ` : `
             <div class="caixa-edicao">
                 <p style="font-weight:700; margin-bottom:12px; color:var(--primary);">✏️ EDITAR PROPOSTA — Cálculo Automático</p>
 
                 <div class="linha">
-                    <span class="etiqueta">Valor Total R$:</span>
+                    <span class="etiqueta">Valor Produto R$:</span>
                     <input type="text" id="edt_valor_${p.id}" value="${valor.toFixed(2).replace('.',',')}" oninput="calcularValores(${p.id})" style="width:140px;">
                 </div>
 
