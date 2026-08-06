@@ -52,6 +52,15 @@
 
     <!-- RESULTADO -->
     <div id="resultado"></div>
+
+    <!-- ✅ BOTÃO SUPORTE WHATSAPP -->
+    <div class="mt-8 text-center">
+        <a href="https://wa.me/5511973294235?text=Olá! Preciso de ajuda com minha proposta." 
+           target="_blank" 
+           class="inline-flex items-center gap-2 bg-whatsapp text-white px-6 py-3 rounded-full font-bold text-lg shadow-lg hover:shadow-xl transition">
+            <i class="fab fa-whatsapp text-xl"></i> Falar com Suporte
+        </a>
+    </div>
 </div>
 
 <script>
@@ -62,13 +71,15 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-let cpfAtual = localStorage.getItem('ultimoCpf') || ''; // ✅ SALVA CPF!
+const CHAVE_PIX = '33552949852'; // Sua chave Pix
+
+let cpfAtual = localStorage.getItem('ultimoCpf') || '';
 let canalRealtime = null;
 let propostaAtual = null;
 let podeAssinar = { contrato:false, assinatura:false, foto:false };
 
 // ==============================================
-// ✅ INICIO — LÊ CPF SALVO E DA URL
+// ✅ INICIO — LÊ CPF SALVO
 // ==============================================
 window.onload = () => {
     const params = new URLSearchParams(window.location.search);
@@ -77,8 +88,6 @@ window.onload = () => {
     if(cpfUrl.length === 11) {
         cpfAtual = cpfUrl;
         localStorage.setItem('ultimoCpf', cpfAtual);
-    } else if(cpfAtual.length === 11) {
-        // ✅ USA CPF SALVO — NÃO PRECISA DIGITAR DE NOVO!
     }
 
     if(cpfAtual.length === 11) {
@@ -88,7 +97,7 @@ window.onload = () => {
 };
 
 // ==============================================
-// ✅ TEMPO REAL — NÃO PRECISA F5!
+// ✅ TEMPO REAL
 // ==============================================
 function ativarRealtime() {
     if(!cpfAtual) return;
@@ -96,7 +105,6 @@ function ativarRealtime() {
     
     canalRealtime = supabase.channel('atualizacao_cliente')
         .on('postgres_changes', { event:'*', schema:'public', table:'propostas', filter:`cpf=eq.${cpfAtual}` }, (payload) => {
-            console.log('🔄 Atualizado!', payload.new);
             exibirProposta(payload.new);
         })
         .subscribe();
@@ -110,7 +118,7 @@ async function consultar() {
     if(cpf.length !== 11) { alert('Digite um CPF válido!'); return; }
 
     cpfAtual = cpf;
-    localStorage.setItem('ultimoCpf', cpf); // ✅ SALVA CPF PARA SEMPRE!
+    localStorage.setItem('ultimoCpf', cpf);
     
     document.getElementById('areaConsulta').classList.add('hidden');
     document.getElementById('resultado').innerHTML = '<p class="text-center p-8 text-gray-500"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Buscando...</p>';
@@ -134,7 +142,41 @@ async function consultar() {
 }
 
 // ==============================================
-// ✅ EXIBIR PROPOSTA — FLUXO COMPLETO
+// ✅ GERAR CÓDIGO PIX
+// ==============================================
+function gerarCodigoPix(valor, descricao) {
+    const valorStr = Number(valor).toFixed(2);
+    const nome = 'FLASH POINT';
+    const cidade = 'SAO PAULO';
+    const chave = CHAVE_PIX;
+    
+    function pad(id, campo) {
+        return String(campo.length).padStart(2,'0') + campo;
+    }
+    
+    let pix = '000201';
+    pix += '26' + pad(('0014br.gov.bcb.pix01' + String(chave.length).padStart(2,'0') + chave).length, '0014br.gov.bcb.pix01' + String(chave.length).padStart(2,'0') + chave);
+    pix += '52040000';
+    pix += '5303986';
+    pix += '5802BR';
+    pix += '59' + pad(nome.length, nome);
+    pix += '60' + pad(cidade.length, cidade);
+    pix += '62' + pad(descricao.length + 4, '05' + String(descricao.length).padStart(2,'0') + descricao);
+    pix += '6304';
+    
+    function crc16(s) {
+        let crc = 0xFFFF;
+        for(let i=0; i<s.length; i++) {
+            crc ^= s.charCodeAt(i) << 8;
+            for(let j=0; j<8; j++) crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+        }
+        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4,'0');
+    }
+    return pix + crc16(pix);
+}
+
+// ==============================================
+// ✅ EXIBIR PROPOSTA
 // ==============================================
 function exibirProposta(p) {
     propostaAtual = p;
@@ -144,13 +186,12 @@ function exibirProposta(p) {
     const temSelfie = !!p.selfie_cliente;
     const entradaPaga = !!p.entrada_paga;
 
-    // VALORES
     const valorTotal = Number(p.valor_desejado || 0);
     const valorEntrada = Number(p.valor_entrada || 0);
-    const qtdMaxima = Number(p.quantidade_parcelas || 1); // ✅ MÁXIMO DEFINIDO POR VOCÊ
+    const qtdMaxima = Number(p.quantidade_parcelas || 1);
     const juros = Number(p.juros || 0);
     const dadosParcelas = p.dados_parcelas || [];
-    const qtdEscolhida = Number(p.quantidade_escolhida || qtdMaxima); // ✅ ESCOLHIDA PELO CLIENTE
+    const qtdEscolhida = Number(p.quantidade_escolhida || qtdMaxima);
 
     // ==============================================
     // ⏳ AGUARDANDO APROVAÇÃO
@@ -170,7 +211,7 @@ function exibirProposta(p) {
     }
 
     // ==============================================
-    // ✅ APROVADA — ESCOLHER PARCELAS (1 a N)
+    // ✅ APROVADA — INFORMAÇÕES
     // ==============================================
     let html = `
     <div class="bg-white p-5 rounded-xl shadow">
@@ -180,13 +221,11 @@ function exibirProposta(p) {
             </span>
         </div>
 
-        <!-- DADOS -->
         <div class="mb-4">
             <h2 class="text-xl font-bold text-primary">👤 ${p.nome || 'Cliente'}</h2>
             <p class="text-sm text-gray-500">CPF: ${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
         </div>
 
-        <!-- VALORES -->
         <div class="bg-gray-50 p-4 rounded-lg mb-4 border">
             <h3 class="font-bold text-primary mb-3">💰 Valores Contratados</h3>
             <div class="grid grid-cols-2 gap-3">
@@ -198,7 +237,7 @@ function exibirProposta(p) {
         </div>`;
 
     // ==============================================
-    // 📋 ETAPA 1: ESCOLHER QUANTIDADE DE PARCELAS (1 a N)
+    // 📋 ESCOLHER PARCELAS
     // ==============================================
     if(!temContrato && !entradaPaga) {
         html += `
@@ -227,7 +266,7 @@ function exibirProposta(p) {
     }
 
     // ==============================================
-    // 📄 ETAPA 2: CONTRATO
+    // 📄 CONTRATO
     // ==============================================
     if(qtdEscolhida > 0 && !temContrato) {
         html += `
@@ -236,7 +275,7 @@ function exibirProposta(p) {
             <div class="bg-gray-50 p-4 rounded-lg mb-4 text-sm text-gray-700 max-h-60 overflow-y-auto border">
                 <p class="font-bold mb-2">CONTRATO DE CRÉDITO</p>
                 <p>Declaro que li e concordo com todos os termos do contrato de crédito firmado com FLASH POINT.</p>
-                <p class="mt-2">Comprometo-me a honrar o pagamento das parcelas nas datas acordadas. Estou ciente que o não pagamento vai prejudicar sua confiança e oportunidades futuras. Pense bem: FlashCred foi feita pensando em pessoas que buscam reconstruir sua confiança. Pensei em você primeiro. Conte comigo. Vamos fazer um mundo melhor juntos.</p>
+                <p class="mt-2">Comprometo-me a honrar o pagamento das parcelas nas datas acordadas. Estou ciente que o não pagamento vai prejudicar minha confiança e oportunidades futuras. Pense bem: FlashCred foi feita pensando em pessoas que buscam reconstruir sua confiança. Pensei em você primeiro. Conte comigo. Vamos fazer um mundo melhor juntos.</p>
                 <p class="mt-2 font-semibold">Ao assinar abaixo, declaro que LI e CONCORDO com este contrato.</p>
             </div>
             <label class="flex items-center gap-2 mb-3 cursor-pointer">
@@ -244,14 +283,12 @@ function exibirProposta(p) {
                 <span class="font-semibold">Declaro que LI o contrato e concordo com os termos</span>
             </label>
 
-            <!-- ASSINATURA -->
             <div class="mt-3">
                 <p class="font-semibold mb-2">✍️ Assine abaixo:</p>
                 <canvas id="canvasAssinatura" width="400" height="150" class="w-full"></canvas>
                 <button onclick="limparAssinatura()" class="mt-2 bg-gray-200 px-4 py-2 rounded font-bold">🗑️ Limpar</button>
             </div>
 
-            <!-- SELFIE -->
             <div class="mt-4">
                 <p class="font-semibold mb-2">📸 Passo 3 — Tirar Foto (Selfie)</p>
                 <video id="videoCamera" autoplay playsinline class="w-full h-48 object-cover rounded-lg"></video>
@@ -271,7 +308,7 @@ function exibirProposta(p) {
     }
 
     // ==============================================
-    // ✅ CONTRATO ASSINADO → MOSTRA PAGAMENTO DA ENTRADA
+    // 💳 PAGAMENTO DA ENTRADA
     // ==============================================
     if(temContrato && !entradaPaga) {
         html += `
@@ -290,7 +327,7 @@ function exibirProposta(p) {
                     <div id="qrcode" class="flex justify-center my-4"></div>
                     <p class="text-sm text-gray-600 mb-2">Escaneie o QR Code ou copie o código Pix:</p>
                     <textarea readonly class="w-full p-3 text-xs border rounded-lg bg-white" rows="4">${p.qr_code_entrada}</textarea>
-                    <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Copiado!')" 
+                    <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Copiado! Efetue o pagamento pelo seu banco.')" 
                         class="mt-3 bg-pix text-white px-6 py-3 rounded-lg font-bold text-lg w-full">
                         📋 Copiar Código Pix
                     </button>
@@ -302,7 +339,7 @@ function exibirProposta(p) {
     }
 
     // ==============================================
-    // ✅ ENTRADA PAGA → MOSTRA TODAS AS PARCELAS PARA PAGAR
+    // ✅ ENTRADA PAGA → MOSTRA PARCELAS (SÓ GERAR PIX)
     // ==============================================
     if(entradaPaga) {
         html += `
@@ -318,38 +355,46 @@ function exibirProposta(p) {
         if(dadosParcelas.length > 0) {
             dadosParcelas.forEach((parc, idx) => {
                 const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
-                const vlr = Number(parc.valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+                const vlr = Number(parc.valor||0);
+                const vlrFormatado = vlr.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
                 const paga = parc.paga;
                 const hoje = new Date();
                 const venc = parc.vencimento ? new Date(parc.vencimento+'T00:00:00') : null;
-                const statusCor = paga ? 'border-green-400 bg-green-50' : 
-                                  (venc && venc < hoje) ? 'border-red-400 bg-red-50' : 'border-yellow-400 bg-yellow-50/20';
-                const statusTexto = paga ? '✅ PAGA' : (venc && venc < hoje) ? '⚠️ VENCIDA' : '⏳ A VENCER';
-                const statusTextoCor = paga ? 'text-green-700' : (venc && venc < hoje) ? 'text-red-700' : 'text-yellow-700';
+                const atrasada = venc && venc < hoje && !paga;
+                const corBorda = paga ? 'border-green-400' : atrasada ? 'border-red-400' : 'border-yellow-400';
+                const corFundo = paga ? 'bg-green-50' : atrasada ? 'bg-red-50' : 'bg-yellow-50/20';
+                const statusTexto = paga ? '✅ PAGA' : atrasada ? '⚠️ VENCIDA' : '⏳ A VENCER';
 
                 html += `
-                <div class="p-4 rounded-lg border-2 ${statusCor}">
+                <div class="p-4 rounded-lg border-2 ${corBorda} ${corFundo}">
                     <div class="flex justify-between items-center mb-2">
                         <span class="font-bold text-lg">${parc.numero}ª Parcela</span>
-                        <span class="font-bold text-xl text-primary">${vlr}</span>
+                        <span class="font-bold text-xl text-primary">${vlrFormatado}</span>
                     </div>
                     <div class="flex justify-between items-center text-sm mb-3">
                         <span>Vencimento: ${dt}</span>
-                        <span class="font-semibold ${statusTextoCor}">${statusTexto}</span>
+                        <span class="font-semibold">${statusTexto}</span>
                     </div>`;
 
                 if(!paga) {
+                    const codigoPixParcela = gerarCodigoPix(vlr, `${parc.numero}ª Parcela - FlashCred`);
                     html += `
-                    <div class="flex gap-2">
-                        <button onclick="alert('Gere o Pix para esta parcela e pague!')" 
-                            class="flex-1 bg-pix text-white p-2 rounded font-bold">💳 Gerar Pix</button>
-                        <a href="https://wa.me/55${p.telefone?.replace(/\D/g,'')}?text=Olá! Solicito o código Pix de pagamento da ${parc.numero}ª parcela no valor de ${vlr} - Vencimento: ${dt}" 
-                            target="_blank" class="flex-1 bg-whatsapp text-white p-2 rounded font-bold text-center">
-                            💬 Cobrar
-                        </a>
+                    <div>
+                        <button onclick="document.getElementById('pix-parcela-${idx}').classList.toggle('hidden')" 
+                            class="w-full bg-pix text-white p-3 rounded-lg font-bold text-lg">
+                            💳 Gerar Pix para Pagamento
+                        </button>
+                        <div id="pix-parcela-${idx}" class="hidden mt-3 p-3 bg-white rounded-lg border">
+                            <p class="text-sm text-gray-600 mb-2">Copie o código abaixo e pague pelo seu banco:</p>
+                            <textarea readonly class="w-full p-2 text-xs border rounded bg-gray-50" rows="5">${codigoPixParcela}</textarea>
+                            <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Código copiado! Pague pelo app do seu banco.')" 
+                                class="w-full mt-2 bg-sucesso text-white p-2 rounded font-bold">
+                                📋 Copiar Código Pix
+                            </button>
+                        </div>
                     </div>`;
                 } else {
-                    html += `<p class="text-center text-green-600 font-bold">✅ Pagamento confirmado!</p>`;
+                    html += `<p class="text-center text-green-600 font-bold text-lg">✅ Pagamento Confirmado!</p>`;
                 }
                 html += `</div>`;
             });
@@ -373,7 +418,7 @@ function exibirProposta(p) {
 }
 
 // ==============================================
-// ✅ CLIENTE ESCOLHE A QUANTIDADE
+// ✅ ESCOLHA DE PARCELAS
 // ==============================================
 function calcularParcelaCliente(qtdMax, valorEntrada, juros) {
     const qtd = parseInt(document.getElementById('selParcelas').value);
@@ -393,13 +438,11 @@ async function salvarEscolhaParcelas(idProposta) {
     const saldo = valorTotal - valorEntrada;
     const valorParc = saldo * Math.pow(1 + juros/100, 1) / qtd;
 
-    // PEGA A DATA DA PRIMEIRA PARCELA JÁ DEFINIDA
     const dadosOriginais = propostaAtual.dados_parcelas || [];
     const dataInicio = dadosOriginais.length > 0 && dadosOriginais[0].vencimento 
         ? new Date(dadosOriginais[0].vencimento + 'T00:00:00') 
         : new Date();
 
-    // GERA NOVO CRONOGRAMA COM A QUANTIDADE ESCOLHIDA
     const novasParcelas = [];
     let data = new Date(dataInicio);
     for(let i=1; i<=qtd; i++) {
@@ -415,18 +458,17 @@ async function salvarEscolhaParcelas(idProposta) {
         data.setMonth(data.getMonth()+1);
     }
 
-    // SALVA NO BANCO
     const { error } = await supabase.from('propostas').update({
         quantidade_escolhida: qtd,
         dados_parcelas: novasParcelas
     }).eq('id', idProposta);
 
     if(error) alert('❌ Erro: ' + error.message);
-    else alert(`✅ Escolhido ${qtd}x! Atualizando...`);
+    else alert(`✅ ${qtd}x parcelas confirmadas! Atualizando...`);
 }
 
 // ==============================================
-// ASSINATURA E CÂMERA
+// ✅ ASSINATURA E CÂMERA
 // ==============================================
 function verificarPodeAssinar() {
     podeAssinar.contrato = document.getElementById('liContrato')?.checked;
