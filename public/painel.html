@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Administrativo | FlashCred</title>
-    <!-- ✅ BIBLIOTECAS FALTANDO — ADICIONADAS AGORA! -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -22,21 +21,23 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
         body { background: var(--bg-body); color: var(--texto); padding: 16px; min-height: 100vh; }
         .container { max-width: 1200px; margin: 0 auto; }
-        .cartao { background: white; border-radius: 12px; border: 1px solid var(--borda); padding: 16px; margin-bottom: 16px; }
-        .linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 4px 0; }
+        .cartao { background: white; border-radius: 12px; border: 1px solid var(--borda); padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
         .etiqueta { font-weight: 600; color: var(--texto-claro); min-width: 100px; }
         .valor { font-weight: 700; font-size: 16px; }
-        .botao { padding: 10px 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; }
+        .botao { padding: 10px 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: all 0.2s; }
+        .botao:hover { transform: translateY(-1px); }
         .botao-primario { background: var(--primary); color: white; }
         .botao-sucesso { background: var(--sucesso); color: white; }
         .botao-alerta { background: var(--alerta); color: #1F2937; }
         .botao-perigo { background: var(--perigo); color: white; }
         .botao-azul { background: var(--azul); color: white; }
         .botao-pequeno { padding: 6px 10px; font-size: 13px; }
-        .status { display: inline-block; padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 13px; }
+        .status { display: inline-block; padding: 4px 12px; border-radius: 20px; font-weight: 600; font-size: 13px; }
         .status-nova { background: #E0E7FF; color: #3730A3; }
         .status-aprovada { background: #D1FAE5; color: #065F46; }
         .status-reprovada { background: #FEE2E2; color: #991B1B; }
+        .status-paga { background: #D1FAE5; color: #065F46; }
         .area-senha { max-width: 400px; margin: 80px auto; text-align: center; }
         input { padding: 12px; border: 1px solid var(--borda); border-radius: 8px; font-size: 16px; width: 100%; margin-bottom: 12px; }
         .oculto { display: none !important; }
@@ -45,66 +46,66 @@
         .resumo-cartao { padding: 14px; border-radius: 10px; text-align: center; }
         .resumo-cartao h3 { font-size: 26px; }
         .separador { border-bottom: 1px solid var(--borda); margin: 16px 0; }
-        .info-parcela { font-size: 13px; padding: 6px 10px; border-radius: 6px; margin: 4px 0; }
+        .info-parcela { font-size: 13px; padding: 8px 12px; border-radius: 6px; margin: 4px 0; }
+        h2 { font-size: 18px; color: var(--primary); margin-bottom: 8px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- TELA DE LOGIN -->
+    <!-- 🔐 TELA DE LOGIN -->
     <div id="telaLogin" class="area-senha">
-        <h1 style="margin-bottom: 24px;">🔐 Painel Administrativo</h1>
+        <h1 style="margin-bottom: 24px; color: var(--primary);">🔐 Painel Administrativo</h1>
         <input type="password" id="senha" placeholder="Digite a senha de acesso">
         <button onclick="entrar()" class="botao botao-primario" style="width:100%; font-size:16px;">Entrar</button>
         <p style="margin-top:12px; font-size:13px; color:var(--texto-claro);">Senha: flash2026</p>
     </div>
 
-    <!-- TELA PRINCIPAL -->
+    <!-- 📋 TELA PRINCIPAL -->
     <div id="telaPrincipal" class="oculto">
         <div class="barra-superior">
-            <h1>📋 Propostas</h1>
-            <div style="display:flex; gap:8px;">
+            <h1 style="color: var(--primary);">📋 Propostas Recebidas</h1>
+            <div style="display:flex; gap:8px; align-items:center;">
+                <span>🔔 <span id="badgeSino" style="background:red; color:white; border-radius:50%; padding:2px 6px; font-size:11px; font-weight:bold;">0</span></span>
                 <button onclick="carregarPropostas()" class="botao botao-pequeno">🔄 Atualizar</button>
                 <button onclick="sair()" class="botao botao-perigo botao-pequeno">Sair</button>
             </div>
         </div>
 
-        <!-- RESUMO -->
+        <!-- 📊 RESUMO -->
         <div class="resumo">
             <div class="resumo-cartao" style="background:#E0E7FF;">
-                <h3 id="qtdNovas">0</h3><p>Novas</p>
+                <h3 id="qtdNovas">0</h3><p>Novas Propostas</p>
             </div>
             <div class="resumo-cartao" style="background:#D1FAE5;">
                 <h3 id="qtdAprovadas">0</h3><p>Aprovadas</p>
             </div>
             <div class="resumo-cartao" style="background:#FEF3C7;">
-                <h3 id="qtdPendentes">0</h3><p>Pagamento Pendente</p>
+                <h3 id="qtdPendentes">0</h3><p>Aguardando Pagamento</p>
             </div>
         </div>
 
-        <!-- LISTA -->
+        <!-- 📑 LISTA DE PROPOSTAS -->
         <div id="listaPropostas"></div>
     </div>
 </div>
 
 <script>
 // ==============================================
-// ✅ CONFIGURAÇÕES CORRETAS
+// ✅ CONFIGURAÇÕES
 // ==============================================
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-const SENHA = 'flash2026'; // ✅ Senha correta
+const SENHA = 'flash2026';
 let propostas = [];
 
 // ==============================================
-// ✅ LOGIN CORRIGIDO
+// ✅ LOGIN
 // ==============================================
 function entrar() {
     const senhaDigitada = document.getElementById('senha').value.trim();
-    console.log('Senha digitada:', senhaDigitada); // Ajuda a verificar
-
     if(senhaDigitada === SENHA) {
         document.getElementById('telaLogin').classList.add('oculto');
         document.getElementById('telaPrincipal').classList.remove('oculto');
@@ -114,7 +115,6 @@ function entrar() {
         alert('❌ Senha incorreta!\nUse: flash2026');
     }
 }
-
 function sair() {
     document.getElementById('senha').value = '';
     document.getElementById('telaLogin').classList.remove('oculto');
@@ -139,7 +139,7 @@ async function carregarPropostas() {
 // ✅ TEMPO REAL
 // ==============================================
 function ativarRealtime() {
-    supabase.channel('painel')
+    supabase.channel('painel_atualizacao')
         .on('postgres_changes', { event:'*', schema:'public', table:'propostas' }, () => {
             carregarPropostas();
         })
@@ -150,10 +150,10 @@ function ativarRealtime() {
 // ✅ EXCLUIR — ATUALIZA SOZINHO
 // ==============================================
 async function excluirProposta(id) {
-    if(!confirm('⚠️ Excluir esta proposta?\nNão tem retorno!')) return;
+    if(!confirm('⚠️ Tem CERTEZA? Esta ação NÃO tem retorno!')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if(error) { alert('❌ Erro: ' + error.message); return; }
-    alert('✅ Excluída!');
+    alert('✅ Proposta EXCLUÍDA!');
     carregarPropostas(); // ✅ Atualiza na hora!
 }
 
@@ -163,22 +163,22 @@ async function excluirProposta(id) {
 async function aprovarProposta(id) {
     const { error } = await supabase.from('propostas').update({status:'Aprovada'}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Aprovada!');
+    else alert('✅ Proposta APROVADA! Cliente já vê a aprovação.');
 }
 async function reprovarProposta(id) {
-    if(!confirm('Reprovar?')) return;
+    if(!confirm('Reprovar esta proposta?')) return;
     const { error } = await supabase.from('propostas').update({status:'Reprovada'}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Reprovada!');
+    else alert('✅ Proposta REPROVADA!');
 }
 async function marcarEntradaPaga(id) {
     const { error } = await supabase.from('propostas').update({entrada_paga:true}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Entrada marcada como PAGA!');
+    else alert('✅ Entrada marcada como PAGA! Cliente vê as parcelas.');
 }
 
 // ==============================================
-// ✅ MOSTRAR LISTA
+// ✅ MOSTRAR LISTA COM TODOS OS BOTÕES
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -201,37 +201,62 @@ function renderizarPropostas() {
         html += `
         <div class="cartao">
             <div class="linha" style="justify-content:space-between; margin-bottom:10px;">
-                <h3 style="font-size:18px; color:var(--primary);">👤 ${p.nome||'Sem nome'}</h3>
+                <h2>👤 ${p.nome || 'Sem nome'}</h2>
                 <span class="status ${classeStatus}">${status}</span>
             </div>
-            <div class="linha"><span class="etiqueta">CPF:</span><span>${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span></div>
-            <div class="linha"><span class="etiqueta">Valor:</span><span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>
-            <div class="linha"><span class="etiqueta">Entrada:</span><span class="valor">${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>
-            <div class="linha"><span class="etiqueta">Parcelas:</span><span>${p.quantidade_escolhida||p.quantidade_parcelas||0}x · ${p.juros||0}% ao mês</span></div>
-            ${entradaPaga?'<div class="linha"><span class="status status-aprovada">✅ ENTRADA PAGA</span></div>':''}
-            
-            ${parcelas.length>0?`<div class="separador"></div><h4 style="margin-bottom:8px; font-size:14px;">📋 Parcelas:</h4><div>${parcelas.map(parc=>{
-                const dt = parc.vencimento?parc.vencimento.split('-').reverse().join('/'):'---';
+
+            <div class="linha">
+                <span class="etiqueta">CPF:</span>
+                <span class="valor">${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">Valor Solicitado:</span>
+                <span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">Valor da Entrada:</span>
+                <span class="valor">${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">Parcelas:</span>
+                <span class="valor">${p.quantidade_escolhida || p.quantidade_parcelas || 0}x</span>
+                <span class="etiqueta" style="margin-left:16px;">Juros:</span>
+                <span class="valor">${p.juros || 0}% ao mês</span>
+            </div>
+            ${entradaPaga?'<div class="linha"><span class="status status-paga">✅ ENTRADA PAGA</span></div>':''}
+
+            ${parcelas.length > 0 ? `
+            <div class="separador"></div>
+            <h3 style="margin-bottom:8px; font-size:15px;">📋 Parcelas do Cliente:</h3>
+            <div>${parcelas.map(parc => {
+                const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
                 const v = Number(parc.valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-                const st = parc.paga?'✅ PAGA':'⏳ A vencer';
-                return `<div class="info-parcela" style="background:${parc.paga?'#D1FAE5':'#FEF3C7'}">${parc.numero}ª · ${v} · Vence: ${dt} · ${st}</div>`;
-            }).join('')}</div>`:''}
+                const st = parc.paga ? '✅ PAGA' : '⏳ A vencer';
+                const corFundo = parc.paga ? '#D1FAE5' : '#FEF3C7';
+                return `<div class="info-parcela" style="background:${corFundo};">${parc.numero}ª Parcela · ${v} · Venc: ${dt} · ${st}</div>`;
+            }).join('')}</div>` : ''}
 
             <div class="separador"></div>
             <div class="linha">
-                ${status==='Nova'?`<button onclick="aprovarProposta(${p.id})" class="botao botao-sucesso">✅ Aprovar</button><button onclick="reprovarProposta(${p.id})" class="botao botao-alerta">❌ Reprovar</button>`:''}
-                ${status==='Aprovada'&&!entradaPaga?`<button onclick="marcarEntradaPaga(${p.id})" class="botao botao-azul">💰 Marcar Entrada Paga</button>`:''}
+                ${status === 'Nova' ? `
+                <button onclick="aprovarProposta(${p.id})" class="botao botao-sucesso">✅ Aprovar</button>
+                <button onclick="reprovarProposta(${p.id})" class="botao botao-alerta">❌ Reprovar</button>
+                ` : ''}
+                ${status === 'Aprovada' && !entradaPaga ? `
+                <button onclick="marcarEntradaPaga(${p.id})" class="botao botao-azul">💰 Marcar Entrada Paga</button>
+                ` : ''}
                 <button onclick="excluirProposta(${p.id})" class="botao botao-perigo">🗑️ Excluir</button>
             </div>
         </div>`;
     });
 
-    lista.innerHTML = html || '<p style="text-align:center; padding:30px; color:var(--texto-claro);">Nenhuma proposta ainda.</p>';
+    lista.innerHTML = html || '<p style="text-align:center; padding:40px; color:var(--texto-claro);">Nenhuma proposta recebida ainda.</p>';
 
     // Atualiza resumo
     document.getElementById('qtdNovas').textContent = qtdNovas;
     document.getElementById('qtdAprovadas').textContent = qtdAprovadas;
     document.getElementById('qtdPendentes').textContent = qtdPendentes;
+    document.getElementById('badgeSino').textContent = qtdNovas;
 }
 </script>
 </body>
