@@ -607,9 +607,14 @@ function reduzirImagem(base64, largura, altura, qualidade) {
 }
 
 // ==============================================
-// ✅ GERA CÓDIGO PIX CORRIGIDO
+// ✅ GERA CÓDIGO PIX VÁLIDO (PADRÃO BANCO CENTRAL)
 // ==============================================
 function gerarCodigoPix(valor, nomeCliente) {
+    function formatarCampo(id, valorCampo) {
+        const tamanho = String(valorCampo.length).padStart(2, '0');
+        return id + tamanho + valorCampo;
+    }
+
     function calcularCRC(texto) {
         let crc = 0xFFFF;
         for (let i = 0; i < texto.length; i++) {
@@ -621,27 +626,27 @@ function gerarCodigoPix(valor, nomeCliente) {
         return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
     }
 
-    // Remove caracteres especiais do nome e limita a 25 caracteres
-    let nomeRecebedor = NOME_RECEBEDOR.replace(/[^A-Za-z0-9 ]/g, '').substring(0, 25);
-    let cidade = CIDADE.replace(/[^A-Za-z0-9 ]/g, '').substring(0, 15);
+    let nomeRecebedor = NOME_RECEBEDOR.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ]/g, '').substring(0, 25);
+    let cidade = CIDADE.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ]/g, '').substring(0, 15);
+    let valorFormatado = Number(valor).toFixed(2);
 
-    // Monta o código Pix seguindo padrão BCB
-    const chavePix = '0014br.gov.bcb.pix0111' + CHAVE_PIX;
-    const valorStr = valor.replace('.', '');
+    let payloadGui = formatarCampo('00', 'br.gov.bcb.pix') + formatarCampo('01', CHAVE_PIX);
     
-    let pix = '';
-    pix += '000201';                              // Formato
-    pix += '26' + String(chavePix.length).padStart(2, '0') + chavePix; // Chave Pix
-    pix += '52040000';                            // Categoria
-    pix += '5303986';                             // Moeda (Real)
-    pix += '5802BR';                              // País
-    pix += '59' + String(nomeRecebedor.length).padStart(2, '0') + nomeRecebedor; // NOME CORRIGIDO
-    pix += '60' + String(cidade.length).padStart(2, '0') + cidade; // Cidade
-    pix += '54' + String(valor.length).padStart(2, '0') + valor; // Valor
-    pix += '6304';                                // CRC
-    pix += calcularCRC(pix);                      // Calcula e adiciona CRC
+    let payload = '';
+    payload += formatarCampo('00', '01');
+    payload += formatarCampo('26', payloadGui);
+    payload += formatarCampo('52', '0000');
+    payload += formatarCampo('53', '986');
+    payload += formatarCampo('54', valorFormatado);
+    payload += formatarCampo('58', 'BR');
+    payload += formatarCampo('59', nomeRecebedor);
+    payload += formatarCampo('60', cidade);
+    payload += formatarCampo('62', formatarCampo('05', '***'));
+    payload += '6304';
 
-    return pix;
+    payload += calcularCRC(payload);
+
+    return payload;
 }
 
 function mostrarPixGerado(codigo, valor) {
