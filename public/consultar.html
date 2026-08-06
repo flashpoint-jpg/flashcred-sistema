@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Consultar Proposta | FlashCred</title>
+    <title>Painel & Consulta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -27,7 +27,7 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
         body { background: #F8FAFC; color: #1E293B; min-height: 100vh; padding: 20px; }
-        .container { max-width: 500px; margin: 0 auto; }
+        .container { max-width: 600px; margin: 0 auto; }
         .cartao { background: white; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 24px; margin-bottom: 20px; }
         h1 { text-align: center; color: #0A2463; font-size: 26px; margin-bottom: 24px; }
         h2 { font-size: 18px; color: #0A2463; margin-bottom: 12px; }
@@ -45,17 +45,16 @@
         .botao:hover { transform: translateY(-1px); }
         .botao-principal { background: #2563EB; color: white; }
         .botao-sucesso { background: #10B981; color: white; }
+        .botao-whatsapp { background: #25D366; color: white; }
         .botao:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .aviso { padding: 14px; border-radius: 10px; margin: 16px 0; font-weight: 500; }
         .aviso-verde { background: #D1FAE5; color: #065F46; }
         .aviso-azul { background: #DBEAFE; color: #1E40AF; }
-        .aviso-vermelho { background: #FEE2E2; color: #991B1B; }
         .aviso-amarelo { background: #FEF3C7; color: #92400E; }
         #qrcode { display: flex; justify-content: center; margin: 20px 0; padding: 16px; background: white; border-radius: 12px; }
         .codigopix { background: #F1F5F9; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 10px; }
         .oculto { display: none !important; }
         .linha-dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .atualizando { text-align: center; font-size: 12px; color: #94A3B8; margin-top: 10px; }
         .progresso-container { display: flex; justify-content: space-between; position: relative; margin-bottom: 24px; padding: 0 10px; }
         .progresso-container::before { content: ''; position: absolute; top: 15px; left: 30px; right: 30px; height: 3px; background: #E2E8F0; z-index: 1; }
         .etapa { position: relative; z-index: 2; text-align: center; flex: 1; }
@@ -68,145 +67,144 @@
         .tela-aprovada { text-align: center; padding: 30px 20px; }
         .icone-sucesso { font-size: 70px; color: #10B981; margin-bottom: 20px; }
         .erro { color: #EF4444; text-align: center; margin-top: 12px; font-weight: 500; }
+        
+        /* Abas Superiores Alternar Cliente/Painel */
+        .abas-topo { display: flex; gap: 10px; margin-bottom: 20px; }
+        .aba-btn { flex: 1; padding: 12px; border-radius: 10px; border: 2px solid #CBD5E1; background: white; font-weight: 600; cursor: pointer; color: #64748B; }
+        .aba-btn.ativa { background: #0A2463; color: white; border-color: #0A2463; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🔍 Acompanhar Proposta</h1>
-
-    <!-- 📤 TELA DE CONSULTA POR CPF -->
-    <div id="telaConsulta" class="cartao">
-        <label style="font-weight:600; color:#334155;">Digite seu CPF (só números):</label>
-        <input type="text" id="cpf" placeholder="00000000000" maxlength="11" style="font-size:18px;">
-        <button onclick="consultar()" class="botao botao-principal" style="margin-top:8px;">🔍 Consultar</button>
-        <div id="mensagem" class="erro" style="display:none;"></div>
+    <div class="abas-topo">
+        <button id="btnAbaCliente" onclick="mudarAba('cliente')" class="aba-btn ativa">👤 Visão Cliente</button>
+        <button id="btnAbaPainel" onclick="mudarAba('painel')" class="aba-btn">⚙️ Painel Admin</button>
     </div>
 
-    <!-- 📋 TELA DA PROPOSTA -->
-    <div id="telaProposta" class="oculto">
-        
-        <!-- 📊 BARRA DE PROGRESSO -->
-        <div class="cartao" style="padding: 16px 12px 8px 12px;">
-            <div class="progresso-container">
-                <div id="etapa1" class="etapa">
-                    <div class="etapa-circulo">1</div>
-                    <div class="etapa-texto">Análise</div>
-                </div>
-                <div id="etapa2" class="etapa">
-                    <div class="etapa-circulo">2</div>
-                    <div class="etapa-texto">Parcelas</div>
-                </div>
-                <div id="etapa3" class="etapa">
-                    <div class="etapa-circulo">3</div>
-                    <div class="etapa-texto">Contrato</div>
-                </div>
-                <div id="etapa4" class="etapa">
-                    <div class="etapa-circulo">4</div>
-                    <div class="etapa-texto">Pagamento</div>
-                </div>
-                <div id="etapa5" class="etapa">
-                    <div class="etapa-circulo">5</div>
-                    <div class="etapa-texto">Concluído</div>
-                </div>
-            </div>
+    <!-- ============================================== -->
+    <!-- 👤 ÁREA DO CLIENTE -->
+    <!-- ============================================== -->
+    <div id="visaoCliente">
+        <h1>🔍 Acompanhar Proposta</h1>
+
+        <!-- 📤 TELA DE CONSULTA POR CPF -->
+        <div id="telaConsulta" class="cartao">
+            <label style="font-weight:600; color:#334155;">Digite seu CPF (só números):</label>
+            <input type="text" id="cpf" placeholder="00000000000" maxlength="11" style="font-size:18px;">
+            <button onclick="consultar()" class="botao botao-principal" style="margin-top:8px;">🔍 Consultar</button>
+            <div id="mensagem" class="erro" style="display:none;"></div>
         </div>
 
-        <div class="cartao">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                <h2>👤 Dados da Proposta</h2>
-                <span id="statusProposta" class="status">Nova</span>
-            </div>
-
-            <div class="dado">
-                <div class="dado-label">Nome</div>
-                <div id="dadoNome" class="dado-valor">-</div>
-            </div>
-            <div class="dado">
-                <div class="dado-label">CPF</div>
-                <div id="dadoCPF" class="dado-valor">-</div>
-            </div>
-            <div class="dado">
-                <div class="dado-label">Valor Solicitado</div>
-                <div id="dadoValor" class="dado-valor">-</div>
-            </div>
-            <div class="dado">
-                <div class="dado-label">Valor da Entrada</div>
-                <div id="dadoEntrada" class="dado-valor">-</div>
-            </div>
-            <div class="linha-dupla">
-                <div class="dado">
-                    <div class="dado-label">Juros</div>
-                    <div id="dadoJuros" class="dado-valor">-</div>
-                </div>
-                <div class="dado">
-                    <div class="dado-label">Máximo de Parcelas</div>
-                    <div id="dadoMaxParcelas" class="dado-valor">-</div>
+        <!-- 📋 TELA DA PROPOSTA -->
+        <div id="telaProposta" class="oculto">
+            
+            <!-- 📊 BARRA DE PROGRESSO -->
+            <div class="cartao" style="padding: 16px 12px 8px 12px;">
+                <div class="progresso-container">
+                    <div id="etapa1" class="etapa"><div class="etapa-circulo">1</div><div class="etapa-texto">Análise</div></div>
+                    <div id="etapa2" class="etapa"><div class="etapa-circulo">2</div><div class="etapa-texto">Parcelas</div></div>
+                    <div id="etapa3" class="etapa"><div class="etapa-circulo">3</div><div class="etapa-texto">Contrato</div></div>
+                    <div id="etapa4" class="etapa"><div class="etapa-circulo">4</div><div class="etapa-texto">Pagamento</div></div>
+                    <div id="etapa5" class="etapa"><div class="etapa-circulo">5</div><div class="etapa-texto">Concluído</div></div>
                 </div>
             </div>
-            <div class="dado">
-                <div class="dado-label">Prazo de Entrega</div>
-                <div id="dadoPrazo" class="dado-valor">-</div>
-            </div>
 
-            <div class="atualizando">
-                <span id="indicadorAtualizacao">🔄 Sincronizado em tempo real</span>
-            </div>
-        </div>
-
-        <!-- ✅ PARCELAS PARA ESCOLHER -->
-        <div id="areaEscolhaParcelas" class="cartao oculto">
-            <h2>📋 Escolha em quantas vezes quer pagar</h2>
-            <select id="selecionarParcela">
-                <option value="">Selecione...</option>
-            </select>
-            <button id="botaoConfirmar" onclick="confirmarEscolha()" class="botao botao-sucesso" style="margin-top:12px;">✅ Confirmar</button>
-        </div>
-
-        <!-- 📄 CONTRATO -->
-        <div id="areaContrato" class="cartao oculto">
-            <h2>📄 Contrato</h2>
-            <div style="background:#F8FAFC; padding:16px; border-radius:8px; max-height:300px; overflow:auto; font-size:14px; line-height:1.8; margin-bottom:12px; border:1px solid #E2E8F0;">
-                <p style="font-weight:bold; margin-bottom:12px;">TERMOS DE ACEITE</p>
-                <p>Declaro que li e concordo com os termos do contrato de crédito. Comprometo-me a honrar o pagamento das parcelas nas datas de vencimento estabelecidas. A falta de pagamento poderá acarretar em restrição cadastral e medidas judiciais cabíveis.</p>
-                <p style="margin-top:12px;"><strong>FlashCred — Distribuidora Flash Point</strong><br>Data: <span id="dataContrato"></span></p>
-            </div>
-            <label style="display:flex; gap:10px; align-items:center; margin-bottom:16px; font-weight:600; cursor:pointer;">
-                <input type="checkbox" id="liContrato" style="width:auto; margin:0;"> Li e concordo
-            </label>
-            <button id="botaoGerarPix" onclick="gerarPix()" class="botao botao-principal" disabled>💳 Gerar Pix</button>
-        </div>
-
-        <!-- 💳 PIX PAGAMENTO -->
-        <div id="areaQRCode" class="cartao oculto">
-            <h2 style="text-align:center;">💳 Pagamento da Entrada</h2>
-            <div id="qrcode"></div>
-            <p style="text-align:center; font-weight:700; font-size:20px; color:#0A2463; margin:12px 0;">R$ <span id="valorPix"></span></p>
-            <div class="codigopix" id="codigoPix"></div>
-            <button onclick="copiarPix()" class="botao botao-principal" style="margin-top:12px;">📋 Copiar Código Pix</button>
-            <div class="aviso aviso-amarelo" style="margin-top:16px;">
-                <i class="fas fa-clock"></i> Após pagar, aguarde a confirmação automática.
-            </div>
-        </div>
-
-        <!-- ✅ PAGO → PARCELAS LIBERADAS -->
-        <div id="areaPago" class="oculto">
-            <div class="cartao tela-aprovada">
-                <div class="icone-sucesso"><i class="fas fa-check-circle"></i></div>
-                <h2 style="font-size:26px; color:#10B981; margin-bottom:12px;">✅ PAGAMENTO CONFIRMADO!</h2>
-                <p style="font-size:17px; margin-bottom:16px;">Entrada paga! Suas parcelas estão liberadas.</p>
-                <div class="aviso aviso-verde">
-                    📦 Prazo de entrega: até <span id="prazoDias"></span> dias úteis.
-                </div>
-            </div>
             <div class="cartao">
-                <h2>📋 Suas Parcelas</h2>
-                <div id="listaParcelas"></div>
-                <button onclick="window.print()" class="botao botao-principal" style="margin-top:16px;">🖨️ Imprimir Contrato</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h2>👤 Dados da Proposta</h2>
+                    <span id="statusProposta" class="status">Nova</span>
+                </div>
+
+                <div class="dado"><div class="dado-label">Nome</div><div id="dadoNome" class="dado-valor">-</div></div>
+                <div class="dado"><div class="dado-label">CPF</div><div id="dadoCPF" class="dado-valor">-</div></div>
+                <div class="dado"><div class="dado-label">Valor Solicitado</div><div id="dadoValor" class="dado-valor">-</div></div>
+                <div class="dado"><div class="dado-label">Valor da Entrada</div><div id="dadoEntrada" class="dado-valor">-</div></div>
+                <div class="linha-dupla">
+                    <div class="dado"><div class="dado-label">Juros</div><div id="dadoJuros" class="dado-valor">-</div></div>
+                    <div class="dado"><div class="dado-label">Máximo de Parcelas</div><div id="dadoMaxParcelas" class="dado-valor">-</div></div>
+                </div>
+                <div class="dado" style="background: #FEF3C7; padding: 12px; border-radius: 8px; margin-top: 8px; border: 1px solid #F59E0B;">
+                    <div class="dado-label" style="color: #92400E; font-weight: bold;">📦 PRAZO DE ENTREGA ESTIMADO</div>
+                    <div id="dadoPrazo" class="dado-valor" style="color: #92400E; font-size: 16px;">-</div>
+                </div>
+            </div>
+
+            <!-- ✅ PARCELAS PARA ESCOLHER -->
+            <div id="areaEscolhaParcelas" class="cartao oculto">
+                <h2>📋 Escolha em quantas vezes quer pagar</h2>
+                <select id="selecionarParcela">
+                    <option value="">Selecione...</option>
+                </select>
+                <button id="botaoConfirmar" onclick="confirmarEscolha()" class="botao botao-sucesso" style="margin-top:12px;">✅ Confirmar Parcelamento</button>
+            </div>
+
+            <!-- 📄 CONTRATO COM DESTAQUE DE PRAZO ANTES DE ASSINAR -->
+            <div id="areaContrato" class="cartao oculto">
+                <h2>📄 Contrato e Termos</h2>
+                <div style="background:#FEF3C7; padding:16px; border-radius:10px; margin-bottom:14px; border:2px solid #F59E0B;">
+                    <p style="font-size:15px; color:#92400E; font-weight:bold; text-align:center;">
+                        ⚠️ ATENÇÃO AO PRAZO DE ENTREGA:<br>
+                        <span id="avisoPrazoContrato" style="font-size:18px;">-</span> dias úteis após a confirmação da entrada.
+                    </p>
+                </div>
+                <div style="background:#F8FAFC; padding:16px; border-radius:8px; max-height:200px; overflow:auto; font-size:13px; line-height:1.6; margin-bottom:12px; border:1px solid #E2E8F0;">
+                    <p style="font-weight:bold; margin-bottom:8px;">TERMOS DE ACEITE</p>
+                    <p>Declaro que li e concordo com os termos do contrato de crédito. Comprometo-me a honrar o pagamento das parcelas nas datas de vencimento estabelecidas. A falta de pagamento poderá acarretar em restrição cadastral e medidas judiciais cabíveis.</p>
+                    <p style="margin-top:8px;"><strong>FlashCred — Distribuidora Flash Point</strong></p>
+                </div>
+                <label style="display:flex; gap:10px; align-items:center; margin-bottom:16px; font-weight:600; cursor:pointer;">
+                    <input type="checkbox" id="liContrato" style="width:auto; margin:0;"> Li e concordo com os termos
+                </label>
+                <button id="botaoGerarPix" onclick="gerarPix()" class="botao botao-principal" disabled>💳 Gerar Pix da Entrada</button>
+            </div>
+
+            <!-- 💳 PIX PAGAMENTO -->
+            <div id="areaQRCode" class="cartao oculto">
+                <h2 style="text-align:center;">💳 Pagamento da Entrada</h2>
+                <div id="qrcode"></div>
+                <p style="text-align:center; font-weight:700; font-size:20px; color:#0A2463; margin:12px 0;">R$ <span id="valorPix"></span></p>
+                <div class="codigopix" id="codigoPix"></div>
+                <button onclick="copiarPix()" class="botao botao-principal" style="margin-top:12px;">📋 Copiar Código Pix</button>
+                <div class="aviso aviso-amarelo" style="margin-top:16px;">
+                    <i class="fas fa-clock"></i> Após realizar o pagamento, esta tela atualizará sozinha em instantes.
+                </div>
+            </div>
+
+            <!-- ✅ PAGO → PARCELAS LIBERADAS -->
+            <div id="areaPago" class="oculto">
+                <div class="cartao tela-aprovada">
+                    <div class="icone-sucesso"><i class="fas fa-check-circle"></i></div>
+                    <h2 style="font-size:24px; color:#10B981; margin-bottom:12px;">✅ PAGAMENTO CONFIRMADO!</h2>
+                    <p style="font-size:16px; margin-bottom:16px;">Sua entrada foi compensada com sucesso.</p>
+                    <div class="aviso aviso-verde">
+                        📦 Prazo de entrega: até <span id="prazoDias"></span> dias úteis.
+                    </div>
+                </div>
+                <div class="cartao">
+                    <h2>📋 Suas Parcelas</h2>
+                    <div id="listaParcelasCliente"></div>
+                </div>
+            </div>
+
+            <button onclick="voltar()" class="botao" style="background:#E2E8F0; color:#334155; margin-top:20px;">⬜ Consultar outro CPF</button>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- ⚙️ ÁREA DO PAINEL ADMINISTRATIVO -->
+    <!-- ============================================== -->
+    <div id="visaoPainel" class="oculto">
+        <h1>⚙️ Painel Administrativo</h1>
+        <div class="cartao">
+            <h2>📋 Lista de Propostas Cadastradas</h2>
+            <div style="margin-bottom: 16px;">
+                <button onclick="carregarPainelAdmin()" class="botao botao-principal" style="padding: 10px; font-size: 14px;">🔄 Atualizar Painel</button>
+            </div>
+            <div id="listaPainelAdmin" style="display:flex; flex-direction:column; gap:16px;">
+                <p style="text-align:center; color:#64748B;">Carregando propostas...</p>
             </div>
         </div>
-
-        <button onclick="voltar()" class="botao" style="background:#E2E8F0; color:#334155; margin-top:20px;">⬜ Consultar outro CPF</button>
     </div>
 </div>
 
@@ -226,9 +224,6 @@ let proposta = null;
 let hashAnterior = ''; 
 let canalRealtime = null;
 
-// ==============================================
-// ✅ INICIALIZAÇÃO E URL PARAM
-// ==============================================
 window.onload = async function() {
     const urlParams = new URLSearchParams(window.location.search);
     let cpfParam = urlParams.get('cpf');
@@ -247,6 +242,21 @@ window.onload = async function() {
         document.getElementById('botaoGerarPix').disabled = !this.checked;
     };
 };
+
+function mudarAba(tipo) {
+    if(tipo === 'cliente') {
+        document.getElementById('visaoCliente').classList.remove('oculto');
+        document.getElementById('visaoPainel').classList.add('oculto');
+        document.getElementById('btnAbaCliente').classList.add('ativa');
+        document.getElementById('btnAbaPainel').classList.remove('ativa');
+    } else {
+        document.getElementById('visaoCliente').classList.add('oculto');
+        document.getElementById('visaoPainel').classList.remove('oculto');
+        document.getElementById('btnAbaPainel').classList.add('ativa');
+        document.getElementById('btnAbaCliente').classList.remove('ativa');
+        carregarPainelAdmin();
+    }
+}
 
 // ==============================================
 // ✅ CONSULTAR CPF
@@ -306,7 +316,7 @@ async function buscarProposta(cpf) {
 }
 
 // ==============================================
-// ✅ ATIVAR REALTIME (ATUALIZAÇÃO EM TEMPO REAL)
+// ✅ REALTIME (SINCRONIZAÇÃO AUTOMÁTICA)
 // ==============================================
 function ativarRealtime(idProposta) {
     if(canalRealtime) supabase.removeChannel(canalRealtime);
@@ -328,25 +338,23 @@ function ativarRealtime(idProposta) {
 }
 
 // ==============================================
-// ✅ RENDERIZAR TELA DE ACORDO COM O STATUS
+// ✅ RENDERIZAR TELA DO CLIENTE
 // ==============================================
 function mostrarProposta(p) {
     const hashAtual = JSON.stringify(p);
     if(hashAtual === hashAnterior && document.getElementById('telaProposta').classList.contains('oculto') === false) {
-        return; // Evita re-renderizações desnecessárias se nada mudou
+        return; 
     }
     hashAnterior = hashAtual;
 
     document.getElementById('telaConsulta').classList.add('oculto');
     document.getElementById('telaProposta').classList.remove('oculto');
 
-    // Esconde seções internas
     document.getElementById('areaEscolhaParcelas').classList.add('oculto');
     document.getElementById('areaContrato').classList.add('oculto');
     document.getElementById('areaQRCode').classList.add('oculto');
     document.getElementById('areaPago').classList.add('oculto');
 
-    // Dados básicos
     document.getElementById('dadoNome').textContent = p.nome || p.nome_completo || 'Não informado';
     document.getElementById('dadoCPF').textContent = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
     document.getElementById('dadoValor').textContent = Number(p.valor_desejado||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
@@ -357,17 +365,18 @@ function mostrarProposta(p) {
     const prazo = p.prazo_entrega || p.prazo || 18;
     document.getElementById('dadoPrazo').textContent = `${prazo} dias úteis`;
     document.getElementById('prazoDias').textContent = prazo;
+    document.getElementById('avisoPrazoContrato').textContent = prazo;
 
     const status = p.status || 'Nova';
     const elStatus = document.getElementById('statusProposta');
 
-    // Se a entrada já foi paga
+    // Se já pagou a entrada
     if(p.entrada_paga === true) {
         elStatus.textContent = 'ENTRADA PAGA ✅';
         elStatus.className = 'status status-paga';
         atualizarEtapa(5);
         document.getElementById('areaPago').classList.remove('oculto');
-        mostrarParcelas(p.dados_parcelas || []);
+        mostrarParcelasCliente(p.dados_parcelas || []);
         return;
     }
 
@@ -377,18 +386,14 @@ function mostrarProposta(p) {
         status==='Reprovada'?'status-reprovada':'status-nova'
     );
 
-    if(status === 'Reprovada') {
-        atualizarEtapa(1);
-        return;
-    }
-    if(status !== 'Aprovada') {
+    if(status === 'Reprovada' || status !== 'Aprovada') {
         atualizarEtapa(1);
         return;
     }
 
     // Se já escolheu parcelas
     if(p.quantidade_escolhida > 0) {
-        // Se já gerou QR Code anteriormente e salvou
+        // Trava para não deixar o cliente gerar/pagar novamente se já gerou o Pix ou se aguarda confirmação
         if(p.pix_copia_e_cola) {
             atualizarEtapa(4);
             document.getElementById('areaQRCode').classList.remove('oculto');
@@ -398,7 +403,6 @@ function mostrarProposta(p) {
         } else {
             atualizarEtapa(3);
             document.getElementById('areaContrato').classList.remove('oculto');
-            document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
         }
     } else {
         atualizarEtapa(2);
@@ -416,9 +420,6 @@ function atualizarEtapa(numero) {
     }
 }
 
-// ==============================================
-// ✅ CARREGAR OPÇÕES DE PARCELAS
-// ==============================================
 function carregarOpcoesParcelas(p) {
     const qtdMax = p.quantidade_parcelas || 1;
     const valorTotal = Number(p.valor_desejado || 0);
@@ -476,7 +477,7 @@ async function confirmarEscolha() {
 }
 
 // ==============================================
-// ✅ GERADOR PIX VÁLIDO (COM CRC16 CORRETO)
+// ✅ GERAÇÃO PIX
 // ==============================================
 function gerarPixPayload(chave, nome, cidade, valor) {
     const formatField = (id, value) => {
@@ -485,7 +486,7 @@ function gerarPixPayload(chave, nome, cidade, valor) {
     };
 
     const merchantAccountInfo = formatField('00', 'br.gov.bcb.pix') + formatField('01', chave);
-    const additionalData = formatField('05', 'PROPOSTA');
+    const additionalData = formatField('05', 'ENTRADA');
 
     let payload = 
         formatField('00', '01') +
@@ -499,7 +500,6 @@ function gerarPixPayload(chave, nome, cidade, valor) {
         formatField('62', additionalData) +
         '6304';
 
-    // Cálculo exato CRC16 EMV
     let crc = 0xFFFF;
     for (let i = 0; i < payload.length; i++) {
         crc ^= payload.charCodeAt(i) << 8;
@@ -520,7 +520,6 @@ async function gerarPix() {
     const valorEntrada = Number(proposta.valor_entrada || 0);
     const pixPayload = gerarPixPayload(CHAVE_PIX, NOME, CIDADE, valorEntrada);
 
-    // Salva o payload no banco para sincronizar caso necessário
     await supabase.from('propostas').update({
         pix_copia_e_cola: pixPayload
     }).eq('id', proposta.id);
@@ -556,8 +555,8 @@ function copiarPix() {
     });
 }
 
-function mostrarParcelas(parcelas) {
-    const container = document.getElementById('listaParcelas');
+function mostrarParcelasCliente(parcelas) {
+    const container = document.getElementById('listaParcelasCliente');
     if(!parcelas || parcelas.length === 0) {
         container.innerHTML = '<p>Nenhuma parcela gerada.</p>';
         return;
@@ -577,6 +576,119 @@ function mostrarParcelas(parcelas) {
     });
     html += '</div>';
     container.innerHTML = html;
+}
+
+// ==============================================
+// ⚙️ PAINEL ADMINISTRATIVO (COM BOTÃO DE WATSAPP E EDIÇÃO DE PARCELAS)
+// ==============================================
+async function carregarPainelAdmin() {
+    const container = document.getElementById('listaPainelAdmin');
+    container.innerHTML = '<p style="text-align:center; color:#64748B;">Carregando propostas...</p>';
+
+    const { data, error } = await supabase
+        .from('propostas')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if(error || !data || data.length === 0) {
+        container.innerHTML = '<p style="text-align:center; color:#EF4444;">Nenhuma proposta encontrada no banco.</p>';
+        return;
+    }
+
+    let html = '';
+    data.forEach(p => {
+        const nome = p.nome || p.nome_completo || 'Cliente';
+        const cpfFormatado = (p.cpf || '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+        const tel = p.telefone || p.whatsapp || '';
+        const entradaPaga = p.entrada_paga === true;
+
+        html += `
+            <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:12px; padding:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <strong>${nome}</strong>
+                    <span class="status ${entradaPaga ? 'status-paga' : 'status-aprovada'}">${entradaPaga ? 'PAGO ✅' : (p.status || 'Nova')}</span>
+                </div>
+                <p style="font-size:13px; color:#64748B; margin-bottom:4px;">CPF: ${cpfFormatado} | Tel: ${tel || 'Não inf.'}</p>
+                <p style="font-size:13px; color:#64748B; margin-bottom:12px;">Desejado: R$ ${Number(p.valor_desejado||0).toLocaleString('pt-BR',{minimumFractionDigits:2})} | Entrada: R$ ${Number(p.valor_entrada||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+
+                <!-- BOTÃO APROVAR / DAR BAIXA NO PAGAMENTO -->
+                <div style="display:flex; gap:8px; margin-bottom:12px;">
+                    <button onclick="alternarPagamento('${p.id}', ${!entradaPaga})" class="botao ${entradaPaga ? 'botao-principal' : 'botao-sucesso'}" style="padding:10px; font-size:13px;">
+                        ${entradaPaga ? '↩️ Marcar Entrada como Pendente' : '✅ Marcar Entrada como PAGA'}
+                    </button>
+                </div>
+
+                <!-- 📋 PARCELAS E BOTÕES DO PAINEL -->
+                <div style="background:white; padding:12px; border-radius:8px; border:1px solid #E2E8F0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <strong style="font-size:14px; color:#0A2463;">Parcelas Escolhidas (${p.quantidade_escolhida || 0}x):</strong>
+                    </div>
+                    ${renderizarListaParcelasPainel(p)}
+                </div>
+            </div>`;
+    });
+    container.innerHTML = html;
+}
+
+function renderizarListaParcelasPainel(p) {
+    const parcelas = p.dados_parcelas || [];
+    if(parcelas.length === 0) {
+        return '<p style="font-size:12px; color:#64748B;">Cliente ainda não escolheu as parcelas.</p>';
+    }
+
+    let html = '<div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">';
+    parcelas.forEach(( parc, index ) => {
+        const nomeCliente = p.nome || p.nome_completo || 'Cliente';
+        const msgZap = encodeURIComponent(`Olá ${nomeCliente}, passando para lembrar do vencimento da parcela ${parc.numero} no valor de R$ ${Number(parc.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})} com vencimento em ${parc.vencimento.split('-').reverse().join('/')}. Evite encargos!`);
+        const telCliente = (p.telefone || p.whatsapp || '').replace(/\D/g, '');
+
+        html += `
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#F1F5F9; padding:8px; border-radius:6px; font-size:13px;">
+                <div>
+                    <strong>P.${parc.numero}</strong>: R$ <span id="val_p_${p.id}_${index}">${Number(parc.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span> 
+                    <small style="color:#64748B;">(Venc: ${parc.vencimento.split('-').reverse().join('/')})</small>
+                </div>
+                <div style="display:flex; gap:6px;">
+                    <button onclick="editarParcelaValor('${p.id}', ${index})" class="botao" style="padding:4px 8px; font-size:12px; background:#CBD5E1; color:#1E293B; width:auto;">✏️ Editar</button>
+                    ${telCliente ? `<a href="https://wa.me/55${telCliente}?text=${msgZap}" target="_blank" class="botao botao-whatsapp" style="padding:4px 10px; font-size:12px; text-decoration:none; display:inline-flex; align-items:center; width:auto;"><i class="fab fa-whatsapp"></i> Cobrar</a>` : ''}
+                </div>
+            </div>`;
+    });
+    html += '</div>';
+    return html;
+}
+
+async function alternarPagamento(idProposta, statusPago) {
+    const { error } = await supabase.from('propostas').update({
+        entrada_paga: statusPago
+    }).eq('id', idProposta);
+
+    if(error) {
+        alert('❌ Erro ao atualizar: ' + error.message);
+    } else {
+        carregarPainelAdmin();
+    }
+}
+
+async function editarParcelaValor(idProposta, indexParcela) {
+    const { data: propAtual } = await supabase.from('propostas').select('dados_parcelas').eq('id', idProposta).single();
+    if(!propAtual || !propAtual.dados_parcelas) return;
+
+    let parcelas = propAtual.dados_parcelas;
+    let novoValor = prompt('Digite o novo valor para esta parcela:', parcelas[indexParcela].valor);
+    if(novoValor === null) return;
+
+    novoValor = parseFloat(novoValor.replace(',', '.'));
+    if(isNaN(novoValor)) return alert('⚠️ Valor inválido!');
+
+    parcelas[indexParcela].valor = novoValor;
+
+    const { error } = await supabase.from('propostas').update({
+        dados_parcelas: parcelas
+    }).eq('id', idProposta);
+
+    if(error) alert('❌ Erro ao atualizar valor: ' + error.message);
+    else carregarPainelAdmin();
 }
 </script>
 </body>
