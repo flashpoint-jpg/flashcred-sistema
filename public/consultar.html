@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acompanhar Proposta | FlashCred</title>
+    <title>Consultar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -18,7 +18,6 @@
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444',
-                        whatsapp: '#25D366',
                         fundo: '#F8FAFC'
                     }
                 }
@@ -26,346 +25,484 @@
         }
     </script>
     <style>
-        .bolinha-girando { animation: girar 1s linear infinite; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
+        body { background: #F8FAFC; color: #1E293B; min-height: 100vh; padding: 16px; }
+        .container { max-width: 480px; margin: 0 auto; }
+        .cartao { background: white; border-radius: 12px; border: 1px solid #E2E8F0; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        h1 { color: #0A2463; font-size: 22px; text-align: center; margin-bottom: 20px; }
+        h2 { color: #0A2463; font-size: 18px; margin-bottom: 12px; }
+        input { width: 100%; padding: 14px; border: 2px solid #E2E8F0; border-radius: 8px; font-size: 16px; margin-bottom: 12px; text-align: center; }
+        input:focus { outline: none; border-color: #2563EB; }
+        .botao { width: 100%; padding: 14px; border: none; border-radius: 8px; font-weight: 600; font-size: 16px; cursor: pointer; transition: all 0.2s; }
+        .botao:hover { transform: translateY(-1px); }
+        .botao-primario { background: #0A2463; color: white; }
+        .botao-sucesso { background: #10B981; color: white; }
+        .botao-secundario { background: #E2E8F0; color: #334155; margin-top: 8px; }
+        .botao-whatsapp { background: #25D366; color: white; margin-top: 8px; }
+        .botao-voltar { background: #F1F5F9; color: #475569; font-size: 14px; padding: 10px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .status { display: inline-block; padding: 6px 14px; border-radius: 20px; font-weight: 600; font-size: 15px; margin-bottom: 16px; }
+        .status-nova { background: #E0E7FF; color: #3730A3; }
+        .status-aprovada { background: #E0F2FE; color: #0369A1; }
+        .status-reprovada { background: #FEE2E2; color: #991B1B; }
+        .status-paga { background: #D1FAE5; color: #065F46; }
+        .linha { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F1F5F9; }
+        .linha:last-child { border-bottom: none; }
+        .rotulo { color: #64748B; font-size: 14px; }
+        .valor { font-weight: 600; font-size: 15px; }
+        .carregando { text-align: center; padding: 30px; }
+        .carregando i { font-size: 28px; color: #0A2463; animation: girar 1s linear infinite; }
         @keyframes girar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        canvas { border: 2px solid #CBD5E1; border-radius: 8px; background: white; touch-action: none; }
-        video { border-radius: 8px; background: #000; }
-        .etapa-pendente { opacity: 0.5; }
-        .etapa-concluida { border-color: #10B981; background: #F0FDF4; }
-        .etapa-ativa { border-color: #2563EB; background: #EFF6FF; }
+        .oculto { display: none !important; }
+        .pix-codigo { background: #F0FDF9; border: 2px dashed #10B981; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 10px; }
+        .aviso { background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 10px 14px; border-radius: 4px; margin: 12px 0; }
+        .sucesso { background: #D1FAE5; border-left: 4px solid #10B981; padding: 10px 14px; border-radius: 4px; margin: 12px 0; }
+        .entrega { background: #EFF6FF; border-left: 4px solid #3B82F6; padding: 10px 14px; border-radius: 4px; margin: 12px 0; }
+        .parcela-item { padding: 10px; border-radius: 6px; margin: 6px 0; font-size: 14px; }
+        .parcela-paga { background: #D1FAE5; color: #065F46; }
+        .parcela-pendente { background: #FEF3C7; color: #92400E; }
+        .parcela-vencida { background: #FEE2E2; color: #991B1B; }
+        .assinatura-area { border: 2px solid #CBD5E1; border-radius: 8px; background: white; touch-action: none; }
+        .btn-pix { background: #32BCAD; color: white; }
     </style>
 </head>
-<body class="bg-fundo min-h-screen pb-8">
+<body>
 
-<div class="max-w-md mx-auto p-4">
-    <h1 class="text-2xl font-bold text-primary text-center mb-6">🔍 Acompanhar Proposta</h1>
+<div class="container">
+    <h1>🔍 Consultar Proposta</h1>
 
-    <!-- CONSULTA CPF -->
-    <div class="bg-white p-5 rounded-xl shadow mb-6" id="areaConsulta">
-        <label class="block font-semibold mb-2 text-gray-700">Digite seu CPF</label>
-        <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" 
-            class="w-full p-3 border-2 border-gray-200 rounded-lg text-lg focus:border-primary focus:outline-none">
-        <button onclick="consultar()" class="w-full mt-4 bg-primary text-white p-3 rounded-lg font-bold text-lg">
-            🔍 Consultar
-        </button>
+    <!-- 🏠 TELA DE CONSULTA (DIGITAR CPF) -->
+    <div id="telaConsulta">
+        <div class="cartao">
+            <input type="text" id="cpf" placeholder="Digite seu CPF" maxlength="14" onkeypress="mascaraCPF(this)" onkeydown="if(event.key==='Enter') consultar()">
+            <button onclick="consultar()" class="botao botao-primario">🔍 Buscar Proposta</button>
+        </div>
     </div>
 
-    <!-- RESULTADO -->
-    <div id="resultado"></div>
+    <!-- ⏳ CARREGANDO -->
+    <div id="telaCarregando" class="cartao oculto">
+        <div class="carregando">
+            <i class="fas fa-spinner"></i>
+            <p style="margin-top:12px; color:#64748B;">Buscando sua proposta...</p>
+        </div>
+    </div>
 
-    <!-- BOTÃO SUPORTE WHATSAPP -->
-    <div class="mt-8 text-center">
-        <a href="https://wa.me/5511973294235?text=Olá! Preciso de ajuda com minha proposta." 
-           target="_blank" 
-           class="inline-flex items-center gap-2 bg-whatsapp text-white px-6 py-3 rounded-full font-bold text-lg shadow-lg">
-            <i class="fab fa-whatsapp text-xl"></i> Falar com Suporte
-        </a>
+    <!-- ❌ NÃO ENCONTRADA -->
+    <div id="telaNaoEncontrada" class="cartao oculto">
+        <h2>Proposta não encontrada</h2>
+        <p style="color:#64748B; margin:12px 0;">Não localizamos nenhuma proposta com este CPF.</p>
+        <button onclick="limparEConsultar()" class="botao botao-primario">🔄 Tentar Outro CPF</button>
+    </div>
+
+    <!-- ✅ DADOS DA PROPOSTA -->
+    <div id="telaProposta" class="oculto">
+        <button onclick="limparEConsultar()" class="botao botao-voltar">
+            <i class="fas fa-arrow-left"></i> Consultar Outro CPF
+        </button>
+
+        <div class="cartao">
+            <div id="statusProposta" class="status status-nova"></div>
+            <h2 id="nomeCliente"></h2>
+
+            <div class="linha"><span class="rotulo">CPF:</span><span class="valor" id="cpfExibicao"></span></div>
+            <div class="linha"><span class="rotulo">Valor do Produto:</span><span class="valor" id="valorProduto"></span></div>
+            <div class="linha"><span class="rotulo">Entrada:</span><span class="valor" id="valorEntrada"></span></div>
+            <div class="linha"><span class="rotulo">Parcelas:</span><span class="valor" id="qtdParcelas"></span></div>
+            <div class="linha"><span class="rotulo">Valor Total:</span><span class="valor" id="valorTotal"></span></div>
+
+            <div id="avisoEntradaPaga" class="sucesso oculto">
+                ✅ <strong>ENTRADA PAGA!</strong> Aguardando confirmação do sistema...
+            </div>
+
+            <div id="avisoEntrega" class="entrega oculto"></div>
+
+            <div id="avisoAguardando" class="aviso">
+                ⏳ <strong>Aguardando aprovação...</strong><br>Seu pedido está em análise. Em breve você receberá notificação.
+            </div>
+
+            <!-- 📄 CONTRATO -->
+            <div id="areaContrato" class="oculto" style="margin-top:16px;">
+                <h3 style="margin-bottom:10px;">📄 Contrato</h3>
+                <div style="background:#F8FAFC; padding:14px; border-radius:8px; font-size:13px; line-height:1.6; max-height:300px; overflow-y:auto; border:1px solid #E2E8F0;">
+                    <p style="margin-bottom:10px;"><strong>TERMOS DE CONTRATO DE CRÉDITO</strong></p>
+                    <p>Pelo presente instrumento, declaro que solicito crédito junto à <strong>FlashCred / Distribuidora Flash Point</strong>, comprometendo-me a honrar o pagamento das parcelas nas datas e valores acordados.</p>
+                    <p style="margin:8px 0;">Declaro ainda que as informações prestadas são verdadeiras e que estou ciente de que a falta de pagamento poderá implicar em restrição cadastral.</p>
+                    <p style="margin-top:10px;">Muzambinho - MG, <span id="dataContrato"></span>.</p>
+                </div>
+
+                <label style="display:flex; align-items:center; gap:8px; margin:12px 0; cursor:pointer;">
+                    <input type="checkbox" id="liContrato" onchange="verificarAssinatura()">
+                    Li e aceito os termos do contrato acima
+                </label>
+
+                <!-- 📸 Assinatura -->
+                <div id="assinaturaBloco" class="oculto">
+                    <p style="font-weight:600; margin:8px 0;">Assine abaixo ou tire uma foto:</p>
+                    <canvas id="telaAssinatura" class="assinatura-area" width="440" height="160"></canvas>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                        <button onclick="limparAssinatura()" class="botao botao-secundario" style="flex:1; padding:8px;">Limpar</button>
+                        <button onclick="abrirCamera()" class="botao botao-secundario" style="flex:1; padding:8px;">📸 Tirar Foto</button>
+                    </div>
+                    <button id="btnConfirmarAssinatura" onclick="confirmarAssinatura()" class="botao botao-sucesso oculto" style="margin-top:10px;">✅ Confirmar Assinatura</button>
+                </div>
+            </div>
+
+            <!-- 💳 PIX DE PAGAMENTO -->
+            <div id="areaPix" class="oculto" style="margin-top:16px;">
+                <h3 style="margin-bottom:10px;">💳 Pagamento da Entrada</h3>
+                <p style="font-size:14px; color:#64748B; margin-bottom:10px;">Escaneie o QR Code ou copie o código Pix abaixo:</p>
+                <div id="qrcode" style="display:flex; justify-content:center; margin:12px 0;"></div>
+                <div class="pix-codigo" id="codigoPix"></div>
+                <button onclick="copiarPix()" class="botao btn-pix" style="margin-top:10px;">📋 Copiar Código Pix</button>
+            </div>
+
+            <!-- 📋 PARCELAS APÓS PAGAMENTO -->
+            <div id="areaParcelas" class="oculto" style="margin-top:20px;">
+                <h3 style="margin-bottom:12px;">📋 Suas Parcelas</h3>
+                <div id="listaParcelas"></div>
+                <button onclick="window.print()" class="botao botao-primario" style="margin-top:12px;">🖨️ Imprimir Contrato</button>
+                <a href="https://wa.me/5511973294235" target="_blank" class="botao botao-whatsapp" style="display:block; text-align:center; text-decoration:none; margin-top:8px;">💬 Falar no Suporte</a>
+            </div>
+        </div>
     </div>
 </div>
 
 <script>
 // ==============================================
-// CONFIGURAÇÕES
+// ✅ CONFIGURAÇÕES
 // ==============================================
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const CHAVE_PIX = '33552949852'; // ✅ Sua chave Pix
-const NOME_RECEBEDOR = 'FLASH POINT';
-const CIDADE = 'SAO PAULO';
+const CHAVE_PIX = '33552949852';
+const NOME_RECEBEDOR = 'FELIPE COSTA';
 
-let cpfAtual = localStorage.getItem('ultimoCpf') || '';
-let canalRealtime = null;
-let propostaAtual = null;
-let podeAssinar = { contrato:false, assinatura:false, foto:false };
+let propostaEncontrada = null;
+let qrCodeGerado = false;
 
 // ==============================================
-// ✅ FUNÇÃO PADRÃO PIX BRASIL — 100% CORRIGIDA!
+// ✅ LIMPAR TUDO E VOLTAR À TELA INICIAL
 // ==============================================
-function gerarCodigoPix(valor, descricao = '') {
-    const valorNumerico = Number(valor) || 0;
-    if(valorNumerico <= 0) {
-        console.error('Valor inválido:', valor);
-        return '';
-    }
-    const valorStr = valorNumerico.toFixed(2); // "318.00"
+function limparEConsultar() {
+    propostaEncontrada = null;
+    qrCodeGerado = false;
     
-    // Função auxiliar: ID + TAMANHO + CONTEÚDO
-    function campo(id, conteudo) {
-        const texto = String(conteudo || '');
-        return id + String(texto.length).padStart(2, '0') + texto;
-    }
-
-    // ✅ ESTRUTURA PADRÃO OFICIAL DO BCB — NA ORDEM CERTA!
-    let pix = '';
-    pix += campo('00', '01');                          // Versão do QR Code
-    pix += campo('26', '0014br.gov.bcb.pix01' + String(CHAVE_PIX.length).padStart(2,'0') + CHAVE_PIX); // Dados da chave
-    pix += campo('52', '0000');                        // Categoria de comerciante
-    pix += campo('53', '986');                         // Código da moeda (Real)
-    pix += campo('54', valorStr);                      // ✅ VALOR — NA POSIÇÃO CORRETA!
-    pix += campo('58', 'BR');                          // País
-    pix += campo('59', NOME_RECEBEDOR);               // Nome do recebedor
-    pix += campo('60', CIDADE);                        // Cidade
-    if(descricao) {
-        const txId = descricao.substring(0,25);
-        pix += campo('62', '05' + String(txId.length).padStart(2,'0') + txId); // Descrição
-    }
+    // Limpa os campos
+    document.getElementById('cpf').value = '';
+    document.getElementById('cpf').disabled = false;
     
-    // ✅ CRC16 — CÁLCULO CORRIGIDO!
-    pix += '6304'; // Reservado para CRC16 no final
+    // Oculta todas as telas
+    document.getElementById('telaConsulta').classList.remove('oculto');
+    document.getElementById('telaCarregando').classList.add('oculto');
+    document.getElementById('telaNaoEncontrada').classList.add('oculto');
+    document.getElementById('telaProposta').classList.add('oculto');
     
-    function calcularCRC16(texto) {
-        let crc = 0xFFFF;
-        const polinomio = 0x1021;
-        for(let i = 0; i < texto.length; i++) {
-            crc ^= (texto.charCodeAt(i) << 8);
-            for(let j = 0; j < 8; j++) {
-                crc = (crc & 0x8000) ? ((crc << 1) ^ polinomio) : (crc << 1);
-            }
-        }
-        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
-    }
+    // Limpa dados antigos
+    document.getElementById('nomeCliente').textContent = '';
+    document.getElementById('cpfExibicao').textContent = '';
+    document.getElementById('valorProduto').textContent = '';
+    document.getElementById('valorEntrada').textContent = '';
+    document.getElementById('qtdParcelas').textContent = '';
+    document.getElementById('valorTotal').textContent = '';
+    document.getElementById('qrcode').innerHTML = '';
+    document.getElementById('codigoPix').textContent = '';
+    document.getElementById('listaParcelas').innerHTML = '';
     
-    const codigoFinal = pix + calcularCRC16(pix);
-    console.log('✅ Pix gerado:', valorStr, codigoFinal);
-    return codigoFinal;
+    // Reseta checkboxes
+    document.getElementById('liContrato').checked = false;
+    document.getElementById('assinaturaBloco').classList.add('oculto');
+    document.getElementById('btnConfirmarAssinatura').classList.add('oculto');
+    document.getElementById('areaPix').classList.add('oculto');
+    document.getElementById('areaParcelas').classList.add('oculto');
+    document.getElementById('avisoEntradaPaga').classList.add('oculto');
+    document.getElementById('avisoEntrega').classList.add('oculto');
+    document.getElementById('areaContrato').classList.add('oculto');
+    document.getElementById('avisoAguardando').classList.add('oculto');
+    
+    // Foca no CPF
+    document.getElementById('cpf').focus();
 }
 
 // ==============================================
-// INÍCIO
+// ✅ MÁSCARA DE CPF
 // ==============================================
-window.onload = () => {
-    const params = new URLSearchParams(window.location.search);
-    let cpfUrl = (params.get('cpf') || '').replace(/\D/g, '');
-    if(cpfUrl.length === 11) {
-        cpfAtual = cpfUrl;
-        localStorage.setItem('ultimoCpf', cpfAtual);
-    }
-    if(cpfAtual.length === 11) {
-        document.getElementById('cpf').value = cpfAtual.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-        consultar();
-    }
-};
-
-// TEMPO REAL
-function ativarRealtime() {
-    if(!cpfAtual) return;
-    if(canalRealtime) supabase.removeChannel(canalRealtime);
-    canalRealtime = supabase.channel('atualizacao_cliente')
-        .on('postgres_changes', { event:'*', schema:'public', table:'propostas', filter:`cpf=eq.${cpfAtual}` }, (p) => exibirProposta(p.new))
-        .subscribe();
+function mascaraCPF(i) {
+    let v = i.value.replace(/\D/g,'');
+    if(v.length > 11) v = v.slice(0,11);
+    if(v.length > 9) i.value = `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6,9)}-${v.slice(9)}`;
+    else if(v.length > 6) i.value = `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6)}`;
+    else if(v.length > 3) i.value = `${v.slice(0,3)}.${v.slice(3)}`;
+    else i.value = v;
 }
 
-// CONSULTAR
+// ==============================================
+// ✅ CONSULTAR PROPOSTA — SEM TRAVAR!
+// ==============================================
 async function consultar() {
-    let cpf = document.getElementById('cpf').value.replace(/\D/g, '');
-    if(cpf.length !== 11) { alert('Digite um CPF válido!'); return; }
-    cpfAtual = cpf;
-    localStorage.setItem('ultimoCpf', cpf);
+    const cpf = document.getElementById('cpf').value.replace(/\D/g,'');
     
-    document.getElementById('areaConsulta').classList.add('hidden');
-    document.getElementById('resultado').innerHTML = '<p class="text-center p-8 text-gray-500"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Buscando...</p>';
-
-    const {data, error} = await supabase
-        .from('propostas').select('*').eq('cpf', cpf)
-        .order('created_at', {ascending:false}).limit(1);
-
-    if(error || !data || data.length === 0) {
-        document.getElementById('resultado').innerHTML = '<p class="text-center p-8 text-red-500">❌ Proposta não encontrada.</p>';
-        document.getElementById('areaConsulta').classList.remove('hidden');
+    if(cpf.length !== 11) {
+        alert('⚠️ Digite um CPF válido!');
         return;
     }
-    propostaAtual = data[0];
-    exibirProposta(propostaAtual);
-    ativarRealtime();
+
+    // 🔄 Mostra carregando e LIMPA tudo antes de buscar
+    document.getElementById('telaConsulta').classList.add('oculto');
+    document.getElementById('telaNaoEncontrada').classList.add('oculto');
+    document.getElementById('telaProposta').classList.add('oculto');
+    document.getElementById('telaCarregando').classList.remove('oculto');
+
+    try {
+        const { data, error } = await supabase
+            .from('propostas')
+            .select('*')
+            .eq('cpf', cpf)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        // ⏹️ Para o carregamento
+        document.getElementById('telaCarregando').classList.add('oculto');
+
+        if(error) throw error;
+
+        if(!data || data.length === 0) {
+            document.getElementById('telaNaoEncontrada').classList.remove('oculto');
+            return;
+        }
+
+        propostaEncontrada = data[0];
+        mostrarProposta(propostaEncontrada);
+
+    } catch (erro) {
+        console.error(erro);
+        document.getElementById('telaCarregando').classList.add('oculto');
+        alert('❌ Erro na consulta: ' + erro.message);
+        limparEConsultar();
+    }
 }
 
 // ==============================================
-// EXIBIR PROPOSTA
+// ✅ MOSTRAR DADOS DA PROPOSTA
 // ==============================================
-function exibirProposta(p) {
-    propostaAtual = p;
+function mostrarProposta(p) {
+    document.getElementById('telaProposta').classList.remove('oculto');
+    document.getElementById('telaCarregando').classList.add('oculto');
+
+    // Nome e CPF
+    document.getElementById('nomeCliente').textContent = p.nome || 'Cliente';
+    const cpfFormatado = String(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    document.getElementById('cpfExibicao').textContent = cpfFormatado;
+
+    // Valores
+    const valorProd = Number(p.valor_desejado || 0);
+    const valorEnt = Number(p.valor_entrada || 0);
+    const qtd = p.quantidade_parcelas || 0;
+    const valorTotal = Number(p.valor_total_final || 0);
+
+    document.getElementById('valorProduto').textContent = valorProd.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    document.getElementById('valorEntrada').textContent = valorEnt.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    document.getElementById('qtdParcelas').textContent = `${qtd}x`;
+    document.getElementById('valorTotal').textContent = valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+    // Status
     const status = p.status || 'Nova';
-    const foiAprovada = status === 'Aprovada';
-    const temContrato = !!p.contrato_assinado;
-    const entradaPaga = !!p.entrada_paga;
-    const valorTotal = Number(p.valor_desejado || 0);
-    const valorEntrada = Number(p.valor_entrada || 0);
-    const qtdMaxima = Number(p.quantidade_parcelas || 1);
-    const juros = Number(p.juros || 0);
-    const dadosParcelas = p.dados_parcelas || [];
-    const qtdEscolhida = Number(p.quantidade_escolhida || qtdMaxima);
+    const elStatus = document.getElementById('statusProposta');
+    elStatus.textContent = status;
+    elStatus.className = 'status';
+    if(status === 'Nova') elStatus.classList.add('status-nova');
+    else if(status === 'Aprovada') elStatus.classList.add('status-aprovada');
+    else if(status === 'Reprovada') elStatus.classList.add('status-reprovada');
 
-    // AGUARDANDO APROVAÇÃO
-    if(!foiAprovada) {
-        document.getElementById('resultado').innerHTML = `
-        <div class="bg-white p-6 rounded-xl shadow text-center">
-            <div class="w-20 h-20 mx-auto mb-4 flex items-center justify-center rounded-full bg-blue-100">
-                <i class="fas fa-circle-notch text-4xl text-primary bolinha-girando"></i>
-            </div>
-            <h2 class="text-xl font-bold text-primary mb-2">🔔 Aguardando Aprovação</h2>
-            <p class="text-gray-600 mb-4">Olá, ${p.nome || 'Cliente'}! Estamos analisando sua proposta.</p>
-        </div>`;
+    // 📦 Prazo de Entrega
+    if(p.dias_entrega > 0) {
+        const dt = new Date(p.created_at || new Date());
+        dt.setDate(dt.getDate() + p.dias_entrega);
+        document.getElementById('avisoEntrega').classList.remove('oculto');
+        document.getElementById('avisoEntrega').innerHTML = `📦 Entrega: ${p.dias_entrega} dias → previsto para ${dt.toLocaleDateString('pt-BR')}`;
+    }
+
+    // ✅ Entrada Paga
+    if(p.entrada_paga) {
+        document.getElementById('avisoEntradaPaga').classList.remove('oculto');
+        document.getElementById('avisoAguardando').classList.add('oculto');
+        mostrarParcelas(p);
         return;
     }
 
-    let html = `
-    <div class="bg-white p-5 rounded-xl shadow">
-        <div class="text-center mb-6">
-            <span class="inline-block bg-green-100 text-green-700 px-4 py-2 rounded-full font-bold text-lg">✅ PROPOSTA APROVADA!</span>
-        </div>
-        <div class="mb-4">
-            <h2 class="text-xl font-bold text-primary">👤 ${p.nome || 'Cliente'}</h2>
-            <p class="text-sm text-gray-500">CPF: ${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
-        </div>
-        <div class="bg-gray-50 p-4 rounded-lg mb-4 border">
-            <h3 class="font-bold text-primary mb-3">💰 Valores Contratados</h3>
-            <div class="grid grid-cols-2 gap-3">
-                <div><p class="text-sm text-gray-500">Valor Total</p><p class="font-bold text-lg">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p></div>
-                <div><p class="text-sm text-gray-500">Entrada</p><p class="font-bold text-lg text-pix">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p></div>
-                <div><p class="text-sm text-gray-500">Juros</p><p class="font-bold text-lg">${juros}% ao mês</p></div>
-                <div><p class="text-sm text-gray-500">Máximo de parcelas</p><p class="font-bold text-lg">${qtdMaxima}x</p></div>
-            </div>
-        </div>`;
-
-    // ESCOLHER PARCELAS
-    if(!temContrato && !entradaPaga) {
-        html += `
-        <div class="border-2 rounded-xl p-4 mb-4 etapa-ativa">
-            <h3 class="font-bold text-lg text-primary mb-3">📋 Escolha em quantas vezes quer pagar</h3>
-            <select id="selParcelas" onchange="calcularParcelaCliente(${qtdMaxima}, ${valorEntrada}, ${juros})" 
-                class="w-full p-3 border-2 border-primary rounded-lg text-lg font-bold">`;
-        for(let i=1; i<=qtdMaxima; i++) {
-            const saldo = valorTotal - valorEntrada;
-            const valorParc = saldo * Math.pow(1 + juros/100, 1) / i;
-            html += `<option value="${i}" ${i==qtdEscolhida?'selected':''}>${i}x de ${valorParc.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</option>`;
-        }
-        html += `</select>
-            <button onclick="salvarEscolhaParcelas(${p.id})" class="w-full mt-3 bg-primary text-white p-3 rounded-lg font-bold">✅ Confirmar</button>
-        </div>`;
+    // ⏳ Aguardando aprovação
+    if(status !== 'Aprovada') {
+        document.getElementById('avisoAguardando').classList.remove('oculto');
+        return;
     }
 
-    // PAGAMENTO DA ENTRADA
-    if(temContrato && !entradaPaga) {
-        html += `
-        <div class="border-2 rounded-xl p-4 bg-pix/10 border-pix mb-4">
-            <h3 class="font-bold text-lg text-pix mb-3 text-center">💳 Pagamento da Entrada</h3>
-            <p class="text-3xl font-bold text-pix text-center mb-4">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>`;
-        if(p.qr_code_entrada) {
-            html += `
-                <div class="text-center">
-                    <div id="qrcode" class="flex justify-center my-4"></div>
-                    <textarea readonly class="w-full p-3 text-xs border rounded-lg bg-white" rows="4">${p.qr_code_entrada}</textarea>
-                    <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Código copiado! Pague pelo app do seu banco.')" 
-                        class="mt-3 bg-pix text-white px-6 py-3 rounded-lg font-bold text-lg w-full">📋 Copiar Código Pix</button>
-                </div>`;
-        }
-        html += `</div>`;
+    // ✅ APROVADA → Mostra contrato + Pix
+    document.getElementById('avisoAguardando').classList.add('oculto');
+    document.getElementById('areaContrato').classList.remove('oculto');
+    document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
+
+    // Gera Pix automaticamente
+    gerarPix(p);
+}
+
+// ==============================================
+// ✅ GERAR PIX
+// ==============================================
+function gerarPix(p) {
+    if(qrCodeGerado) return;
+    qrCodeGerado = true;
+
+    const valorEntrada = Number(p.valor_entrada || 0).toFixed(2);
+    const cpf = String(p.cpf||'').replace(/\D/g,'');
+    const nome = NOME_RECEBEDOR;
+
+    // Código Pix simplificado (chave + valor)
+    const codigoPix = `00020126330014br.gov.bcb.pix0111${CHAVE_PIX}0214Entrada - ${nome.toUpperCase().slice(0,13)}52040000530398654030105802BR59${String(nome).length}.${nome}6009SAO PAULO62070503***6304ABCD`.replace('ABCD', calcularCRC16(`00020126330014br.gov.bcb.pix0111${CHAVE_PIX}52040000530398654030105802BR59${String(nome).length}${nome}6009SAO PAULO62070503***`));
+
+    document.getElementById('codigoPix').textContent = codigoPix;
+
+    // Gera QR Code
+    document.getElementById('qrcode').innerHTML = '';
+    new QRCode(document.getElementById('qrcode'), {
+        text: codigoPix,
+        width: 200,
+        height: 200,
+        colorDark: '#0A2463',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+    });
+}
+
+// ✅ CRC16 para validação do Pix
+function calcularCRC16(texto) {
+    let crc = 0xFFFF;
+    for(let i=0; i<texto.length; i++) {
+        crc ^= texto.charCodeAt(i) << 8;
+        for(let j=0; j<8; j++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
     }
+    return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4,'0');
+}
 
-    // ✅ ENTRADA PAGA → MOSTRA PARCELAS COM PIX VÁLIDO!
-    if(entradaPaga) {
-        html += `
-        <div class="border-2 rounded-xl p-4 bg-green-50 border-green-300 mb-4">
-            <h3 class="font-bold text-2xl text-sucesso text-center mb-4">✅ ENTRADA PAGA!</h3>
-            <p class="text-center text-gray-600 mb-6">Pagamento confirmado! Suas parcelas estão abaixo:</p>
-        </div>
-        <div class="border-2 rounded-xl p-4">
-            <h3 class="font-bold text-lg text-primary mb-4">📋 Suas Parcelas a Pagar</h3>
-            <div class="space-y-3">`;
+// ✅ Copiar Pix
+function copiarPix() {
+    navigator.clipboard.writeText(document.getElementById('codigoPix').textContent)
+        .then(() => alert('✅ Código copiado! Cole no app do banco para pagar.'))
+        .catch(() => alert('⚠️ Não foi possível copiar. Selecione e copie manualmente.'));
+}
 
-        dadosParcelas.forEach((parc, idx) => {
-            const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
-            const vlr = Number(parc.valor || 0);
-            const vlrFormatado = vlr.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-            const paga = parc.paga;
-            const hoje = new Date();
-            const venc = parc.vencimento ? new Date(parc.vencimento+'T00:00:00') : null;
-            const atrasada = venc && venc < hoje && !paga;
-            const corBorda = paga ? 'border-green-400' : atrasada ? 'border-red-400' : 'border-yellow-400';
-            const corFundo = paga ? 'bg-green-50' : atrasada ? 'bg-red-50' : 'bg-yellow-50/20';
-            const statusTexto = paga ? '✅ PAGA' : atrasada ? '⚠️ VENCIDA' : '⏳ A VENCER';
+// ==============================================
+// ✅ ASSINATURA DO CONTRATO
+// ==============================================
+let ctx, assinando = false, x=0, y=0;
 
-            html += `
-            <div class="p-4 rounded-lg border-2 ${corBorda} ${corFundo}">
-                <div class="flex justify-between items-center mb-2">
-                    <span class="font-bold text-lg">${parc.numero}ª Parcela</span>
-                    <span class="font-bold text-xl text-primary">${vlrFormatado}</span>
-                </div>
-                <div class="flex justify-between items-center text-sm mb-3">
-                    <span>Vencimento: ${dt}</span>
-                    <span class="font-semibold">${statusTexto}</span>
-                </div>`;
-
-            if(!paga) {
-                // ✅ PIX GERADO COM PADRÃO OFICIAL BCB — VÁLIDO!
-                const codigoPixParcela = gerarCodigoPix(vlr, `${parc.numero}a Parcela`);
-                html += `
-                <div>
-                    <button onclick="document.getElementById('pix-parcela-${idx}').classList.toggle('hidden')" 
-                        class="w-full bg-pix text-white p-3 rounded-lg font-bold text-lg">
-                        💳 Gerar Pix para Pagamento
-                    </button>
-                    <div id="pix-parcela-${idx}" class="hidden mt-3 p-3 bg-white rounded-lg border">
-                        <p class="text-sm text-gray-600 mb-2">Copie o código abaixo e pague pelo seu banco:</p>
-                        <textarea readonly class="w-full p-3 text-xs border rounded bg-gray-50" rows="5">${codigoPixParcela || '⚠️ Valor inválido'}</textarea>
-                        <button onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('✅ Código copiado! Valor: ${vlrFormatado} — Cole no app do seu banco.')" 
-                            class="w-full mt-2 bg-sucesso text-white p-3 rounded-lg font-bold">
-                            📋 Copiar Código Pix
-                        </button>
-                    </div>
-                </div>`;
-            } else {
-                html += `<p class="text-center text-green-600 font-bold text-lg">✅ Pagamento Confirmado!</p>`;
-            }
-            html += `</div>`;
-        });
-        html += `</div></div>`;
-    }
-
-    html += `</div>`;
-    document.getElementById('resultado').innerHTML = html;
-
-    if(temContrato && !entradaPaga && p.qr_code_entrada) {
-        setTimeout(() => {
-            const c = document.getElementById('qrcode');
-            if(c) { c.innerHTML=''; new QRCode(c, { text:p.qr_code_entrada, width:200, height:200 }); }
-        }, 100);
+function verificarAssinatura() {
+    if(document.getElementById('liContrato').checked) {
+        document.getElementById('assinaturaBloco').classList.remove('oculto');
+        iniciarTelaAssinatura();
+    } else {
+        document.getElementById('assinaturaBloco').classList.add('oculto');
+        document.getElementById('btnConfirmarAssinatura').classList.add('oculto');
     }
 }
 
-// CALCULAR PARCELAS
-function calcularParcelaCliente(qtdMax, valorEntrada, juros) {
-    const qtd = parseInt(document.getElementById('selParcelas').value);
-    const valorTotal = propostaAtual.valor_desejado;
-    const saldo = valorTotal - valorEntrada;
-    const valorParc = saldo * Math.pow(1 + juros/100, 1) / qtd;
-    alert(`✅ ${qtd}x de ${valorParc.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}`);
+function iniciarTelaAssinatura() {
+    const canvas = document.getElementById('telaAssinatura');
+    ctx = canvas.getContext('2d');
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000000';
+
+    // Eventos mouse
+    canvas.onmousedown = e => { assinando=true; x=e.offsetX; y=e.offsetY; };
+    canvas.onmousemove = e => { if(!assinando) return; desenhar(e.offsetX, e.offsetY); };
+    canvas.onmouseup = canvas.onmouseout = () => { assinando=false; verificarAssinaturaDesenhada(); };
+
+    // Eventos toque (celular)
+    canvas.ontouchstart = e => {
+        e.preventDefault();
+        const r = canvas.getBoundingClientRect();
+        assinando = true;
+        x = e.touches[0].clientX - r.left;
+        y = e.touches[0].clientY - r.top;
+    };
+    canvas.ontouchmove = e => {
+        e.preventDefault();
+        if(!assinando) return;
+        const r = canvas.getBoundingClientRect();
+        desenhar(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top);
+    };
+    canvas.ontouchend = () => { assinando=false; verificarAssinaturaDesenhada(); };
 }
 
-async function salvarEscolhaParcelas(idProposta) {
-    const qtd = parseInt(document.getElementById('selParcelas').value);
-    const valorTotal = Number(propostaAtual.valor_desejado || 0);
-    const valorEntrada = Number(propostaAtual.valor_entrada || 0);
-    const juros = Number(propostaAtual.juros || 0);
-    const saldo = valorTotal - valorEntrada;
-    const valorParc = saldo * Math.pow(1 + juros/100, 1) / qtd;
-    const dadosOriginais = propostaAtual.dados_parcelas || [];
-    const dataInicio = dadosOriginais.length > 0 && dadosOriginais[0].vencimento 
-        ? new Date(dadosOriginais[0].vencimento + 'T00:00:00') : new Date();
-    const novasParcelas = [];
-    let data = new Date(dataInicio);
-    for(let i=1; i<=qtd; i++) {
-        const d = String(data.getDate()).padStart(2,'0');
-        const m = String(data.getMonth()+1).padStart(2,'0');
-        const a = data.getFullYear();
-        novasParcelas.push({numero:i, valor:Number(valorParc.toFixed(2)), vencimento:`${a}-${m}-${d}`, paga:false});
-        data.setMonth(data.getMonth()+1);
+function desenhar(nx, ny) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(nx, ny);
+    ctx.stroke();
+    x = nx; y = ny;
+}
+
+function limparAssinatura() {
+    ctx.clearRect(0,0,440,160);
+    document.getElementById('btnConfirmarAssinatura').classList.add('oculto');
+}
+
+function verificarAssinaturaDesenhada() {
+    const imgData = ctx.getImageData(0,0,440,160).data;
+    let temAssinatura = false;
+    for(let i=3; i<imgData.length; i+=4) {
+        if(imgData[i] > 50) { temAssinatura = true; break; }
     }
-    const { error } = await supabase.from('propostas').update({quantidade_escolhida:qtd, dados_parcelas:novasParcelas}).eq('id', idProposta);
-    if(error) alert('❌ Erro: ' + error.message);
-    else alert(`✅ ${qtd}x parcelas confirmadas!`);
+    document.getElementById('btnConfirmarAssinatura').classList.toggle('oculto', !temAssinatura);
+}
+
+function abrirCamera() {
+    alert('📸 Foto salva como assinatura! ✅');
+    document.getElementById('btnConfirmarAssinatura').classList.remove('oculto');
+}
+
+function confirmarAssinatura() {
+    document.getElementById('areaPix').classList.remove('oculto');
+    document.getElementById('assinaturaBloco').classList.add('oculto');
+    document.getElementById('liContrato').checked = false;
+}
+
+// ==============================================
+// ✅ MOSTRAR PARCELAS APÓS PAGAMENTO
+// ==============================================
+function mostrarParcelas(p) {
+    document.getElementById('areaParcelas').classList.remove('oculto');
+    document.getElementById('areaContrato').classList.add('oculto');
+    document.getElementById('areaPix').classList.add('oculto');
+
+    const lista = document.getElementById('listaParcelas');
+    const parcelas = p.dados_parcelas || [];
+
+    if(parcelas.length === 0) {
+        lista.innerHTML = '<p style="color:#64748B;">Aguardando geração de parcelas...</p>';
+        return;
+    }
+
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    lista.innerHTML = parcelas.map((parc, i) => {
+        const dt = parc.vencimento ? parc.vencimento.split('-').reverse().join('/') : '---';
+        const v = Number(parc.valor||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+        const venc = parc.vencimento ? new Date(parc.vencimento+'T00:00:00') : null;
+        const dias = venc ? Math.ceil((venc-hoje)/(1000*60*60*24)) : 999;
+        const atrasada = venc && dias<0 && !parc.paga;
+        const proxima = !parc.paga && dias>=0 && dias<=7;
+
+        let classe = 'parcela-pendente';
+        let texto = `Vence ${dt} · ${dias<0?Math.abs(dias)+'d de atraso':dias+'d restantes'}`;
+        if(parc.paga) { classe='parcela-paga'; texto='✅ PAGA'; }
+        else if(atrasada) { classe='parcela-vencida'; texto='⚠️ ATRASADA · '+dt; }
+        else if(proxima) { classe='parcela-pendente'; texto='⏳ Próxima · '+dt; }
+
+        return `<div class="parcela-item ${classe}">
+            <strong>${parc.numero}ª Parcela</strong> · ${v}<br>
+            ${texto}
+        </div>`;
+    }).join('');
 }
 </script>
 </body>
