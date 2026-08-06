@@ -26,6 +26,9 @@
         body { background: var(--bg-body); color: var(--texto); padding: 16px; min-height: 100vh; }
         .container { max-width: 1200px; margin: 0 auto; }
         .cartao { background: white; border-radius: 12px; border: 1px solid var(--borda); padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .cartao-nova { border-left: 4px solid #3B82F6; }
+        .cartao-aprovada { border-left: 4px solid #10B981; }
+        .cartao-paga { border-left: 4px solid #059669; background: #F0FDF4; }
         .linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
         .etiqueta { font-weight: 600; color: var(--texto-claro); min-width: 120px; font-size: 14px; }
         .valor { font-weight: 600; font-size: 15px; color: var(--primary); }
@@ -52,26 +55,19 @@
         .resumo-cartao { padding: 16px; border-radius: 10px; text-align: center; }
         .resumo-cartao h3 { font-size: 26px; }
         .separador { border-bottom: 1px solid var(--borda); margin: 16px 0; }
-        .info-parcela { font-size: 13px; padding: 8px 12px; border-radius: 6px; margin: 4px 0; }
         .dados-cliente { background: #F8FAFC; padding: 12px; border-radius: 8px; border-left: 3px solid #3B82F6; margin-bottom: 10px; }
         h2 { font-size: 18px; color: var(--primary); margin-bottom: 8px; }
         h1 { font-size: 28px; color: var(--primary); margin-bottom: 20px; }
         .botao-grupo { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
         .modo-edicao { background: #FFFBEB; padding: 12px; border-radius: 8px; border-left: 3px solid #F59E0B; margin: 8px 0; }
         .prazo-entrega { background: #E0F2FE; padding: 8px 12px; border-radius: 6px; border-left: 3px solid #0284C7; margin-top: 4px; }
-        .resumo-financeiro { background: #F0FDF4; padding: 12px; border-radius: 8px; margin: 10px 0; }
-        .resumo-financeiro h4 { color: #065F46; margin-bottom: 8px; font-size: 15px; }
-        .calculo-resultado { color: #2563EB; font-weight: 600; font-size: 14px; margin-top: 6px; }
-        .area-pdf { position: absolute; left: -9999px; top: -9999px; background: white; padding: 30px; width: 800px; }
-        .area-pdf h1 { text-align: center; color: #0A2463; border-bottom: 2px solid #0A2463; padding-bottom: 10px; }
-        .area-pdf table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-        .area-pdf th, .area-pdf td { border: 1px solid #CCC; padding: 8px; text-align: left; font-size: 13px; }
-        .area-pdf th { background: #E0E7FF; }
+        .parcela-item { padding: 10px; border-radius: 6px; margin: 4px 0; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
+        .parcela-verde { background: #D1FAE5; border-left: 3px solid #10B981; }
+        .parcela-amarela { background: #FEF3C7; border-left: 3px solid #F59E0B; }
+        .parcela-vermelha { background: #FEE2E2; border-left: 3px solid #EF4444; }
         .sino-badge { position: relative; }
         .sino-badge span { position: absolute; top: -8px; right: -8px; background: red; color: white; border-radius: 50%; width: 20px; height: 20px; font-size: 12px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-        .som-notificacao { display: none; }
-        .novo-piscando { animation: piscar 1s infinite; border-left: 4px solid #2563EB !important; }
-        @keyframes piscar { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+        .aviso-pagamento { background: #D1FAE5; border: 2px solid #10B981; padding: 12px; border-radius: 8px; margin-bottom: 12px; font-weight: 600; display: none; }
     </style>
 </head>
 <body>
@@ -94,6 +90,11 @@
                 <button onclick="carregarPropostas()" class="botao botao-pequeno">🔄 Atualizar</button>
                 <button onclick="sair()" class="botao botao-perigo botao-pequeno">Sair</button>
             </div>
+        </div>
+
+        <!-- ✅ AVISO QUANDO ALGUÉM PAGOU -->
+        <div id="avisoPagamento" class="aviso-pagamento">
+            🎉 PAGAMENTO RECEBIDO! Entrada foi paga e parcelas liberadas!
         </div>
 
         <!-- 📊 RESUMO GERAL -->
@@ -121,12 +122,12 @@
 </div>
 
 <!-- 🔊 SOM DE NOTIFICAÇÃO -->
-<audio id="somNotificacao" preload="auto" class="som-notificacao">
+<audio id="somNotificacao" preload="auto">
     <source src="https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3" type="audio/mpeg">
 
 
 <!-- 📄 ÁREA OCULTA PARA GERAR PDF -->
-<div id="areaPDF" class="area-pdf"></div>
+<div id="areaPDF" style="position:absolute;left:-9999px;top:-9999px;background:white;padding:30px;width:800px;"></div>
 
 <script>
 // ==============================================
@@ -138,12 +139,16 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 const SENHA = 'flash2026';
 const URL_CONSULTA = 'https://flashcred-sistema.onrender.com/consulta.html';
+const TELEFONE_SUPORTE = '5511973294235';
+
 let propostas = [];
 let editandoId = null;
-let qtdAnterior = 0;
+let hashAnterior = ''; // ✅ PARA DE PISCAR — COMPARA DADOS
+let qtdNovasAnterior = 0;
+let canalRealtime = null;
 
 // ==============================================
-// ✅ LOGIN
+// ✅ LOGIN — F5 NÃO SAI MAIS!
 // ==============================================
 window.onload = function() {
     const logado = localStorage.getItem('painel_logado');
@@ -151,9 +156,10 @@ window.onload = function() {
         document.getElementById('telaLogin').classList.add('oculto');
         document.getElementById('telaPrincipal').classList.remove('oculto');
         carregarPropostas();
-        ativarRealtimeTotal(); // ⚡ LIGA TEMPO REAL!
+        ativarRealtime();
     }
 };
+
 function entrar() {
     const senha = document.getElementById('senha').value.trim();
     if(senha === SENHA) {
@@ -161,10 +167,12 @@ function entrar() {
         document.getElementById('telaLogin').classList.add('oculto');
         document.getElementById('telaPrincipal').classList.remove('oculto');
         carregarPropostas();
-        ativarRealtimeTotal(); // ⚡ LIGA AGORA!
+        ativarRealtime();
     } else alert('❌ Senha incorreta!');
 }
+
 function sair() {
+    if(canalRealtime) canalRealtime.unsubscribe();
     localStorage.removeItem('painel_logado');
     location.reload();
 }
@@ -182,17 +190,31 @@ function formatarTelefone(tel) {
     if(n.length===10) return `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`;
     return tel;
 }
+function limparTelefone(tel) {
+    return (tel||'').replace(/\D/g,'');
+}
 function formatarCPF(cpf) {
     if(!cpf) return '';
     const n = cpf.replace(/\D/g,'');
     if(n.length===11) return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
     return cpf;
 }
-function formatarCEP(cep) {
-    if(!cep) return '';
-    const n = cep.replace(/\D/g,'');
-    if(n.length===8) return `${n.slice(0,5)}-${n.slice(5)}`;
-    return cep;
+function formatarData(dt) {
+    if(!dt) return '---';
+    return String(dt).split('T')[0].split('-').reverse().join('/');
+}
+
+// ==============================================
+// ✅ COR DA PARCELA POR VENCIMENTO
+// ==============================================
+function corParcela(vencimento, paga) {
+    if(paga) return 'parcela-verde';
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const dt = new Date(vencimento); dt.setHours(0,0,0,0);
+    const dias = Math.ceil((dt - hoje) / (1000*60*60*24));
+    if(dias < 0) return 'parcela-vermelha';
+    if(dias <= 5) return 'parcela-amarela';
+    return 'parcela-verde';
 }
 
 // ==============================================
@@ -240,106 +262,373 @@ function calcularParcelas(valorTotal, valorEntrada, qtd, juros) {
 }
 
 // ==============================================
-// ✅ CARREGAR PROPOSTAS
+// ✅ CARREGAR PROPOSTAS — SEM PISCAR!
 // ==============================================
 async function carregarPropostas() {
     const {data, error} = await supabase.from('propostas').select('*').order('created_at',{ascending:false});
     if(error) return console.error(error);
+    
+    const hashAgora = JSON.stringify(data);
+    if(hashAgora === hashAnterior) return; // ✅ NÃO REDESENHA SE NÃO MUDOU → PARA DE PISCAR!
+    hashAnterior = hashAgora;
+    
     propostas = data || [];
     renderizarPropostas();
 }
 
 // ==============================================
-// ⚡ TEMPO REAL TOTAL — AQUI É A MAGIA!
+// ⚡ TEMPO REAL — NOTIFICA PAGAMENTO + NÃO PISCA!
 // ==============================================
-function ativarRealtimeTotal() {
-    // Escuta TUDO: INSERIR, ALTERAR, EXCLUIR
-    supabase.channel('mudancas-propostas')
+function ativarRealtime() {
+    if(canalRealtime) canalRealtime.unsubscribe();
+
+    canalRealtime = supabase.channel('painel-atualizacoes')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'propostas' }, (nova) => {
-            console.log('📥 NOVA PROPOSTA CHEGOU!', nova);
-            tocarSomNotificacao();
-            carregarPropostas(); // ⚡ ATUALIZA NA HORA!
+            tocarSom();
+            carregarPropostas();
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas' }, (mudou) => {
-            console.log('🔄 PROPOSTA ALTERADA!', mudou);
-            carregarPropostas(); // ⚡ ATUALIZA NA HORA!
-        })
-        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'propostas' }, () => {
-            carregarPropostas();
+            // ✅ DETECTA QUANDO CLIENTE PAGOU A ENTRADA!
+            if(!mudou.old.entrada_paga && mudou.new.entrada_paga === true) {
+                tocarSom();
+                mostrarAvisoPagamento(mudou.new);
+            }
+
+            // ✅ SÓ ATUALIZA SE DADOS MUDARAM
+            const hashNova = JSON.stringify(mudou.new);
+            if(hashNova !== hashAnterior) {
+                carregarPropostas();
+            }
         })
         .subscribe();
 }
 
-// 🔊 TOCAR SOM QUANDO CHEGAR NOVA PROPOSTA
-function tocarSomNotificacao() {
+// ✅ MOSTRA AVISO QUANDO PAGOU
+function mostrarAvisoPagamento(p) {
+    const aviso = document.getElementById('avisoPagamento');
+    aviso.style.display = 'block';
+    aviso.innerHTML = `🎉 PAGAMENTO RECEBIDO! <strong>${p.nome || 'Cliente'}</strong> pagou a entrada! Parcelas liberadas!`;
+    setTimeout(() => aviso.style.display = 'none', 10000);
+}
+
+function tocarSom() {
     const som = document.getElementById('somNotificacao');
     som.currentTime = 0;
-    som.play().catch(() => {
-        console.log('🔇 Som bloqueado pelo navegador');
-    });
+    som.play().catch(() => console.log('🔇 Som bloqueado'));
 }
 
 // ==============================================
-// ✅ SALVAR ALTERAÇÕES — INCLUINDO PRAZO!
+// ✅ RENDERIZAR LISTA — MOSTRA PARCELAS!
+// ==============================================
+function renderizarPropostas() {
+    const lista = document.getElementById('listaPropostas');
+    let html = '';
+    let qtdNovas=0, qtdAprovadas=0, qtdPendentes=0;
+    let totalEntrada=0, totalFalta=0;
+
+    propostas.forEach(p => {
+        const status = p.status || 'Nova';
+        const entradaPaga = p.entrada_paga === true;
+        const parcelas = p.dados_parcelas || [];
+        const valorTotal = Number(p.valor_desejado||0);
+        const valorEntrada = Number(p.valor_entrada||0);
+        const falta = parcelas.reduce((s,x)=>s + (x.paga?0:Number(x.valor||0)), 0);
+        const prazo = p.prazo_entrega || p.prazo || 18;
+
+        if(status==='Nova') qtdNovas++;
+        if(status==='Aprovada') qtdAprovadas++;
+        if(!entradaPaga && status==='Aprovada') qtdPendentes++;
+        if(entradaPaga) totalEntrada += valorEntrada;
+        totalFalta += falta;
+
+        const classeCartao = entradaPaga ? 'cartao-paga' : status==='Aprovada' ? 'cartao-aprovada' : 'cartao-nova';
+        const classeStatus = entradaPaga ? 'status-paga' : status==='Aprovada' ? 'status-aprovada' : status==='Reprovada' ? 'status-reprovada' : 'status-nova';
+        const textoStatus = entradaPaga ? 'ENTRADA PAGA ✅' : status;
+
+        // ✅ LISTA DE PARCELAS APARECE AGORA!
+        let htmlParcelas = '';
+        if(parcelas.length > 0) {
+            htmlParcelas = `<div class="separador"></div><h3 style="font-size:15px; color:#374151; margin-bottom:8px;">📋 Parcelas Contratadas:</h3>`;
+            parcelas.forEach((parc, idx) => {
+                const cor = corParcela(parc.vencimento, parc.paga);
+                const dias = Math.ceil((new Date(parc.vencimento) - new Date())/(1000*60*60*24));
+                const avisoDias = parc.paga ? '✅ Paga' : dias<0 ? '⚠️ Atrasada' : dias<=5 ? `⏳ ${dias} dias` : `${dias} dias`;
+                htmlParcelas += `
+                    <div class="parcela-item ${cor}">
+                        <span><strong>${parc.numero}ª</strong> · R$ ${Number(parc.valor).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
+                        <span>${formatarData(parc.vencimento)} · ${avisoDias}</span>
+                        ${!parc.paga ? `<button class="botao botao-whatsapp botao-pequeno" onclick="cobrarParcelaWhatsApp('${p.id}',${idx})">💳 Cobrar</button>` : ''}
+                    </div>`;
+            });
+        }
+
+        // ✅ MODO EDIÇÃO
+        const editar = editandoId === p.id;
+        const botoesEditar = editar ? `
+            <div class="modo-edicao">
+                <div class="linha">
+                    <span class="etiqueta">Valor Total:</span>
+                    <input type="text" id="edt_valor_${p.id}" class="input-editar" value="${formatarMoeda(valorTotal).replace('R$ ','')}" oninput="atualizarCalculo(${p.id})">
+                </div>
+                <div class="linha">
+                    <span class="etiqueta">Entrada:</span>
+                    <input type="text" id="edt_entrada_${p.id}" class="input-editar" value="${formatarMoeda(valorEntrada).replace('R$ ','')}" oninput="atualizarCalculo(${p.id})">
+                </div>
+                <div class="linha">
+                    <span class="etiqueta">Parcelas:</span>
+                    <input type="number" id="edt_parcelas_${p.id}" class="input-editar" value="${p.quantidade_parcelas||1}" min="1" max="24" oninput="atualizarCalculo(${p.id})">
+                </div>
+                <div class="linha">
+                    <span class="etiqueta">Juros %:</span>
+                    <input type="number" step="0.01" id="edt_juros_${p.id}" class="input-editar" value="${p.juros||0}" oninput="atualizarCalculo(${p.id})">
+                </div>
+                <div class="linha">
+                    <span class="etiqueta">Prazo entrega:</span>
+                    <input type="number" id="edt_prazo_${p.id}" class="input-editar" value="${prazo}" min="1">
+                </div>
+                <div id="calculo_${p.id}" class="calculo-resultado"></div>
+                <div class="botao-grupo">
+                    <button onclick="salvarEdicao('${p.id}')" class="botao botao-sucesso">✅ Salvar</button>
+                    <button onclick="cancelarEdicao()" class="botao botao-alerta">❌ Cancelar</button>
+                </div>
+            </div>` : '';
+
+        html += `
+        <div class="cartao ${classeCartao}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+                <h2>${p.nome || p.nome_completo || 'Sem nome'}</h2>
+                <span class="status ${classeStatus}">${textoStatus}</span>
+            </div>
+
+            <div class="dados-cliente">
+                <div class="linha"><span class="etiqueta">CPF:</span><span class="valor">${formatarCPF(p.cpf)}</span></div>
+                <div class="linha"><span class="etiqueta">Telefone:</span><span class="valor">${formatarTelefone(p.telefone || p.celular || p.whatsapp || '')}</span></div>
+                <div class="linha"><span class="etiqueta">Endereço:</span><span class="valor">${montarEndereco(p)}</span></div>
+            </div>
+
+            <div class="linha">
+                <span class="etiqueta">Valor Solicitado:</span>
+                <span class="valor">${formatarMoeda(valorTotal)}</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">Valor Entrada:</span>
+                <span class="valor">${formatarMoeda(valorEntrada)} ${entradaPaga ? '✅ PAGA' : '⏳ Pendente'}</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">Condições:</span>
+                <span class="valor">${p.quantidade_parcelas||0}x · ${p.juros||0}% ao mês · Prazo: ${prazo} dias</span>
+            </div>
+
+            ${htmlParcelas}
+            ${botoesEditar}
+
+            ${!editar ? `
+            <div class="botao-grupo">
+                ${status==='Nova'?`<button onclick="aprovarProposta('${p.id}')" class="botao botao-sucesso">✅ Aprovar</button>
+                <button onclick="reprovarProposta('${p.id}')" class="botao botao-perigo">❌ Reprovar</button>`:''}
+                ${status==='Aprovada' && !entradaPaga?`<button onclick="marcarEntradaPaga('${p.id}')" class="botao botao-alerta">💰 Marcar Entrada Paga</button>`:''}
+                <button onclick="editarProposta('${p.id}')" class="botao botao-azul">✏️ Editar</button>
+                <button onclick="enviarPropostaWhatsApp('${p.id}')" class="botao botao-whatsapp">📱 Enviar WhatsApp</button>
+                <button onclick="gerarPDF('${p.id}')" class="botao botao-pdf">📄 Gerar PDF</button>
+                <a href="https://wa.me/${TELEFONE_SUPORTE}?text=Olá, preciso de ajuda com a proposta de ${p.nome||'cliente'}" target="_blank" class="botao botao-whatsapp" style="text-decoration:none; display:inline-flex; align-items:center;">🆘 Suporte</a>
+            </div>`:''}
+        </div>`;
+    });
+
+    lista.innerHTML = html || '<p style="text-align:center; padding:40px; color:#64748B;">Nenhuma proposta recebida ainda.</p>';
+
+    // Atualizar resumo
+    document.getElementById('qtdNovas').textContent = qtdNovas;
+    document.getElementById('qtdAprovadas').textContent = qtdAprovadas;
+    document.getElementById('qtdPendentes').textContent = qtdPendentes;
+    document.getElementById('totalEntrado').textContent = formatarMoeda(totalEntrada);
+    document.getElementById('totalFalta').textContent = formatarMoeda(totalFalta);
+    document.getElementById('badgeSino').textContent = qtdNovas;
+}
+
+// ==============================================
+// ✅ SALVAR EDIÇÃO
 // ==============================================
 async function salvarEdicao(id) {
-    const valor = (document.getElementById('edt_valor_'+id).value.replace(/\D/g,''))/100;
-    const entrada = (document.getElementById('edt_entrada_'+id).value.replace(/\D/g,''))/100;
-    const qtd = parseInt(document.getElementById('edt_parcelas_'+id).value);
-    const juros = parseFloat(document.getElementById('edt_juros_'+id).value);
-    const prazo = parseInt(document.getElementById('edt_prazo_'+id)?.value || 18); // ✅ PRAZO DE ENTREGA!
+    const valor = (document.getElementById(`edt_valor_${id}`).value.replace(/\D/g,''))/100;
+    const entrada = (document.getElementById(`edt_entrada_${id}`).value.replace(/\D/g,''))/100;
+    const qtd = parseInt(document.getElementById(`edt_parcelas_${id}`).value);
+    const juros = parseFloat(document.getElementById(`edt_juros_${id}`).value);
+    const prazo = parseInt(document.getElementById(`edt_prazo_${id}`).value || 18);
 
-    if(!valor || qtd<=0) return alert('⚠️ Valor e quantidade de parcelas são obrigatórios!');
+    if(!valor || qtd<=0) return alert('⚠️ Valor e quantidade são obrigatórios!');
 
     const parcelas = calcularParcelas(valor, entrada, qtd, juros);
 
-    // ✅ SALVA TUDO — INCLUINDO O PRAZO!
     const {error} = await supabase.from('propostas').update({
         valor_desejado: valor,
         valor_entrada: entrada,
         quantidade_parcelas: qtd,
         juros: juros,
-        prazo_entrega: prazo, // ✅ CAMPO DO PRAZO!
+        prazo_entrega: prazo,
+        dados_parcelas: parcelas
+    }).eq('id', id);
+
+    if(error) return alert('❌ Erro: ' + error.message);
+    alert('✅ Salvo! Cliente já vê as alterações!');
+    editandoId = null;
+}
+
+function cancelarEdicao() { editandoId = null; }
+window.atualizarCalculo = function(id) {
+    const valor = (document.getElementById(`edt_valor_${id}`)?.value||'0').replace(/\D/g,'')/100;
+    const entrada = (document.getElementById(`edt_entrada_${id}`)?.value||'0').replace(/\D/g,'')/100;
+    const qtd = parseInt(document.getElementById(`edt_parcelas_${id}`)?.value||0);
+    const juros = parseFloat(document.getElementById(`edt_juros_${id}`)?.value||0);
+    const financiado = valor - entrada;
+    let parcela = 0;
+    if(qtd>0 && financiado>0) {
+        const taxa = juros/100;
+        parcela = taxa===0 ? financiado/qtd : financiado*(taxa*Math.pow(1+taxa,qtd))/(Math.pow(1+taxa,qtd)-1);
+    }
+    const el = document.getElementById(`calculo_${id}`);
+    if(el) el.innerHTML = `💡 ${qtd}x de ${formatarMoeda(parcela)} · Juros: ${juros}%`;
+};
+
+// ==============================================
+// ✅ MARCAR ENTRADA PAGA
+// ==============================================
+async function marcarEntradaPaga(id) {
+    if(!confirm('💰 Confirma que a entrada foi paga?\n\n✅ Parcelas serão liberadas para o cliente!')) return;
+    const {error} = await supabase.from('propostas').update({ entrada_paga: true }).eq('id', id);
+    if(error) alert('❌ Erro: ' + error.message);
+    else alert('✅ Entrada marcada como paga! Cliente já vê as parcelas!');
+}
+
+// ==============================================
+// ✅ APROVAR / REPROVAR
+// ==============================================
+async function aprovarProposta(id) {
+    const p = propostas.find(x=>x.id===id);
+    const valor = Number(p.valor_desejado||0);
+    const entrada = Number(p.valor_entrada||0);
+    const qtd = Number(p.quantidade_parcelas||1);
+    const juros = Number(p.juros||0);
+    const parcelas = p.dados_parcelas?.length?p.dados_parcelas:calcularParcelas(valor, entrada, qtd, juros);
+
+    const {error} = await supabase.from('propostas').update({
+        status: 'Aprovada',
         dados_parcelas: parcelas
     }).eq('id', id);
 
     if(error) alert('❌ Erro: ' + error.message);
-    else { alert('✅ Salvo! Cliente já vê as alterações em tempo real! ⚡'); editandoId=null; }
+    else alert('✅ Proposta Aprovada! Cliente será notificado automaticamente!');
+}
+
+async function reprovarProposta(id) {
+    if(!confirm('❌ Confirma reprovar esta proposta?')) return;
+    const {error} = await supabase.from('propostas').update({ status: 'Reprovada' }).eq('id', id);
+    if(error) alert('❌ Erro: ' + error.message);
+}
+
+// ==============================================
+// ✅ ENVIAR PROPOSTA NO WHATSAPP — FUNCIONANDO!
+// ==============================================
+async function enviarPropostaWhatsApp(id) {
+    const p = propostas.find(x=>x.id===id);
+    const tel = limparTelefone(p.telefone || p.celular || p.whatsapp || '');
+    
+    if(!tel || tel.length<11) return alert('⚠️ Telefone do cliente não encontrado!');
+
+    const valor = Number(p.valor_desejado||0);
+    const entrada = Number(p.valor_entrada||0);
+    const qtd = Number(p.quantidade_parcelas||0);
+    const juros = Number(p.juros||0);
+    const parcelas = p.dados_parcelas || calcularParcelas(valor, entrada, qtd, juros);
+    const valorParc = parcelas[0]?.valor || 0;
+    const prazo = p.prazo_entrega || p.prazo || 18;
+    const cpfLimpo = (p.cpf||'').replace(/\D/g,'');
+    const link = `${URL_CONSULTA}?cpf=${cpfLimpo}`;
+
+    const mensagem = `📄 *PROPOSTA DE CRÉDITO — FLASHCRED*
+
+Olá ${p.nome}! Segue sua proposta detalhada:
+
+💰 *Condições:*
+• Valor solicitado: ${formatarMoeda(valor)}
+• Entrada: ${formatarMoeda(entrada)}
+• ${qtd}x de ${formatarMoeda(valorParc)}
+• Juros: ${juros}% ao mês
+• 📦 Prazo de entrega: ${prazo} dias
+
+✅ Assim que aprovado, escolhe as parcelas, assina o contrato e gera seu Pix!
+
+🔍 *Acompanhe aqui:* ${link}
+Basta acessar com seu CPF!
+
+FlashCred — Distribuidora Flash Point
+`;
+
+    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(mensagem)}`, '_blank');
+}
+
+// ==============================================
+// ✅ COBRAR PARCELA ESPECÍFICA POR WHATSAPP
+// ==============================================
+async function cobrarParcelaWhatsApp(idProposta, idxParcela) {
+    const p = propostas.find(x=>x.id===idProposta);
+    const tel = limparTelefone(p.telefone || p.celular || p.whatsapp || '');
+    if(!tel || tel.length<11) return alert('⚠️ Telefone não encontrado!');
+
+    const parc = p.dados_parcelas[idxParcela];
+    const mensagem = `💳 *COBRANÇA DE PARCELA — FLASHCRED*
+
+Olá ${p.nome}!
+
+Esta é uma gentileza de cobrança referente à sua ${parc.numero}ª parcela:
+
+💰 *Valor:* ${formatarMoeda(parc.valor)}
+📅 *Vencimento:* ${formatarData(parc.vencimento)}
+
+Por favor, acesse o link abaixo com seu CPF para gerar o Pix de pagamento:
+🔍 ${URL_CONSULTA}?cpf=${(p.cpf||'').replace(/\D/g,'')}
+
+Agradecemos pela sua atenção e confiança!
+
+FlashCred — Distribuidora Flash Point
+`;
+    window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(mensagem)}`, '_blank');
 }
 
 // ==============================================
 // ✅ GERAR PDF
 // ==============================================
-async function gerarPDF(proposta) {
-    const valor = Number(proposta.valor_desejado||0);
-    const entrada = Number(proposta.valor_entrada||0);
-    const qtd = Number(proposta.quantidade_parcelas||0);
-    const juros = Number(proposta.juros||0);
-    const parcelas = proposta.dados_parcelas || calcularParcelas(valor, entrada, qtd, juros);
-    const prazo = proposta.prazo_entrega || proposta.prazo || 18;
+async function gerarPDF(id) {
+    const p = propostas.find(x=>x.id===id);
+    const valor = Number(p.valor_desejado||0);
+    const entrada = Number(p.valor_entrada||0);
+    const qtd = Number(p.quantidade_parcelas||0);
+    const juros = Number(p.juros||0);
+    const parcelas = p.dados_parcelas || calcularParcelas(valor, entrada, qtd, juros);
+    const prazo = p.prazo_entrega || p.prazo || 18;
 
     const doc = document.getElementById('areaPDF');
     doc.innerHTML = `
-        <h1>📄 PROPOSTA DE CRÉDITO — FLASHCRED</h1>
+        <h1 style="text-align:center; color:#0A2463; border-bottom:2px solid #0A2463; padding-bottom:10px;">📄 PROPOSTA DE CRÉDITO — FLASHCRED</h1>
         <p><strong>Data:</strong> ${new Date().toLocaleDateString('pt-BR')}</p>
-        <hr>
+        <hr style="margin:15px 0;">
         <h3>👤 DADOS DO CLIENTE</h3>
-        <p><strong>Nome:</strong> ${proposta.nome || proposta.nome_completo || 'Não informado'}</p>
-        <p><strong>CPF:</strong> ${formatarCPF(proposta.cpf)}</p>
-        <p><strong>Telefone:</strong> ${formatarTelefone(proposta.telefone || proposta.celular || proposta.whatsapp || '')}</p>
-        <p><strong>Endereço:</strong> ${montarEndereco(proposta)}</p>
-        <hr>
+        <p><strong>Nome:</strong> ${p.nome || p.nome_completo || 'Não informado'}</p>
+        <p><strong>CPF:</strong> ${formatarCPF(p.cpf)}</p>
+        <p><strong>Telefone:</strong> ${formatarTelefone(p.telefone || p.celular || p.whatsapp || '')}</p>
+        <p><strong>Endereço:</strong> ${montarEndereco(p)}</p>
+        <hr style="margin:15px 0;">
         <h3>💰 CONDIÇÕES DO CRÉDITO</h3>
         <p><strong>Valor Solicitado:</strong> ${formatarMoeda(valor)}</p>
         <p><strong>Valor da Entrada:</strong> ${formatarMoeda(entrada)}</p>
         <p><strong>Quantidade de Parcelas:</strong> ${qtd}x</p>
         <p><strong>Juros:</strong> ${juros}% ao mês</p>
-        <p><strong>Prazo de Entrega:</strong> ${prazo} dias</p>
-        <hr>
+        <p><strong>Prazo de Entrega:</strong> ${prazo} dias úteis</p>
+        <hr style="margin:15px 0;">
         <h3>📋 PARCELAS</h3>
-        <table>
-            <tr><th>Parcela</th><th>Valor</th><th>Vencimento</th></tr>
-            ${parcelas.map(p=>`<tr><td>${p.numero}ª</td><td>${formatarMoeda(p.valor)}</td><td>${p.vencimento?.split('-').reverse().join('/')||'---'}</td></tr>`).join('')}
+        <table style="width:100%; border-collapse:collapse; margin:15px 0;">
+            <tr style="background:#E0E7FF;"><th style="border:1px solid #CCC; padding:8px;">Parcela</th><th style="border:1px solid #CCC; padding:8px;">Valor</th><th style="border:1px solid #CCC; padding:8px;">Vencimento</th><th style="border:1px solid #CCC; padding:8px;">Status</th></tr>
+            ${parcelas.map(pr=>`<tr><td style="border:1px solid #CCC; padding:8px;">${pr.numero}ª</td><td style="border:1px solid #CCC; padding:8px;">${formatarMoeda(pr.valor)}</td><td style="border:1px solid #CCC; padding:8px;">${formatarData(pr.vencimento)}</td><td style="border:1px solid #CCC; padding:8px;">${pr.paga?'✅ PAGA':'⏳ Pendente'}</td></tr>`).join('')}
         </table>
     `;
 
@@ -350,208 +639,13 @@ async function gerarPDF(proposta) {
     const w = pdf.internal.pageSize.getWidth();
     const h = (canvas.height * w) / canvas.width;
     pdf.addImage(imgData, 'PNG', 0, 0, w, h);
-    pdf.save(`Proposta_${(proposta.nome||'SemNome').replace(/\s+/g,'_')}_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.pdf`);
+    pdf.save(`Proposta_${(p.nome||'SemNome').replace(/\s+/g,'_')}_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.pdf`);
 }
 
 // ==============================================
-// ✅ ENVIAR PROPOSTA NO WHATSAPP — COM LINK
-// ==============================================
-async function enviarPropostaWhatsApp(proposta) {
-    const tel = (proposta.telefone || proposta.celular || proposta.whatsapp || '').replace(/\D/g,'');
-    if(!tel || tel.length<11) return alert('⚠️ Telefone do cliente não encontrado!');
-
-    const valor = Number(proposta.valor_desejado||0);
-    const entrada = Number(proposta.valor_entrada||0);
-    const qtd = Number(proposta.quantidade_parcelas||0);
-    const juros = Number(proposta.juros||0);
-    const parcelas = proposta.dados_parcelas || calcularParcelas(valor, entrada, qtd, juros);
-    const valorParc = parcelas[0]?.valor || 0;
-    const prazo = proposta.prazo_entrega || proposta.prazo || 18;
-    const cpfLimpo = (proposta.cpf||'').replace(/\D/g,'');
-    const linkAcompanhamento = `${URL_CONSULTA}?cpf=${cpfLimpo}`;
-
-    const mensagem = `📄 *PROPOSTA DE CRÉDITO — FLASHCRED*
-
-Olá ${proposta.nome}! Segue sua proposta detalhada:
-
-💰 *Condições:*
-• Valor solicitado: ${formatarMoeda(valor)}
-• Entrada: ${formatarMoeda(entrada)}
-• ${qtd}x de ${formatarMoeda(valorParc)}
-• Juros: ${juros}% ao mês
-• 📦 Prazo de entrega: ${prazo} dias
-
-✅ Assim que aprovado, você escolhe as parcelas, assina o contrato e gera seu Pix!
-
-🔍 *Acompanhe aqui:* ${linkAcompanhamento}
-Basta acessar e ver tudo atualizado em tempo real!
-`;
-
-    await gerarPDF(proposta);
-    setTimeout(() => {
-        window.open(`https://wa.me/55${tel}?text=${encodeURIComponent(mensagem)}`, '_blank');
-    }, 800);
-}
-
-// ==============================================
-// ✅ DEMAIS FUNÇÕES
+// ✅ FUNÇÕES AUXILIARES
 // ==============================================
 function editarProposta(id) { editandoId = id; renderizarPropostas(); }
-window.atualizarCalculo = function(id) {
-    const valor = (document.getElementById('edt_valor_'+id)?.value||'0').replace(/\D/g,'')/100;
-    const entrada = (document.getElementById('edt_entrada_'+id)?.value||'0').replace(/\D/g,'')/100;
-    const qtd = parseInt(document.getElementById('edt_parcelas_'+id)?.value||0);
-    const juros = parseFloat(document.getElementById('edt_juros_'+id)?.value||0);
-    const financiado = valor - entrada;
-    let parcela = 0;
-    if(qtd>0 && financiado>0) {
-        const taxa = juros/100;
-        parcela = taxa===0 ? financiado/qtd : financiado*(taxa*Math.pow(1+taxa,qtd))/(Math.pow(1+taxa,qtd)-1);
-    }
-    const el = document.getElementById('calculo_'+id);
-    if(el) el.innerHTML = `💡 Valor de cada parcela: <strong>${formatarMoeda(parcela)}</strong> · ${qtd}x · Juros: ${juros}% · Prazo: ${document.getElementById('edt_prazo_'+id)?.value||18} dias`;
-};
-async function aprovarProposta(id) {
-    const p = propostas.find(x=>x.id===id);
-    const valor = p.valor_desejado||0;
-    const entrada = p.valor_entrada||0;
-    const qtd = p.quantidade_parcelas||1;
-    const juros = p.juros||0;
-    const parcelas = p.dados_parcelas?.length?p.dados_parcelas:calcularParcelas(valor, entrada, qtd, juros);
-    const {error} = await supabase.from('propostas').update({status:'Aprovada', dados_parcelas: parcelas}).eq('id', id);
-    if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ APROVADA! Cliente já vê em tempo real! ⚡');
-}
-async function reprovarProposta(id) {
-    if(!confirm('Reprovar?')) return;
-    const {error} = await supabase.from('propostas').update({status:'Reprovada'}).eq('id', id);
-    if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Reprovada!');
-}
-async function excluirProposta(id) {
-    if(!confirm('Excluir? Sem retorno!')) return;
-    const {error} = await supabase.from('propostas').delete().eq('id', id);
-    if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Excluída!');
-}
-async function marcarEntradaPaga(id) {
-    const {error} = await supabase.from('propostas').update({entrada_paga:true}).eq('id', id);
-    if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Entrada marcada como PAGA! Cliente já vê! ⚡');
-}
-
-// ==============================================
-// ✅ RENDERIZAR LISTA
-// ==============================================
-function renderizarPropostas() {
-    const lista = document.getElementById('listaPropostas');
-    let html = '';
-    let qtdNovas=0, qtdAprovadas=0, qtdPendentes=0, totalEntrado=0, totalFalta=0;
-
-    propostas.forEach(p => {
-        const valor = Number(p.valor_desejado||0);
-        const entrada = Number(p.valor_entrada||0);
-        const qtd = Number(p.quantidade_parcelas||0);
-        const juros = Number(p.juros||0);
-        const status = p.status||'Nova';
-        const entradaPaga = !!p.entrada_paga;
-        const parcelas = p.dados_parcelas||[];
-        const estaEditando = editandoId===p.id;
-        const prazo = p.prazo_entrega || p.prazo || 18;
-
-        const nome = p.nome||p.nome_completo||'Não informado';
-        const cpf = formatarCPF(p.cpf);
-        const telefone = formatarTelefone(p.telefone||p.celular||p.whatsapp||'');
-        const enderecoCompleto = montarEndereco(p);
-
-        const financiado = valor - entrada;
-        let parcelaValor = 0;
-        if(qtd>0 && financiado>0) {
-            const taxa = juros/100;
-            parcelaValor = taxa===0 ? financiado/qtd : financiado*(taxa*Math.pow(1+taxa,qtd))/(Math.pow(1+taxa,qtd)-1);
-        }
-
-        if(entradaPaga) totalEntrado += entrada;
-        const falta = valor - (entradaPaga?entrada:0);
-        if(falta>0) totalFalta += falta;
-        if(status==='Nova') qtdNovas++;
-        if(status==='Aprovada') { qtdAprovadas++; if(!entradaPaga) qtdPendentes++; }
-
-        const classeStatus = status==='Aprovada'?'status-aprovada':status==='Reprovada'?'status-reprovada':'status-nova';
-
-        html += `
-        <div class="cartao ${status==='Nova'?'novo-piscando':''}">
-            <div class="linha" style="justify-content:space-between;">
-                <h2>👤 ${nome}</h2>
-                <span class="status ${classeStatus}">${status}</span>
-            </div>
-
-            <div class="dados-cliente">
-                <div class="linha"><span class="etiqueta">📋 CPF:</span><span class="valor">${cpf}</span></div>
-                ${telefone?`<div class="linha"><span class="etiqueta">📱 Telefone:</span><span class="valor">${telefone}</span></div>`:''}
-                <div class="linha"><span class="etiqueta">🏠 Endereço:</span><span class="valor">${enderecoCompleto}</span></div>
-            </div>
-
-            ${!estaEditando ? `
-            <div class="linha"><span class="etiqueta">Valor Solicitado:</span><span class="valor">${formatarMoeda(valor)}</span></div>
-            <div class="linha"><span class="etiqueta">Valor da Entrada:</span><span class="valor">${formatarMoeda(entrada)} ${entradaPaga?'✅ PAGA':'⏳ Pendente'}</span></div>
-            <div class="linha"><span class="etiqueta">Parcelas / Juros:</span><span class="valor">${qtd}x · ${juros}% ao mês</span></div>
-            <div class="prazo-entrega">📦 Prazo de entrega: <strong>${prazo} dias</strong></div>
-            <div class="calculo-resultado">💡 Valor aproximado de cada parcela: <strong>${formatarMoeda(parcelaValor)}</strong></div>
-
-            <div class="resumo-financeiro">
-                <h4>📊 Resumo desta Proposta</h4>
-                <div class="linha"><span class="etiqueta">Valor Total:</span><span class="valor">${formatarMoeda(valor)}</span></div>
-                <div class="linha"><span class="etiqueta">Já Entrou:</span><span style="color:${entradaPaga?'#059669':'#F59E0B'}; font-weight:bold;">${entradaPaga?formatarMoeda(entrada):'Ainda não'}</span></div>
-                <div class="linha"><span class="etiqueta">Falta Receber:</span><span class="valor">${formatarMoeda(falta)}</span></div>
-            </div>
-            ` : `
-            <div class="modo-edicao">
-                <div class="linha"><span class="etiqueta">Valor Solicitado R$:</span><input type="text" id="edt_valor_${p.id}" class="input-editar" value="${valor.toFixed(2).replace('.',',')}" oninput="atualizarCalculo(${p.id})"></div>
-                <div class="linha"><span class="etiqueta">Valor Entrada R$:</span><input type="text" id="edt_entrada_${p.id}" class="input-editar" value="${entrada.toFixed(2).replace('.',',')}" oninput="atualizarCalculo(${p.id})"></div>
-                <div class="linha"><span class="etiqueta">Qtd Parcelas:</span><input type="number" id="edt_parcelas_${p.id}" class="input-editar" value="${qtd}" min="1" oninput="atualizarCalculo(${p.id})" style="width:80px;"></div>
-                <div class="linha"><span class="etiqueta">Juros (% ao mês):</span><input type="number" step="0.01" id="edt_juros_${p.id}" class="input-editar" value="${juros}" oninput="atualizarCalculo(${p.id})" style="width:80px;"></div>
-                <div class="linha"><span class="etiqueta">📦 Prazo Entrega (dias):</span><input type="number" id="edt_prazo_${p.id}" class="input-editar" value="${prazo}" min="1" style="width:80px;"></div>
-                <div id="calculo_${p.id}" class="calculo-resultado">💡 Valor de cada parcela: <strong>Calculando...</strong></div>
-                <div class="linha" style="margin-top:10px;">
-                    <button onclick="salvarEdicao(${p.id})" class="botao botao-sucesso">💾 Salvar e Atualizar</button>
-                    <button onclick="editandoId=null; renderizarPropostas();" class="botao botao-perigo">❌ Cancelar</button>
-                </div>
-            </div>
-            `}
-
-            ${parcelas.length>0 ? `
-            <div class="separador"></div>
-            <h3 style="margin-bottom:8px;">📋 Parcelas com Vencimento:</h3>
-            ${parcelas.map(x=>`<div class="info-parcela" style="background:${x.paga?'#D1FAE5':'#FEF3C7'};">${x.numero}ª · ${formatarMoeda(x.valor)} · Vence: ${x.vencimento?.split('-').reverse().join('/')||'---'} · ${x.paga?'✅ PAGA':'⏳ A vencer'}</div>`).join('')}
-            `:''}
-
-            <div class="separador"></div>
-            <div class="botao-grupo">
-                ${!estaEditando ? `
-                <button onclick="editarProposta(${p.id})" class="botao botao-alerta">✏️ Editar</button>
-                <button onclick="gerarPDF(${JSON.stringify(p).replace(/"/g,'&quot;')})" class="botao botao-pdf">📄 Gerar PDF</button>
-                ${telefone?`<button onclick="enviarPropostaWhatsApp(${JSON.stringify(p).replace(/"/g,'&quot;')})" class="botao botao-whatsapp">💬 Enviar Proposta</button>`:''}
-                ${status==='Nova'?`
-                <button onclick="aprovarProposta(${p.id})" class="botao botao-sucesso">✅ Aprovar</button>
-                <button onclick="reprovarProposta(${p.id})" class="botao botao-perigo">❌ Reprovar</button>
-                `:''}
-                ${status==='Aprovada'&&!entradaPaga?`<button onclick="marcarEntradaPaga(${p.id})" class="botao botao-azul">💰 Marcar Entrada Paga</button>`:''}
-                <button onclick="excluirProposta(${p.id})" class="botao botao-perigo">🗑️ Excluir</button>
-                `:''}
-            </div>
-        </div>`;
-    });
-
-    lista.innerHTML = html || '<p style="text-align:center; padding:50px; color:var(--texto-claro);">Nenhuma proposta recebida ainda.</p>';
-
-    document.getElementById('qtdNovas').textContent = qtdNovas;
-    document.getElementById('qtdAprovadas').textContent = qtdAprovadas;
-    document.getElementById('qtdPendentes').textContent = qtdPendentes;
-    document.getElementById('badgeSino').textContent = qtdNovas;
-    document.getElementById('totalEntrado').textContent = formatarMoeda(totalEntrado);
-    document.getElementById('totalFalta').textContent = formatarMoeda(totalFalta);
-}
 </script>
 </body>
 </html>
