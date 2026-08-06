@@ -71,7 +71,7 @@
 
         .qrcode-container { text-align: center; margin: 20px 0; padding: 24px; background: #F0FDF4; border-radius: 14px; border: 2px solid #A7F3D0; }
         .qrcode-container img { max-width: 220px; border-radius: 10px; border: 6px solid white; box-shadow: 0 6px 20px rgba(0,0,0,0.1); margin-bottom: 14px; }
-        .copia-cola { background: #fff; padding: 14px; border-radius: 8px; font-size: 12px; word-break: break-all; border: 1px solid #6EE7B7; margin-bottom: 12px; font-family: monospace; }
+        .copia-cola { background: #fff; padding: 14px; border-radius: 8px; font-size: 11px; word-break: break-all; border: 1px solid #6EE7B7; margin-bottom: 12px; font-family: monospace; line-height: 1.4; }
 
         .erro { color: var(--perigo); text-align: center; font-size: 15px; margin-top: 12px; display: none; }
         .carregando { text-align: center; color: var(--texto-claro); display: none; margin: 18px 0; padding: 12px; font-size: 15px; }
@@ -203,7 +203,7 @@
             <div class="qrcode-container">
                 <p id="carregandoPix" style="color: #047857; font-weight: 600;">🔄 Gerando QR Code...</p>
                 <img id="qrCodeImg" src="" alt="QR Code Pix" style="display:none;">
-                <p id="nomeRecebedor" style="font-weight: 600; color: #065F46; margin-top: 10px; display:none;">Recebedor: FLASH POINT</p>
+                <p id="nomeRecebedor" style="font-weight: 600; color: #065F46; margin-top: 10px; display:none;">Recebedor: FELIPE COSTA</p>
                 <div class="copia-cola" id="codigoPix" style="display:none;"></div>
                 <button type="button" id="btnCopiarPix" style="display:none; background: var(--alerta); color: #1E293B; margin-top: 10px;" onclick="copiarPix()">📋 Copiar Código Pix</button>
                 <p style="font-size: 13px; color: var(--texto-claro); margin-top: 14px; padding: 12px; background: #F1F5F9; border-radius: 8px;">✅ Após pagar, a página atualiza SOZINHA e liberará suas parcelas!</p>
@@ -224,12 +224,12 @@
 
 <script>
 // ==============================================
-// SUAS CHAVES JÁ CONFIGURADAS! NÃO ALTERE!
+// CONFIGURAÇÕES - NÃO ALTERE SEM SABER!
 // ==============================================
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const CHAVE_PIX = '33552949852';
-const NOME_RECEBEDOR = 'FLASH POINT';
+const NOME_RECEBEDOR = 'FELIPE COSTA';
 const CIDADE = 'SAO PAULO';
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -607,29 +607,41 @@ function reduzirImagem(base64, largura, altura, qualidade) {
 }
 
 // ==============================================
-// GERAR CÓDIGO PIX
+// ✅ GERA CÓDIGO PIX CORRIGIDO
 // ==============================================
-function gerarCodigoPix(valor, nome) {
+function gerarCodigoPix(valor, nomeCliente) {
     function calcularCRC(texto) {
         let crc = 0xFFFF;
         for (let i = 0; i < texto.length; i++) {
             crc ^= texto.charCodeAt(i) << 8;
             for (let j = 0; j < 8; j++) {
-                crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+                crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
             }
         }
         return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
     }
-    let pix = '000201';
-    const chave = '0014br.gov.bcb.pix01' + String(CHAVE_PIX.length).padStart(2,'0') + CHAVE_PIX;
-    pix += '26' + String(chave.length).padStart(2,'0') + chave;
-    pix += '520400005303986';
-    pix += '5802BR';
-    pix += '59' + String(NOME_RECEBEDOR.length).padStart(2,'0') + NOME_RECEBEDOR;
-    pix += '60' + String(CIDADE.length).padStart(2,'0') + CIDADE;
-    pix += '54' + String(valor.length).padStart(2,'0') + valor;
-    pix += '6304';
-    return pix + calcularCRC(pix + '6304');
+
+    // Remove caracteres especiais do nome e limita a 25 caracteres
+    let nomeRecebedor = NOME_RECEBEDOR.replace(/[^A-Za-z0-9 ]/g, '').substring(0, 25);
+    let cidade = CIDADE.replace(/[^A-Za-z0-9 ]/g, '').substring(0, 15);
+
+    // Monta o código Pix seguindo padrão BCB
+    const chavePix = '0014br.gov.bcb.pix0111' + CHAVE_PIX;
+    const valorStr = valor.replace('.', '');
+    
+    let pix = '';
+    pix += '000201';                              // Formato
+    pix += '26' + String(chavePix.length).padStart(2, '0') + chavePix; // Chave Pix
+    pix += '52040000';                            // Categoria
+    pix += '5303986';                             // Moeda (Real)
+    pix += '5802BR';                              // País
+    pix += '59' + String(nomeRecebedor.length).padStart(2, '0') + nomeRecebedor; // NOME CORRIGIDO
+    pix += '60' + String(cidade.length).padStart(2, '0') + cidade; // Cidade
+    pix += '54' + String(valor.length).padStart(2, '0') + valor; // Valor
+    pix += '6304';                                // CRC
+    pix += calcularCRC(pix);                      // Calcula e adiciona CRC
+
+    return pix;
 }
 
 function mostrarPixGerado(codigo, valor) {
