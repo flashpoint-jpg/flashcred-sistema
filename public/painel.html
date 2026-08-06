@@ -13,6 +13,7 @@
             --alerta: #F59E0B;
             --perigo: #EF4444;
             --azul: #3B82F6;
+            --whatsapp: #25D366;
             --bg-body: #F8FAFC;
             --borda: #E2E8F0;
             --texto: #334155;
@@ -35,6 +36,7 @@
         .botao-alerta { background: var(--alerta); color: #1F2937; }
         .botao-perigo { background: var(--perigo); color: white; }
         .botao-azul { background: var(--azul); color: white; }
+        .botao-whatsapp { background: var(--whatsapp); color: white; }
         .botao-pequeno { padding: 6px 10px; font-size: 13px; }
         .status { display: inline-block; padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 13px; }
         .status-nova { background: #E0E7FF; color: #3730A3; }
@@ -44,7 +46,7 @@
         .barra-superior { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .sino { font-size: 22px; position: relative; }
         .sino-badge { position: absolute; top: -8px; right: -8px; background: var(--perigo); color: white; font-size: 11px; font-weight: bold; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
-        .painel-config { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .painel-config { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
         input { padding: 10px 12px; border: 1px solid var(--borda); border-radius: 6px; font-size: 15px; }
         .area-senha { max-width: 420px; margin: 100px auto; text-align: center; }
         .oculto { display: none !important; }
@@ -66,7 +68,6 @@
         <p style="color:var(--texto-claro); margin-bottom:24px;">Digite sua senha para entrar</p>
         <input type="password" id="senha" placeholder="Senha de acesso" style="width:100%; margin-bottom:12px; padding:14px; font-size:16px; text-align:center;">
         <button onclick="entrar()" class="botao botao-primario" style="width:100%; padding:14px; font-size:16px;">Entrar</button>
-        <p style="margin-top:16px; font-size:13px; color:var(--texto-claro);">Senha: flash2026</p>
     </div>
 
     <!-- 📋 TELA PRINCIPAL -->
@@ -96,16 +97,22 @@
             </div>
         </div>
 
-        <!-- ⚙️ TOKEN MERCADO PAGO -->
+        <!-- ⚙️ CONFIGURAÇÕES -->
         <div class="cartao">
-            <h3 style="margin-bottom:10px;">⚙️ Token Mercado Pago (Produção)</h3>
+            <h3 style="margin-bottom:12px;">⚙️ Configurações do Sistema</h3>
             <div class="painel-config">
-                <input type="text" id="tokenMP" placeholder="APP_USR-..." style="flex:1; min-width:260px;">
-                <button onclick="salvarToken()" class="botao botao-primario">💾 Salvar</button>
+                <label style="min-width:140px; font-weight:600;">Token Mercado Pago:</label>
+                <input type="text" id="tokenMP" placeholder="APP_USR-..." style="flex:1; min-width:280px;">
+                <button onclick="salvarToken()" class="botao botao-primario">💾 Salvar Token</button>
+            </div>
+            <div class="painel-config">
+                <label style="min-width:140px; font-weight:600;">WhatsApp Contato:</label>
+                <input type="text" id="whatsapp" placeholder="11999999999" style="flex:1; min-width:200px;">
+                <button onclick="salvarWhatsApp()" class="botao botao-whatsapp">💾 Salvar WhatsApp</button>
             </div>
         </div>
 
-        <!-- 📑 LISTA -->
+        <!-- 📑 LISTA DE PROPOSTAS -->
         <div id="listaPropostas"></div>
     </div>
 </div>
@@ -124,7 +131,7 @@ let hashAnterior = '';
 let canalRealtime = null;
 
 // ==============================================
-// ✅ LOGIN — SIMPLES E GARANTIDO
+// ✅ LOGIN
 // ==============================================
 window.onload = function() {
     const logado = sessionStorage.getItem('logado_painel') === 'SIM';
@@ -134,7 +141,9 @@ window.onload = function() {
         carregarPropostas();
         ativarRealtime();
         const token = localStorage.getItem('tokenMP');
+        const whats = localStorage.getItem('whatsapp');
         if(token) document.getElementById('tokenMP').value = token;
+        if(whats) document.getElementById('whatsapp').value = whats;
     }
     document.getElementById('senha').addEventListener('keypress', e => {
         if(e.key === 'Enter') entrar();
@@ -150,7 +159,9 @@ function entrar() {
         carregarPropostas();
         ativarRealtime();
         const token = localStorage.getItem('tokenMP');
+        const whats = localStorage.getItem('whatsapp');
         if(token) document.getElementById('tokenMP').value = token;
+        if(whats) document.getElementById('whatsapp').value = whats;
     } else {
         alert('❌ Senha incorreta!');
         document.getElementById('senha').value = '';
@@ -165,13 +176,19 @@ function sair() {
 }
 
 // ==============================================
-// ✅ SALVAR TOKEN
+// ✅ SALVAR TOKEN E WHATSAPP
 // ==============================================
 function salvarToken() {
     const token = document.getElementById('tokenMP').value.trim();
     if(!token || token.length < 20) { alert('⚠️ Digite um Token válido!'); return; }
     localStorage.setItem('tokenMP', token);
-    alert('✅ Token SALVO! Produção ativada!');
+    alert('✅ Token MERCADO PAGO salvo!');
+}
+function salvarWhatsApp() {
+    const whats = document.getElementById('whatsapp').value.trim().replace(/\D/g,'');
+    if(!whats || whats.length < 10) { alert('⚠️ Digite um número válido!'); return; }
+    localStorage.setItem('whatsapp', whats);
+    alert('✅ WhatsApp salvo!');
 }
 
 // ==============================================
@@ -240,24 +257,24 @@ async function aprovarProposta(id) {
 }
 
 async function reprovarProposta(id) {
-    if(!confirm('❌ Reprovar?')) return;
+    if(!confirm('❌ Reprovar esta proposta?')) return;
     const { error } = await supabase.from('propostas').update({status:'Reprovada'}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Reprovada!');
+    else alert('✅ Proposta Reprovada!');
 }
 
 async function marcarEntradaPaga(id) {
     if(!confirm('💰 Marcar entrada como PAGA?')) return;
     const { error } = await supabase.from('propostas').update({entrada_paga:true}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Entrada marcada!');
+    else alert('✅ Entrada marcada como PAGA!');
 }
 
 async function excluirProposta(id) {
-    if(!confirm('⚠️ EXCLUIR?')) return;
+    if(!confirm('⚠️ EXCLUIR proposta? Essa ação não tem retorno!')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ Excluída!');
+    else alert('✅ Proposta Excluída!');
 }
 
 function formatarCPF(cpf) {
@@ -297,7 +314,7 @@ function renderizarPropostas() {
             </div>
             <div class="linha"><span class="etiqueta">CPF:</span><span class="valor">${formatarCPF(p.cpf)}</span></div>
             <div class="linha">
-                <span class="etiqueta">Valor:</span><span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+                <span class="etiqueta">Valor Total:</span><span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
                 <span class="etiqueta" style="margin-left:16px;">Entrada:</span><span class="valor">${valorEntrada.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
             </div>
             <div class="linha"><span class="etiqueta">Parcelas:</span><span class="valor">${qtd}x · ${p.juros||0}% ao mês</span></div>
@@ -310,7 +327,7 @@ function renderizarPropostas() {
                 const dias = venc ? Math.ceil((venc-hoje)/(1000*60*60*24)) : 999;
                 const atrasada = venc && dias<0 && !parc.paga;
                 const proximo = !parc.paga && dias>=0 && dias<=5;
-                const st = parc.paga?'✅ PAGA':atrasada?`⚠️ Atrasada`:proximo?`⏳ ${dias}d`:`📅 ${dias}d`;
+                const st = parc.paga?'✅ PAGA':atrasada?`⚠️ Atrasada`:proximo?`⏳ ${dias} dias`: `📅 ${dias} dias`;
                 const cor = parc.paga?'#D1FAE5':atrasada?'#FEE2E2':proximo?'#FEF3C7':'#EFF6FF';
                 return `<div class="info-parcela" style="background:${cor}">${parc.numero}ª · ${v} · Vence: ${dt} · ${st}</div>`;
             }).join('')}</div>` : ''}
@@ -323,7 +340,7 @@ function renderizarPropostas() {
         </div>`;
     });
 
-    lista.innerHTML = html || '<p style="text-align:center; padding:40px; color:var(--texto-claro);">Nenhuma proposta recebida.</p>';
+    lista.innerHTML = html || '<p style="text-align:center; padding:40px; color:var(--texto-claro);">Nenhuma proposta recebida ainda.</p>';
 
     document.getElementById('qtdNovas').textContent = qtdNovas;
     document.getElementById('qtdAprovadas').textContent = qtdAprovadas;
