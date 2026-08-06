@@ -46,7 +46,6 @@
         .botao-sucesso { background: #10B981; color: white; }
         .botao:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .aviso { padding: 14px; border-radius: 10px; margin: 16px 0; font-weight: 500; }
-        .aviso-amarelo { background: #FEF3C7; color: #92400E; }
         .aviso-verde { background: #D1FAE5; color: #065F46; }
         .aviso-azul { background: #DBEAFE; color: #1E40AF; }
         .aviso-vermelho { background: #FEE2E2; color: #991B1B; }
@@ -112,7 +111,7 @@
         <!-- ✅ PARCELAS PARA ESCOLHER -->
         <div id="areaEscolhaParcelas" class="cartao oculto">
             <h2>📋 Escolha em quantas vezes quer pagar</h2>
-            <select id="selecionarParcela" onchange="atualizarValorParcela()">
+            <select id="selecionarParcela">
                 <option value="">Selecione...</option>
             </select>
             <button id="botaoConfirmar" onclick="confirmarEscolha()" class="botao botao-sucesso" style="margin-top:12px;">✅ Confirmar</button>
@@ -128,7 +127,7 @@
                 <h2>📄 Contrato</h2>
                 <div style="background:#F8FAFC; padding:16px; border-radius:8px; max-height:300px; overflow:auto; font-size:13px; line-height:1.6; margin-bottom:12px;">
                     <p style="font-weight:bold; margin-bottom:10px;">TERMOS DE ACEITE</p>
-                    <p>Declaro que li e concordo com os termos do contrato de crédito. Comprometo-me a honrar o pagamento das parcelas nas datas de vencimento estabelecidas. A falta de pagamento poderá acarretar em restrição cadastral e medidas judiciais cabíveis.</p>
+                    <p>Declaro que li e concordo com os termos do contrato de crédito. Comprometo-me a honrar o pagamento das parcelas nas datas de vencimento estabelecidas.</p>
                     <p style="margin-top:10px;"><strong>FlashCred — Distribuidora Flash Point</strong><br>Data de emissão: <span id="dataContrato"></span></p>
                 </div>
                 <label style="display:flex; gap:8px; align-items:center; margin-bottom:12px; font-weight:500;">
@@ -141,13 +140,16 @@
                 <h2 style="text-align:center;">💳 Pix para Pagamento da Entrada</h2>
                 <div id="qrcode"></div>
                 <p style="text-align:center; font-weight:600; font-size:18px; color:#0A2463; margin:10px 0;">Valor: R$ <span id="valorPix"></span></p>
-                <p style="text-align:center; font-size:13px; color:#64748B;">Escaneie com o app do seu banco ou copie o código abaixo</p>
+                <p style="text-align:center; font-size:13px; color:#64748B;">Escaneie com o app do seu banco ou clique abaixo após pagar</p>
                 <div class="codigopix" id="codigoPix"></div>
                 <button onclick="copiarPix()" class="botao botao-principal" style="margin-top:12px;">📋 Copiar Código Pix</button>
+                
+                <!-- BOTÃO DE SIMULAÇÃO/CONFIRMAÇÃO PARA O CLIENTE AVANÇAR -->
+                <button onclick="simularPagamentoEfetuado()" class="botao botao-sucesso" style="margin-top:12px;">✅ Já fiz o pagamento / Confirmar</button>
             </div>
 
             <div id="avisoEntradaPaga" class="cartao aviso aviso-verde oculto">
-                ✅ Entrada paga! Veja suas parcelas abaixo.
+                ✅ Entrada paga com sucesso! Veja suas parcelas abaixo.
             </div>
             <div id="areaParcelasPagas" class="cartao oculto">
                 <h2>📋 Suas Parcelas Contratadas</h2>
@@ -161,9 +163,6 @@
 </div>
 
 <script>
-// ==============================================
-// ✅ CONFIGURAÇÕES
-// ==============================================
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
@@ -281,20 +280,25 @@ function exibirProposta(p) {
         document.getElementById('areaPagamento').classList.remove('oculto');
         document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
 
+        // SE A ENTRADA JÁ FOI PAGA (BLOQUEIA TUDO E MOSTRA AS PARCELAS)
+        if(p.entrada_paga === true) {
+            document.getElementById('areaEscolhaParcelas').classList.add('oculto');
+            document.getElementById('avisoPrazo').classList.add('oculto');
+            document.getElementById('areaContrato').classList.add('oculto');
+            document.getElementById('areaQRCode').classList.add('oculto');
+            document.getElementById('areaParcelasPagas').classList.remove('oculto');
+            document.getElementById('avisoEntradaPaga').classList.remove('oculto');
+            exibirListaParcelas(p.dados_parcelas || []);
+            return;
+        }
+
+        // SE JÁ ESCOLHEU AS PARCELAS MAS NÃO PAGOU A ENTRADA AINDA
         if(p.quantidade_escolhida && p.quantidade_escolhida > 0) {
             document.getElementById('areaEscolhaParcelas').classList.add('oculto');
             document.getElementById('avisoPrazo').classList.remove('oculto');
             document.getElementById('areaContrato').classList.remove('oculto');
-
-            if(p.entrada_paga) {
-                document.getElementById('areaContrato').classList.add('oculto');
-                document.getElementById('areaQRCode').classList.add('oculto');
-                document.getElementById('avisoPrazo').classList.add('oculto');
-                document.getElementById('areaParcelasPagas').classList.remove('oculto');
-                document.getElementById('avisoEntradaPaga').classList.remove('oculto');
-                exibirListaParcelas(p.dados_parcelas || []);
-            }
         } else {
+            // SE AINDA NÃO ESCOLHEU AS PARCELAS
             document.getElementById('areaEscolhaParcelas').classList.remove('oculto');
             document.getElementById('avisoPrazo').classList.add('oculto');
             const qtdMax = p.quantidade_parcelas || 1;
@@ -344,11 +348,10 @@ async function confirmarEscolha() {
         });
     }
 
-    const {error} = await supabase.from('propostas').upsert({
-        id: propostaAtual.id,
+    const {error} = await supabase.from('propostas').update({
         quantidade_escolhida: qtd,
         dados_parcelas: parcelas
-    });
+    }).eq('id', propostaAtual.id);
 
     if(error) return alert('❌ Erro: ' + error.message);
 
@@ -358,9 +361,6 @@ async function confirmarEscolha() {
     exibirProposta(propostaAtual);
 }
 
-// ==============================================
-// ✅ GERAR PIX — PADRÃO OFICIAL BANCO CENTRAL
-// ==============================================
 function gerarPix() {
     if(!document.getElementById('liContrato').checked) 
         return alert('⚠️ Primeiro leia e concorde com o contrato!');
@@ -411,11 +411,29 @@ function gerarPix() {
     });
 }
 
+// ==============================================
+// ✅ CONFIRMAR PAGAMENTO DA ENTRADA NO BANCO
+// ==============================================
+async function simularPagamentoEfetuado() {
+    const { error } = await supabase.from('propostas').update({
+        entrada_paga: true
+    }).eq('id', propostaAtual.id);
+
+    if(error) {
+        alert('❌ Erro ao atualizar pagamento: ' + error.message);
+        return;
+    }
+
+    alert('✅ Pagamento confirmado com sucesso!');
+    propostaAtual.entrada_paga = true;
+    exibirProposta(propostaAtual);
+}
+
 function copiarPix() {
     const codigo = document.getElementById('codigoPix').textContent;
     navigator.clipboard.writeText(codigo).then(() => {
         alert('📋 Código Pix copiado com sucesso!');
-    }).catch(err => {
+    }).catch(() => {
         alert('❌ Erro ao copiar código.');
     });
 }
