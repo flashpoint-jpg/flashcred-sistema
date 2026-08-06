@@ -83,8 +83,7 @@
 
         .status-pendente { background-color: #FEF3C7; color: #92400E; padding: 16px; border-radius: 10px; font-size: 15px; line-height: 1.6; }
 
-        .parcela-item { background: #F8FAFC; border: 1px solid var(--borda); border-radius: 10px; padding: 16px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
-        .parcela-paga { background: #F0FDF4; border-left: 5px solid #10B981; }
+        .parcela-item { background: #F8FAFC; border: 1px solid var(--borda); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
         .parcela-header { display: flex; justify-content: space-between; align-items: center; }
         .parcela-info h4 { font-size: 15px; color: var(--primary); margin-bottom: 4px; }
         .parcela-info p { font-size: 13px; color: var(--texto-claro); }
@@ -101,12 +100,6 @@
         .sinc-ativo { color: var(--sucesso); font-size: 13px; text-align: right; margin-bottom: 8px; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
         .ponto-verde { width: 8px; height: 8px; background: var(--sucesso); border-radius: 50%; animation: piscar 1.5s infinite; }
         @keyframes piscar { 0% { opacity: 1; } 50% { opacity: 0.2; } 100% { opacity: 1; } }
-
-        @media print {
-            body * { visibility: hidden; }
-            #contratoImpressaoCompleto, #contratoImpressaoCompleto * { visibility: visible; }
-            #contratoImpressaoCompleto { position: absolute; left: 0; top: 0; width: 100%; display: block !important; background: white; padding: 30px; }
-        }
     </style>
 </head>
 <body>
@@ -226,7 +219,7 @@
             <h3 style="margin-top: 15px;">📸 Selfie de Identificação</h3>
             <label>Tire uma foto do rosto</label>
             <label for="inputSelfie" class="btn-selfie">📷 Abrir Câmera</label>
-            <input type="file" id="inputSelfie" accept="image/*" capture="user" onchange="converterSelfie(this)">
+            <input type="file" id="inputSelfie" accept="image/*" capture="user" onchange="processarSelfie(this)">
             <div id="previewSelfieContainer" style="margin-top: 8px; display: none;">
                 <img id="imgSelfiePreview" style="max-width: 100px; border-radius: 8px; border: 2px solid var(--sucesso);">
             </div>
@@ -237,7 +230,7 @@
             </div>
             <button type="button" class="btn-limpar" onclick="limparAssinatura()">🗑️ Limpar</button>
 
-            <button type="button" id="btnConcluirContrato" style="margin-top: 12px; background: var(--sucesso);" onclick="concluirContrato()">✅ Assinar e Gerar Pix ➔</button>
+            <button type="button" id="btnConcluirContrato" style="margin-top: 12px; background: var(--sucesso);" onclick="salvarContratoETudo()">✅ Assinar e Gerar Pix ➔</button>
         </div>
 
         <!-- ETAPA 3: PAGAMENTO -->
@@ -271,7 +264,7 @@
             <h3 style="color: var(--primary); margin-bottom: 15px;">📋 Suas Parcelas</h3>
             <div id="listaParcelasContainer"></div>
 
-            <button type="button" class="btn-imprimir" onclick="imprimirContratoCompleto()">🖨️ Imprimir Contrato</button>
+            <button type="button" class="btn-imprimir" onclick="window.print()">🖨️ Imprimir Contrato</button>
         </div>
     </div>
 </div>
@@ -287,7 +280,9 @@ const CHAVE_PIX = '33552949852';
 const NOME_RECEBEDOR = 'FLASH POINT';
 const CIDADE_RECEBEDOR = 'SAO PAULO';
 
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    realtime: { reconnect: true, timeout: 30000 }
+});
 
 let propostaAtual = null;
 let base64Selfie = '';
@@ -378,11 +373,11 @@ function gerarDatasVencimento(qtd) {
 }
 
 // ==============================================
-// 🔍 BUSCA DE PROPOSTA — CORRIGIDA!
+// 🔍 BUSCA DE PROPOSTA
 // ==============================================
 async function buscarProposta() {
     cpfAtual = document.getElementById('cpfConsulta').value.replace(/\D/g, '');
-    if (cpfAtual.length !== 11) { alert('Digite um CPF válido com 11 dígitos.'); return; }
+    if (cpfAtual.length !== 11) { alert('Digite um CPF válido.'); return; }
     window.history.pushState({}, '', `${window.location.pathname}?cpf=${cpfAtual}`);
     await buscarPropostaAutomatica(cpfAtual);
 }
@@ -392,62 +387,42 @@ async function buscarPropostaAutomatica(cpfLimpo) {
     document.getElementById('erroBusca').style.display = 'none';
     document.getElementById('detalhesProposta').style.display = 'none';
 
-    // ✅ BUSCA SEM PONTUAÇÃO — compara com o que está salvo no banco
     const { data, error } = await supabase
         .from('propostas')
         .select('*')
-        .eq('cpf', cpfLimpo)  // ✅ CPF SEM PONTOS = SEMPRE ENCONTRA!
+        .eq('cpf', cpfLimpo)
         .limit(1);
 
     document.getElementById('carregando').style.display = 'none';
 
-    if (error) {
-        console.error('Erro na busca:', error);
-        document.getElementById('erroBusca').textContent = 'Erro na busca: ' + error.message;
-        document.getElementById('erroBusca').style.display = 'block';
-        return;
-    }
-
-    if (!data || data.length === 0) {
-        document.getElementById('erroBusca').style.display = 'block';
-        return;
-    }
+    if (error) { console.error('Erro:', error); alert('Erro na busca: ' + error.message); return; }
+    if (!data || data.length === 0) { document.getElementById('erroBusca').style.display = 'block'; return; }
 
     propostaAtual = data[0];
     cpfAtual = cpfLimpo;
     exibirDadosProposta();
-    
-    // ✅ INICIA MONITORAMENTO EM TEMPO REAL
-    escutarMudancasRealtime(propostaAtual.id);
+    ativarRealtime(propostaAtual.id);
 }
 
 // ==============================================
-// 🔄 ATUALIZAÇÃO EM TEMPO REAL — CORRIGIDA!
+// 🔄 REALTIME — CORRIGIDO E FORÇA ATUALIZAÇÃO
 // ==============================================
-function escutarMudancasRealtime(idProposta) {
-    // ✅ REMOVE CANAL ANTIGO SE EXISTIR
-    if (canalRealtime) {
-        supabase.removeChannel(canalRealtime);
-    }
+function ativarRealtime(idProposta) {
+    if (canalRealtime) supabase.removeChannel(canalRealtime);
 
-    // ✅ MONITORA ALTERAÇÕES NA PROPOSTA — SEMPRE ATUALIZA!
-    canalRealtime = supabase.channel('mudancas_proposta_' + idProposta)
-        .on(
-            'postgres_changes',
-            {
-                event: '*',  // ✅ CAPTURA QUALQUER ALTERAÇÃO
-                schema: 'public',
-                table: 'propostas',
-                filter: `id=eq.${idProposta}`
-            },
-            (payload) => {
-                console.log('🔄 Atualização recebida!', payload);
-                propostaAtual = payload.new;
-                exibirDadosProposta();  // ✅ ATUALIZA A TELA SOZINHA!
-            }
-        )
-        .subscribe((status) => {
-            console.log('📡 Status Realtime:', status);
+    canalRealtime = supabase.channel('proposta_' + idProposta + '_' + Date.now())
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'propostas',
+            filter: `id=eq.${idProposta}`
+        }, (payload) => {
+            console.log('🔄 ATUALIZAÇÃO RECEBIDA!', payload);
+            propostaAtual = payload.new;
+            exibirDadosProposta(); // ✅ ATUALIZA TELA SOZINHA
+        })
+        .subscribe((status, err) => {
+            console.log('📡 Realtime status:', status, err || '');
         });
 }
 
@@ -465,30 +440,30 @@ function atualizarStepper(etapaAtiva) {
 }
 
 // ==============================================
-// EXIBIÇÃO DOS DADOS
+// EXIBIR DADOS
 // ==============================================
 function exibirDadosProposta() {
     if (!propostaAtual) return;
-    
     const p = propostaAtual;
+
     document.getElementById('detalhesProposta').style.display = 'block';
     document.getElementById('nomeCliente').textContent = p.nome || 'Cliente';
     document.getElementById('whatsappCliente').textContent = p.whatsapp || p.telefone || 'Não informado';
     document.getElementById('valorTotalGeral').textContent = real(p.valor_desejado || 0);
     document.getElementById('maxParcelas').textContent = p.quantidade_parcelas || 12;
 
-    // Oculta todas as etapas
+    // Oculta todas
     document.getElementById('etapaPendente').style.display = 'none';
     document.getElementById('etapaEscolhaParcelas').style.display = 'none';
     document.getElementById('etapaContrato').style.display = 'none';
     document.getElementById('etapaPagamento').style.display = 'none';
     document.getElementById('etapaParcelasLiberadas').style.display = 'none';
 
-    // ✅ JÁ PAGOU → MOSTRA PARCELAS
+    // ✅ JÁ PAGOU
     if (p.entrada_paga === true) {
         atualizarStepper(5);
         document.getElementById('etapaParcelasLiberadas').style.display = 'block';
-        gerarListaDeParcelas(p);
+        gerarListaParcelas(p);
         return;
     }
 
@@ -501,12 +476,10 @@ function exibirDadosProposta() {
         document.getElementById('valorEntradaPix').textContent = real(valorEntrada);
 
         if (p.qr_code_entrada && p.qr_code_entrada.length > 20) {
-            mostrarPixGerado(p.qr_code_entrada, valorEntrada);
+            mostrarPix(p.qr_code_entrada, valorEntrada);
         } else {
-            const codigoPix = gerarCodigoPixBCB(
-                valorEntrada.toFixed(2), CHAVE_PIX, NOME_RECEBEDOR, CIDADE_RECEBEDOR, `Entrada - ${p.nome}`
-            );
-            mostrarPixGerado(codigoPix, valorEntrada);
+            const pix = gerarPixCodigo(valorEntrada.toFixed(2), p.nome);
+            mostrarPix(pix, valorEntrada);
         }
         return;
     }
@@ -523,35 +496,28 @@ function exibirDadosProposta() {
 }
 
 // ==============================================
-// CARREGAR OPÇÕES DE PARCELAS
+// CARREGAR PARCELAS
 // ==============================================
 function carregarOpcoesParcelas(p) {
     const max = Number(p.quantidade_parcelas || 12);
     const select = document.getElementById('qtdParcelasEscolhida');
-    select.innerHTML = '<option value="">Selecione a quantidade...</option>';
-    for (let i = 1; i <= max; i++) {
-        select.innerHTML += `<option value="${i}">${i}x</option>`;
-    }
+    select.innerHTML = '<option value="">Selecione...</option>';
+    for (let i = 1; i <= max; i++) select.innerHTML += `<option value="${i}">${i}x</option>`;
     document.getElementById('liContrato').checked = false;
     document.getElementById('btnIrContrato').style.display = 'none';
     document.getElementById('resumoFinanceiro').style.display = 'none';
 }
 
-// ==============================================
-// ATUALIZA RESUMO EM TEMPO REAL
-// ==============================================
 function atualizarResumo() {
     const qtd = Number(document.getElementById('qtdParcelasEscolhida').value);
     if (!qtd) {
         document.getElementById('resumoFinanceiro').style.display = 'none';
         document.getElementById('btnIrContrato').style.display = 'none';
-        document.getElementById('liContrato').checked = false;
         return;
     }
-
     const valorTotal = Number(propostaAtual.valor_desejado || 0);
-    const jurosPercent = Number(propostaAtual.juros || 0);
-    const { valorEntrada, valorParcela, saldo } = calcularParcelas(valorTotal, qtd, jurosPercent);
+    const juros = Number(propostaAtual.juros || 0);
+    const { valorEntrada, valorParcela, saldo } = calcularParcelas(valorTotal, qtd, juros);
     const datas = gerarDatasVencimento(qtd);
 
     dadosEscolhidos = { qtd, valorParcela, valorEntrada, datas };
@@ -562,29 +528,21 @@ function atualizarResumo() {
     document.getElementById('resumoSaldo').textContent = real(saldo);
     document.getElementById('resumoQtd').textContent = qtd + 'x';
     document.getElementById('resumoValorParcela').textContent = real(valorParcela);
-    document.getElementById('resumoJuros').textContent = jurosPercent + '% ao mês';
+    document.getElementById('resumoJuros').textContent = juros + '% ao mês';
 
-    const listaVenc = document.getElementById('listaVencimentos');
-    listaVenc.innerHTML = '<strong style="color:#0A2463; font-size:12px; display:block; margin-bottom:6px;">📅 Vencimentos:</strong>';
-    datas.forEach((dt, i) => {
-        listaVenc.innerHTML += `<div class="item-venc"><span>${i+1}ª parcela</span><span>${dt}</span></div>`;
-    });
-
+    const lista = document.getElementById('listaVencimentos');
+    lista.innerHTML = '<strong style="color:#0A2463; font-size:12px; margin-bottom:6px;">📅 Vencimentos:</strong>';
+    datas.forEach((dt, i) => lista.innerHTML += `<div class="item-venc"><span>${i+1}ª</span><span>${dt}</span></div>`);
     verificarPodeAvancar();
 }
 
 function verificarPodeAvancar() {
-    const qtd = document.getElementById('qtdParcelasEscolhida').value;
-    const li = document.getElementById('liContrato').checked;
-    document.getElementById('btnIrContrato').style.display = (qtd && li) ? 'block' : 'none';
+    const pode = document.getElementById('qtdParcelasEscolhida').value && document.getElementById('liContrato').checked;
+    document.getElementById('btnIrContrato').style.display = pode ? 'block' : 'none';
 }
 
-// ==============================================
-// IR PARA CONTRATO
-// ==============================================
 function irParaContrato() {
     if (!dadosEscolhidos.qtd) return;
-    
     atualizarStepper(3);
     document.getElementById('etapaEscolhaParcelas').style.display = 'none';
     document.getElementById('etapaContrato').style.display = 'block';
@@ -600,81 +558,119 @@ function irParaContrato() {
 }
 
 // ==============================================
-// ✅ ASSINAR E GERAR PIX
+// ✅ SALVAR CONTRATO — CORRIGIDO! NÃO TRAVA MAIS
 // ==============================================
-async function concluirContrato() {
+async function salvarContratoETudo() {
+    // Validações
     if (!base64Selfie) { alert('📸 Tire a selfie primeiro!'); return; }
-    const vazio = document.createElement('canvas'); 
-    vazio.width = canvas.width; 
-    vazio.height = canvas.height;
-    if (canvas.toDataURL() === vazio.toDataURL()) { alert('✍️ Assine no quadro!'); return; }
+    if (!canvas.toDataURL('image/png', 0.5)) { alert('✍️ Assine no quadro!'); return; }
 
-    const assinatura = canvas.toDataURL('image/png');
-    document.getElementById('btnConcluirContrato').textContent = 'Salvando...';
-    document.getElementById('btnConcluirContrato').disabled = true;
+    const btn = document.getElementById('btnConcluirContrato');
+    btn.textContent = 'Salvando...';
+    btn.disabled = true;
 
-    const codigoPix = gerarCodigoPixBCB(
-        dadosEscolhidos.valorEntrada.toFixed(2), CHAVE_PIX, NOME_RECEBEDOR, CIDADE_RECEBEDOR, `Entrada - ${propostaAtual.nome}`
-    );
+    try {
+        // Gera Pix
+        const codigoPix = gerarPixCodigo(dadosEscolhidos.valorEntrada.toFixed(2), propostaAtual.nome);
 
-    const { error } = await supabase.from('propostas').update({
-        contrato_assinado: true,
-        selfie_url: base64Selfie,
-        assinatura_url: assinatura,
-        qr_code_entrada: codigoPix,
-        valor_entrada: dadosEscolhidos.valorEntrada,
-        valor_parcela: dadosEscolhidos.valorParcela,
-        quantidade_parcelas: dadosEscolhidos.qtd
-    }).eq('id', propostaAtual.id);
+        // ✅ Reduz tamanho das imagens para NÃO TRAVAR o salvamento
+        const assinaturaPequena = reduzirImagem(canvas.toDataURL('image/png', 0.5), 400, 150, 0.6);
+        const selfiePequena = reduzirImagem(base64Selfie, 400, 400, 0.6);
 
-    if (error) { 
-        alert('Erro: ' + error.message); 
-        document.getElementById('btnConcluirContrato').textContent = '✅ Assinar e Gerar Pix ➔';
-        document.getElementById('btnConcluirContrato').disabled = false; 
-        return; 
+        // ✅ SALVA TUDO NO BANCO DE UMA VEZ
+        const { error } = await supabase.from('propostas').update({
+            contrato_assinado: true,
+            selfie_url: selfiePequena,
+            assinatura_url: assinaturaPequena,
+            qr_code_entrada: codigoPix,
+            valor_entrada: dadosEscolhidos.valorEntrada,
+            valor_parcela: dadosEscolhidos.valorParcela,
+            quantidade_parcelas: dadosEscolhidos.qtd,
+            datas_vencimento: dadosEscolhidos.datas.join(' | ')
+        }).eq('id', propostaAtual.id);
+
+        if (error) throw error;
+
+        alert('✅ Contrato assinado com sucesso! Agora pague a entrada.');
+        
+        // ✅ ATUALIZA LOCALMENTE TAMBÉM
+        propostaAtual.contrato_assinado = true;
+        propostaAtual.qr_code_entrada = codigoPix;
+        propostaAtual.valor_entrada = dadosEscolhidos.valorEntrada;
+        exibirDadosProposta();
+
+    } catch (erro) {
+        console.error('Erro:', erro);
+        alert('❌ Erro ao salvar: ' + erro.message + '\nTente novamente.');
+        btn.textContent = '✅ Assinar e Gerar Pix ➔';
+        btn.disabled = false;
     }
-
-    alert('✅ Contrato assinado! Pague a entrada pelo Pix abaixo.');
-    exibirDadosProposta();
 }
 
 // ==============================================
-// 💰 GERA CÓDIGO PIX VÁLIDO
+// 📸 REDUZ TAMANHO DA IMAGEM (NÃO TRAVA MAIS!)
 // ==============================================
-function gerarCodigoPixBCB(valor, chavePix, nome, cidade, descricao) {
-    function calcularCRC16(texto) {
+function reduzirImagem(base64, largura, altura, qualidade) {
+    const canvasTmp = document.createElement('canvas');
+    canvasTmp.width = largura;
+    canvasTmp.height = altura;
+    const ctxTmp = canvasTmp.getContext('2d');
+    const img = new Image();
+    img.src = base64;
+    ctxTmp.drawImage(img, 0, 0, largura, altura);
+    return canvasTmp.toDataURL('image/jpeg', qualidade);
+}
+
+function processarSelfie(input) {
+    if (input.files && input.files[0]) {
+        const leitor = new FileReader();
+        leitor.onload = e => {
+            base64Selfie = e.target.result;
+            document.getElementById('imgSelfiePreview').src = base64Selfie;
+            document.getElementById('previewSelfieContainer').style.display = 'block';
+        };
+        leitor.readAsDataURL(input.files[0]);
+    }
+}
+
+// ==============================================
+// ✍️ DESENHO DA ASSINATURA
+// ==============================================
+function iniciarDesenho(e) { desenhando = true; ctx.beginPath(); ctx.moveTo(e.offsetX || e.layerX, e.offsetY || e.layerY); }
+function desenhar(e) { if (!desenhando) return; ctx.lineTo(e.offsetX || e.layerX, e.offsetY || e.layerY); ctx.stroke(); }
+function pararDesenho() { desenhando = false; }
+function limparAssinatura() { ctx.fillStyle = '#FFF'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+
+// ==============================================
+// 💰 GERA PIX VÁLIDO
+// ==============================================
+function gerarPixCodigo(valor, nome) {
+    function crc16(texto) {
         let crc = 0xFFFF;
-        for (let i = 0; i < texto.length; i++) {
+        for (let i=0; i<texto.length; i++) {
             crc ^= texto.charCodeAt(i) << 8;
-            for (let j = 0; j < 8; j++) {
-                crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
-            }
+            for (let j=0; j<8; j++) crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
         }
-        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4,'0');
     }
-
     let pix = '000201';
-    const chaveField = '0014br.gov.bcb.pix01' + String(chavePix.length).padStart(2,'0') + chavePix;
-    pix += '26' + String(chaveField.length).padStart(2,'0') + chaveField;
-    pix += '52040000';
-    pix += '5303986';
+    const chave = '0014br.gov.bcb.pix01' + String(CHAVE_PIX.length).padStart(2,'0') + CHAVE_PIX;
+    pix += '26' + String(chave.length).padStart(2,'0') + chave;
+    pix += '520400005303986';
     pix += '5802BR';
-    pix += '59' + String(nome.length).padStart(2,'0') + nome;
-    pix += '60' + String(cidade.length).padStart(2,'0') + cidade;
-    if (parseFloat(valor) > 0) {
-        pix += '54' + String(valor.length).padStart(2,'0') + valor;
-    }
-    const semCrc = pix + '6304';
-    const crc = calcularCRC16(semCrc);
-    return pix + '6304' + crc;
+    pix += '59' + String(NOME_RECEBEDOR.length).padStart(2,'0') + NOME_RECEBEDOR;
+    pix += '60' + String(CIDADE_RECEBEDOR.length).padStart(2,'0') + CIDADE_RECEBEDOR;
+    pix += '54' + String(valor.length).padStart(2,'0') + valor;
+    pix += '6304';
+    return pix + crc16(pix + '6304');
 }
 
-function mostrarPixGerado(codigoPix, valor) {
+function mostrarPix(codigo, valorEntrada) {
     document.getElementById('carregandoPix').style.display = 'none';
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(codigoPix)}`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(codigo)}`;
     document.getElementById('qrCodeImg').src = qrUrl;
     document.getElementById('qrCodeImg').style.display = 'block';
-    document.getElementById('copiaColaPix').textContent = codigoPix;
+    document.getElementById('copiaColaPix').textContent = codigo;
     document.getElementById('copiaColaPix').style.display = 'block';
     document.getElementById('nomeRecebedor').style.display = 'block';
     document.getElementById('btnCopiarPix').style.display = 'block';
@@ -682,29 +678,14 @@ function mostrarPixGerado(codigoPix, valor) {
 
 function copiarPix() {
     navigator.clipboard.writeText(document.getElementById('copiaColaPix').textContent)
-        .then(() => alert('✅ Código copiado! Abra o app do banco e cole.'))
-        .catch(() => alert('Selecione e copie o código manualmente.'));
+        .then(() => alert('✅ Copiado! Abra o app do banco e cole.'))
+        .catch(() => alert('Selecione e copie manualmente.'));
 }
 
 // ==============================================
-// ASSINATURA E SELFIE
+// LISTA DE PARCELAS
 // ==============================================
-function iniciarDesenho(e) { desenhando = true; ctx.beginPath(); ctx.moveTo(e.offsetX || e.layerX, e.offsetY || e.layerY); }
-function desenhar(e) { if (!desenhando) return; ctx.lineTo(e.offsetX || e.layerX, e.offsetY || e.layerY); ctx.stroke(); }
-function pararDesenho() { desenhando = false; }
-function limparAssinatura() { ctx.fillStyle = '#FFF'; ctx.fillRect(0,0,canvas.width,canvas.height); }
-function converterSelfie(input) {
-    if (input.files && input.files[0]) {
-        const r = new FileReader();
-        r.onload = e => { base64Selfie = e.target.result; document.getElementById('imgSelfiePreview').src = base64Selfie; document.getElementById('previewSelfieContainer').style.display = 'block'; };
-        r.readAsDataURL(input.files[0]);
-    }
-}
-
-// ==============================================
-// LISTA DE PARCELAS LIBERADAS
-// ==============================================
-function gerarListaDeParcelas(p) {
+function gerarListaParcelas(p) {
     const container = document.getElementById('listaParcelasContainer');
     container.innerHTML = '';
     const qtd = p.quantidade_parcelas || 12;
@@ -713,21 +694,19 @@ function gerarListaDeParcelas(p) {
     const datas = datasTexto ? datasTexto.split(' | ') : gerarDatasVencimento(qtd);
 
     for (let i = 1; i <= qtd; i++) {
-        const vencStr = datas[i-1] || '--/--/----';
+        const venc = datas[i-1] || '--/--/----';
         container.innerHTML += `
         <div class="parcela-item">
             <div class="parcela-header">
                 <div class="parcela-info">
                     <h4>${i}ª Parcela de ${qtd}</h4>
-                    <p>Vencimento: ${vencStr}</p>
+                    <p>Vencimento: ${venc}</p>
                 </div>
                 <div class="parcela-valor">${real(valorParcela)}</div>
             </div>
         </div>`;
     }
 }
-
-function imprimirContratoCompleto() { window.print(); }
 </script>
 </body>
 </html>
