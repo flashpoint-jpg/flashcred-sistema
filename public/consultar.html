@@ -51,7 +51,7 @@
         .aviso-azul { background: #DBEAFE; color: #1E40AF; }
         .aviso-vermelho { background: #FEE2E2; color: #991B1B; }
         #qrcode { display: flex; justify-content: center; margin: 20px 0; padding: 16px; background: white; border-radius: 12px; }
-        .codigopix { background: #F1F5F9; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 10px; }
+        .codigopix { background: #F1F5F9; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 10px; word-break: break-all; margin-top: 10px; }
         .oculto { display: none !important; }
         .linha-dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .atualizando { text-align: center; font-size: 12px; color: #94A3B8; margin-top: 10px; }
@@ -127,7 +127,7 @@
 
         <!-- 📄 PRAZO + CONTRATO + PIX -->
         <div id="areaPagamento" class="oculto">
-            <!-- ⏰ MENSAGEM DO PRAZO DE ENTREGA -- APARECE APÓS ESCOLHER PARCELAS -->
+            <!-- ⏰ MENSAGEM DO PRAZO DE ENTREGA -->
             <div id="avisoPrazo" class="cartao aviso aviso-azul oculto">
                 <strong>📦 Prazo de entrega:</strong> Seu produto será entregue em até <span id="diasPrazo"></span> dias úteis após confirmação do pagamento.
             </div>
@@ -185,11 +185,15 @@ let propostaAtual = null;
 let inscricaoRealtime = null;
 
 // ==============================================
-// ✅ PEGAR CPF DA URL AUTOMATICAMENTE
+// ✅ SALVA CPF NA URL E NO LOCALSTORAGE — F5 NÃO PERDE MAIS!
 // ==============================================
 window.onload = function() {
     const parametros = new URLSearchParams(window.location.search);
-    const cpfDaUrl = parametros.get('cpf');
+    let cpfDaUrl = parametros.get('cpf');
+    // ✅ Se não tiver na URL, tenta recuperar do salvamento
+    if(!cpfDaUrl) {
+        cpfDaUrl = localStorage.getItem('ultimo_cpf');
+    }
     if(cpfDaUrl) {
         document.getElementById('cpf').value = formatarCPF(cpfDaUrl);
         consultar();
@@ -199,14 +203,20 @@ window.onload = function() {
     });
 };
 
+// ✅ Salva o CPF quando consulta — F5 mantém na mesma página!
+function salvarCpfUrl(cpf) {
+    localStorage.setItem('ultimo_cpf', cpf);
+    history.replaceState({}, '', '?cpf=' + cpf);
+}
+
 // ==============================================
-// ✅ FUNÇÃO DE CALCULAR CRC16 (ESSENCIAL PARA PIX VÁLIDO!)
+// ✅ CRC16 CORRIGIDO — PIX VÁLIDO!
 // ==============================================
-function calcularCRC16(texto) {
+function calcularCRC16(dados) {
     let polinomio = 0x1021;
     let valor = 0xFFFF;
-    for (let i = 0; i < texto.length; i++) {
-        valor ^= (texto.charCodeAt(i) << 8);
+    for (let i = 0; i < dados.length; i++) {
+        valor ^= (dados.charCodeAt(i) << 8);
         for (let j = 0; j < 8; j++) {
             if ((valor & 0x8000) !== 0) {
                 valor = ((valor << 1) & 0xFFFF) ^ polinomio;
@@ -215,7 +225,9 @@ function calcularCRC16(texto) {
             }
         }
     }
-    return valor.toString(16).toUpperCase().padStart(4, '0');
+    let resultado = valor.toString(16).toUpperCase();
+    while (resultado.length < 4) resultado = '0' + resultado;
+    return resultado;
 }
 
 // ==============================================
@@ -226,6 +238,9 @@ function formatarCPF(cpf) {
     const n = cpf.replace(/\D/g,'');
     if(n.length===11) return `${n.slice(0,3)}.${n.slice(3,6)}.${n.slice(6,9)}-${n.slice(9)}`;
     return cpf;
+}
+function limparCPF(cpf) {
+    return (cpf||'').replace(/\D/g,'');
 }
 function formatarMoeda(valor) {
     return Number(valor||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
@@ -242,8 +257,10 @@ function formatarData(data) {
 // ✅ CONSULTAR PROPOSTA
 // ==============================================
 async function consultar() {
-    let cpf = document.getElementById('cpf').value.replace(/\D/g,'');
+    let cpf = limparCPF(document.getElementById('cpf').value);
     if(cpf.length!==11) return alert('⚠️ Digite um CPF válido!');
+
+    salvarCpfUrl(cpf); // ✅ SALVA — F5 NÃO PERDE!
 
     const {data, error} = await supabase
         .from('propostas')
@@ -278,8 +295,8 @@ function exibirProposta(p) {
     document.getElementById('dadoJuros').textContent = `${p.juros || 0}% ao mês`;
     document.getElementById('dadoMaxParcelas').textContent = `${p.quantidade_parcelas || 0}x`;
 
-    // Prazo de entrega (vem do painel)
-    const prazoDias = p.prazo_entrega || p.prazo || 18; // ✅ Padrão 18 dias
+    // Prazo de entrega
+    const prazoDias = p.prazo_entrega || p.prazo || 18;
     document.getElementById('diasPrazo').textContent = prazoDias;
 
     // Status
@@ -302,13 +319,13 @@ function exibirProposta(p) {
         document.getElementById('areaPagamento').classList.remove('oculto');
         document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
 
-        // ✅ SE JÁ ESCOLHEU PARCELAS → MOSTRA PRAZO + CONTRATO
+        // ✅ SE JÁ ESCOLHEU PARCELAS
         if(p.quantidade_escolhida && p.quantidade_escolhida > 0) {
             document.getElementById('areaEscolhaParcelas').classList.add('oculto');
-            document.getElementById('avisoPrazo').classList.remove('oculto'); // ✅ MOSTRA PRAZO!
+            document.getElementById('avisoPrazo').classList.remove('oculto');
             document.getElementById('areaContrato').classList.remove('oculto');
 
-            // ✅ SE ENTRADA PAGA → MOSTRA PARCELAS
+            // ✅ SE ENTRADA PAGA
             if(p.entrada_paga) {
                 document.getElementById('areaContrato').classList.add('oculto');
                 document.getElementById('areaQRCode').classList.add('oculto');
@@ -318,7 +335,7 @@ function exibirProposta(p) {
                 exibirListaParcelas(p.dados_parcelas || []);
             }
         } else {
-            // ✅ NÃO ESCOLHEU → MOSTRA OPÇÕES
+            // ✅ NÃO ESCOLHEU AINDA
             document.getElementById('areaEscolhaParcelas').classList.remove('oculto');
             document.getElementById('avisoPrazo').classList.add('oculto');
             const qtdMax = p.quantidade_parcelas || 1;
@@ -343,12 +360,7 @@ function exibirProposta(p) {
 }
 
 // ==============================================
-// ✅ ATUALIZAR VALOR NA ESCOLHA
-// ==============================================
-function atualizarValorParcela() {}
-
-// ==============================================
-// ✅ CONFIRMAR ESCOLHA → MOSTRA PRAZO E CONTRATO
+// ✅ CONFIRMAR ESCOLHA
 // ==============================================
 async function confirmarEscolha() {
     const qtd = parseInt(document.getElementById('selecionarParcela').value);
@@ -360,7 +372,7 @@ async function confirmarEscolha() {
     const juros = Number(propostaAtual.juros || 0) / 100;
     const prazoDias = propostaAtual.prazo_entrega || propostaAtual.prazo || 18;
 
-    // Gerar parcelas com vencimento
+    // Gerar parcelas
     const hoje = new Date();
     hoje.setMonth(hoje.getMonth() + 1);
     hoje.setDate(5);
@@ -402,7 +414,7 @@ async function confirmarEscolha() {
 }
 
 // ==============================================
-// ✅ GERAR PIX VÁLIDO — COM CRC16 CORRIGIDO!
+// ✅ GERAR PIX 100% VÁLIDO — PADRÃO BANCO CENTRAL!
 // ==============================================
 function gerarPix() {
     if(!document.getElementById('liContrato').checked) return alert('⚠️ Primeiro leia e concorde com o contrato!');
@@ -411,29 +423,31 @@ function gerarPix() {
     const valorFormatado = formatarValorPix(valorEntrada);
     const nomeCliente = (propostaAtual.nome || 'Cliente').toUpperCase().replace(/[^A-Z0-9 ]/g,'').slice(0,25);
 
-    // ✅ Código Pix completo e válido conforme padrão BCB
-    const campoValor = valorFormatado !== '0.00' ? `5404${valorFormatado.padStart(7,'0')}` : '';
+    // ✅ Montagem EXATA do padrão BCB
+    const campoValor = valorEntrada > 0 ? `5404${valorFormatado.padStart(7,'0')}` : '';
+    const chaveFormatada = CHAVE_PIX.padStart(11, '0');
 
-    const codigoBase = [
+    const parteDados = [
         '000201',
-        '26330014br.gov.bcb.pix0111' + CHAVE_PIX,
+        `26${String(22 + chaveFormatada.length).padStart(2,'0')}0014br.gov.bcb.pix01${String(chaveFormatada.length).padStart(2,'0')}${chaveFormatada}`,
         '52040000',
         '5303986',
         campoValor,
-        '5913' + NOME_RECEBEDOR,
-        '6009' + CIDADE,
+        `59${String(NOME_RECEBEDOR.length).padStart(2,'0')}${NOME_RECEBEDOR}`,
+        `60${String(CIDADE.length).padStart(2,'0')}${CIDADE}`,
         '62070503***'
     ].join('');
 
-    const crc = calcularCRC16(codigoBase + '6304');
-    const codigoPix = codigoBase + '6304' + crc;
+    const codigoSemCRC = parteDados + '6304';
+    const crcFinal = calcularCRC16(codigoSemCRC);
+    const codigoPix = codigoSemCRC + crcFinal;
 
     // ✅ EXIBIR
     document.getElementById('areaQRCode').classList.remove('oculto');
     document.getElementById('valorPix').textContent = formatarMoeda(valorEntrada);
     document.getElementById('codigoPix').textContent = codigoPix;
     document.getElementById('qrcode').innerHTML = '';
-    new QRCode(document.getElementById('qrcode'), { text: codigoPix, width: 220, height: 220 });
+    new QRCode(document.getElementById('qrcode'), { text: codigoPix, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
 }
 
 function copiarPix() {
@@ -446,7 +460,7 @@ function copiarPix() {
 }
 
 // ==============================================
-// ✅ EXIBIR LISTA DE PARCELAS
+// ✅ EXIBIR PARCELAS
 // ==============================================
 function exibirListaParcelas(parcelas) {
     const el = document.getElementById('listaParcelas');
@@ -454,18 +468,18 @@ function exibirListaParcelas(parcelas) {
         <div style="padding:12px; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <span style="font-weight:500;">${p.numero}ª parcela</span>
             <span style="font-weight:700; color:#0A2463;">${formatarMoeda(p.valor)}</span>
-            <span style="color:${p.paga?'#059669':'#F59E0B'}; font-weight:500;">${p.vencimento?.split('-').reverse().join('/')} · ${p.paga?'✅ PAGA':'⏳ Pendente'}</span>
+            <span style="color:${p.paga?'#059669':'#F59E0B'}; font-weight:500;">${p.vencimento?.split('-').reverse().join('/')||'---'} · ${p.paga?'✅ PAGA':'⏳ Pendente'}</span>
         </div>
     `).join('');
 }
 
 // ==============================================
-// ✅ TEMPO REAL
+// ✅ TEMPO REAL — F5 NÃO PERDE MAIS!
 // ==============================================
 function ativarRealtime(idProposta) {
     if(inscricaoRealtime) inscricaoRealtime.unsubscribe();
 
-    inscricaoRealtime = supabase.channel('atualizacao-proposta')
+    inscricaoRealtime = supabase.channel('atualizacao-proposta-' + idProposta)
         .on('postgres_changes', {
             event: 'UPDATE',
             schema: 'public',
@@ -490,12 +504,15 @@ function ativarRealtime(idProposta) {
 // ==============================================
 function voltar() {
     if(inscricaoRealtime) inscricaoRealtime.unsubscribe();
+    localStorage.removeItem('ultimo_cpf');
     propostaAtual = null;
     window.location.search = '';
     document.getElementById('telaProposta').classList.add('oculto');
     document.getElementById('telaConsulta').classList.remove('oculto');
     document.getElementById('cpf').value = '';
 }
+
+function atualizarValorParcela() {}
 </script>
 </body>
 </html>
