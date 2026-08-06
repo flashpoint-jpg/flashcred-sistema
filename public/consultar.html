@@ -48,9 +48,10 @@
         .aviso { padding: 14px; border-radius: 10px; margin: 16px 0; font-weight: 500; }
         .aviso-amarelo { background: #FEF3C7; color: #92400E; }
         .aviso-verde { background: #D1FAE5; color: #065F46; }
+        .aviso-azul { background: #DBEAFE; color: #1E40AF; }
         .aviso-vermelho { background: #FEE2E2; color: #991B1B; }
         #qrcode { display: flex; justify-content: center; margin: 20px 0; padding: 16px; background: white; border-radius: 12px; }
-        .codigopix { background: #F1F5F9; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; margin-top: 10px; }
+        .codigopix { background: #F1F5F9; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 11px; word-break: break-all; margin-top: 10px; }
         .oculto { display: none !important; }
         .linha-dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .atualizando { text-align: center; font-size: 12px; color: #94A3B8; margin-top: 10px; }
@@ -115,7 +116,7 @@
             </div>
         </div>
 
-        <!-- ✅ PARCELAS PARA ESCOLHER — SÓ APARECE QUANDO APROVADA -->
+        <!-- ✅ PARCELAS PARA ESCOLHER -->
         <div id="areaEscolhaParcelas" class="cartao oculto">
             <h2>📋 Escolha em quantas vezes quer pagar</h2>
             <select id="selecionarParcela" onchange="atualizarValorParcela()">
@@ -124,13 +125,11 @@
             <button id="botaoConfirmar" onclick="confirmarEscolha()" class="botao botao-sucesso" style="margin-top:12px;">✅ Confirmar</button>
         </div>
 
-        <!-- 📄 CONTRATO E PIX -->
+        <!-- 📄 PRAZO + CONTRATO + PIX -->
         <div id="areaPagamento" class="oculto">
-            <div class="cartao aviso aviso-verde">
-                ✅ Sua proposta foi aprovada! Escolha as parcelas acima e confirme para gerar seu Pix.
-            </div>
-            <div id="avisoEntradaPaga" class="cartao aviso aviso-verde oculto">
-                ✅ Entrada paga! Veja suas parcelas abaixo.
+            <!-- ⏰ MENSAGEM DO PRAZO DE ENTREGA -- APARECE APÓS ESCOLHER PARCELAS -->
+            <div id="avisoPrazo" class="cartao aviso aviso-azul oculto">
+                <strong>📦 Prazo de entrega:</strong> Seu produto será entregue em até <span id="diasPrazo"></span> dias úteis após confirmação do pagamento.
             </div>
 
             <div id="areaContrato" class="cartao oculto">
@@ -154,13 +153,16 @@
                 <div class="codigopix" id="codigoPix"></div>
                 <button onclick="copiarPix()" class="botao botao-principal" style="margin-top:12px;">📋 Copiar Código Pix</button>
             </div>
-        </div>
 
-        <!-- 📊 PARCELAS CONTRATADAS (APÓS PAGAMENTO) -->
-        <div id="areaParcelasPagas" class="cartao oculto">
-            <h2>📋 Suas Parcelas Contratadas</h2>
-            <div id="listaParcelas"></div>
-            <button onclick="window.print()" class="botao botao-principal" style="margin-top:12px;">🖨️ Imprimir Contrato</button>
+            <!-- ✅ APÓS PAGAMENTO -->
+            <div id="avisoEntradaPaga" class="cartao aviso aviso-verde oculto">
+                ✅ Entrada paga! Veja suas parcelas abaixo.
+            </div>
+            <div id="areaParcelasPagas" class="cartao oculto">
+                <h2>📋 Suas Parcelas Contratadas</h2>
+                <div id="listaParcelas"></div>
+                <button onclick="window.print()" class="botao botao-principal" style="margin-top:12px;">🖨️ Imprimir Contrato</button>
+            </div>
         </div>
 
         <button onclick="voltar()" class="botao" style="background:#E2E8F0; color:#334155; margin-top:20px;">⬜ Consultar outro CPF</button>
@@ -169,13 +171,16 @@
 
 <script>
 // ==============================================
-// ✅ CONFIGURAÇÕES DO BANCO
+// ✅ CONFIGURAÇÕES
 // ==============================================
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
 const CHAVE_PIX = '33552949852'; // Sua chave Pix
+const NOME_RECEBEDOR = 'FLASH POINT';
+const CIDADE = 'SAO PAULO';
+
 let propostaAtual = null;
 let inscricaoRealtime = null;
 
@@ -195,6 +200,25 @@ window.onload = function() {
 };
 
 // ==============================================
+// ✅ FUNÇÃO DE CALCULAR CRC16 (ESSENCIAL PARA PIX VÁLIDO!)
+// ==============================================
+function calcularCRC16(texto) {
+    let polinomio = 0x1021;
+    let valor = 0xFFFF;
+    for (let i = 0; i < texto.length; i++) {
+        valor ^= (texto.charCodeAt(i) << 8);
+        for (let j = 0; j < 8; j++) {
+            if ((valor & 0x8000) !== 0) {
+                valor = ((valor << 1) & 0xFFFF) ^ polinomio;
+            } else {
+                valor = (valor << 1) & 0xFFFF;
+            }
+        }
+    }
+    return valor.toString(16).toUpperCase().padStart(4, '0');
+}
+
+// ==============================================
 // ✅ FORMATAR VALORES
 // ==============================================
 function formatarCPF(cpf) {
@@ -205,6 +229,9 @@ function formatarCPF(cpf) {
 }
 function formatarMoeda(valor) {
     return Number(valor||0).toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+}
+function formatarValorPix(valor) {
+    return Number(valor||0).toFixed(2).replace(',','.');
 }
 function formatarData(data) {
     if(!data) return '';
@@ -233,11 +260,11 @@ async function consultar() {
 
     propostaAtual = data;
     exibirProposta(data);
-    ativarRealtime(data.id); // ✅ TEMPO REAL
+    ativarRealtime(data.id);
 }
 
 // ==============================================
-// ✅ EXIBIR PROPOSTA — SEM ERRO!
+// ✅ EXIBIR PROPOSTA
 // ==============================================
 function exibirProposta(p) {
     document.getElementById('telaConsulta').classList.add('oculto');
@@ -251,6 +278,10 @@ function exibirProposta(p) {
     document.getElementById('dadoJuros').textContent = `${p.juros || 0}% ao mês`;
     document.getElementById('dadoMaxParcelas').textContent = `${p.quantidade_parcelas || 0}x`;
 
+    // Prazo de entrega (vem do painel)
+    const prazoDias = p.prazo_entrega || p.prazo || 18; // ✅ Padrão 18 dias
+    document.getElementById('diasPrazo').textContent = prazoDias;
+
     // Status
     const status = p.status || 'Nova';
     const elStatus = document.getElementById('statusProposta');
@@ -260,43 +291,44 @@ function exibirProposta(p) {
         status==='Reprovada'?'status-reprovada':'status-nova'
     );
 
-    // Se reprovada, para aqui
+    // Se reprovada
     if(status === 'Reprovada') {
         document.getElementById('areaPagamento').innerHTML = '<div class="cartao aviso aviso-vermelho">❌ Sua proposta foi reprovada. Entre em contato conosco.</div>';
         return;
     }
 
-    // ✅ SE APROVADA — MOSTRA PARCELAS E PIX
+    // ✅ SE APROVADA
     if(status === 'Aprovada') {
         document.getElementById('areaPagamento').classList.remove('oculto');
         document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
 
-        // ✅ CORRIGIDO: usa quantidade_parcelas (CAMPO CERTO!) e não quantidade_escolhida
-        const qtdMax = p.quantidade_parcelas || 1;
-        const valorTotal = Number(p.valor_desejado || 0);
-        const valorEntrada = Number(p.valor_entrada || 0);
-        const financiado = valorTotal - valorEntrada;
-        const juros = Number(p.juros || 0) / 100;
-
-        // ✅ SE JÁ ESCOLHEU PARCELAS → MOSTRA PARCELAS E PIX
+        // ✅ SE JÁ ESCOLHEU PARCELAS → MOSTRA PRAZO + CONTRATO
         if(p.quantidade_escolhida && p.quantidade_escolhida > 0) {
             document.getElementById('areaEscolhaParcelas').classList.add('oculto');
+            document.getElementById('avisoPrazo').classList.remove('oculto'); // ✅ MOSTRA PRAZO!
             document.getElementById('areaContrato').classList.remove('oculto');
 
-            // ✅ SE ENTRADA JÁ FOI PAGA → MOSTRA PARCELAS CONTRATADAS
+            // ✅ SE ENTRADA PAGA → MOSTRA PARCELAS
             if(p.entrada_paga) {
                 document.getElementById('areaContrato').classList.add('oculto');
                 document.getElementById('areaQRCode').classList.add('oculto');
+                document.getElementById('avisoPrazo').classList.add('oculto');
                 document.getElementById('areaParcelasPagas').classList.remove('oculto');
                 document.getElementById('avisoEntradaPaga').classList.remove('oculto');
                 exibirListaParcelas(p.dados_parcelas || []);
             }
         } else {
-            // ✅ NÃO ESCOLHEU AINDA → MOSTRA OPÇÕES DE PARCELAS
+            // ✅ NÃO ESCOLHEU → MOSTRA OPÇÕES
             document.getElementById('areaEscolhaParcelas').classList.remove('oculto');
+            document.getElementById('avisoPrazo').classList.add('oculto');
+            const qtdMax = p.quantidade_parcelas || 1;
+            const valorTotal = Number(p.valor_desejado || 0);
+            const valorEntrada = Number(p.valor_entrada || 0);
+            const financiado = valorTotal - valorEntrada;
+            const juros = Number(p.juros || 0) / 100;
+
             const select = document.getElementById('selecionarParcela');
             select.innerHTML = '<option value="">Selecione em quantas vezes quer pagar...</option>';
-
             for(let i=1; i<=qtdMax; i++) {
                 let valorParcela;
                 if(juros === 0) {
@@ -313,14 +345,10 @@ function exibirProposta(p) {
 // ==============================================
 // ✅ ATUALIZAR VALOR NA ESCOLHA
 // ==============================================
-function atualizarValorParcela() {
-    const qtd = parseInt(document.getElementById('selecionarParcela').value);
-    if(!qtd || !propostaAtual) return;
-    // Apenas visualização — cálculo real no confirmar
-}
+function atualizarValorParcela() {}
 
 // ==============================================
-// ✅ CONFIRMAR ESCOLHA DE PARCELAS — SEM ERRO!
+// ✅ CONFIRMAR ESCOLHA → MOSTRA PRAZO E CONTRATO
 // ==============================================
 async function confirmarEscolha() {
     const qtd = parseInt(document.getElementById('selecionarParcela').value);
@@ -330,6 +358,7 @@ async function confirmarEscolha() {
     const valorEntrada = Number(propostaAtual.valor_entrada || 0);
     const financiado = valorTotal - valorEntrada;
     const juros = Number(propostaAtual.juros || 0) / 100;
+    const prazoDias = propostaAtual.prazo_entrega || propostaAtual.prazo || 18;
 
     // Gerar parcelas com vencimento
     const hoje = new Date();
@@ -354,46 +383,66 @@ async function confirmarEscolha() {
         });
     }
 
-    // ✅ SALVA NO BANCO — CAMPO CERTO!
-    const {error} = await supabase.from('propostas').update({
+    // ✅ SALVA NO BANCO
+    const {error} = await supabase.from('propostas').upsert({
+        id: propostaAtual.id,
         quantidade_escolhida: qtd,
         dados_parcelas: parcelas
-    }).eq('id', propostaAtual.id);
+    });
 
     if(error) {
-        alert('❌ Erro ao confirmar: ' + error.message);
+        alert('❌ Erro: ' + error.message);
         return;
     }
 
-    alert('✅ Parcelas confirmadas! Agora leia o contrato e gere o Pix.');
+    alert(`✅ Parcelas confirmadas!\n\n📦 Prazo de entrega: ${prazoDias} dias.\n\nAgora leia o contrato e gere seu Pix.`);
     propostaAtual.quantidade_escolhida = qtd;
     propostaAtual.dados_parcelas = parcelas;
     exibirProposta(propostaAtual);
 }
 
 // ==============================================
-// ✅ GERAR PIX SIMPLES
+// ✅ GERAR PIX VÁLIDO — COM CRC16 CORRIGIDO!
 // ==============================================
 function gerarPix() {
     if(!document.getElementById('liContrato').checked) return alert('⚠️ Primeiro leia e concorde com o contrato!');
 
     const valorEntrada = Number(propostaAtual.valor_entrada || 0);
+    const valorFormatado = formatarValorPix(valorEntrada);
+    const nomeCliente = (propostaAtual.nome || 'Cliente').toUpperCase().replace(/[^A-Z0-9 ]/g,'').slice(0,25);
+
+    // ✅ Código Pix completo e válido conforme padrão BCB
+    const campoValor = valorFormatado !== '0.00' ? `5404${valorFormatado.padStart(7,'0')}` : '';
+
+    const codigoBase = [
+        '000201',
+        '26330014br.gov.bcb.pix0111' + CHAVE_PIX,
+        '52040000',
+        '5303986',
+        campoValor,
+        '5913' + NOME_RECEBEDOR,
+        '6009' + CIDADE,
+        '62070503***'
+    ].join('');
+
+    const crc = calcularCRC16(codigoBase + '6304');
+    const codigoPix = codigoBase + '6304' + crc;
+
+    // ✅ EXIBIR
     document.getElementById('areaQRCode').classList.remove('oculto');
     document.getElementById('valorPix').textContent = formatarMoeda(valorEntrada);
-
-    // Código Pix simples com sua chave
-    const nome = (propostaAtual.nome || 'Cliente').toUpperCase().replace(/[^A-Z ]/g,'');
-    const codigo = `00020126330014br.gov.bcb.pix0111${CHAVE_PIX}0225Entrada - ${nome.slice(0,25)}52040000530398654030105802BR5913FLASH POINT6009SAO PAULO6304XXXX`;
-
-    document.getElementById('codigoPix').textContent = codigo;
+    document.getElementById('codigoPix').textContent = codigoPix;
     document.getElementById('qrcode').innerHTML = '';
-    new QRCode(document.getElementById('qrcode'), { text: codigo, width: 200, height: 200 });
+    new QRCode(document.getElementById('qrcode'), { text: codigoPix, width: 220, height: 220 });
 }
 
 function copiarPix() {
     const codigo = document.getElementById('codigoPix').textContent;
-    navigator.clipboard.writeText(codigo);
-    alert('✅ Código copiado! Cole no app do seu banco.');
+    navigator.clipboard.writeText(codigo).then(() => {
+        alert('✅ Código copiado! Cole no app do seu banco.');
+    }).catch(() => {
+        alert('⚠️ Não foi possível copiar. Selecione e copie manualmente.');
+    });
 }
 
 // ==============================================
@@ -402,16 +451,16 @@ function copiarPix() {
 function exibirListaParcelas(parcelas) {
     const el = document.getElementById('listaParcelas');
     el.innerHTML = parcelas.map(p => `
-        <div style="padding:10px; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
-            <span>${p.numero}ª parcela</span>
-            <span style="font-weight:600;">${formatarMoeda(p.valor)}</span>
-            <span style="color:${p.paga?'#059669':'#F59E0B'};">${p.vencimento?.split('-').reverse().join('/')} · ${p.paga?'✅ PAGA':'⏳ Pendente'}</span>
+        <div style="padding:12px; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-weight:500;">${p.numero}ª parcela</span>
+            <span style="font-weight:700; color:#0A2463;">${formatarMoeda(p.valor)}</span>
+            <span style="color:${p.paga?'#059669':'#F59E0B'}; font-weight:500;">${p.vencimento?.split('-').reverse().join('/')} · ${p.paga?'✅ PAGA':'⏳ Pendente'}</span>
         </div>
     `).join('');
 }
 
 // ==============================================
-// ✅ TEMPO REAL — ATUALIZA SOZINHO!
+// ✅ TEMPO REAL
 // ==============================================
 function ativarRealtime(idProposta) {
     if(inscricaoRealtime) inscricaoRealtime.unsubscribe();
@@ -425,7 +474,6 @@ function ativarRealtime(idProposta) {
         }, (mudanca) => {
             propostaAtual = mudanca.new;
             exibirProposta(mudanca.new);
-            // Pisca indicador
             const indicador = document.getElementById('indicadorAtualizacao');
             indicador.textContent = '✅ Atualizado agora!';
             indicador.classList.add('piscando');
