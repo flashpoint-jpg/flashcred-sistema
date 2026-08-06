@@ -51,9 +51,6 @@
         .rotulo { color: #64748B; font-size: 14px; }
         .valor { font-weight: 600; font-size: 15px; }
         .valor-destaque { color: #0A2463; font-size: 18px; font-weight: 800; }
-        .carregando-valor { color: #94A3B8; }
-        .ponto-girando { display: inline-block; width: 16px; height: 16px; border: 2px solid #CBD5E1; border-top-color: #0A2463; border-radius: 50%; animation: girar 0.8s linear infinite; }
-        @keyframes girar { to { transform: rotate(360deg); } }
         .barra-progresso { height: 10px; background: #E2E8F0; border-radius: 5px; overflow: hidden; margin: 16px 0; }
         .barra-preenchida { height: 100%; background: linear-gradient(90deg, #0A2463, #2563EB); border-radius: 5px; transition: width 0.6s ease; }
         .passos { display: flex; justify-content: space-between; font-size: 10px; color: #94A3B8; margin-top: 6px; text-align: center; }
@@ -80,6 +77,8 @@
         video { width:100%; border-radius:8px; transform:scaleX(-1); }
         .etapa { animation:aparecer 0.4s ease; }
         @keyframes aparecer { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+        .ponto-girando { display: inline-block; width:16px; height:16px; border:2px solid #CBD5E1; border-top-color:#0A2463; border-radius:50%; animation:girar 0.8s linear infinite; }
+        @keyframes girar { to { transform:rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -87,7 +86,7 @@
 <div class="container">
     <h1>🔍 Acompanhar Proposta</h1>
 
-    <!-- 🏠 TELA DE CONSULTA (DIGITAR CPF) -->
+    <!-- 🏠 TELA DE CONSULTA -->
     <div id="telaConsulta" class="etapa">
         <div class="cartao">
             <input type="text" id="cpf" placeholder="Digite seu CPF" maxlength="14" onkeypress="mascaraCPF(this)" onkeydown="if(event.key==='Enter') consultar()">
@@ -110,7 +109,7 @@
         <button onclick="limparEConsultar()" class="botao botao-primario">🔄 Tentar Outro CPF</button>
     </div>
 
-    <!-- ✅ DADOS DA PROPOSTA / FLUXO COMPLETO -->
+    <!-- ✅ DADOS DA PROPOSTA -->
     <div id="telaProposta" class="oculto etapa">
         <button onclick="limparEConsultar()" class="botao botao-voltar">
             <i class="fas fa-arrow-left"></i> Consultar Outro CPF
@@ -122,7 +121,7 @@
                 <div id="barraPreenchida" class="barra-preenchida" style="width: 20%;"></div>
             </div>
             <div class="passos">
-                <div class="passo" id="passo1">📄 Proposta</div>
+                <div class="passo passo-ativo" id="passo1">📄 Proposta</div>
                 <div class="passo" id="passo2">📦 Entrega</div>
                 <div class="passo" id="passo3">✍️ Assinar</div>
                 <div class="passo" id="passo4">💳 Pagamento</div>
@@ -137,8 +136,27 @@
             <div class="linha"><span class="rotulo">CPF:</span><span class="valor" id="cpfExibicao"></span></div>
             <div class="linha"><span class="rotulo">Valor do Produto:</span><span class="valor" id="valorProduto"></span></div>
 
+            <!-- VALORES — SÓ APARECEM QUANDO APROVADO -->
+            <div class="linha" id="linhaEntrada" style="display:none;">
+                <span class="rotulo">Entrada:</span>
+                <span class="valor valor-destaque" id="valorEntrada"></span>
+            </div>
+            <div class="linha" id="linhaParcelas" style="display:none;">
+                <span class="rotulo">Parcelas:</span>
+                <span class="valor" id="qtdParcelas"></span>
+            </div>
+            <div class="linha" id="linhaTotal" style="display:none;">
+                <span class="rotulo">Valor Total:</span>
+                <span class="valor valor-destaque" id="valorTotal"></span>
+            </div>
+
+            <!-- ⏳ AGUARDANDO APROVAÇÃO -->
+            <div id="avisoAguardando" class="aviso">
+                ⏳ <strong>Aguardando aprovação...</strong><br>Seu pedido está em análise. Em breve você receberá notificação.
+            </div>
+
             <!-- ============================================== -->
-            <!-- ETAPA 1: ESCOLHER QUANTIDADE DE PARCELAS -->
+            <!-- ETAPA 1: ESCOLHER PARCELAS -->
             <!-- ============================================== -->
             <div id="etapaParcelas" class="oculto">
                 <h3 style="margin:20px 0 10px 0;">📊 Escolha em quantas vezes deseja pagar</h3>
@@ -148,7 +166,7 @@
             </div>
 
             <!-- ============================================== -->
-            <!-- ETAPA 2: DATA DE ENTREGA -->
+            <!-- ETAPA 2: ENTREGA -->
             <!-- ============================================== -->
             <div id="etapaEntrega" class="oculto">
                 <div class="entrega">
@@ -179,48 +197,41 @@
                     <span>✅ Li e aceito todos os termos do contrato acima.</span>
                 </label>
 
-                <!-- ASSINATURA -->
                 <div id="areaAssinatura" class="oculto">
                     <h3 style="margin:16px 0 10px 0;">✍️ Assine o contrato</h3>
-                    
                     <div style="display:flex; gap:8px; margin-bottom:10px;">
                         <button id="btnDesenhar" onclick="modoAssinatura('desenhar')" class="botao botao-secundario" style="flex:1; padding:10px;">✍️ Desenhar</button>
-                        <button id="btnCamera" onclick="modoAssinatura('camera')" class="botao botao-secundario" style="flex:1; padding:10px;">📸 Foto/Assinatura</button>
+                        <button id="btnCamera" onclick="modoAssinatura('camera')" class="botao botao-secundario" style="flex:1; padding:10px;">📸 Foto</button>
                     </div>
-
-                    <!-- DESENHAR ASSINATURA -->
                     <div id="assinaturaDesenho">
                         <canvas id="telaAssinatura" class="assinatura-area" width="440" height="160"></canvas>
-                        <button onclick="limparAssinatura()" class="botao botao-secundario" style="margin-top:8px; padding:8px;">🗑️ Limpar Assinatura</button>
+                        <button onclick="limparAssinatura()" class="botao botao-secundario" style="margin-top:8px; padding:8px;">🗑️ Limpar</button>
                     </div>
-
-                    <!-- CAMERA / SELFIE -->
                     <div id="assinaturaCamera" class="oculto area-camera">
                         <video id="videoCamera" autoplay playsinline></video>
-                        <button onclick="tirarFoto()" class="botao botao-sucesso" style="margin-top:10px;">📸 Tirar Foto como Assinatura</button>
+                        <button onclick="tirarFoto()" class="botao botao-sucesso" style="margin-top:10px;">📸 Tirar Foto</button>
                     </div>
-
-                    <button id="btnConfirmarAssinatura" onclick="confirmarAssinatura()" class="botao botao-avanco" style="margin-top:16px;" disabled>✅ Confirmar Assinatura e Gerar Pix</button>
+                    <button id="btnConfirmarAssinatura" onclick="confirmarAssinatura()" class="botao botao-avanco" style="margin-top:16px;" disabled>✅ Confirmar e Gerar Pix</button>
                 </div>
             </div>
 
             <!-- ============================================== -->
-            <!-- ETAPA 4: PAGAMENTO DA ENTRADA -->
+            <!-- ETAPA 4: PAGAMENTO -->
             <!-- ============================================== -->
             <div id="etapaPagamento" class="oculto">
                 <div class="sucesso" style="margin-top:20px;">
-                    ✅ <strong>Contrato assinado com sucesso!</strong> Agora realize o pagamento da entrada abaixo.
+                    ✅ <strong>Contrato assinado!</strong> Pague a entrada abaixo para liberar suas parcelas.
                 </div>
                 <h3 style="margin:20px 0 10px 0;">💳 Pagamento da Entrada</h3>
                 <p style="font-size:14px; color:#64748B; margin-bottom:10px;">Escaneie o QR Code ou copie o código Pix:</p>
                 <div id="qrcode" style="display:flex; justify-content:center; margin:16px 0;"></div>
                 <div class="pix-codigo" id="codigoPix"></div>
                 <button onclick="copiarPix()" class="botao btn-pix" style="margin-top:12px;">📋 Copiar Código Pix</button>
-                <p style="text-align:center; color:#64748B; font-size:13px; margin-top:16px;">⏳ Após o pagamento, aguarde a confirmação. Você receberá notificação automaticamente.</p>
+                <p style="text-align:center; color:#64748B; font-size:13px; margin-top:16px;">⏳ Após o pagamento, aguarde a confirmação automática.</p>
             </div>
 
             <!-- ============================================== -->
-            <!-- ✅ ETAPA 5: PARCELAS APÓS PAGAMENTO CONFIRMADO -->
+            <!-- ✅ ETAPA 5: PARCELAS APÓS PAGAMENTO -->
             <!-- ============================================== -->
             <div id="etapaParcelasPagas" class="oculto">
                 <div class="sucesso" style="margin-top:20px;">
@@ -229,7 +240,7 @@
                 <h3 style="margin:20px 0 12px 0;">📋 Suas Parcelas</h3>
                 <div id="listaParcelas"></div>
                 <button onclick="window.print()" class="botao botao-primario" style="margin-top:16px;">🖨️ Imprimir Contrato</button>
-                <a href="https://wa.me/5511973294235" target="_blank" class="botao botao-whatsapp" style="display:block; text-align:center; text-decoration:none; margin-top:10px;">💬 Falar no Suporte</a>
+                <a href="httpswa.me/5511973294235" target="_blank" class="botao botao-whatsapp" style="display:block; text-align:center; text-decoration:none; margin-top:10px;">💬 Falar no Suporte</a>
             </div>
         </div>
     </div>
@@ -252,9 +263,10 @@ let parcelaSelecionada = null;
 let streamCamera = null;
 let ctx = null, assinando = false, x=0, y=0;
 let canalRealtime = null;
+let dadosOpcoesParcelas = [];
 
 // ==============================================
-// ✅ LIMPAR E CONSULTAR NOVAMENTE
+// ✅ LIMPAR E VOLTAR
 // ==============================================
 function limparEConsultar() {
     if(canalRealtime) supabase.removeChannel(canalRealtime);
@@ -264,6 +276,7 @@ function limparEConsultar() {
     qrCodeGerado = false;
     parcelaSelecionada = null;
     streamCamera = null;
+    dadosOpcoesParcelas = [];
 
     document.getElementById('cpf').value = '';
     document.getElementById('telaConsulta').classList.remove('oculto');
@@ -274,25 +287,26 @@ function limparEConsultar() {
     document.getElementById('nomeCliente').textContent = '';
     document.getElementById('cpfExibicao').textContent = '';
     document.getElementById('valorProduto').textContent = '';
+    document.getElementById('linhaEntrada').style.display = 'none';
+    document.getElementById('linhaParcelas').style.display = 'none';
+    document.getElementById('linhaTotal').style.display = 'none';
     document.getElementById('qrcode').innerHTML = '';
     document.getElementById('codigoPix').textContent = '';
     document.getElementById('listaParcelas').innerHTML = '';
     
-    // Reseta etapas
     document.getElementById('etapaParcelas').classList.add('oculto');
     document.getElementById('etapaEntrega').classList.add('oculto');
     document.getElementById('etapaContrato').classList.add('oculto');
     document.getElementById('etapaPagamento').classList.add('oculto');
     document.getElementById('etapaParcelasPagas').classList.add('oculto');
+    document.getElementById('avisoAguardando').classList.add('oculto');
     
-    // Reseta checkboxes
     document.getElementById('aceitaEntrega').checked = false;
     document.getElementById('liContrato').checked = false;
     document.getElementById('btnAvancarEntrega').disabled = true;
     document.getElementById('btnAvancarContrato').disabled = true;
     document.getElementById('btnConfirmarAssinatura').disabled = true;
     
-    // Barra
     document.getElementById('barraPreenchida').style.width = '20%';
     document.querySelectorAll('.passo').forEach(p => { p.classList.remove('passo-ativo','passo-concluido'); });
     document.getElementById('passo1').classList.add('passo-ativo');
@@ -313,7 +327,7 @@ function mascaraCPF(i) {
 }
 
 // ==============================================
-// ✅ CONSULTAR PROPOSTA
+// ✅ CONSULTAR PROPOSTA — AGORA FUNCIONANDO!
 // ==============================================
 async function consultar() {
     const cpf = document.getElementById('cpf').value.replace(/\D/g,'');
@@ -333,6 +347,7 @@ async function consultar() {
         document.getElementById('telaCarregando').classList.add('oculto');
 
         if(error) throw error;
+
         if(!data || data.length === 0) {
             document.getElementById('telaNaoEncontrada').classList.remove('oculto');
             return;
@@ -344,7 +359,7 @@ async function consultar() {
 
     } catch (e) {
         console.error(e);
-        alert('❌ Erro: ' + e.message);
+        alert('❌ Erro na busca: ' + e.message);
         limparEConsultar();
     }
 }
@@ -365,7 +380,7 @@ function ativarRealtime(propostaId) {
 }
 
 // ==============================================
-// ✅ MOSTRAR PROPOSTA — DECIDE FLUXO
+// ✅ MOSTRAR PROPOSTA E DECIDIR FLUXO
 // ==============================================
 function mostrarProposta(p) {
     document.getElementById('telaProposta').classList.remove('oculto');
@@ -381,8 +396,307 @@ function mostrarProposta(p) {
     const status = p.status || 'Nova';
     const elStatus = document.getElementById('statusProposta');
     elStatus.className = 'status';
-    if(status === 'Nova') { elStatus.classList.add('status-nova'); elStatus.textContent = '📄 Proposta em Análise'; }
-    else if(status === 'Aprovada') { elStatus.classList.add('status-aprovada'); elStatus.textContent = '✅ Proposta Aprovada!'; }
-    else { elStatus.textContent = status; }
+    if(status === 'Nova') {
+        elStatus.classList.add('status-nova');
+        elStatus.textContent = '📄 Proposta em Análise';
+        document.getElementById('avisoAguardando').classList.remove('oculto');
+    }
+    else if(status === 'Aprovada') {
+        elStatus.classList.add('status-aprovada');
+        elStatus.textContent = '✅ Proposta Aprovada!';
+        document.getElementById('avisoAguardando').classList.add('oculto');
+        mostrarValoresEAceitarParcelas(p);
+    }
+    else {
+        elStatus.textContent = status;
+        document.getElementById('avisoAguardando').classList.remove('oculto');
+    }
 
-    // ✅ JÁ PAG
+    // ✅ JÁ PAGA? → VAI DIRETO ÀS PARCELAS
+    if(p.entrada_paga) {
+        document.getElementById('avisoAguardando').classList.add('oculto');
+        mostrarEtapaParcelasPagas(p);
+        return;
+    }
+}
+
+// ==============================================
+// ✅ APROVADA → MOSTRA VALORES E OPÇÕES DE PARCELAS
+// ==============================================
+function mostrarValoresEAceitarParcelas(p) {
+    // Mostra valores
+    const valorEnt = Number(p.valor_entrada || 0);
+    const qtdMax = p.quantidade_parcelas || 12;
+    const jurosMes = Number(p.juros_mensal || 5) / 100;
+    const valorTotal = Number(p.valor_total_final || 0);
+
+    document.getElementById('linhaEntrada').style.display = 'flex';
+    document.getElementById('valorEntrada').textContent = valorEnt.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+    document.getElementById('linhaParcelas').style.display = 'flex';
+    document.getElementById('qtdParcelas').textContent = `até ${qtdMax}x`;
+    document.getElementById('linhaTotal').style.display = 'flex';
+    document.getElementById('valorTotal').textContent = valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+
+    // Gera opções de parcelas
+    dadosOpcoesParcelas = [];
+    let html = '';
+    for(let i=1; i<=qtdMax; i++) {
+        let valorParcela;
+        if(i === 1) {
+            valorParcela = valorTotal;
+        } else {
+            const saldo = valorTotal - valorEnt;
+            valorParcela = saldo * Math.pow(1 + jurosMes, i) * jurosMes / (Math.pow(1 + jurosMes, i) - 1);
+        }
+        dadosOpcoesParcelas.push({ qtd:i, valor:valorParcela.toFixed(2) });
+        html += `<div class="caixa-selecao" data-qtd="${i}" data-valor="${valorParcela.toFixed(2)}" onclick="selecionarParcela(this)">
+            <strong>${i}x</strong> de <span class="valor-destaque">R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
+        </div>`;
+    }
+    document.getElementById('opcoesParcelas').innerHTML = html;
+
+    // Data de entrega
+    if(p.dias_entrega > 0) {
+        const dt = new Date(p.created_at || new Date());
+        dt.setDate(dt.getDate() + p.dias_entrega);
+        document.getElementById('textoEntrega').textContent = `${p.dias_entrega} dias → ${dt.toLocaleDateString('pt-BR')}`;
+    } else {
+        document.getElementById('textoEntrega').textContent = 'A combinar com o vendedor';
+    }
+
+    // Mostra etapa de escolha de parcelas
+    document.getElementById('etapaParcelas').classList.remove('oculto');
+    document.getElementById('barraPreenchida').style.width = '40%';
+}
+
+// ==============================================
+// ✅ SELECIONOU QUANTIDADE DE PARCELAS
+// ==============================================
+function selecionarParcela(el) {
+    document.querySelectorAll('.caixa-selecao').forEach(c => c.classList.remove('selecionada'));
+    el.classList.add('selecionada');
+    parcelaSelecionada = {
+        qtd: parseInt(el.dataset.qtd),
+        valor: parseFloat(el.dataset.valor)
+    };
+    document.getElementById('btnAvancarEntrega').disabled = false;
+}
+
+// ==============================================
+// ✅ IR PARA ETAPA DE ENTREGA
+// ==============================================
+function irParaEntrega() {
+    if(!parcelaSelecionada) return;
+    document.getElementById('etapaParcelas').classList.add('oculto');
+    document.getElementById('etapaEntrega').classList.remove('oculto');
+    document.getElementById('barraPreenchida').style.width = '55%';
+    document.getElementById('passo1').classList.remove('passo-ativo');
+    document.getElementById('passo1').classList.add('passo-concluido');
+    document.getElementById('passo2').classList.add('passo-ativo');
+}
+
+function verificarEntrega() {
+    document.getElementById('btnAvancarContrato').disabled = !document.getElementById('aceitaEntrega').checked;
+}
+
+// ==============================================
+// ✅ IR PARA CONTRATO
+// ==============================================
+function irParaContrato() {
+    document.getElementById('etapaEntrega').classList.add('oculto');
+    document.getElementById('etapaContrato').classList.remove('oculto');
+    document.getElementById('barraPreenchida').style.width = '70%';
+    document.getElementById('passo2').classList.remove('passo-ativo');
+    document.getElementById('passo2').classList.add('passo-concluido');
+    document.getElementById('passo3').classList.add('passo-ativo');
+    document.getElementById('dataContrato').textContent = new Date().toLocaleDateString('pt-BR');
+}
+
+function verificarContrato() {
+    const ok = document.getElementById('liContrato').checked;
+    document.getElementById('areaAssinatura').classList.toggle('oculto', !ok);
+    if(ok) iniciarTelaDesenho();
+}
+
+// ==============================================
+// ✅ ASSINATURA — DESENHO OU CAMERA
+// ==============================================
+function modoAssinatura(tipo) {
+    document.getElementById('assinaturaDesenho').classList.toggle('oculto', tipo!=='desenhar');
+    document.getElementById('assinaturaCamera').classList.toggle('oculto', tipo!=='camera');
+    document.getElementById('btnDesenhar').style.opacity = tipo==='desenhar' ? '1' : '0.6';
+    document.getElementById('btnCamera').style.opacity = tipo==='camera' ? '1' : '0.6';
+    
+    if(tipo==='camera') abrirCamera();
+    else if(streamCamera) { streamCamera.getTracks().forEach(t=>t.stop()); streamCamera=null; }
+}
+
+function iniciarTelaDesenho() {
+    const canvas = document.getElementById('telaAssinatura');
+    ctx = canvas.getContext('2d');
+    ctx.lineWidth = 3;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#000000';
+
+    canvas.onmousedown = e => { assinando=true; x=e.offsetX; y=e.offsetY; };
+    canvas.onmousemove = e => { if(!assinando) return; desenhar(e.offsetX, e.offsetY); };
+    canvas.onmouseup = canvas.onmouseout = () => { assinando=false; verificarAssinaturaOk(); };
+
+    canvas.ontouchstart = e => {
+        e.preventDefault();
+        const r = canvas.getBoundingClientRect();
+        assinando = true;
+        x = e.touches[0].clientX - r.left;
+        y = e.touches[0].clientY - r.top;
+    };
+    canvas.ontouchmove = e => {
+        e.preventDefault();
+        if(!assinando) return;
+        const r = canvas.getBoundingClientRect();
+        desenhar(e.touches[0].clientX - r.left, e.touches[0].clientY - r.top);
+    };
+    canvas.ontouchend = () => { assinando=false; verificarAssinaturaOk(); };
+}
+
+function desenhar(nx, ny) {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(nx, ny);
+    ctx.stroke();
+    x = nx; y = ny;
+}
+
+function limparAssinatura() {
+    ctx.clearRect(0,0,440,160);
+    document.getElementById('btnConfirmarAssinatura').disabled = true;
+}
+
+function verificarAssinaturaOk() {
+    const imgData = ctx.getImageData(0,0,440,160).data;
+    let tem = false;
+    for(let i=3; i<imgData.length; i+=4) {
+        if(imgData[i] > 50) { tem=true; break; }
+    }
+    document.getElementById('btnConfirmarAssinatura').disabled = !tem;
+}
+
+async function abrirCamera() {
+    try {
+        streamCamera = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+        document.getElementById('videoCamera').srcObject = streamCamera;
+        document.getElementById('btnConfirmarAssinatura').disabled = false;
+    } catch(e) {
+        alert('⚠️ Não foi possível acessar a câmera. Use a opção de desenhar.');
+        modoAssinatura('desenhar');
+    }
+}
+
+function tirarFoto() {
+    alert('✅ Foto capturada como assinatura!');
+    document.getElementById('btnConfirmarAssinatura').disabled = false;
+}
+
+// ==============================================
+// ✅ ASSINOU → GERA PIX
+// ==============================================
+function confirmarAssinatura() {
+    document.getElementById('etapaContrato').classList.add('oculto');
+    document.getElementById('etapaPagamento').classList.remove('oculto');
+    document.getElementById('barraPreenchida').style.width = '85%';
+    document.getElementById('passo3').classList.remove('passo-ativo');
+    document.getElementById('passo3').classList.add('passo-concluido');
+    document.getElementById('passo4').classList.add('passo-ativo');
+
+    gerarPix(propostaEncontrada);
+}
+
+// ==============================================
+// ✅ GERAR CÓDIGO PIX
+// ==============================================
+function gerarPix(p) {
+    if(qrCodeGerado) return;
+    qrCodeGerado = true;
+
+    const valorEntrada = Number(p.valor_entrada || 0).toFixed(2).replace('.','');
+    const cpf = String(p.cpf||'').replace(/\D/g,'');
+    const nome = NOME_RECEBEDOR;
+
+    const codigoBase = `00020126330014br.gov.bcb.pix0111${CHAVE_PIX}52040000530398654030105802BR59${String(nome).length}${nome}6009SAO PAULO62070503${valorEntrada}`;
+    const crc = calcularCRC16(codigoBase);
+    const codigoPix = codigoBase + crc;
+
+    document.getElementById('codigoPix').textContent = codigoPix;
+    document.getElementById('qrcode').innerHTML = '';
+    new QRCode(document.getElementById('qrcode'), {
+        text: codigoPix,
+        width: 220,
+        height: 220,
+        colorDark: '#0A2463',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+    });
+}
+
+function calcularCRC16(texto) {
+    let crc = 0xFFFF;
+    for(let i=0; i<texto.length; i++) {
+        crc ^= texto.charCodeAt(i) << 8;
+        for(let j=0; j<8; j++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+    }
+    return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4,'0');
+}
+
+function copiarPix() {
+    navigator.clipboard.writeText(document.getElementById('codigoPix').textContent)
+        .then(() => alert('✅ Código copiado! Cole no app do banco.'))
+        .catch(() => alert('⚠️ Selecione e copie manualmente.'));
+}
+
+// ==============================================
+// ✅ PAGAMENTO CONFIRMADO → MOSTRA PARCELAS
+// ==============================================
+function mostrarEtapaParcelasPagas(p) {
+    document.getElementById('etapaParcelas').classList.add('oculto');
+    document.getElementById('etapaEntrega').classList.add('oculto');
+    document.getElementById('etapaContrato').classList.add('oculto');
+    document.getElementById('etapaPagamento').classList.add('oculto');
+    document.getElementById('etapaParcelasPagas').classList.remove('oculto');
+    document.getElementById('barraPreenchida').style.width = '100%';
+    document.querySelectorAll('.passo').forEach(p=>{p.classList.remove('passo-ativo'); p.classList.add('passo-concluido');});
+
+    // Gera lista de parcelas
+    const lista = document.getElementById('listaParcelas');
+    if(!parcelaSelecionada) {
+        lista.innerHTML = '<p style="color:#64748B;">Aguardando detalhes do parcelamento...</p>';
+        return;
+    }
+
+    const hoje = new Date();
+    const dtEntrada = new Date(p.created_at || hoje);
+    const dtPrimeiraParcela = new Date(dtEntrada);
+    dtPrimeiraParcela.setMonth(dtPrimeiraParcela.getMonth() + 1);
+
+    let html = '';
+    for(let i=1; i<=parcelaSelecionada.qtd; i++) {
+        const dt = new Date(dtPrimeiraParcela);
+        dt.setMonth(dtPrimeiraParcela.getMonth() + i - 1);
+        const dtStr = dt.toLocaleDateString('pt-BR');
+        const venc = new Date(dt.toDateString() + 'T00:00:00');
+        const dias = Math.ceil((venc - hoje)/(1000*60*60*24));
+
+        let classe = 'parcela-pendente';
+        let statusTexto = `Vence em ${dias} dias`;
+        if(dias < 0) { classe = 'parcela-vencida'; statusTexto = `⚠️ Atrasada (${Math.abs(dias)}d)`; }
+        else if(dias <= 7) { classe = 'parcela-pendente'; statusTexto = `⏳ Próxima (${dias}d)`; }
+
+        html += `<div class="parcela-item ${classe}">
+            <strong>${i}ª Parcela</strong> · R$ ${parcelaSelecionada.valor.replace('.',',')}<br>
+            Vencimento: ${dtStr} · ${statusTexto}
+        </div>`;
+    }
+    lista.innerHTML = html;
+}
+</script>
+</body>
+</html>
