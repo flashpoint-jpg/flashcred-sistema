@@ -16,15 +16,13 @@
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444',
-                        azul: '#3B82F6',
-                        fundo: '#F8FAFC'
+                        azul: '#3B82F6'
                     }
                 }
             }
         }
     </script>
     <style>
-        /* VOLTOU O ESTILO ORIGINAL — SEM MUDANÇAS */
         body { background: #F8FAFC; min-height: 100vh; font-size: 15px; }
         .cartao { background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); padding: 16px; }
         .botao { padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; border: none; cursor: pointer; transition: 0.15s; }
@@ -128,7 +126,6 @@ async function carregarPropostas() {
                     Entrada: R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 
                     ${qtd}x de R$ ${calc.parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}
                 </div>
-                <!-- SÓ MOSTRA SE FOR PAGA — NÃO ALTERA NADA SOZINHO -->
                 ${item.entrada_paga ? `<div class="text-sm font-bold text-sucesso mt-1">✅ Entrada Paga</div>` : ''}
             </div>
 
@@ -141,7 +138,7 @@ async function carregarPropostas() {
                 <button onclick="editarProposta('${item.id}')" class="botao botao-azul text-white">Editar</button>
                 <button onclick="enviarWhatsApp('${item.id}')" class="botao bg-green-600 text-white">WhatsApp</button>
 
-                <!-- ✅ BOTÃO INCLUÍDO — SÓ APARECE SE APROVADA E AINDA NÃO PAGA -->
+                <!-- ✅ APARECE SÓ SE APROVADA E AINDA NÃO PAGA -->
                 ${item.status === 'Aprovada' && !item.entrada_paga ? `
                 <button onclick="marcarEntradaPaga('${item.id}')" class="botao botao-sucesso text-white font-bold">Marcar Entrada Paga</button>
                 ` : ''}
@@ -159,19 +156,20 @@ async function alterarStatus(id, status) {
     carregarPropostas();
 }
 
+// ✅ MARCA MANUALMENTE QUANDO VOCÊ RECEBE FORA DO SISTEMA
 async function marcarEntradaPaga(id) {
-    if(!confirm('Confirma pagamento manual da entrada?')) return;
+    if(!confirm('Confirma que recebeu o valor da entrada?\nIrá liberar as parcelas para o cliente.')) return;
     await supabase.from('propostas').update({
         entrada_paga: true,
         data_pagamento_entrada: new Date().toISOString()
     }).eq('id',id);
-    alert('✅ Entrada marcada como PAGA!');
+    alert('✅ Entrada confirmada! Parcelas liberadas.');
 }
 
 function enviarWhatsApp(id) {
     supabase.from('propostas').select('cpf, whatsapp').eq('id',id).single().then(({data}) => {
         if(!data || !data.whatsapp) { alert('WhatsApp não informado!'); return; }
-        const texto = `Olá! Acesse sua proposta: ${LINK_CONSULTA}?cpf=${data.cpf}`;
+        const texto = `Olá! Acesse sua proposta aqui: ${LINK_CONSULTA}?cpf=${data.cpf}`;
         window.open(`https://wa.me/55${data.whatsapp}?text=${encodeURIComponent(texto)}`);
     });
 }
@@ -208,7 +206,7 @@ async function salvarProposta() {
 }
 
 async function excluirProposta(id) {
-    if(!confirm('Tem certeza?')) return;
+    if(!confirm('Tem certeza que deseja excluir?')) return;
     await supabase.from('propostas').delete().eq('id',id);
 }
 
@@ -222,6 +220,7 @@ function abrirCadastro() {
 }
 function fecharModal() { document.getElementById('modalProposta').classList.remove('aberto'); }
 
+// ✅ ATUALIZA EM TEMPO REAL: SE PAGAR NO PIX OU VOCÊ MARCAR, JÁ APARECE NA HORA
 function monitorarAtualizacoes() {
     supabase.channel('propostas')
         .on('postgres_changes', {event:'*', schema:'public', table:'propostas'}, () => carregarPropostas())
