@@ -50,7 +50,6 @@
 <div class="max-w-md mx-auto">
     <h1 class="text-2xl font-bold text-center text-primary mb-4">📋 Minha Proposta</h1>
     
-    <!-- BARRA DE PROGRESSO -->
     <div class="etapa-indicador">
         <span id="etapa-ind-1">1. Escolher Parcela</span>
         <span id="etapa-ind-2">2. Contrato</span>
@@ -69,6 +68,7 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
+// ✅ SEU TOKEN DE PRODUÇÃO JÁ INSERIDO AQUI
 const MP_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 const WHATSAPP = '5511973294235';
 
@@ -165,7 +165,6 @@ function atualizarBarra() {
     }
 }
 
-// ========= ETAPA 1 — ESCOLHER PARCELAS =========
 function renderizarEtapa1_EscolherParcelas() {
     etapaAtual = 1;
     atualizarBarra();
@@ -214,7 +213,6 @@ function escolherParcela(qtd) {
     document.getElementById('btnAvancar').disabled = false;
 }
 
-// ========= ETAPA 2 — CONTRATO + ASSINATURA + SELFIE =========
 function irEtapa2() {
     etapaAtual = 2;
     atualizarBarra();
@@ -236,7 +234,7 @@ function irEtapa2() {
                 <p>• Pagamento em ${qtdParcelasEscolhida}x de R$ ${calc.parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
                 <p>• Valor total: R$ ${calc.total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
                 <p>• Entrega em até ${dias} dias após confirmação do pagamento da entrada.</p>
-                <p class="mt-3">Declaro que ao deixar de pagar estarei prejudicando a confiança concedida. Pense bem antes de assumir este compromisso. Conte comigo. Vamos fazer um mundo melhor.</p>
+                <p class="mt-3">Declaro que ao deixar de pagar estarei prejudicando a confiança concedida. Pense bem antes de assumir este compromisso.</p>
             </div>
 
             <label class="flex items-center mb-4 cursor-pointer">
@@ -254,7 +252,7 @@ function irEtapa2() {
             <canvas id="assinatura" width="340" height="130"></canvas>
             <button onclick="limparAssinatura()" class="botao botao-cinza" style="padding:8px; font-size:14px; margin-top:8px;">Limpar Assinatura</button>
 
-            <button id="btnAvancar2" class="botao botao-primario mt-4" onclick="irEtapa3()" disabled>Continuar → Gerar Pix na Tela</button>
+            <button id="btnAvancar2" class="botao botao-primario mt-4" onclick="irEtapa3()" disabled>Continuar → Gerar Pix</button>
             <button onclick="renderizarEtapa1_EscolherParcelas()" class="botao botao-cinza">← Voltar</button>
         </div>
     `;
@@ -337,7 +335,6 @@ function limparAssinatura() {
     }
 }
 
-// ========= ETAPA 3 — QR CODE PIX DIRETO NA TELA =========
 async function irEtapa3() {
     etapaAtual = 3;
     atualizarBarra();
@@ -386,28 +383,29 @@ async function gerarPixDiretoMercadoPago() {
         });
 
         const res = await resposta.json();
+        console.log('Resposta Mercado Pago:', res);
 
-        if (res.point_of_interaction && res.point_of_interaction.transaction_data) {
+        if (res.point_of_interaction?.transaction_data) {
             const qrCodeBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
             const pixCopiaCola = res.point_of_interaction.transaction_data.qr_code;
 
             document.getElementById('areaPix').innerHTML = `
-                <p class="text-xs text-gray-600 mb-2">Aponte a câmera do seu banco para o QR Code abaixo:</p>
+                <p class="text-xs text-gray-600 mb-2">Aponte a câmera para o QR Code:</p>
                 <img src="data:image/png;base64,${qrCodeBase64}" class="w-48 h-48 mx-auto border-2 border-primary rounded-lg mb-3">
-                <p class="text-xs font-bold text-gray-700 mb-1">Ou use o Pix Copia e Cola:</p>
+                <p class="text-xs font-bold text-gray-700 mb-1">Ou Pix Copia e Cola:</p>
                 <textarea readonly class="w-full text-xs p-2 bg-gray-100 rounded border mb-3 h-16 select-all">${pixCopiaCola}</textarea>
                 <button onclick="copiarPix('${pixCopiaCola}')" class="botao botao-sucesso">📋 Copiar Código Pix</button>
-                <p class="text-xs text-gray-500 mt-3"><i class="fas fa-sync-alt fa-spin"></i> Aguardando confirmação automática do pagamento...</p>
+                <p class="text-xs text-gray-500 mt-3"><i class="fas fa-sync-alt fa-spin"></i> Aguardando confirmação...</p>
             `;
         } else {
-            throw new Error(res.message || 'Erro ao gerar Pix no Mercado Pago.');
+            throw new Error(res.message || res.error || 'Não foi possível gerar o Pix. Verifique o token.');
         }
 
     } catch (err) {
-        console.error(err);
+        console.error('ERRO COMPLETO:', err);
         document.getElementById('areaPix').innerHTML = `
             <div class="p-3 bg-red-100 text-red-800 rounded-lg text-sm mb-3">
-                Erro ao gerar QR Code. Verifique se o Access Token está correto.
+                ❌ ${err.message || 'Erro ao gerar QR Code. Verifique o Access Token de Produção.'}
             </div>
             <button onclick="gerarPixDiretoMercadoPago()" class="botao botao-primario">Tentar Novamente</button>
         `;
@@ -416,20 +414,14 @@ async function gerarPixDiretoMercadoPago() {
 
 function copiarPix(codigo) {
     navigator.clipboard.writeText(codigo);
-    alert('Código Pix copiado com sucesso!');
+    alert('Código copiado!');
 }
 
 function iniciarMonitoramentoPagamento() {
     if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
-    
     intervalChecagemPagamento = setInterval(async () => {
-        const { data, error } = await supabase
-            .from('propostas')
-            .select('entrada_paga')
-            .eq('id', proposta.id)
-            .single();
-
-        if (!error && data && data.entrada_paga) {
+        const { data } = await supabase.from('propostas').select('entrada_paga').eq('id', proposta.id).single();
+        if (data?.entrada_paga) {
             clearInterval(intervalChecagemPagamento);
             proposta.entrada_paga = true;
             etapaAtual = 4;
@@ -439,7 +431,6 @@ function iniciarMonitoramentoPagamento() {
     }, 4000);
 }
 
-// ========= ETAPA 4 — PARCELAS LIBERADAS =========
 async function mostrarParcelasLiberadas() {
     if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
 
@@ -468,7 +459,7 @@ async function mostrarParcelasLiberadas() {
             <div class="p-3 bg-green-50 text-sucesso rounded-lg mb-4">
                 <i class="fas fa-check-circle text-3xl mb-2"></i>
                 <h2 class="text-xl font-bold">Pagamento Confirmado!</h2>
-                <p class="text-sm mt-1">Sua entrada foi confirmada e o pedido está em processo de separação.</p>
+                <p class="text-sm mt-1">Entrada confirmada — pedido em separação.</p>
                 <p class="text-sm mt-1">Entrega prevista em até ${dias} dias úteis.</p>
             </div>
 
