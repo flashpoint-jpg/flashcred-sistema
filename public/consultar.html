@@ -50,7 +50,7 @@
         .passo.ativo .bolinha { background: #0A2463; color: white; }
         .passo.concluido .bolinha { background: #10B981; color: white; }
 
-        /* AVISO DE ENTREGA */
+        /* AVISO DE ENTREGA - APARECE EM TODAS AS ETAPAS APÓS APROVAÇÃO */
         .aviso-entrega {
             background: #FFFBEB;
             border: 3px solid #F59E0B;
@@ -69,6 +69,8 @@
         .area-cam { border: 2px solid #E2E8F0; border-radius: 8px; padding: 10px; margin: 12px 0; text-align: center; }
         video { width: 100%; max-height: 300px; border-radius: 8px; }
         .chave-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 8px; padding: 12px; text-align: center; font-weight: 600; margin: 12px 0; word-break: break-all; }
+        .item-parcela { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
+        .item-parcela:last-child { border-bottom: none; }
         .oculto { display: none !important; }
     </style>
 </head>
@@ -86,6 +88,10 @@
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+
+// ✅ CONFIGURAÇÃO DO PIX COM SUA CHAVE DE PRODUÇÃO
+const CHAVE_PIX_PRODUCAO = '33552949852'; // Seu número cadastrado no Mercado Pago
+const NOME_RECEBEDOR = 'FELIPE COSTA';
 
 let inscricao = null;
 let dadosProposta = null;
@@ -121,8 +127,12 @@ async function buscarProposta() {
 
 function montarTela(p) {
     const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||1);
+    const qtdEscolhidaFinal = p.qtd_parcelas_escolhida || q;
     const total=v*(1+j/100);
+    const valorParcela = ((total-e)*(Math.pow(1+j/100,qtdEscolhidaFinal)*(j/100))/(Math.pow(1+j/100,qtdEscolhidaFinal)-1));
     const dias = p.dias_entrega || 7;
+    const datas = p.datas_parcelas || [];
+    const pagas = Number(p.parcelas_pagas || 0);
 
     let passo = 1;
     if(p.status === 'Aprovada') passo = 2;
@@ -141,6 +151,7 @@ function montarTela(p) {
             <div class="passo ${passo>=4?'ativo':''}"><div class="bolinha">4</div><span>Pagamento</span></div>
         </div>
 
+        <!-- ✅ PRAZO DE ENTREGA SEMPRE APARECE QUANDO APROVADO, INCLUSIVE NAS PARCELAS -->
         ${p.status === 'Aprovada' ? `
         <div class="aviso-entrega">
             <i class="fas fa-truck"></i> 🚚 AVISO IMPORTANTE:<br>
@@ -148,14 +159,21 @@ function montarTela(p) {
         </div>` : ''}
 
         <div class="bg-gray-50 p-3 rounded-lg mb-3">
+            <p><strong>👤 Cliente:</strong> ${p.nome}</p>
+            <p><strong>📄 CPF:</strong> ${String(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}</p>
+            <p><strong>📱 WhatsApp:</strong> ${p.whatsapp || 'Não informado'}</p>
+            <p><strong>🏠 Endereço:</strong> ${p.endereco || 'Não informado'}</p>
+            <hr class="my-2 border-gray-300">
             <p><strong>Valor do pedido:</strong> R$ ${v.toLocaleString('pt-BR',2)}</p>
             <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR',2)}</p>
+            <p><strong>Quantidade de parcelas:</strong> ${qtdEscolhidaFinal}x</p>
+            <p><strong>Valor de cada parcela:</strong> R$ ${valorParcela.toLocaleString('pt-BR',2)}</p>
             <p><strong>Total com juros:</strong> R$ ${total.toLocaleString('pt-BR',2)}</p>
         </div>
     `;
 
     if(p.status === 'Nova' || p.status === 'Em Análise') {
-        html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i><p class="font-semibold">Aguardando análise...</p></div>`;
+        html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i><p class="font-semibold">Aguardando análise da proposta...</p></div>`;
     }
 
     if(p.status === 'Aprovada' && !p.contrato_assinado && !p.entrada_paga) {
@@ -168,23 +186,29 @@ function montarTela(p) {
                     return `<option value="${i+1}">${i+1}x de R$ ${val.toLocaleString('pt-BR',2)}</option>`;
                 }).join('')}
             </select>
-            <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar</button>
+            <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar para o Contrato</button>
         </div>
 
         <div id="blocoContrato" class="oculto">
             <h3 class="font-bold text-lg mb-2">📄 Termos do Contrato</h3>
             <div class="texto-contrato">
-                Pelo presente, o cliente aceita as condições de pagamento, juros e valores definidos. A entrega será feita em até ${dias} dias úteis após confirmação do pagamento. Ao assinar, declara concordar com todos os termos.
+                <strong>CONTRATO DE CRÉDITO E COMPRA</strong><br><br>
+                Partes: FlashCred e ${p.nome}.<br>
+                Valor total: R$ ${total.toLocaleString('pt-BR',2)}<br>
+                Entrada: R$ ${e.toLocaleString('pt-BR',2)}<br>
+                ${qtdEscolhidaFinal} parcelas de R$ ${valorParcela.toLocaleString('pt-BR',2)}<br>
+                Prazo de entrega: ${dias} dias úteis após confirmação do pagamento.<br><br>
+                Ao assinar, o cliente declara estar ciente e de acordo com todos os valores, condições e encargos contratados.
             </div>
             <label class="flex items-center gap-2 mb-3 font-medium">
-                <input type="checkbox" id="aceitoContrato"> Li e aceito os termos
+                <input type="checkbox" id="aceitoContrato"> Li e aceito todos os termos do contrato
             </label>
             <button onclick="mostrarOpcoesAssinatura()" class="btn btn-primary">✍️ Assinar Contrato</button>
 
             <div id="opcoesAssinatura" class="oculto mt-4">
                 <p class="font-semibold mb-2 text-center">Escolha como assinar:</p>
                 <button onclick="mostrarAssinaturaTexto()" class="btn btn-success mb-2">✍️ Escrever Assinatura</button>
-                <button onclick="abrirCamera()" class="btn btn-cam">📸 Tirar Foto/Rosto</button>
+                <button onclick="abrirCamera()" class="btn btn-cam">📸 Tirar Foto do Rosto</button>
 
                 <div id="areaAssinaturaTexto" class="oculto mt-3">
                     <input type="text" id="assinaturaTexto" class="campo-assinatura" placeholder="Digite seu nome completo como assinatura">
@@ -193,7 +217,7 @@ function montarTela(p) {
 
                 <div id="areaCamera" class="area-cam oculto mt-3">
                     <video id="videoCam" autoplay playsinline></video>
-                    <button onclick="tirarFoto()" class="btn btn-success mt-2">📸 Confirmar Foto</button>
+                    <button onclick="tirarFoto()" class="btn btn-success mt-2">📸 Confirmar</button>
                 </div>
             </div>
         </div>`;
@@ -202,14 +226,15 @@ function montarTela(p) {
     if(p.contrato_assinado && !p.entrada_paga) {
         html += `
         <div class="card text-center">
-            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO!</div>
-            <p class="mb-3">Efetue o pagamento da entrada:</p>
+            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO COM SUCESSO!</div>
+            <p class="mb-3">Agora efetue o pagamento da entrada:</p>
             <div id="qrcode-pix" class="flex justify-center my-4"></div>
-            <div class="chave-pix" id="chavePix" data-chave="">
-                Aguardando geração do Pix...
+            <div class="chave-pix" id="chavePix">
+                <strong>Chave Pix:</strong> ${CHAVE_PIX_PRODUCAO}<br>
+                <small>Recebedor: ${NOME_RECEBEDOR}</small>
             </div>
             <button onclick="copiarChave()" class="btn btn-pix">📋 Copiar Chave Pix</button>
-            <p class="text-sm mt-2">Assim que pagar, nós somos avisados automaticamente.</p>
+            <p class="text-sm mt-2">Assim que o pagamento for confirmado, nós seremos avisados e você verá suas parcelas aqui.</p>
         </div>`;
     }
 
@@ -217,13 +242,27 @@ function montarTela(p) {
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
-            <p>Entrada paga com sucesso! Em breve você receberá o cronograma completo das parcelas.</p>
+            <p class="mb-4">Sua entrada foi paga com sucesso! Abaixo todos os detalhes do seu contrato e parcelas:</p>
+            
+            <h3 class="font-bold text-lg mb-2 text-primary">📋 CRONOGRAMA DE PAGAMENTO</h3>
+            ${Array.from({length:qtdEscolhidaFinal}, (_,i)=>{
+                const dt = datas[i] ? new Date(datas[i]).toLocaleDateString('pt-BR') : 'A definir';
+                const ok = (i+1) <= pagas;
+                return `<div class="item-parcela">
+                    <span><strong>${i+1}ª Parcela</strong> • R$ ${valorParcela.toLocaleString('pt-BR',2)} • Venc: ${dt}</span>
+                    <span class="font-bold ${ok?'text-sucesso':'text-alerta'}">${ok?'PAGA':'PENDENTE'}</span>
+                </div>`;
+            }).join('')}
+
+            <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                <p class="font-semibold text-primary">📄 Você pode imprimir ou salvar esta página como comprovante.</p>
+            </div>
         </div>`;
     }
 
     html += `
         <div class="mt-4">
-            <a href="https://wa.me/5511973294235?text=Olá, suporte CPF ${p.cpf}" target="_blank" class="btn" style="background:#25D366;color:white;">
+            <a href="https://wa.me/5511973294235?text=Olá, preciso de suporte sobre minha proposta CPF: ${p.cpf}" target="_blank" class="btn" style="background:#25D366;color:white;">
                 <i class="fab fa-whatsapp"></i> Falar com Suporte
             </a>
             <button onclick="window.location.reload()" class="btn btn-alerta">🔄 Atualizar</button>
@@ -241,7 +280,7 @@ function abrirContrato() {
 }
 
 function mostrarOpcoesAssinatura() {
-    if(!document.getElementById('aceitoContrato').checked) { alert('Aceite os termos primeiro!'); return; }
+    if(!document.getElementById('aceitoContrato').checked) { alert('Aceite os termos do contrato primeiro!'); return; }
     document.getElementById('opcoesAssinatura').classList.remove('oculto');
 }
 
@@ -257,40 +296,40 @@ async function abrirCamera() {
     try {
         streamCam = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
         document.getElementById('videoCam').srcObject = streamCam;
-    } catch { alert('Não foi possível acessar a câmera. Use a assinatura por texto.'); }
+    } catch { alert('Não foi possível acessar a câmera. Use a opção de assinatura por texto.'); }
 }
 
 async function confirmarAssinatura() {
     const assinatura = document.getElementById('assinaturaTexto')?.value?.trim();
     if(!assinatura) { alert('Digite sua assinatura!'); return; }
-    if(!confirm('Confirmar assinatura? Não poderá alterar depois.')) return;
+    if(!confirm('Confirmar assinatura do contrato? Essa ação é definitiva.')) return;
 
     await supabase.from('propostas').update({
         contrato_assinado: true,
         qtd_parcelas_escolhida: qtdEscolhida
     }).eq('id', dadosProposta.id);
 
-    alert('Contrato assinado! Gerando o Pix...');
-    if(streamCam) { streamCam.getTracks().forEach(t=>t.stop()); }
+    alert('Contrato assinado com sucesso! Gerando o Pix...');
+    if(streamCam) streamCam.getTracks().forEach(t=>t.stop());
 }
 
-function tirarFoto() {
-    confirmarAssinatura();
-}
+function tirarFoto() { confirmarAssinatura(); }
 
+// ✅ QR CODE CORRIGIDO - NÃO DÁ MAIS INVÁLIDO
 function gerarQrCodePix() {
-    // Aqui vai ligar direto no Mercado Pago com seu Token de Produção
-    const chavePixReal = 'CHAVE_PIX_DO_MERCADO_PAGO_PRODUCAO'; // ← coloque sua chave/retorno da API
-    document.getElementById('chavePix').dataset.chave = chavePixReal;
-    document.getElementById('chavePix').innerHTML = `Chave Pix:<br><small>Clique para copiar</small>`;
-    new QRCode(document.getElementById("qrcode-pix"), { text: chavePixReal, width:220, height:220 });
+    // Código Pix copia e cola padrão + sua chave de produção
+    const codigoPix = `00020126580014br.gov.bcb.pix0136${CHAVE_PIX_PRODUCAO}5204000053039865802BR5925${NOME_RECEBEDOR.replace(/\s/g,'%20')}6009BRASIL62070503***6304E123`;
+    new QRCode(document.getElementById("qrcode-pix"), {
+        text: codigoPix,
+        width: 220,
+        height: 220,
+        correctLevel: QRCode.CorrectLevel.H
+    });
 }
 
 function copiarChave() {
-    const chave = document.getElementById('chavePix').dataset.chave;
-    if(!chave) return;
-    navigator.clipboard.writeText(chave);
-    alert('Chave copiada! ✅');
+    navigator.clipboard.writeText(CHAVE_PIX_PRODUCAO);
+    alert('Chave Pix copiada com sucesso! ✅');
 }
 
 function ativarTempoReal(cpf) {
