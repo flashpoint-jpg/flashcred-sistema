@@ -35,6 +35,7 @@
         .btn-alerta { background: #F59E0B; color: white; }
         .btn-cinza { background: #CBD5E1; color: #334155; }
         .btn-pix { background: #32BCAD; color: white; }
+        .btn-cam { background: #8B5CF6; color: white; }
         .loading { text-align: center; padding: 20px; color: #64748B; }
         .spinner { animation: gira 1s linear infinite; }
         @keyframes gira { 100% { transform: rotate(360deg); } }
@@ -49,7 +50,7 @@
         .passo.ativo .bolinha { background: #0A2463; color: white; }
         .passo.concluido .bolinha { background: #10B981; color: white; }
 
-        /* AVISO DE ENTREGA SÓ QUANDO APROVADO */
+        /* AVISO DE ENTREGA */
         .aviso-entrega {
             background: #FFFBEB;
             border: 3px solid #F59E0B;
@@ -63,8 +64,10 @@
         }
 
         /* CONTRATO E ASSINATURA */
-        .texto-contrato { max-height: 250px; overflow-y: auto; padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 12px 0; font-size: 14px; line-height: 1.6; }
-        .area-assinatura { border: 2px dashed #94A3B8; border-radius: 8px; padding: 20px; text-align: center; margin: 12px 0; }
+        .texto-contrato { max-height: 220px; overflow-y: auto; padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 12px 0; font-size: 14px; line-height: 1.6; }
+        .campo-assinatura { width: 100%; padding: 12px; border: 2px dashed #64748B; border-radius: 8px; text-align: center; font-size: 18px; margin: 12px 0; background: #fff; }
+        .area-cam { border: 2px solid #E2E8F0; border-radius: 8px; padding: 10px; margin: 12px 0; text-align: center; }
+        video { width: 100%; max-height: 300px; border-radius: 8px; }
         .chave-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 8px; padding: 12px; text-align: center; font-weight: 600; margin: 12px 0; word-break: break-all; }
         .oculto { display: none !important; }
     </style>
@@ -87,6 +90,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 let inscricao = null;
 let dadosProposta = null;
 let qtdEscolhida = 0;
+let streamCam = null;
 
 window.onload = () => {
     const cpfUrl = new URLSearchParams(window.location.search).get('cpf');
@@ -106,7 +110,7 @@ async function buscarProposta() {
 
     const {data, error} = await supabase.from('propostas').select('*').eq('cpf',cpf).single();
     if(error || !data) {
-        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada ou ainda não enviada.</div>`;
+        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada.</div>`;
         return;
     }
 
@@ -120,7 +124,6 @@ function montarTela(p) {
     const total=v*(1+j/100);
     const dias = p.dias_entrega || 7;
 
-    // Define passo da barra de progresso
     let passo = 1;
     if(p.status === 'Aprovada') passo = 2;
     if(p.contrato_assinado) passo = 3;
@@ -131,23 +134,13 @@ function montarTela(p) {
         <h2 class="text-xl font-bold text-primary mb-2">Olá, ${p.nome || 'Cliente'}!</h2>
         <p class="mb-3">Sua proposta está: <strong class="${p.status==='Aprovada'?'text-green-600':'text-orange-500'}">${p.status}</strong></p>
 
-        <!-- BARRA DE PROGRESSO -->
         <div class="progresso">
-            <div class="passo ${passo>=1?'concluido':''}">
-                <div class="bolinha">${passo>1?'✓':'1'}</div><span>Proposta</span>
-            </div>
-            <div class="passo ${passo>=2?(passo>2?'concluido':'ativo'):''}">
-                <div class="bolinha">${passo>2?'✓':'2'}</div><span>Aprovada</span>
-            </div>
-            <div class="passo ${passo>=3?(passo>3?'concluido':'ativo'):''}">
-                <div class="bolinha">${passo>3?'✓':'3'}</div><span>Contrato</span>
-            </div>
-            <div class="passo ${passo>=4?'ativo':''}">
-                <div class="bolinha">4</div><span>Pagamento</span>
-            </div>
+            <div class="passo ${passo>=1?'concluido':''}"><div class="bolinha">${passo>1?'✓':'1'}</div><span>Proposta</span></div>
+            <div class="passo ${passo>=2?(passo>2?'concluido':'ativo'):''}"><div class="bolinha">${passo>2?'✓':'2'}</div><span>Aprovada</span></div>
+            <div class="passo ${passo>=3?(passo>3?'concluido':'ativo'):''}"><div class="bolinha">${passo>3?'✓':'3'}</div><span>Contrato</span></div>
+            <div class="passo ${passo>=4?'ativo':''}"><div class="bolinha">4</div><span>Pagamento</span></div>
         </div>
 
-        <!-- AVISO DE ENTREGA SÓ SE APROVADA -->
         ${p.status === 'Aprovada' ? `
         <div class="aviso-entrega">
             <i class="fas fa-truck"></i> 🚚 AVISO IMPORTANTE:<br>
@@ -161,88 +154,76 @@ function montarTela(p) {
         </div>
     `;
 
-    // ETAPA 1: AGUARDANDO ANÁLISE
     if(p.status === 'Nova' || p.status === 'Em Análise') {
-        html += `
-        <div class="text-center p-4 bg-yellow-50 rounded-lg">
-            <i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i>
-            <p class="font-semibold">Aguardando análise da proposta...</p>
-            <p class="text-sm text-gray-600">Assim que aprovado você verá as opções aqui.</p>
-        </div>`;
+        html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i><p class="font-semibold">Aguardando análise...</p></div>`;
     }
 
-    // ETAPA 2: APROVADA → ESCOLHER PARCELAS
     if(p.status === 'Aprovada' && !p.contrato_assinado && !p.entrada_paga) {
         html += `
         <div class="card">
             <h3 class="font-bold text-lg mb-2">Escolha a quantidade de parcelas:</h3>
-            <p class="text-sm text-gray-600 mb-3">De 1 até ${q} parcelas</p>
-            <select id="qtdParcelas" class="w-full p-3 border rounded-lg mb-3" onchange="atualizarValorParcela(this.value)">
+            <select id="qtdParcelas" class="w-full p-3 border rounded-lg mb-3">
                 ${Array.from({length:q}, (_,i)=>{
-                    const valorParc = ((total-e)*(Math.pow(1+j/100,i+1)*(j/100))/(Math.pow(1+j/100,i+1)-1));
-                    return `<option value="${i+1}">${i+1}x de R$ ${valorParc.toLocaleString('pt-BR',2)}</option>`;
+                    const val = ((total-e)*(Math.pow(1+j/100,i+1)*(j/100))/(Math.pow(1+j/100,i+1)-1));
+                    return `<option value="${i+1}">${i+1}x de R$ ${val.toLocaleString('pt-BR',2)}</option>`;
                 }).join('')}
             </select>
-            <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar para o Contrato</button>
+            <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar</button>
         </div>
 
-        <!-- CONTRATO E ASSINATURA → OCULTO ATÉ ESCOLHER PARCELAS -->
         <div id="blocoContrato" class="oculto">
             <h3 class="font-bold text-lg mb-2">📄 Termos do Contrato</h3>
             <div class="texto-contrato">
-                <strong>CONTRATO DE CRÉDITO E COMPRA</strong><br><br>
-                Pelo presente instrumento, o cliente acima qualificado contrata os serviços da FlashCred, comprometendo-se a efetuar o pagamento do valor acordado, acrescido de juros e encargos contratados, nas datas e valores definidos.<br><br>
-                A entrega do produto será realizada em até ${dias} dias úteis após a confirmação do pagamento da entrada.<br><br>
-                Ao prosseguir, o cliente declara que leu, compreendeu e aceita todos os termos e condições deste contrato.
+                Pelo presente, o cliente aceita as condições de pagamento, juros e valores definidos. A entrega será feita em até ${dias} dias úteis após confirmação do pagamento. Ao assinar, declara concordar com todos os termos.
             </div>
             <label class="flex items-center gap-2 mb-3 font-medium">
-                <input type="checkbox" id="aceitoContrato"> Li e aceito os termos do contrato
+                <input type="checkbox" id="aceitoContrato"> Li e aceito os termos
             </label>
-            <button onclick="mostrarAssinatura()" class="btn btn-primary">✍️ Assinar Contrato</button>
+            <button onclick="mostrarOpcoesAssinatura()" class="btn btn-primary">✍️ Assinar Contrato</button>
 
-            <div id="areaAssinatura" class="area-assinatura oculto">
-                <p class="font-semibold mb-2">Escolha como quer assinar:</p>
-                <button onclick="confirmarAssinatura()" class="btn btn-success">✍️ Assinatura Digital</button>
-                <p class="text-sm text-gray-500 mt-2">Ou envie uma foto do seu documento com rosto para validação.</p>
+            <div id="opcoesAssinatura" class="oculto mt-4">
+                <p class="font-semibold mb-2 text-center">Escolha como assinar:</p>
+                <button onclick="mostrarAssinaturaTexto()" class="btn btn-success mb-2">✍️ Escrever Assinatura</button>
+                <button onclick="abrirCamera()" class="btn btn-cam">📸 Tirar Foto/Rosto</button>
+
+                <div id="areaAssinaturaTexto" class="oculto mt-3">
+                    <input type="text" id="assinaturaTexto" class="campo-assinatura" placeholder="Digite seu nome completo como assinatura">
+                    <button onclick="confirmarAssinatura()" class="btn btn-success mt-2">✅ Confirmar Assinatura</button>
+                </div>
+
+                <div id="areaCamera" class="area-cam oculto mt-3">
+                    <video id="videoCam" autoplay playsinline></video>
+                    <button onclick="tirarFoto()" class="btn btn-success mt-2">📸 Confirmar Foto</button>
+                </div>
             </div>
-        </div>
-        `;
+        </div>`;
     }
 
-    // ETAPA 3: CONTRATO ASSINADO → MOSTRAR PIX
     if(p.contrato_assinado && !p.entrada_paga) {
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO!</div>
-            <p class="mb-3">Agora efetue o pagamento da entrada para liberar seu pedido:</p>
+            <p class="mb-3">Efetue o pagamento da entrada:</p>
             <div id="qrcode-pix" class="flex justify-center my-4"></div>
-            <div class="chave-pix" id="chavePix">
-                Chave Pix (Mercado Pago - Produção)<br>
-                <small>Clique para copiar</small>
+            <div class="chave-pix" id="chavePix" data-chave="">
+                Aguardando geração do Pix...
             </div>
             <button onclick="copiarChave()" class="btn btn-pix">📋 Copiar Chave Pix</button>
-            <p class="text-sm text-gray-600 mt-2">Assim que o pagamento for confirmado, você e nós seremos notificados imediatamente.</p>
+            <p class="text-sm mt-2">Assim que pagar, nós somos avisados automaticamente.</p>
         </div>`;
     }
 
-    // ETAPA 4: ENTRADA PAGA → LIBERA PARCELAS
     if(p.entrada_paga) {
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
-            <p class="mb-3">Sua entrada foi paga com sucesso! 🎉</p>
-            <p class="mb-2">Acesse abaixo o cronograma completo de suas parcelas:</p>
-            <div class="bg-gray-50 p-3 rounded-lg">
-                <strong>Parcelas contratadas:</strong><br>
-                ${qtdEscolhida>0?qtdEscolhida:q}x de R$ ${ ((total-e)*(Math.pow(1+j/100,qtdEscolhida||q)*(j/100))/(Math.pow(1+j/100,qtdEscolhida||q)-1)).toLocaleString('pt-BR',2)}
-            </div>
-            <a href="https://wa.me/5511973294235?text=Olá, já paguei a entrada e quero conferir minhas parcelas CPF: ${p.cpf}" target="_blank" class="btn btn-success mt-3">📄 Ver Detalhes e Enviar Comprovante</a>
+            <p>Entrada paga com sucesso! Em breve você receberá o cronograma completo das parcelas.</p>
         </div>`;
     }
 
     html += `
         <div class="mt-4">
-            <a href="https://wa.me/5511973294235?text=Olá, preciso de suporte sobre minha proposta CPF: ${p.cpf}" target="_blank" class="btn" style="background:#25D366;color:white;">
+            <a href="https://wa.me/5511973294235?text=Olá, suporte CPF ${p.cpf}" target="_blank" class="btn" style="background:#25D366;color:white;">
                 <i class="fab fa-whatsapp"></i> Falar com Suporte
             </a>
             <button onclick="window.location.reload()" class="btn btn-alerta">🔄 Atualizar</button>
@@ -251,57 +232,71 @@ function montarTela(p) {
 
     document.getElementById('conteudoProposta').innerHTML = html;
 
-    // Se já assinou, gera QR Code (aqui ligado ao Mercado Pago quando configurado)
-    if(p.contrato_assinado && !p.entrada_paga) {
-        gerarQrCodePix();
-    }
-}
-
-function atualizarValorParcela(qtd) {
-    qtdEscolhida = Number(qtd);
+    if(p.contrato_assinado && !p.entrada_paga) gerarQrCodePix();
 }
 
 function abrirContrato() {
-    if(!document.getElementById('qtdParcelas')) return;
     qtdEscolhida = Number(document.getElementById('qtdParcelas').value);
     document.getElementById('blocoContrato').classList.remove('oculto');
 }
 
-function mostrarAssinatura() {
-    if(!document.getElementById('aceitoContrato').checked) {
-        alert('Você precisa aceitar os termos do contrato primeiro!');
-        return;
-    }
-    document.getElementById('areaAssinatura').classList.remove('oculto');
+function mostrarOpcoesAssinatura() {
+    if(!document.getElementById('aceitoContrato').checked) { alert('Aceite os termos primeiro!'); return; }
+    document.getElementById('opcoesAssinatura').classList.remove('oculto');
+}
+
+function mostrarAssinaturaTexto() {
+    document.getElementById('areaAssinaturaTexto').classList.remove('oculto');
+    document.getElementById('areaCamera').classList.add('oculto');
+    if(streamCam) { streamCam.getTracks().forEach(t=>t.stop()); streamCam = null; }
+}
+
+async function abrirCamera() {
+    document.getElementById('areaCamera').classList.remove('oculto');
+    document.getElementById('areaAssinaturaTexto').classList.add('oculto');
+    try {
+        streamCam = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+        document.getElementById('videoCam').srcObject = streamCam;
+    } catch { alert('Não foi possível acessar a câmera. Use a assinatura por texto.'); }
 }
 
 async function confirmarAssinatura() {
-    if(!confirm('Confirmar assinatura do contrato? Isso é definitivo.')) return;
-    await supabase.from('propostas').update({contrato_assinado: true, qtd_parcelas_escolhida: qtdEscolhida}).eq('id', dadosProposta.id);
-    alert('Contrato assinado com sucesso! Agora aguarde, estamos preparando o seu Pix...');
+    const assinatura = document.getElementById('assinaturaTexto')?.value?.trim();
+    if(!assinatura) { alert('Digite sua assinatura!'); return; }
+    if(!confirm('Confirmar assinatura? Não poderá alterar depois.')) return;
+
+    await supabase.from('propostas').update({
+        contrato_assinado: true,
+        qtd_parcelas_escolhida: qtdEscolhida
+    }).eq('id', dadosProposta.id);
+
+    alert('Contrato assinado! Gerando o Pix...');
+    if(streamCam) { streamCam.getTracks().forEach(t=>t.stop()); }
+}
+
+function tirarFoto() {
+    confirmarAssinatura();
 }
 
 function gerarQrCodePix() {
-    // Aqui vai ligar direto na API do Mercado Pago com seu Token de Produção
-    const chave = 'seu_qr_code_mercado_pago_aqui'; // ← ligar com token
-    new QRCode(document.getElementById("qrcode-pix"), {
-        text: chave,
-        width: 220,
-        height: 220
-    });
-    document.getElementById('chavePix').dataset.chave = chave;
+    // Aqui vai ligar direto no Mercado Pago com seu Token de Produção
+    const chavePixReal = 'CHAVE_PIX_DO_MERCADO_PAGO_PRODUCAO'; // ← coloque sua chave/retorno da API
+    document.getElementById('chavePix').dataset.chave = chavePixReal;
+    document.getElementById('chavePix').innerHTML = `Chave Pix:<br><small>Clique para copiar</small>`;
+    new QRCode(document.getElementById("qrcode-pix"), { text: chavePixReal, width:220, height:220 });
 }
 
 function copiarChave() {
     const chave = document.getElementById('chavePix').dataset.chave;
+    if(!chave) return;
     navigator.clipboard.writeText(chave);
-    alert('Chave Pix copiada! ✅');
+    alert('Chave copiada! ✅');
 }
 
 function ativarTempoReal(cpf) {
     if(inscricao) supabase.removeChannel(inscricao);
     inscricao = supabase.channel('cliente_' + cpf)
-        .on('postgres_changes', {event:'UPDATE',schema:'public',table:'propostas',filter:`cpf=eq.${cpf}`}, (m)=>montarTela(m.new))
+        .on('postgres_changes', {event:'UPDATE',schema:'public',table:'propostas',filter:`cpf=eq.${cpf}`}, m=>montarTela(m.new))
         .subscribe();
 }
 </script>
