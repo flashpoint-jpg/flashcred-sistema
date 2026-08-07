@@ -232,6 +232,8 @@ function mostrarParcelasAprovadas() {
     const juros = Number(proposta.juros_mensal||5);
     const qtd = qtdParcelasEscolhida || Number(proposta.quantidade_parcelas||1);
     const parcelasPagasCount = Number(proposta.parcelas_pagas || 0);
+    // ✅ PEGA AS DATAS QUE VOCÊ CADASTRAR NO PAINEL
+    const datasParcelas = proposta.datas_parcelas || [];
     const total = valor*(1+juros/100);
     
     const valorParcela = qtd === 1 ? total : ((total - entrada) * (Math.pow(1 + juros/100, qtd) * (juros/100))) / (Math.pow(1 + juros/100, qtd) - 1);
@@ -247,13 +249,17 @@ function mostrarParcelasAprovadas() {
 
     for (let i = 1; i <= qtd; i++) {
         const estaPaga = i <= parcelasPagasCount;
+        // ✅ MOSTRA A DATA CADASTRADA, SE TIVER
+        const dataVencimento = datasParcelas[i-1] ? new Date(datasParcelas[i-1]).toLocaleDateString('pt-BR') : 'A definir';
 
         html += `
             <div class="border p-3 rounded-lg ${estaPaga ? 'bg-green-50 border-green-200' : 'bg-gray-50'} flex flex-col gap-2">
                 <div class="flex justify-between items-center text-sm">
                     <span class="font-semibold text-gray-800">Parcela ${i} de ${qtd}</span>
                     <span class="font-bold ${estaPaga ? 'text-green-600' : 'text-primary'}">R$ ${valorParcela.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                </div>`;
+                </div>
+                <!-- ✅ CAMPO NOVO: DATA DE VENCIMENTO -->
+                <div class="text-xs text-gray-600">📅 Vencimento: ${dataVencimento}</div>`;
 
         if (estaPaga) {
             html += `
@@ -288,7 +294,11 @@ function mostrarParcelasAprovadas() {
 }
 
 async function gerarPixParcela(numeroParcela, valorParcela) {
-    const valorFormatado = Number(Number(valorParcela).toFixed(2));
+    // ✅ CORRIGE O VALOR AUTOMATICAMENTE PARA NÃO DAR ERRO
+    let valorTratado = String(valorParcela)
+        .replace(/\./g, '')
+        .replace(',', '.');
+    const valorFormatado = Number(valorTratado).toFixed(2);
 
     document.getElementById('areaPixParcela').innerHTML = `
         <div class="border p-3 rounded bg-white text-center mt-3 shadow-inner">
@@ -301,7 +311,7 @@ async function gerarPixParcela(numeroParcela, valorParcela) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                transaction_amount: valorFormatado,
+                transaction_amount: Number(valorFormatado),
                 description: `Parcela ${numeroParcela} - Proposta ${proposta.id}`,
                 payment_method_id: 'pix',
                 payer: { 
@@ -321,7 +331,7 @@ async function gerarPixParcela(numeroParcela, valorParcela) {
 
         document.getElementById('areaPixParcela').innerHTML = `
             <div class="border p-3 rounded bg-blue-50 text-center mt-3">
-                <p class="text-xs font-bold text-primary mb-1">Pix Parcela ${numeroParcela} (R$ ${valorFormatado.toLocaleString('pt-BR',{minimumFractionDigits:2})})</p>
+                <p class="text-xs font-bold text-primary mb-1">Pix Parcela ${numeroParcela} (R$ ${Number(valorFormatado).toLocaleString('pt-BR',{minimumFractionDigits:2})})</p>
                 <img src="data:image/png;base64,${qrBase64}" class="w-40 mx-auto my-2 border rounded">
                 <textarea readonly class="w-full p-2 border rounded mb-2 text-[10px] bg-white">${pixCopia}</textarea>
                 <button onclick="navigator.clipboard.writeText('${pixCopia}').then(()=>alert('✅ Código da parcela copiado!'))" class="botao botao-primario !py-2 text-xs">
