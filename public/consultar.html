@@ -60,6 +60,7 @@
         .btn-pix { background: #32BCAD; color: white; }
         .btn-cam { background: #8B5CF6; color: white; }
         .loading { text-align: center; padding: 20px; color: #64748B; }
+        .aviso-erro { color: #EF4444; font-weight: 600; text-align: center; margin-bottom: 10px; }
 
         .progresso { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; }
         .progresso::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 3px; background: #E2E8F0; }
@@ -117,7 +118,8 @@
 
 <div id="areaConsulta" class="card">
     <h2 class="text-xl font-bold text-center mb-4 text-primary">🔍 Acompanhar Proposta</h2>
-    <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="w-full p-3 border border-gray-300 rounded-lg mb-4 text-center text-lg">
+    <div id="avisoErro" class="aviso-erro oculto"></div>
+    <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números, 11 dígitos)" maxlength="11" class="w-full p-3 border border-gray-300 rounded-lg mb-4 text-center text-lg">
     <button onclick="buscarProposta()" class="btn btn-primary">Consultar</button>
 </div>
 
@@ -206,10 +208,17 @@ async function gerarPixViaAPI(valor, descricao) {
     }
 }
 
-// ✅ FUNÇÃO DE BUSCA 100% FUNCIONAL — NENHUM ERRO
 async function buscarProposta() {
     const cpf = document.getElementById('cpfConsulta').value.replace(/\D/g,'');
-    if(cpf.length !== 11) { alert('Digite um CPF válido com 11 números!'); return; }
+    const aviso = document.getElementById('avisoErro');
+    aviso.classList.add('oculto');
+
+    // ✅ AQUI ESTAVA O PROBLEMA — AGORA AVISA CLARO
+    if(cpf.length !== 11) {
+        aviso.textContent = `⚠️ CPF inválido! Você digitou ${cpf.length} números, precisa de 11 dígitos.`;
+        aviso.classList.remove('oculto');
+        return;
+    }
 
     document.getElementById('areaConsulta').classList.add('hidden');
     document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando sua proposta...</div>`;
@@ -217,7 +226,7 @@ async function buscarProposta() {
 
     const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
     if(error || !data) {
-        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada.</div>`;
+        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada para esse CPF.</div>`;
         return;
     }
 
