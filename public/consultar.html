@@ -73,6 +73,7 @@ window.onload = async () => {
         return;
     }
     await carregarProposta(cpf);
+    ouvirMudancasEmTempoReal(cpf);
 };
 
 async function buscarProposta() {
@@ -86,20 +87,35 @@ async function carregarProposta(cpf) {
     if(error || !data) return document.getElementById('conteudo').innerHTML = `<div class="cartao text-center"><p class="text-red-600">Proposta não encontrada!</p><a href="https://wa.me/${WHATSAPP_SUPORTE}" target="_blank" class="botao botao-primario mt-3">Falar com Suporte</a></div>`;
     
     proposta = data;
-
     if(proposta.status !== 'Aprovada') {
         document.getElementById('conteudo').innerHTML = `<div class="cartao text-center"><p class="text-alerta text-lg font-bold">⏳ Aguardando Análise</p><p>Sua proposta está em análise, em breve você receberá a confirmação.</p><a href="https://wa.me/${WHATSAPP_SUPORTE}" target="_blank" class="botao botao-primario mt-4">Falar com Suporte</a></div>`;
         return;
     }
-
-    // 🔒 BLOQUEIO ABSOLUTO: Se a entrada já foi paga, pula direto para a tela de parcelas e bloqueia o fluxo de pagamento
-    if(proposta.entrada_paga === true) {
+    
+    // Se a entrada já está paga, vai direto para o gerenciamento de parcelas
+    if(proposta.entrada_paga) {
         etapaAtual = 4;
         mostrarParcelasAprovadas();
         return;
     }
-
     mostrarOpcoesParcelas();
+}
+
+// Ouve atualizações de pagamento em tempo real vindas do banco de dados
+function ouvirMudancasEmTempoReal(cpf) {
+    supabase
+        .channel('mudancas-proposta')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas' }, payload => {
+            if (payload.new && payload.new.cpf === cpf) {
+                proposta = payload.new;
+                if (proposta.entrada_paga && etapaAtual < 4) {
+                    mostrarParcelasAprovadas();
+                } else if (etapaAtual === 4) {
+                    mostrarParcelasAprovadas(); // Atualiza as parcelas pagas/baixas
+                }
+            }
+        })
+        .subscribe();
 }
 
 function atualizarEtapa(n) {
@@ -109,12 +125,6 @@ function atualizarEtapa(n) {
 }
 
 function mostrarOpcoesParcelas() {
-    // Se por acaso a entrada já estiver paga, barra imediatamente
-    if(proposta.entrada_paga) {
-        mostrarParcelasAprovadas();
-        return;
-    }
-
     atualizarEtapa(1);
     const valor = Number(proposta.valor_desejado||0);
     const entrada = Number(proposta.valor_entrada||0);
@@ -149,7 +159,6 @@ function escolherParcela(qtd, el) {
 }
 
 function irParaContrato() {
-    if(proposta.entrada_paga) return mostrarParcelasAprovadas();
     if(!qtdParcelasEscolhida) return;
     atualizarEtapa(2);
     document.getElementById('conteudo').innerHTML = `<div class="cartao">
@@ -164,9 +173,7 @@ function irParaContrato() {
 }
 
 async function confirmarContrato() {
-    if(proposta.entrada_paga) return mostrarParcelasAprovadas();
     if(!document.getElementById('aceitoContrato').checked) return alert('Você precisa aceitar o contrato para continuar!');
-    
     atualizarEtapa(3);
     document.getElementById('conteudo').innerHTML = `<div class="cartao text-center">
         <h3 class="text-xl font-bold mb-3">💳 Pagamento da Entrada</h3>
@@ -181,8 +188,6 @@ async function confirmarContrato() {
 }
 
 async function gerarPix() {
-    if(proposta.entrada_paga) return mostrarParcelasAprovadas();
-
     const valorEntrada = Number(proposta.valor_entrada||0);
     const cpf = proposta.cpf.replace(/\D/g,'');
 
@@ -199,20 +204,12 @@ async function gerarPix() {
                     first_name: (proposta.nome||'Cliente').split(' ')[0], 
                     identification: { type: 'CPF', number: cpf.length===11 ? cpf : '00000000000' } 
                 },
-                external_reference: `${proposta.id}`
+                external_reference: `${proposta.id}_entrada`
             })
         });
 
         const res = await resposta.json();
         if(!resposta.ok) throw new Error(res.message || 'Erro na geração');
-
-        // Se por ventura a página atualizar e a entrada já estiver paga, não exibe o QR code
-        const {data: checkPago} = await supabase.from('propostas').select('entrada_paga').eq('id', proposta.id).single();
-        if(checkPago?.entrada_paga) {
-            proposta.entrada_paga = true;
-            mostrarParcelasAprovadas();
-            return;
-        }
 
         const qrBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
         const pixCopia = res.point_of_interaction.transaction_data.qr_code;
@@ -223,9 +220,6 @@ async function gerarPix() {
             <button onclick="navigator.clipboard.writeText('${pixCopia}').then(()=>alert('✅ Código copiado!'))" class="botao botao-sucesso mb-2">📋 Copiar Código Pix</button>
             <p class="text-sm text-gray-600 mt-2">Após o pagamento, aguarde a confirmação automática...</p>
         `;
-        
-        if(timerPagamento) clearInterval(timerPagamento);
-        timerPagamento = setInterval(verificarPagamento, 3000);
 
     } catch (erro) {
         console.error('ERRO:', erro);
@@ -233,23 +227,14 @@ async function gerarPix() {
     }
 }
 
-async function verificarPagamento() {
-    const {data} = await supabase.from('propostas').select('entrada_paga').eq('id', proposta.id).single();
-    if(data?.entrada_paga) {
-        proposta.entrada_paga = true; // Atualiza o estado local
-        clearInterval(timerPagamento);
-        mostrarParcelasAprovadas();
-    }
-}
-
+// 🟢 TELA DE GERENCIAMENTO DE PARCELAS COM BLOQUEIOS INDIVIDUAIS
 function mostrarParcelasAprovadas() {
-    if(timerPagamento) clearInterval(timerPagamento); // Para o timer de verificação de entrada de vez
     atualizarEtapa(4);
-    
     const valor = Number(proposta.valor_desejado||0);
     const entrada = Number(proposta.valor_entrada||0);
     const juros = Number(proposta.juros_mensal||5);
     const qtd = qtdParcelasEscolhida || Number(proposta.quantidade_parcelas||1);
+    const parcelasPagasCount = Number(proposta.parcelas_pagas || 0);
     const total = valor*(1+juros/100);
     
     const valorParcela = qtd === 1 ? total : ((total - entrada) * (Math.pow(1 + juros/100, qtd) * (juros/100))) / (Math.pow(1 + juros/100, qtd) - 1);
@@ -257,23 +242,35 @@ function mostrarParcelasAprovadas() {
     let html = `
     <div class="cartao text-center">
         <div class="text-sucesso text-3xl mb-2"><i class="fas fa-check-circle"></i></div>
-        <h3 class="text-xl font-bold mb-1">Pagamento Confirmado!</h3>
-        <p class="text-xs text-gray-500 mb-4">Sua entrada foi processada com sucesso e o pagamento foi bloqueado.</p>
+        <h3 class="text-xl font-bold mb-1">Entrada Quitada!</h3>
+        <p class="text-xs text-gray-500 mb-4">Acompanhe e pague suas parcelas abaixo:</p>
 
         <h4 class="font-bold text-sm text-left mb-2 text-gray-700">📋 Suas Parcelas:</h4>
-        <div class="space-y-2 mb-4 max-h-48 overflow-auto text-left">`;
+        <div class="space-y-2 mb-4 max-h-56 overflow-auto text-left">`;
 
     for (let i = 1; i <= qtd; i++) {
+        const estaPaga = i <= parcelasPagasCount;
+
         html += `
-            <div class="border p-3 rounded-lg bg-gray-50 flex flex-col gap-2">
+            <div class="border p-3 rounded-lg ${estaPaga ? 'bg-green-50 border-green-200' : 'bg-gray-50'} flex flex-col gap-2">
                 <div class="flex justify-between items-center text-sm">
                     <span class="font-semibold text-gray-800">Parcela ${i} de ${qtd}</span>
-                    <span class="font-bold text-primary">R$ ${valorParcela.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                </div>
+                    <span class="font-bold ${estaPaga ? 'text-green-600' : 'text-primary'}">R$ ${valorParcela.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                </div>`;
+
+        if (estaPaga) {
+            html += `
+                <div class="text-center bg-green-100 text-green-700 py-2 rounded font-bold text-xs">
+                    <i class="fas fa-check"></i> Parcela Paga
+                </div>`;
+        } else {
+            html += `
                 <button onclick="gerarPixParcela(${i}, ${valorParcela})" class="botao botao-sucesso !mt-0 !py-2 text-xs">
-                    <i class="fas fa-qrcode"></i> Gerar Código Pix e Pagar
-                </button>
-            </div>`;
+                    <i class="fas fa-qrcode"></i> Gerar Pix - Parcela ${i}
+                </button>`;
+        }
+
+        html += `</div>`;
     }
 
     html += `
@@ -293,24 +290,48 @@ function mostrarParcelasAprovadas() {
     document.getElementById('conteudo').innerHTML = html;
 }
 
-function gerarPixParcela(numeroParcela, valorParcela) {
+async function gerarPixParcela(numeroParcela, valorParcela) {
     document.getElementById('areaPixParcela').innerHTML = `
         <div class="border p-3 rounded bg-white text-center mt-3 shadow-inner">
             <p class="text-xs font-bold text-gray-700 mb-2">Gerando Pix da Parcela ${numeroParcela}...</p>
             <i class="fas fa-spinner fa-spin text-primary text-xl"></i>
         </div>`;
 
-    setTimeout(() => {
-        const codigoCopiaECola = `00020126580014br.gov.bcb.pix...parcela-${numeroParcela}`;
+    try {
+        const resposta = await fetch('/gerar-pix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                transaction_amount: valorParcela,
+                description: `Parcela ${numeroParcela} - Proposta ${proposta.id}`,
+                payment_method_id: 'pix',
+                payer: { 
+                    email: 'filipe@flashcred.com.br', 
+                    first_name: (proposta.nome||'Cliente').split(' ')[0], 
+                    identification: { type: 'CPF', number: proposta.cpf.replace(/\D/g,'') } 
+                },
+                external_reference: `${proposta.id}_parcela_${numeroParcela}`
+            })
+        });
+
+        const res = await resposta.json();
+        if(!resposta.ok) throw new Error(res.message || 'Erro na geração');
+
+        const qrBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
+        const pixCopia = res.point_of_interaction.transaction_data.qr_code;
+
         document.getElementById('areaPixParcela').innerHTML = `
             <div class="border p-3 rounded bg-blue-50 text-center mt-3">
-                <p class="text-xs font-bold text-primary mb-1">Pix da Parcela ${numeroParcela} (R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})})</p>
-                <textarea readonly class="w-full p-2 border rounded mb-2 text-[10px] bg-white">${codigoCopiaECola}</textarea>
-                <button onclick="navigator.clipboard.writeText('${codigoCopiaECola}').then(()=>alert('✅ Código da parcela copiado!'))" class="botao botao-primario !py-2 text-xs">
-                    📋 Copiar Código Pix da Parcela
+                <p class="text-xs font-bold text-primary mb-1">Pix Parcela ${numeroParcela} (R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})})</p>
+                <img src="data:image/png;base64,${qrBase64}" class="w-40 mx-auto my-2 border rounded">
+                <textarea readonly class="w-full p-2 border rounded mb-2 text-[10px] bg-white">${pixCopia}</textarea>
+                <button onclick="navigator.clipboard.writeText('${pixCopia}').then(()=>alert('✅ Código da parcela copiado!'))" class="botao botao-primario !py-2 text-xs">
+                    📋 Copiar Código Pix
                 </button>
             </div>`;
-    }, 1000);
+    } catch(err) {
+        document.getElementById('areaPixParcela').innerHTML = `<p class="text-red-600 text-xs mt-2">❌ Erro ao gerar Pix da parcela: ${err.message}</p>`;
+    }
 }
 </script>
 </body>
