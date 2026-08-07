@@ -422,7 +422,6 @@ function copiarPix(codigo) {
 function iniciarMonitoramentoPagamento() {
     if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
     
-    // Monitora o Supabase a cada 4 segundos. Quando o webhook do Mercado Pago (ou painel) atualizar a entrada, avança automaticamente.
     intervalChecagemPagamento = setInterval(async () => {
         const { data, error } = await supabase
             .from('propostas')
@@ -444,50 +443,45 @@ function iniciarMonitoramentoPagamento() {
 async function mostrarParcelasLiberadas() {
     if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
 
-    document.getElementById('conteudo').innerHTML = `
-        <div class="cartao p-5 text-center">
-            <div class="p-3 bg-green-50 text-sucesso rounded-lg mb-4 font-bold text-sm">
-                🎉 Entrada paga e confirmada com sucesso! Suas parcelas estão liberadas.
-            </div>
-            <h2 class="text-lg font-bold text-primary mb-3">📅 Cronograma de Parcelas</h2>
-            <div id="listaParcelas" class="text-left space-y-2">
-                <p class="text-sm text-gray-500 text-center">Carregando parcelas...</p>
-            </div>
-            <a href="https://wa.me/${WHATSAPP}" target="_blank" class="botao botao-sucesso mt-4">Falar com Suporte no WhatsApp</a>
-        </div>
-    `;
+    const valor = Number(proposta.valor_desejado || 0);
+    const entrada = Number(proposta.valor_entrada || 0);
+    const juros = Number(proposta.juros_mensal || 5);
+    const calc = calcularValores(valor, entrada, juros, qtdParcelasEscolhida);
+    const dias = Number(proposta.dias_entrega || 7);
 
-    const { data, error } = await supabase
-        .from('parcelas')
-        .select('*')
-        .eq('proposta_id', proposta.id)
-        .order('numero', { ascending: true });
-
-    const container = document.getElementById('listaParcelas');
-    if (error || !data || data.length === 0) {
-        container.innerHTML = `<p class="text-sm text-gray-600 text-center">Nenhuma parcela gerada ainda. Aguarde instantes.</p>`;
-        return;
+    let listaParcelas = '';
+    for(let i=1; i<=qtdParcelasEscolhida; i++) {
+        const dataVenc = new Date();
+        dataVenc.setMonth(dataVenc.getMonth() + i);
+        listaParcelas += `
+        <div class="parcela-item parcela-pendente">
+            <div>
+                <strong>${i}ª Parcela</strong><br>
+                <small>Vencimento: ${dataVenc.toLocaleDateString('pt-BR')}</small>
+            </div>
+            <strong>R$ ${calc.parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong>
+        </div>`;
     }
 
-    let html = '';
-    data.forEach(p => {
-        const paga = p.status === 'Paga' || p.pago;
-        html += `
-            <div class="parcela-item ${paga ? 'parcela-paga' : 'parcela-pendente'}">
-                <div>
-                    <strong>Parcela ${p.numero}</strong><br>
-                    <span class="text-xs text-gray-600">Vencimento: ${p.vencimento ? new Date(p.vencimento).toLocaleDateString('pt-BR') : 'A definir'}</span>
-                </div>
-                <div class="text-right">
-                    <span class="font-bold">R$ ${Number(p.valor || 0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span><br>
-                    <span class="text-xs font-bold ${paga ? 'text-sucesso' : 'text-alerta'}">${paga ? 'Paga ✅' : 'Pendente ⏳'}</span>
-                </div>
+    document.getElementById('conteudo').innerHTML = `
+        <div class="cartao p-5 text-center">
+            <div class="p-3 bg-green-50 text-sucesso rounded-lg mb-4">
+                <i class="fas fa-check-circle text-3xl mb-2"></i>
+                <h2 class="text-xl font-bold">Pagamento Confirmado!</h2>
+                <p class="text-sm mt-1">Sua entrada foi confirmada e o pedido está em processo de separação.</p>
+                <p class="text-sm mt-1">Entrega prevista em até ${dias} dias úteis.</p>
             </div>
-        `;
-    });
-    container.innerHTML = html;
+
+            <h3 class="font-bold text-lg mb-3">📋 Suas Parcelas</h3>
+            ${listaParcelas}
+
+            <div class="mt-4">
+                <a href="https://wa.me/${WHATSAPP}" target="_blank" class="botao botao-primario">💬 Falar com Suporte</a>
+                <button onclick="window.print()" class="botao botao-cinza">🖨️ Imprimir Contrato</button>
+            </div>
+        </div>
+    `;
 }
 </script>
-
 </body>
 </html>
