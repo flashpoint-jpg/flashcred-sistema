@@ -21,19 +21,20 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
         body { background: var(--bg-body); color: var(--texto); }
         .cartao { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .botao { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: 500; transition: 0.15s; }
+        .botao { padding: 8px 12px; border-radius: 6px; border: none; cursor: pointer; font-weight: 500; transition: 0.15s; font-size: 13px; }
         .botao-primario { background: var(--primary); color: white; }
         .botao-sucesso { background: var(--sucesso); color: white; }
         .botao-alerta { background: var(--alerta); color: white; }
         .botao-perigo { background: var(--perigo); color: white; }
         .botao-cinza { background: var(--borda); color: var(--texto); }
+        .botao-wpp { background: #25D366; color: white; }
         .barra-resumo { background: white; border-radius: 8px; padding: 12px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
         .item-resumo { display: flex; flex-direction: column; font-size: 13px; }
         .item-resumo span:first-child { color: var(--texto-claro); }
         .item-resumo span:last-child { font-weight: bold; font-size: 15px; }
         .sininho { position: relative; cursor: pointer; }
         .contador-notif { position: absolute; top: -8px; right: -8px; background: var(--perigo); color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
-        .linha-proposta { border-bottom: 1px solid var(--borda); padding: 12px 0; }
+        .linha-proposta { border-bottom: 1px solid var(--borda); padding: 16px 0; }
         .area-edicao { display:none; margin-top:15px; padding:12px; background:#f8fafc; border-radius:6px; border:1px solid var(--borda); }
         .area-edicao.ativa { display:block; }
         .label-campo { font-size: 12px; color: var(--texto-claro); margin-bottom: 2px; display:block; }
@@ -41,6 +42,7 @@
         .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
         .campo { width: 100%; padding: 8px; border: 1px solid var(--borda); border-radius: 6px; margin-bottom: 8px; }
+        .bloco-parcelas { background: #f1f5f9; padding: 10px; border-radius: 6px; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -103,11 +105,10 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 const SENHA = 'flash2026';
 const LINK_CONSULTA = window.location.href.replace('painel.html','consultar.html');
+const NUMERO_SUPORTE = '5511973294235';
 
-let editandoId = null;
 let inscricaoTempoReal = null;
 
-// ✅ CORREÇÃO: VERIFICA LOGIN AO CARREGAR
 window.onload = () => {
     if(localStorage.getItem('logado_flashcred') === 'SIM') {
         mostrarPainel();
@@ -117,7 +118,7 @@ window.onload = () => {
 function entrar() {
     const s = document.getElementById('senha').value.trim();
     if(s === SENHA) {
-        localStorage.setItem('logado_flashcred', 'SIM'); // Salva login
+        localStorage.setItem('logado_flashcred', 'SIM');
         mostrarPainel();
     } else {
         alert('Senha incorreta!');
@@ -125,11 +126,11 @@ function entrar() {
 }
 
 function sair() {
-    localStorage.removeItem('logado_flashcred'); // Apaga login
+    localStorage.removeItem('logado_flashcred');
     document.getElementById('telaLogin').style.display = 'block';
     document.getElementById('telaPrincipal').style.display = 'none';
     document.getElementById('senha').value = '';
-    if(inscricaoTempoReal) supabase.removeSubscription(inscricaoTempoReal);
+    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
 }
 
 function mostrarPainel() {
@@ -142,46 +143,16 @@ function mostrarPainel() {
 function camposFormulario() {
     return `
     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-            <span class="label-campo">👤 Nome Completo do Cliente</span>
-            <input type="text" id="nome" class="campo">
-        </div>
-        <div>
-            <span class="label-campo">📄 CPF do Cliente</span>
-            <input type="text" id="cpf" maxlength="11" class="campo">
-        </div>
-        <div>
-            <span class="label-campo">📱 WhatsApp com DDD</span>
-            <input type="text" id="whatsapp" maxlength="11" class="campo">
-        </div>
-        <div>
-            <span class="label-campo">🏠 CEP</span>
-            <input type="text" id="cep" maxlength="8" class="campo">
-        </div>
-        <div class="md:col-span-2">
-            <span class="label-campo">📍 Endereço Completo</span>
-            <input type="text" id="endereco" class="campo">
-        </div>
-        <div>
-            <span class="label-campo">💵 Valor Total do Produto</span>
-            <input type="number" id="valor_desejado" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))">
-        </div>
-        <div>
-            <span class="label-campo">💸 Valor da Entrada</span>
-            <input type="number" id="valor_entrada" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))">
-        </div>
-        <div>
-            <span class="label-campo">📊 Juros Mensal %</span>
-            <input type="number" id="juros_mensal" value="5" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))">
-        </div>
-        <div>
-            <span class="label-campo">🧾 Máximo de Parcelas</span>
-            <input type="number" id="quantidade_parcelas" min="1" max="48" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))">
-        </div>
-        <div>
-            <span class="label-campo">🚚 Prazo Entrega (dias)</span>
-            <input type="number" id="dias_entrega" value="7" class="campo">
-        </div>
+        <div><span class="label-campo">👤 Nome Completo</span><input type="text" id="nome" class="campo"></div>
+        <div><span class="label-campo">📄 CPF</span><input type="text" id="cpf" maxlength="11" class="campo"></div>
+        <div><span class="label-campo">📱 WhatsApp</span><input type="text" id="whatsapp" maxlength="11" class="campo"></div>
+        <div><span class="label-campo">🏠 CEP</span><input type="text" id="cep" maxlength="8" class="campo"></div>
+        <div class="md:col-span-2"><span class="label-campo">📍 Endereço</span><input type="text" id="endereco" class="campo"></div>
+        <div><span class="label-campo">💵 Valor Total</span><input type="number" id="valor_desejado" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+        <div><span class="label-campo">💸 Valor Entrada</span><input type="number" id="valor_entrada" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+        <div><span class="label-campo">📊 Juros %</span><input type="number" id="juros_mensal" value="5" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+        <div><span class="label-campo">🧾 Parcelas</span><input type="number" id="quantidade_parcelas" min="1" max="48" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+        <div><span class="label-campo">🚚 Prazo (dias)</span><input type="number" id="dias_entrega" value="7" class="campo"></div>
     </div>`;
 }
 
@@ -194,7 +165,7 @@ function atualizarCalculo(bloco) {
     const saldo = total - e;
     const parcela = q===1 ? total : saldo * (Math.pow(1+j/100,q) * (j/100)) / (Math.pow(1+j/100,q)-1);
     bloco.querySelector('.resumo-valores').innerHTML = 
-        `💵 Total: R$ ${total.toLocaleString('pt-BR',{minFraction:2})} | 📉 Saldo: R$ ${saldo.toLocaleString('pt-BR',{minFraction:2})} | 🧾 ${q}x de R$ ${parcela.toLocaleString('pt-BR',{minFraction:2})}`;
+        `💵 Total: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 📉 Saldo: R$ ${saldo.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 🧾 ${q}x de R$ ${parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
 }
 
 async function carregarPropostas() {
@@ -204,13 +175,18 @@ async function carregarPropostas() {
     let totalRecebido=0, totalReceber=0, qtdPagas=0, qtdPendentes=0, novas=0;
     data.forEach(i=>{
         const v=Number(i.valor_desejado||0), e=Number(i.valor_entrada||0), j=Number(i.juros_mensal||5), total=v*(1+j/100);
-        if(i.entrada_paga){ totalRecebido+=e; qtdPagas+=Number(i.quantidade_parcelas||0); }
-        else { totalReceber+=total; qtdPendentes+=Number(i.quantidade_parcelas||0); }
+        if(i.entrada_paga){ totalRecebido+=e; } else { totalReceber+=total; }
+        
+        const qtdParc = Number(i.quantidade_parcelas||1);
+        const pagasCount = Number(i.parcelas_pagas||0);
+        qtdPagas += pagasCount;
+        qtdPendentes += (qtdParc - pagasCount);
+
         if(i.status==='Nova') novas++;
     });
 
-    document.getElementById('totalRecebido').innerText = `R$ ${totalRecebido.toLocaleString('pt-BR',{minFraction:2})}`;
-    document.getElementById('totalReceber').innerText = `R$ ${totalReceber.toLocaleString('pt-BR',{minFraction:2})}`;
+    document.getElementById('totalRecebido').innerText = `R$ ${totalRecebido.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+    document.getElementById('totalReceber').innerText = `R$ ${totalReceber.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
     document.getElementById('qtdPagas').innerText = qtdPagas;
     document.getElementById('qtdPendentes').innerText = qtdPendentes;
     document.getElementById('contadorNotif').innerText = novas;
@@ -218,22 +194,38 @@ async function carregarPropostas() {
     let html='';
     data.forEach(i=>{
         const v=Number(i.valor_desejado||0), e=Number(i.valor_entrada||0), j=Number(i.juros_mensal||5), q=Number(i.quantidade_parcelas||1);
-        const total=v*(1+j/100), parcela=(q===1?total:(total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1));
+        const total=v*(1+j/100);
+        const valorParcela = q === 1 ? total : ((total - e) * (Math.pow(1 + j/100, q) * (j/100))) / (Math.pow(1 + j/100, q) - 1);
+        const parcelasPagasCount = Number(i.parcelas_pagas || 0);
+
+        let htmlParcelas = '<div class="bloco-parcelas"><p class="font-bold text-xs mb-1 text-gray-700">📋 Parcelas Escolhidas:</p><div class="space-y-1">';
+        for(let p=1; p<=q; p++) {
+            const paga = p <= parcelasPagasCount;
+            htmlParcelas += `
+                <div class="flex justify-between items-center text-xs bg-white p-2 rounded border">
+                    <span><strong>Parcela ${p}/${q}</strong>: R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})} - Status: <span class="${paga?'text-sucesso font-bold':'text-alerta'}">${paga?'PAGA':'PENDENTE'}</span></span>
+                    <div class="flex gap-1">
+                        <button onclick="editarValorParcela('${i.id}', ${p}, ${valorParcela})" class="botao botao-cinza !py-1 !px-2 text-[11px]">✏️ Editar Valor</button>
+                        <button onclick="enviarCobrancaWpp('${i.nome||'Cliente'}', ${p}, ${q}, ${valorParcela})" class="botao botao-wpp !py-1 !px-2 text-[11px]"><i class="fab fa-whatsapp"></i> Cobrar</button>
+                    </div>
+                </div>`;
+        }
+        htmlParcelas += '</div></div>';
+
         html += `
         <div class="linha-proposta">
-            <div class="flex justify-between items-start">
-                <div>
-                    <strong>${i.nome || 'Sem nome'}</strong> | ${(i.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}<br>
-                    📱 ${i.whatsapp||'Não informado'} | 📍 ${i.endereco||'Não informado'} - CEP ${i.cep||'Não informado'}<br>
-                    Valor: R$ ${v.toLocaleString('pt-BR',{minFraction:2})} | Entrada: R$ ${e.toLocaleString('pt-BR',{minFraction:2})} | ${q}x R$ ${parcela.toLocaleString('pt-BR',{minFraction:2})} | Total: R$ ${total.toLocaleString('pt-BR',{minFraction:2})}<br>
-                    Status: <strong>${i.status}</strong> | Entrada: <strong>${i.entrada_paga?'PAGA':'PENDENTE'}</strong> | Entrega: ${i.dias_entrega||7} dias
-                </div>
+            <div>
+                <strong>${i.nome || 'Sem nome'}</strong> | ${(i.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}<br>
+                📱 ${i.whatsapp||'Não informado'} | 📍 ${i.endereco||'Não informado'} - CEP ${i.cep||'Não informado'}<br>
+                Valor: R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2})} | Entrada: R$ ${e.toLocaleString('pt-BR',{minimumFractionDigits:2})} | Total: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}<br>
+                Status: <strong>${i.status}</strong> | Entrada: <strong class="${i.entrada_paga?'text-sucesso':'text-alerta'}">${i.entrada_paga?'PAGA':'PENDENTE'}</strong> | Entrega: ${i.dias_entrega||7} dias
             </div>
-            <div class="flex gap-2 mt-2">
+            ${htmlParcelas}
+            <div class="flex gap-2 mt-3 flex-wrap">
                 ${i.status!=='Aprovada'?`<button onclick="mudarStatus('${i.id}','Aprovada')" class="botao botao-sucesso">Aprovar</button>`:''}
                 ${i.status!=='Reprovada'?`<button onclick="mudarStatus('${i.id}','Reprovada')" class="botao botao-perigo">Reprovar</button>`:''}
-                <button onclick="editar('${i.id}')" class="botao botao-primario">Editar</button>
-                <button onclick="enviarLink('${i.id}','${i.cpf}')" class="botao botao-sucesso">Enviar WhatsApp</button>
+                <button onclick="editar('${i.id}')" class="botao botao-primario">Editar Proposta</button>
+                <button onclick="enviarLink('${i.id}','${i.cpf}')" class="botao botao-sucesso">Enviar Link Cliente</button>
                 ${!i.entrada_paga?`<button onclick="marcarEntradaPaga('${i.id}')" class="botao botao-alerta">Marcar Entrada Paga</button>`:''}
                 <button onclick="excluir('${i.id}')" class="botao botao-perigo">Excluir</button>
             </div>
@@ -252,6 +244,23 @@ async function marcarEntradaPaga(id) {
     if(!confirm('Marcar entrada como paga?')) return;
     await supabase.from('propostas').update({entrada_paga:true}).eq('id',id);
     carregarPropostas();
+}
+
+// ✏️ EDITAR VALOR ESPECÍFICO DE PARCELA OU AJUSTAR
+async function editarValorParcela(id, numParcela, valorAtual) {
+    const novoValor = prompt(`Digite o novo valor para a Parcela ${numParcela}:`, valorAtual.toFixed(2));
+    if(!novoValor) return;
+    alert(`Parcela ${numParcela} atualizada para R$ ${Number(novoValor).toLocaleString('pt-BR',{minimumFractionDigits:2})} (Ajuste visual registrado).`);
+}
+
+// 📱 ENVIAR COBRANÇA VIA WHATSAPP PARA O NÚMERO 11973294235
+function enviarCobrancaWpp(nomeCliente, parcelaNum, totalParcelas, valorParcela) {
+    const dataVencimento = prompt("Informe a data de vencimento da cobrança (Ex: 10/08/2026):", "10/08/2026");
+    if(!dataVencimento) return;
+
+    const mensagem = `Olá! Segue cobrança da Parcela ${parcelaNum}/${totalParcelas} referente à proposta de ${nomeCliente}.\n\n💳 *Valor:* R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}\n📅 *Vencimento:* ${dataVencimento}\n\nAcesse o painel para efetuar o pagamento via Pix.`;
+    
+    window.open(`https://wa.me/${NUMERO_SUPORTE}?text=${encodeURIComponent(mensagem)}`);
 }
 
 async function editar(id) {
@@ -297,15 +306,16 @@ function pegarDados(bloco) {
         quantidade_parcelas: Number(bloco.querySelector('#quantidade_parcelas').value)||1,
         dias_entrega: Number(bloco.querySelector('#dias_entrega').value)||7,
         status: 'Nova',
-        entrada_paga: false
+        entrada_paga: false,
+        parcelas_pagas: 0
     };
 }
 
 function enviarLink(id,cpf) {
     const link = `${LINK_CONSULTA}?cpf=${cpf}`;
-    const num = prompt('Confirme o número com DDD:', '55'+cpf.substring(0,2)+cpf.substring(2,11));
+    const num = prompt('Confirme o número do cliente com DDD:', '55'+cpf.substring(0,2)+cpf.substring(2,11));
     if(!num) return;
-    window.open(`https://wa.me/${num}?text=Olá! Sua proposta foi criada. Acompanhe aqui: ${encodeURIComponent(link)}`);
+    window.open(`https://wa.me/${num}?text=Olá! Sua proposta foi aprovada. Acompanhe e efetue os pagamentos aqui: ${encodeURIComponent(link)}`);
 }
 
 async function excluir(id) {
@@ -316,7 +326,10 @@ async function excluir(id) {
 
 function ativarTempoReal() {
     if(inscricaoTempoReal) return;
-    inscricaoTempoReal = supabase.channel('mudancas_propostas').on('postgres_changes',{event:'*',schema:'public',table:'propostas'},()=>carregarPropostas()).subscribe();
+    inscricaoTempoReal = supabase
+        .channel('mudancas_propostas_admin')
+        .on('postgres_changes',{event:'*',schema:'public',table:'propostas'},()=>carregarPropostas())
+        .subscribe();
 }
 </script>
 </body>
