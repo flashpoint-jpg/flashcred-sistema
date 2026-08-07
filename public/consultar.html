@@ -65,7 +65,7 @@
         .btn-cam { background: #8B5CF6; color: white; }
         .loading { text-align: center; padding: 20px; color: #64748B; width: 100%; }
 
-        /* BARRA DE PROGRESSO CENTRALIZADA */
+        /* BARRA DE PROGRESSO DOS PASSOS */
         .progresso { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; width: 100%; }
         .progresso::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 3px; background: #E2E8F0; z-index: 0; }
         .passo { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 12px; font-weight: 500; color: #94A3B8; }
@@ -75,7 +75,7 @@
         .passo.ativo .bolinha { background: #0A2463; color: white; }
         .passo.concluido .bolinha { background: #10B981; color: white; }
 
-        /* AVISO DE ENTREGA */
+        /* ✅ BARRA DE PROGRESSO DE ENTREGA (DIAS ÚTEIS) */
         .aviso-entrega {
             background: #FFFBEB;
             border: 3px solid #F59E0B;
@@ -83,11 +83,23 @@
             padding: 16px;
             margin: 16px 0;
             text-align: center;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
             color: #92400E;
             width: 100%;
         }
+        .barra-entrega { width: 100%; height: 10px; border-radius: 5px; margin: 10px 0; background: #E2E8F0; overflow: hidden; }
+        .barra-entrega-verde { background: #10B981; }
+        .barra-entrega-amarela { background: #F59E0B; }
+        .barra-entrega-vermelha { background: #EF4444; }
+        .texto-entrega { font-size: 13px; font-weight: 500; margin-top: 4px; }
+
+        /* ✅ BARRA DE PROGRESSO DAS PARCELAS */
+        .barra-parcela { width: 100%; height: 6px; border-radius: 3px; margin-top: 6px; background: #E2E8F0; overflow: hidden; }
+        .barra-parcela-verde { background: #10B981; }
+        .barra-parcela-amarela { background: #F59E0B; }
+        .barra-parcela-vermelha { background: #EF4444; }
+        .texto-prazo-parcela { font-size: 11px; color: #64748B; margin-top: 2px; }
 
         /* CONTRATO E ASSINATURA */
         .texto-contrato { max-height: 220px; overflow-y: auto; padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 12px 0; font-size: 14px; line-height: 1.6; width: 100%; }
@@ -106,7 +118,7 @@
             width: 100%;
         }
         .qrcode-pix { display: flex; justify-content: center; align-items: center; margin: 20px 0; width: 100%; }
-        .item-parcela { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #E2E8F0; font-size: 14px; width: 100%; }
+        .item-parcela { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-bottom: 1px solid #E2E8F0; font-size: 14px; width: 100%; }
         .item-parcela:last-child { border-bottom: none; }
         .oculto { display: none !important; }
     </style>
@@ -139,27 +151,54 @@ window.onload = () => {
     }
 };
 
+// ✅ FUNÇÃO: CALCULA DIAS ÚTEIS (SEGUNDA A SEXTA)
+function calcularDiasUteis(dataInicio, totalDiasUteis) {
+    if(!totalDiasUteis || totalDiasUteis <= 0) return { faltam: 0, porcentagem: 0, classe: 'barra-entrega-verde' };
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    let dataAlvo = new Date(dataInicio);
+    let contador = 0;
+    while(contador < totalDiasUteis) {
+        dataAlvo.setDate(dataAlvo.getDate() + 1);
+        const dia = dataAlvo.getDay();
+        if(dia !== 0 && dia !== 6) contador++;
+    }
+    let faltam = 0;
+    let temp = new Date(hoje);
+    while(temp <= dataAlvo) {
+        const d = temp.getDay();
+        if(d !== 0 && d !== 6) faltam++;
+        temp.setDate(temp.getDate() + 1);
+    }
+    faltam = Math.max(0, faltam);
+    const porcentagem = Math.round(((totalDiasUteis - faltam) / totalDiasUteis) * 100);
+    let classe = 'barra-entrega-verde';
+    if(faltam <= 2) classe = 'barra-entrega-vermelha';
+    else if(faltam <= 5) classe = 'barra-entrega-amarela';
+    return { faltam, porcentagem, classe };
+}
+
+// ✅ FUNÇÃO: PRAZO DAS PARCELAS
+function prazoParcela(dtStr) {
+    if(!dtStr) return {classe:'barra-parcela-verde', texto:'Sem data'};
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const dt = new Date(dtStr); dt.setHours(0,0,0,0);
+    const dias = Math.ceil((dt - hoje) / (1000*60*60*24));
+    if(dias < 0) return {classe:'barra-parcela-vermelha', texto:`Vencida há ${Math.abs(dias)} dias`};
+    if(dias === 0) return {classe:'barra-parcela-vermelha', texto:'Vence HOJE'};
+    if(dias <= 5) return {classe:'barra-parcela-amarela', texto:`Faltam ${dias} dias`};
+    return {classe:'barra-parcela-verde', texto:`Faltam ${dias} dias`};
+}
+
 // ✅ INTEGRAÇÃO COM API VIA SUPABASE EDGE FUNCTION
 async function gerarPixViaAPI(valor, descricao) {
     try {
         const response = await fetch(`${SUPABASE_URL}/functions/v1/gerar-pix`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_KEY}`
-            },
-            body: JSON.stringify({
-                cpf: dadosProposta.cpf,
-                nome: dadosProposta.nome,
-                whatsapp: dadosProposta.whatsapp,
-                valor: Number(valor),
-                descricao: descricao
-            })
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_KEY}` },
+            body: JSON.stringify({ cpf: dadosProposta.cpf, nome: dadosProposta.nome, whatsapp: dadosProposta.whatsapp, valor: Number(valor), descricao: descricao })
         });
         const resultado = await response.json();
-        if(resultado && (resultado.copia_e_cola || resultado.pix_copia_e_cola)) {
-            return resultado.copia_e_cola || resultado.pix_copia_e_cola;
-        }
+        if(resultado && (resultado.copia_e_cola || resultado.pix_copia_e_cola)) return resultado.copia_e_cola || resultado.pix_copia_e_cola;
         throw new Error(resultado.erro || 'Erro ao gerar Pix via API');
     } catch (err) {
         console.error('Erro na API Pix:', err);
@@ -171,21 +210,9 @@ async function gerarPixViaAPI(valor, descricao) {
         const sub26 = '00' + String(gui.length).padStart(2, '0') + gui + '01' + String(chave.length).padStart(2, '0') + chave;
         const campo26 = '26' + String(sub26.length).padStart(2, '0') + sub26;
         const payloadSemCrc = '000201' + campo26 + '5204000053039865802BR59' + String(nome.length).padStart(2, '0') + nome + '60' + String(cidade.length).padStart(2, '0') + cidade + '62070503***54' + String(valorStr.length).padStart(2, '0') + valorStr + '6304';
-        
         function calculaCRC16(payload) {
-            let polinomio = 0x1021;
-            let resultado = 0xFFFF;
-            let dados = new TextEncoder().encode(payload);
-            for (let i = 0; i < dados.length; i++) {
-                resultado ^= (dados[i] << 8);
-                for (let j = 0; j < 8; j++) {
-                    if ((resultado & 0x8000) !== 0) {
-                        resultado = ((resultado << 1) ^ polinomio) & 0xFFFF;
-                    } else {
-                        resultado = (resultado << 1) & 0xFFFF;
-                    }
-                }
-            }
+            let polinomio = 0x1021; let resultado = 0xFFFF; let dados = new TextEncoder().encode(payload);
+            for (let i = 0; i < dados.length; i++) { resultado ^= (dados[i] << 8); for (let j = 0; j < 8; j++) { resultado = ((resultado << 1) ^ polinomio) & 0xFFFF; else resultado = (resultado << 1) & 0xFFFF; } }
             return resultado.toString(16).toUpperCase().padStart(4, '0');
         }
         return payloadSemCrc + calculaCRC16(payloadSemCrc);
@@ -195,20 +222,12 @@ async function gerarPixViaAPI(valor, descricao) {
 async function buscarProposta() {
     const cpf = document.getElementById('cpfConsulta').value.replace(/\D/g,'');
     if(cpf.length!==11) { alert('Digite um CPF válido!'); return; }
-
     document.getElementById('areaConsulta').classList.add('hidden');
     document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando sua proposta...</div>`;
     document.getElementById('conteudoProposta').classList.remove('hidden');
-
     const {data, error} = await supabase.from('propostas').select('*').eq('cpf',cpf).single();
-    if(error || !data) {
-        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada.</div>`;
-        return;
-    }
-
-    dadosProposta = data;
-    await montarTela(data);
-    ativarTempoReal(cpf);
+    if(error || !data) { document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada.</div>`; return; }
+    dadosProposta = data; await montarTela(data); ativarTempoReal(cpf);
 }
 
 async function montarTela(p) {
@@ -218,7 +237,7 @@ async function montarTela(p) {
     const q = Number(p.quantidade_parcelas || 1);
     const qtdEscolhidaFinal = Number(p.qtd_parcelas_escolhida || q);
     const total = v * (1 + j / 100);
-    const dias = p.dias_entrega || 7;
+    const diasUteisEntrega = p.dias_entrega || 7;
     const datas = p.datas_parcelas || [];
     const pagas = Number(p.parcelas_pagas || 0);
 
@@ -226,6 +245,9 @@ async function montarTela(p) {
     if(p.status === 'Aprovada') passo = 2;
     if(p.contrato_assinado) passo = 3;
     if(p.entrada_paga) passo = 4;
+
+    // ✅ CÁLCULO BARRA DE ENTREGA
+    const dadosEntrega = calcularDiasUteis(new Date(), diasUteisEntrega);
 
     let html = `
     <div class="card">
@@ -241,15 +263,16 @@ async function montarTela(p) {
 
         ${p.status === 'Aprovada' ? `
         <div class="aviso-entrega">
-            <i class="fas fa-truck"></i> 🚚 AVISO IMPORTANTE:<br>
-            A ENTREGA SERÁ FEITA EM ATÉ <span class="text-2xl">${dias}</span> DIAS ÚTEIS APÓS CONFIRMAÇÃO DO PAGAMENTO!
+            <i class="fas fa-truck"></i> 🚚 ENTREGA EM ATÉ ${diasUteisEntrega} DIAS ÚTEIS<br>
+            <div class="barra-entrega"><div class="${dadosEntrega.classe} h-full" style="width:${dadosEntrega.porcentagem}%"></div></div>
+            <div class="texto-entrega">Faltam <strong>${dadosEntrega.faltam}</strong> dias úteis para entrega</div>
         </div>` : ''}
 
         <div class="bg-gray-50 p-3 rounded-lg mb-3">
             <p><strong>👤 Cliente:</strong> ${p.nome}</p>
             <p><strong>📄 CPF:</strong> ${String(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}</p>
             <p><strong>📱 WhatsApp:</strong> ${p.whatsapp || 'Não informado'}</p>
-            <p><strong>🏠 Endereço:</strong> ${p.endereco || 'Not informado'}</p>
+            <p><strong>🏠 Endereço:</strong> ${p.endereco || 'Não informado'}</p>
             <hr class="my-2 border-gray-300">
             <p><strong>Valor do pedido:</strong> R$ ${v.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
             <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
@@ -283,7 +306,7 @@ async function montarTela(p) {
                 Partes: FlashCred e ${p.nome}.<br>
                 Valor total: R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>
                 Entrada: R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>
-                Prazo de entrega: ${dias} dias úteis após confirmação do pagamento.<br><br>
+                Prazo de entrega: ${diasUteisEntrega} dias úteis após confirmação do pagamento.<br><br>
                 Ao assinar, o cliente declara estar ciente e de acordo com todos os valores, condições e encargos contratados.
             </div>
             <label class="flex items-center gap-2 mb-3 font-medium">
@@ -317,10 +340,7 @@ async function montarTela(p) {
             <button onclick="carregarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Pagar / Gerar Pix da Entrada</button>
             <div id="areaPixGerado" class="oculto">
                 <div class="qrcode-pix" id="qrcode-pix"></div>
-                <div class="chave-pix">
-                    <strong>Chave Pix Gerada por API</strong><br>
-                    <small>Sistema Seguro FlashCred</small>
-                </div>
+                <div class="chave-pix"><strong>Chave Pix Gerada</strong><br><small>Sistema Seguro FlashCred</small></div>
                 <button id="btnCopiarPix" class="btn btn-pix">📋 Copiar Código Pix</button>
             </div>
             <p class="text-sm mt-2">Assim que o pagamento for confirmado, nós seremos avisados automaticamente e você verá suas parcelas aqui.</p>
@@ -337,24 +357,23 @@ async function montarTela(p) {
             ${Array.from({length: qtdEscolhidaFinal}, (_, i) => {
                 const n = i + 1;
                 const dt = datas[i] ? new Date(datas[i]).toLocaleDateString('pt-BR') : 'A definir';
+                const dtOriginal = datas[i] || null;
                 const ok = n <= pagas;
+                const prazo = prazoParcela(dtOriginal);
                 const valorParcelaCalculado = ((total - e) * (Math.pow(1 + j/100, qtdEscolhidaFinal) * (j/100)) / (Math.pow(1 + j/100, qtdEscolhidaFinal) - 1));
-                return `<div class="item-parcela" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                return `<div class="item-parcela">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <span><strong>${n}ª Parcela</strong> • R$ ${valorParcelaCalculado.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} • Venc: ${dt}</span>
+                        <span><strong>${n}ª Parcela</strong> • R$ ${valorParcelaCalculado.toLocaleString('pt-BR', {minimumFractionDigits: 2})} • Venc: ${dt}</span>
                         <span class="font-bold ${ok?'text-sucesso':'text-alerta'}">${ok?'PAGA':'PENDENTE'}</span>
                     </div>
-                    ${!ok ? `<button onclick="pagarParcela(${n}, ${valorParcelaCalculado})" class="btn btn-pix" style="padding: 8px; font-size: 14px; margin: 0;"><i class="fas fa-qrcode"></i> Gerar Pix / Pagar ${n}ª Parcela</button>` : ''}
+                    ${!ok ? `<div class="barra-parcela"><div class="${prazo.classe} h-full" style="width:100%"></div></div><div class="texto-prazo-parcela">${prazo.texto}</div><button onclick="pagarParcela(${n}, ${valorParcelaCalculado})" class="btn btn-pix" style="padding: 8px; font-size: 14px; margin: 4px 0 0 0;"><i class="fas fa-qrcode"></i> Gerar Pix / Pagar</button>` : ''}
                 </div>`;
             }).join('')}
 
             <div id="areaPixParcelaGerado" class="oculto mt-4">
                 <div class="qrcode-pix" id="qrcode-pix-parcela"></div>
-                <div class="chave-pix">
-                    <strong>Pix da Parcela Gerado por API</strong><br>
-                    <small>Sistema Seguro FlashCred</small>
-                </div>
-                <button id="btnCopiarPixParcela" class="btn btn-pix">📋 Copiar Código Pix da Parcela</button>
+                <div class="chave-pix"><strong>Pix da Parcela Gerado</strong><br><small>Sistema Seguro FlashCred</small></div>
+                <button id="btnCopiarPixParcela" class="btn btn-pix">📋 Copiar Código Pix</button>
             </div>
 
             <div class="mt-4 p-3 bg-blue-50 rounded-lg">
@@ -378,101 +397,44 @@ async function montarTela(p) {
 async function carregarPixEntrada(valor) {
     const btn = event.currentTarget;
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
-    
     const codigoPixValido = await gerarPixViaAPI(valor, 'Pagamento Entrada FlashCred');
-    
     document.getElementById('areaPixGerado').classList.remove('oculto');
     document.getElementById('qrcode-pix').innerHTML = '';
-    new QRCode(document.getElementById("qrcode-pix"), {
-        text: codigoPixValido,
-        width: 220,
-        height: 220,
-        correctLevel: QRCode.CorrectLevel.H
-    });
-    
-    document.getElementById('btnCopiarPix').onclick = () => {
-        navigator.clipboard.writeText(codigoPixValido);
-        alert('Código Pix copiado! ✅ Cole no app do banco para pagar.');
-    };
-    
+    new QRCode(document.getElementById("qrcode-pix"), { text: codigoPixValido, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.H });
+    document.getElementById('btnCopiarPix').onclick = () => { navigator.clipboard.writeText(codigoPixValido); alert('Código Pix copiado! ✅'); };
     btn.classList.add('oculto');
 }
 
 async function pagarParcela(numParcela, valor) {
     const btn = event.currentTarget;
-    const textoOriginal = btn.innerHTML;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix da ${numParcela}ª Parcela...`;
-    
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
     const codigoPixValido = await gerarPixViaAPI(valor, `Pagamento ${numParcela}ª Parcela FlashCred`);
-    
-    const area = document.getElementById('areaPixParcelaGerado');
-    area.classList.remove('oculto');
+    document.getElementById('areaPixParcelaGerado').classList.remove('oculto');
     document.getElementById('qrcode-pix-parcela').innerHTML = '';
-    new QRCode(document.getElementById("qrcode-pix-parcela"), {
-        text: codigoPixValido,
-            width: 220,
-            height: 220,
-            correctLevel: QRCode.CorrectLevel.H
-    });
-    
-    document.getElementById('btnCopiarPixParcela').onclick = () => {
-        navigator.clipboard.writeText(codigoPixValido);
-        alert(`Código Pix da ${numParcela}ª parcela copiado! ✅ Cole no app do banco.`);
-    };
-    
-    btn.innerHTML = textoOriginal;
-    area.scrollIntoView({ behavior: 'smooth' });
+    new QRCode(document.getElementById("qrcode-pix-parcela"), { text: codigoPixValido, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.H });
+    document.getElementById('btnCopiarPixParcela').onclick = () => { navigator.clipboard.writeText(codigoPixValido); alert('Código Pix copiado! ✅'); };
+    btn.innerText = `Gerar Pix / Pagar ${numParcela}ª Parcela`;
 }
 
 function abrirContrato() {
+    if(!document.getElementById('qtdParcelas').value) { alert('Escolha a quantidade de parcelas!'); return; }
     qtdEscolhida = Number(document.getElementById('qtdParcelas').value);
+    dadosProposta.qtd_parcelas_escolhida = qtdEscolhida;
     document.getElementById('blocoContrato').classList.remove('oculto');
 }
-
-function mostrarOpcoesAssinatura() {
-    if(!document.getElementById('aceitoContrato').checked) { alert('Aceite os termos do contrato primeiro!'); return; }
-    document.getElementById('opcoesAssinatura').classList.remove('oculto');
-}
-
-function mostrarAssinaturaTexto() {
-    document.getElementById('areaAssinaturaTexto').classList.remove('oculto');
-    document.getElementById('areaCamera').classList.add('oculto');
-    if(streamCam) { streamCam.getTracks().forEach(t=>t.stop()); streamCam = null; }
-}
-
-async function abrirCamera() {
-    document.getElementById('areaCamera').classList.remove('oculto');
-    document.getElementById('areaAssinaturaTexto').classList.add('oculto');
-    try {
-        streamCam = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
-        document.getElementById('videoCam').srcObject = streamCam;
-    } catch { alert('Não foi possível acessar a câmera. Use a opção de assinatura por texto.'); }
-}
-
-async function confirmarAssinatura() {
-    const assinatura = document.getElementById('assinaturaTexto')?.value?.trim();
-    if(!assinatura && !streamCam) { alert('Digite sua assinatura ou tire a foto!'); return; }
-    if(!confirm('Confirmar assinatura do contrato? Essa ação é definitiva.')) return;
-
-    await supabase.from('propostas').update({
-        contrato_assinado: true,
-        qtd_parcelas_escolhida: qtdEscolhida
-    }).eq('id', dadosProposta.id);
-
-    alert('Contrato assinado com sucesso!');
-    if(streamCam) streamCam.getTracks().forEach(t=>t.stop());
-}
-
-function tirarFoto() { confirmarAssinatura(); }
+function mostrarOpcoesAssinatura() { if(!document.getElementById('aceitoContrato').checked) { alert('Você precisa aceitar os termos do contrato!'); return; } document.getElementById('opcoesAssinatura').classList.remove('oculto'); }
+function mostrarAssinaturaTexto() { document.getElementById('areaAssinaturaTexto').classList.remove('oculto'); document.getElementById('areaCamera').classList.add('oculto'); }
+async function abrirCamera() { document.getElementById('areaCamera').classList.remove('oculto'); document.getElementById('areaAssinaturaTexto').classList.add('oculto'); try { streamCam = await navigator.mediaDevices.getUserMedia({video:true}); document.getElementById('videoCam').srcObject = streamCam; } catch { alert('Não foi possível acessar a câmera. Use a assinatura por texto.'); } }
+async function tirarFoto() { if(!streamCam) return; const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 300; canvas.getContext('2d').drawImage(document.getElementById('videoCam'),0,0); const foto = canvas.toDataURL('image/png'); streamCam.getTracks().forEach(t=>t.stop()); await supabase.from('propostas').update({contrato_assinado:true, foto_assinatura:foto}).eq('id',dadosProposta.id); await montarTela(await (await supabase.from('propostas').select('*').eq('id',dadosProposta.id).single()).data); }
+async function confirmarAssinatura() { const assinatura = document.getElementById('assinaturaTexto').value.trim(); if(!assinatura) { alert('Digite sua assinatura!'); return; } await supabase.from('propostas').update({contrato_assinado:true, assinatura_texto:assinatura}).eq('id',dadosProposta.id); await montarTela(await (await supabase.from('propostas').select('*').eq('id',dadosProposta.id).single()).data); }
 
 function ativarTempoReal(cpf) {
     if(inscricao) supabase.removeChannel(inscricao);
-    inscricao = supabase.channel('cliente_' + cpf)
-        .on('postgres_changes', {event:'UPDATE',schema:'public',table:'propostas',filter:`cpf=eq.${cpf}`}, m=>{
-            dadosProposta = m.new;
-            montarTela(m.new);
-        })
-        .subscribe();
+    inscricao = supabase.channel(`proposta_${cpf}`)
+    .on('postgres_changes', {event:'*',schema:'public',table:'propostas',filter:`cpf=eq.${cpf}`}, async ()=>{
+        const {data} = await supabase.from('propostas').select('*').eq('cpf',cpf).single();
+        if(data) await montarTela(data);
+    }).subscribe();
 }
 </script>
 </body>
