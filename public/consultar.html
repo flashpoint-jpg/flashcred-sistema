@@ -107,7 +107,7 @@
             word-break: break-all;
             width: 100%;
         }
-        #qrcode-pix { display: flex; justify-content: center; align-items: center; margin: 20px 0; width: 100%; }
+        .qrcode-pix { display: flex; justify-content: center; align-items: center; margin: 20px 0; width: 100%; }
         .item-parcela { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #E2E8F0; font-size: 14px; width: 100%; }
         .item-parcela:last-child { border-bottom: none; }
         .oculto { display: none !important; }
@@ -165,7 +165,6 @@ async function gerarPixViaAPI(valor, descricao) {
         throw new Error(resultado.erro || 'Erro ao gerar Pix via API');
     } catch (err) {
         console.error('Erro na API Pix:', err);
-        // Fallback robusto garantido com CRC16 válido caso ocorra instabilidade na API
         const valorStr = Number(valor).toFixed(2);
         const chave = '33552949852';
         const nome = 'FELIPE COSTA';
@@ -312,18 +311,20 @@ async function montarTela(p) {
     }
 
     if(p.contrato_assinado && !p.entrada_paga) {
-        const codigoPixValido = await gerarPixViaAPI(e, 'Pagamento Entrada FlashCred');
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO COM SUCESSO!</div>
-            <p class="mb-3">Agora efetue o pagamento da entrada no valor de <strong>R$ ${e.toLocaleString('pt-BR',2)}</strong>:</p>
-            <div id="qrcode-pix"></div>
-            <div class="chave-pix">
-                <strong>Chave Pix Gerada por API</strong><br>
-                <small>Sistema Seguro FlashCred</small>
+            <p class="mb-3">Sua entrada é no valor de <strong>R$ ${e.toLocaleString('pt-BR',2)}</strong>.</p>
+            <button onclick="carregarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Pagar / Gerar Pix da Entrada</button>
+            <div id="areaPixGerado" class="oculto">
+                <div class="qrcode-pix" id="qrcode-pix"></div>
+                <div class="chave-pix">
+                    <strong>Chave Pix Gerada por API</strong><br>
+                    <small>Sistema Seguro FlashCred</small>
+                </div>
+                <button id="btnCopiarPix" class="btn btn-pix">📋 Copiar Código Pix</button>
             </div>
-            <button onclick="copiarChave('${codigoPixValido}')" class="btn btn-pix">📋 Copiar Código Pix</button>
-            <p class="text-sm mt-2">Assim que o pagamento for confirmado, nós seremos avisados e você verá suas parcelas aqui.</p>
+            <p class="text-sm mt-2">Assim que o pagamento for confirmado, nós seremos avisados automaticamente e você verá suas parcelas aqui.</p>
         </div>`;
     }
 
@@ -337,11 +338,24 @@ async function montarTela(p) {
             ${Array.from({length:qtdEscolhidaFinal}, (_,i)=>{
                 const dt = datas[i] ? new Date(datas[i]).toLocaleDateString('pt-BR') : 'A definir';
                 const ok = (i+1) <= pagas;
-                return `<div class="item-parcela">
-                    <span><strong>${i+1}ª Parcela</strong> • R$ ${valorParcela.toLocaleString('pt-BR',2)} • Venc: ${dt}</span>
-                    <span class="font-bold ${ok?'text-sucesso':'text-alerta'}">${ok?'PAGA':'PENDENTE'}</span>
+                const valorAtualParcela = valorParcela;
+                return `<div class="item-parcela" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span><strong>${i+1}ª Parcela</strong> • R$ ${valorAtualParcela.toLocaleString('pt-BR',2)} • Venc: ${dt}</span>
+                        <span class="font-bold ${ok?'text-sucesso':'text-alerta'}">${ok?'PAGA':'PENDENTE'}</span>
+                    </div>
+                    ${!ok ? `<button onclick="pagarParcela(${i+1}, ${valorAtualParcela})" class="btn btn-pix" style="padding: 8px; font-size: 14px; margin: 0;"><i class="fas fa-qrcode"></i> Gerar Pix / Pagar ${i+1}ª Parcela</button>` : ''}
                 </div>`;
             }).join('')}
+
+            <div id="areaPixParcelaGerado" class="oculto mt-4">
+                <div class="qrcode-pix" id="qrcode-pix-parcela"></div>
+                <div class="chave-pix">
+                    <strong>Pix da Parcela Gerado por API</strong><br>
+                    <small>Sistema Seguro FlashCred</small>
+                </div>
+                <button id="btnCopiarPixParcela" class="btn btn-pix">📋 Copiar Código Pix da Parcela</button>
+            </div>
 
             <div class="mt-4 p-3 bg-blue-50 rounded-lg">
                 <p class="font-semibold text-primary">📄 Você pode imprimir ou salvar esta página como comprovante.</p>
@@ -359,16 +373,55 @@ async function montarTela(p) {
     </div>`;
 
     document.getElementById('conteudoProposta').innerHTML = html;
+}
 
-    if(p.contrato_assinado && !p.entrada_paga) {
-        const cod = await gerarPixViaAPI(e, 'Pagamento Entrada FlashCred');
-        new QRCode(document.getElementById("qrcode-pix"), {
-            text: cod,
-            width: 240,
-            height: 240,
-            correctLevel: QRCode.CorrectLevel.H
-        });
-    }
+async function carregarPixEntrada(valor) {
+    const btn = event.currentTarget;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
+    
+    const codigoPixValido = await gerarPixViaAPI(valor, 'Pagamento Entrada FlashCred');
+    
+    document.getElementById('areaPixGerado').classList.remove('oculto');
+    document.getElementById('qrcode-pix').innerHTML = '';
+    new QRCode(document.getElementById("qrcode-pix"), {
+        text: codigoPixValido,
+        width: 220,
+        height: 220,
+        correctLevel: QRCode.CorrectLevel.H
+    });
+    
+    document.getElementById('btnCopiarPix').onclick = () => {
+        navigator.clipboard.writeText(codigoPixValido);
+        alert('Código Pix copiado! ✅ Cole no app do banco para pagar.');
+    };
+    
+    btn.classList.add('oculto');
+}
+
+async function pagarParcela(numParcela, valor) {
+    const btn = event.currentTarget;
+    const textoOriginal = btn.innerHTML;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix da ${numParcela}ª Parcela...`;
+    
+    const codigoPixValido = await gerarPixViaAPI(valor, `Pagamento ${numParcela}ª Parcela FlashCred`);
+    
+    const area = document.getElementById('areaPixParcelaGerado');
+    area.classList.remove('oculto');
+    document.getElementById('qrcode-pix-parcela').innerHTML = '';
+    new QRCode(document.getElementById("qrcode-pix-parcela"), {
+        text: codigoPixValido,
+        width: 220,
+        height: 220,
+        correctLevel: QRCode.CorrectLevel.H
+    });
+    
+    document.getElementById('btnCopiarPixParcela').onclick = () => {
+        navigator.clipboard.writeText(codigoPixValido);
+        alert(`Código Pix da ${numParcela}ª parcela copiado! ✅ Cole no app do banco.`);
+    };
+    
+    btn.innerHTML = textoOriginal;
+    area.scrollIntoView({ behavior: 'smooth' });
 }
 
 function abrirContrato() {
@@ -406,21 +459,19 @@ async function confirmarAssinatura() {
         qtd_parcelas_escolhida: qtdEscolhida
     }).eq('id', dadosProposta.id);
 
-    alert('Contrato assinado com sucesso! Gerando o Pix...');
+    alert('Contrato assinado com sucesso!');
     if(streamCam) streamCam.getTracks().forEach(t=>t.stop());
 }
 
 function tirarFoto() { confirmarAssinatura(); }
 
-function copiarChave(codigo) {
-    navigator.clipboard.writeText(codigo);
-    alert('Código Pix copiado! ✅ Agora é só colar no app do banco.');
-}
-
 function ativarTempoReal(cpf) {
     if(inscricao) supabase.removeChannel(inscricao);
     inscricao = supabase.channel('cliente_' + cpf)
-        .on('postgres_changes', {event:'UPDATE',schema:'public',table:'propostas',filter:`cpf=eq.${cpf}`}, m=>montarTela(m.new))
+        .on('postgres_changes', {event:'UPDATE',schema:'public',table:'propostas',filter:`cpf=eq.${cpf}`}, m=>{
+            dadosProposta = m.new;
+            montarTela(m.new);
+        })
         .subscribe();
 }
 </script>
