@@ -54,7 +54,7 @@
     <div class="etapa-indicador">
         <span id="etapa-ind-1">1. Escolher Parcela</span>
         <span id="etapa-ind-2">2. Contrato</span>
-        <span id="etapa-ind-3">3. Pagamento</span>
+        <span id="etapa-ind-3">3. Pagamento Pix</span>
         <span id="etapa-ind-4">4. Parcelas</span>
     </div>
     <div class="barra-progresso">
@@ -254,7 +254,7 @@ function irEtapa2() {
             <canvas id="assinatura" width="340" height="130"></canvas>
             <button onclick="limparAssinatura()" class="botao botao-cinza" style="padding:8px; font-size:14px; margin-top:8px;">Limpar Assinatura</button>
 
-            <button id="btnAvancar2" class="botao botao-primario mt-4" onclick="irEtapa3()" disabled>Continuar → Ir para Pagamento</button>
+            <button id="btnAvancar2" class="botao botao-primario mt-4" onclick="irEtapa3()" disabled>Continuar → Gerar Pix na Tela</button>
             <button onclick="renderizarEtapa1_EscolherParcelas()" class="botao botao-cinza">← Voltar</button>
         </div>
     `;
@@ -337,7 +337,7 @@ function limparAssinatura() {
     }
 }
 
-// ========= ETAPA 3 — PAGAMENTO SEGURO VIA MERCADO PAGO =========
+// ========= ETAPA 3 — QR CODE PIX DIRETO NA TELA =========
 async function irEtapa3() {
     etapaAtual = 3;
     atualizarBarra();
@@ -346,80 +346,83 @@ async function irEtapa3() {
 
     document.getElementById('conteudo').innerHTML = `
         <div class="cartao p-5 text-center">
-            <h2 class="text-lg font-bold mb-3">💳 Pagamento da Entrada</h2>
-            <p class="text-xl font-bold text-sucesso mb-4">R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-            <div id="areaCheckout" class="py-4">
-                <i class="fas fa-circle-notch fa-spin text-2xl text-primary"></i>
-                <p class="mt-2 text-sm text-gray-600">Preparando ambiente de pagamento seguro...</p>
+            <h2 class="text-lg font-bold mb-3">📲 Pagamento Pix - Entrada</h2>
+            <p class="text-xl font-bold text-sucesso mb-2">R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+            <div id="areaPix" class="py-4">
+                <i class="fas fa-circle-notch fa-spin text-3xl text-primary mb-2"></i>
+                <p class="text-sm text-gray-600">Gerando QR Code Pix oficial...</p>
             </div>
             <button onclick="irEtapa2()" class="botao botao-cinza mt-2">← Voltar</button>
         </div>
     `;
 
-    await gerarCheckoutMercadoPago();
+    await gerarPixDiretoMercadoPago();
     iniciarMonitoramentoPagamento();
 }
 
-async function gerarCheckoutMercadoPago() {
+async function gerarPixDiretoMercadoPago() {
     const entrada = Number(proposta.valor_entrada || 0);
+    const cpfLimpo = (proposta.cpf || '').replace(/\D/g, '');
 
     try {
-        const resposta = await fetch('https://api.mercadopago.com/checkout/preferences', {
+        const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${MP_TOKEN}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Idempotency-Key': 'PROP-' + proposta.id + '-' + Date.now()
             },
             body: JSON.stringify({
-                items: [{
-                    title: `Entrada - Proposta #${proposta.id}`,
-                    unit_price: entrada,
-                    quantity: 1,
-                    currency_id: 'BRL'
-                }],
-                payment_methods: {
-                    excluded_payment_types: [{ id: "credit_card" }, { id: "debit_card" }],
-                    installments: 1
+                transaction_amount: entrada,
+                description: `Entrada Proposta #${proposta.id}`,
+                payment_method_id: 'pix',
+                payer: {
+                    email: `cliente_${proposta.id}@flashcred.com.br`,
+                    first_name: (proposta.nome || 'Cliente').split(' ')[0],
+                    identification: { type: 'CPF', number: cpfLimpo.length === 11 ? cpfLimpo : '00000000000' }
                 },
-                external_reference: `${proposta.id}`,
-                back_urls: {
-                    success: window.location.href,
-                    pending: window.location.href,
-                    failure: window.location.href
-                },
-                auto_return: "approved"
+                external_reference: `${proposta.id}`
             })
         });
 
-        if (!resposta.ok) throw new Error('Erro ao criar preferência de pagamento.');
-
         const res = await resposta.json();
 
-        if (res.init_point) {
-            document.getElementById('areaCheckout').innerHTML = `
-                <p class="text-sm text-gray-700 mb-4">Clique no botão abaixo para abrir o ambiente seguro de pagamento Pix do Mercado Pago:</p>
-                <a href="${res.init_point}" class="botao botao-sucesso block text-center" style="text-decoration: none;">Pagar Entrada com Pix Agora</a>
-                <p class="text-xs text-gray-500 mt-4"><i class="fas fa-sync-alt fa-spin"></i> Esta página atualizará automaticamente assim que o pagamento for aprovado.</p>
+        if (res.point_of_interaction && res.point_of_interaction.transaction_data) {
+            const qrCodeBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
+            const pixCopiaCola = res.point_of_interaction.transaction_data.qr_code;
+
+            document.getElementById('areaPix').innerHTML = `
+                <p class="text-xs text-gray-600 mb-2">Aponte a câmera do seu banco para o QR Code abaixo:</p>
+                <img src="data:image/png;base64,${qrCodeBase64}" class="w-48 h-48 mx-auto border-2 border-primary rounded-lg mb-3">
+                <p class="text-xs font-bold text-gray-700 mb-1">Ou use o Pix Copia e Cola:</p>
+                <textarea readonly class="w-full text-xs p-2 bg-gray-100 rounded border mb-3 h-16 select-all">${pixCopiaCola}</textarea>
+                <button onclick="copiarPix('${pixCopiaCola}')" class="botao botao-sucesso">📋 Copiar Código Pix</button>
+                <p class="text-xs text-gray-500 mt-3"><i class="fas fa-sync-alt fa-spin"></i> Aguardando confirmação automática do pagamento...</p>
             `;
         } else {
-            throw new Error('Link de pagamento indisponível.');
+            throw new Error(res.message || 'Erro ao gerar Pix no Mercado Pago.');
         }
 
     } catch (err) {
         console.error(err);
-        document.getElementById('areaCheckout').innerHTML = `
+        document.getElementById('areaPix').innerHTML = `
             <div class="p-3 bg-red-100 text-red-800 rounded-lg text-sm mb-3">
-                Erro ao gerar link de pagamento automático.
+                Erro ao gerar QR Code. Verifique se o Access Token está correto.
             </div>
-            <button onclick="gerarCheckoutMercadoPago()" class="botao botao-primario">Tentar Novamente</button>
+            <button onclick="gerarPixDiretoMercadoPago()" class="botao botao-primario">Tentar Novamente</button>
         `;
     }
+}
+
+function copiarPix(codigo) {
+    navigator.clipboard.writeText(codigo);
+    alert('Código Pix copiado com sucesso!');
 }
 
 function iniciarMonitoramentoPagamento() {
     if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
     
-    // Verifica a cada 4 segundos se o banco atualizou a coluna 'entrada_paga' para true
+    // Monitora o Supabase a cada 4 segundos. Quando o webhook do Mercado Pago (ou painel) atualizar a entrada, avança automaticamente.
     intervalChecagemPagamento = setInterval(async () => {
         const { data, error } = await supabase
             .from('propostas')
@@ -444,7 +447,7 @@ async function mostrarParcelasLiberadas() {
     document.getElementById('conteudo').innerHTML = `
         <div class="cartao p-5 text-center">
             <div class="p-3 bg-green-50 text-sucesso rounded-lg mb-4 font-bold text-sm">
-                🎉 Entrada confirmada com sucesso! Suas parcelas estão liberadas.
+                🎉 Entrada paga e confirmada com sucesso! Suas parcelas estão liberadas.
             </div>
             <h2 class="text-lg font-bold text-primary mb-3">📅 Cronograma de Parcelas</h2>
             <div id="listaParcelas" class="text-left space-y-2">
