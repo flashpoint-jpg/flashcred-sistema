@@ -141,7 +141,7 @@ window.onload = () => {
     }
 };
 
-// ✅ FUNÇÃO VIA API PARA GERAR O PIX E DISPARAR NOTIFICAÇÃO AUTOMÁTICA
+// ✅ INTEGRAÇÃO COM API VIA SUPABASE EDGE FUNCTION
 async function gerarPixViaAPI(valor, descricao) {
     try {
         const response = await fetch(`${SUPABASE_URL}/functions/v1/gerar-pix`, {
@@ -159,14 +159,39 @@ async function gerarPixViaAPI(valor, descricao) {
             })
         });
         const resultado = await response.json();
-        if(resultado && resultado.copia_e_cola) {
-            return resultado.copia_e_cola;
+        if(resultado && (resultado.copia_e_cola || resultado.pix_copia_e_cola)) {
+            return resultado.copia_e_cola || resultado.pix_copia_e_cola;
         }
         throw new Error(resultado.erro || 'Erro ao gerar Pix via API');
     } catch (err) {
         console.error('Erro na API Pix:', err);
-        // Fallback seguro caso a Edge Function não esteja configurada no momento
-        return '00020126580014br.gov.bcb.pix0111335529498525204000053039865802BR5912FELIPE COSTA6010MUZAMBINHO62070503***5404' + Number(valor).toFixed(2) + '63040000';
+        // Fallback robusto garantido com CRC16 válido caso ocorra instabilidade na API
+        const valorStr = Number(valor).toFixed(2);
+        const chave = '33552949852';
+        const nome = 'FELIPE COSTA';
+        const cidade = 'MUZAMBINHO';
+        const gui = 'br.gov.bcb.pix';
+        const sub26 = '00' + String(gui.length).padStart(2, '0') + gui + '01' + String(chave.length).padStart(2, '0') + chave;
+        const campo26 = '26' + String(sub26.length).padStart(2, '0') + sub26;
+        const payloadSemCrc = '000201' + campo26 + '5204000053039865802BR59' + String(nome.length).padStart(2, '0') + nome + '60' + String(cidade.length).padStart(2, '0') + cidade + '62070503***54' + String(valorStr.length).padStart(2, '0') + valorStr + '6304';
+        
+        function calculaCRC16(payload) {
+            let polinomio = 0x1021;
+            let resultado = 0xFFFF;
+            let dados = new TextEncoder().encode(payload);
+            for (let i = 0; i < dados.length; i++) {
+                resultado ^= (dados[i] << 8);
+                for (let j = 0; j < 8; j++) {
+                    if ((resultado & 0x8000) !== 0) {
+                        resultado = ((resultado << 1) ^ polinomio) & 0xFFFF;
+                    } else {
+                        resultado = (resultado << 1) & 0xFFFF;
+                    }
+                }
+            }
+            return resultado.toString(16).toUpperCase().padStart(4, '0');
+        }
+        return payloadSemCrc + calculaCRC16(payloadSemCrc);
     }
 }
 
