@@ -8,13 +8,13 @@ const PORTA = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// ✅ ISSO AQUI FAZ O SERVIDOR ENTREGAR TODOS OS ARQUIVOS DA PASTA
-app.use(express.static(path.join(__dirname)));
+// ✅ AGORA APONTA PARA A PASTA PUBLIC ONDE ESTÃO SEUS ARQUIVOS
+app.use(express.static(path.join(__dirname, 'public')));
 
-// ✅ SEU TOKEN
+// ✅ SEU TOKEN DE PRODUÇÃO
 const MP_TOKEN = 'APP_USR-8158139097874832-0727';
 
-// ✅ ROTA DO PIX
+// ✅ ROTA PARA GERAR PIX
 app.post('/gerar-pix', async (req, res) => {
     try {
         const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
@@ -32,9 +32,9 @@ app.post('/gerar-pix', async (req, res) => {
     }
 });
 
-// ✅ SE ALGUMA ROTA NÃO EXISTIR, MANDA PARA A PÁGINA PRINCIPAL
+// ✅ QUALQUER ENDEREÇO VAI ABRIR A PÁGINA NORMALMENTE
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'consultar.html'));
+    res.sendFile(path.join(__dirname, 'public', 'consultar.html'));
 });
 
-app.listen(PORTA, () => console.log('✅ Servidor online e funcionando!'));
+app.listen(PORTA, () => console.log('✅ Servidor funcionando! Pasta pública configurada!'));
