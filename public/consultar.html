@@ -92,7 +92,6 @@ async function carregarProposta(cpf) {
         return;
     }
     
-    // Se a entrada já está paga, vai direto para o gerenciamento de parcelas
     if(proposta.entrada_paga) {
         etapaAtual = 4;
         mostrarParcelasAprovadas();
@@ -101,7 +100,6 @@ async function carregarProposta(cpf) {
     mostrarOpcoesParcelas();
 }
 
-// Ouve atualizações de pagamento em tempo real vindas do banco de dados
 function ouvirMudancasEmTempoReal(cpf) {
     supabase
         .channel('mudancas-proposta')
@@ -111,7 +109,7 @@ function ouvirMudancasEmTempoReal(cpf) {
                 if (proposta.entrada_paga && etapaAtual < 4) {
                     mostrarParcelasAprovadas();
                 } else if (etapaAtual === 4) {
-                    mostrarParcelasAprovadas(); // Atualiza as parcelas pagas/baixas
+                    mostrarParcelasAprovadas();
                 }
             }
         })
@@ -227,7 +225,6 @@ async function gerarPix() {
     }
 }
 
-// 🟢 TELA DE GERENCIAMENTO DE PARCELAS COM BLOQUEIOS INDIVIDUAIS
 function mostrarParcelasAprovadas() {
     atualizarEtapa(4);
     const valor = Number(proposta.valor_desejado||0);
@@ -291,6 +288,8 @@ function mostrarParcelasAprovadas() {
 }
 
 async function gerarPixParcela(numeroParcela, valorParcela) {
+    const valorFormatado = Number(Number(valorParcela).toFixed(2));
+
     document.getElementById('areaPixParcela').innerHTML = `
         <div class="border p-3 rounded bg-white text-center mt-3 shadow-inner">
             <p class="text-xs font-bold text-gray-700 mb-2">Gerando Pix da Parcela ${numeroParcela}...</p>
@@ -302,7 +301,7 @@ async function gerarPixParcela(numeroParcela, valorParcela) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                transaction_amount: valorParcela,
+                transaction_amount: valorFormatado,
                 description: `Parcela ${numeroParcela} - Proposta ${proposta.id}`,
                 payment_method_id: 'pix',
                 payer: { 
@@ -322,7 +321,7 @@ async function gerarPixParcela(numeroParcela, valorParcela) {
 
         document.getElementById('areaPixParcela').innerHTML = `
             <div class="border p-3 rounded bg-blue-50 text-center mt-3">
-                <p class="text-xs font-bold text-primary mb-1">Pix Parcela ${numeroParcela} (R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})})</p>
+                <p class="text-xs font-bold text-primary mb-1">Pix Parcela ${numeroParcela} (R$ ${valorFormatado.toLocaleString('pt-BR',{minimumFractionDigits:2})})</p>
                 <img src="data:image/png;base64,${qrBase64}" class="w-40 mx-auto my-2 border rounded">
                 <textarea readonly class="w-full p-2 border rounded mb-2 text-[10px] bg-white">${pixCopia}</textarea>
                 <button onclick="navigator.clipboard.writeText('${pixCopia}').then(()=>alert('✅ Código da parcela copiado!'))" class="botao botao-primario !py-2 text-xs">
