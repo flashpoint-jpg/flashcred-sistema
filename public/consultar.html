@@ -1,138 +1,3 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acompanhar Proposta | FlashCred</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0A2463',
-                        pix: '#32BCAD',
-                        sucesso: '#10B981',
-                        alerta: '#F59E0B',
-                        perigo: '#EF4444',
-                        fundo: '#F8FAFC'
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
-        body { 
-            background: #F8FAFC; 
-            color: #1E293B; 
-            padding: 16px; 
-            max-width: 600px; 
-            margin: 0 auto; 
-            min-height: 100vh;
-        }
-        .card { 
-            background: white; 
-            border-radius: 12px; 
-            padding: 24px; 
-            margin-bottom: 16px; 
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08); 
-            width: 100%;
-        }
-        .btn { 
-            width: 100%; 
-            padding: 16px; 
-            border-radius: 8px; 
-            border: none; 
-            font-weight: 700; 
-            cursor: pointer !important; 
-            margin: 8px 0; 
-            font-size: 18px; 
-            transition: 0.1s;
-            pointer-events: auto !important;
-            position: relative;
-            z-index: 999;
-        }
-        .btn:active { transform: scale(0.98); }
-        .btn-primary { background: #0A2463; color: white; }
-        .btn-success { background: #10B981; color: white; }
-        .btn-alerta { background: #F59E0B; color: white; }
-        .btn-pix { background: #32BCAD; color: white; }
-        .btn-cam { background: #8B5CF6; color: white; }
-        .loading { text-align: center; padding: 20px; color: #64748B; }
-        .aviso-erro { color: #EF4444; font-weight: 600; text-align: center; margin-bottom: 10px; padding: 8px; }
-        input { font-size: 18px !important; padding: 14px !important; }
-        .oculto { display: none !important; }
-
-        .progresso { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; }
-        .progresso::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 3px; background: #E2E8F0; }
-        .passo { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 12px; font-weight: 500; color: #94A3B8; }
-        .passo.ativo { color: #0A2463; font-weight: 700; }
-        .passo.concluido { color: #10B981; }
-        .bolinha { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; }
-        .passo.ativo .bolinha { background: #0A2463; color: white; }
-        .passo.concluido .bolinha { background: #10B981; color: white; }
-
-        .aviso-entrega {
-            background: #FFFBEB;
-            border: 3px solid #F59E0B;
-            border-radius: 10px;
-            padding: 16px;
-            margin: 16px 0;
-            text-align: center;
-            font-size: 16px;
-            font-weight: 700;
-            color: #92400E;
-        }
-        .barra-entrega { width: 100%; height: 10px; border-radius: 5px; margin: 10px 0; background: #E2E8F0; overflow: hidden; }
-        .barra-entrega-verde { background: #10B981; }
-        .barra-entrega-amarela { background: #F59E0B; }
-        .barra-entrega-vermelha { background: #EF4444; }
-        .texto-entrega { font-size: 13px; font-weight: 500; }
-
-        .barra-parcela { width: 100%; height: 6px; border-radius: 3px; margin-top: 6px; background: #E2E8F0; overflow: hidden; }
-        .barra-parcela-verde { background: #10B981; }
-        .barra-parcela-amarela { background: #F59E0B; }
-        .barra-parcela-vermelha { background: #EF4444; }
-        .texto-prazo-parcela { font-size: 11px; color: #64748B; margin-top: 2px; }
-
-        .texto-contrato { max-height: 220px; overflow-y: auto; padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 12px 0; font-size: 14px; line-height: 1.6; }
-        .campo-assinatura { width: 100%; padding: 12px; border: 2px dashed #64748B; border-radius: 8px; text-align: center; font-size: 18px; margin: 12px 0; background: #fff; }
-        .area-cam { border: 2px solid #E2E8F0; border-radius: 8px; padding: 10px; margin: 12px 0; text-align: center; }
-        video { width: 100%; max-height: 300px; border-radius: 8px; }
-        .chave-pix { 
-            background: #ECFDF5; 
-            border: 2px solid #10B981; 
-            border-radius: 8px; 
-            padding: 16px; 
-            text-align: center; 
-            font-weight: 600; 
-            margin: 16px 0; 
-            word-break: break-all;
-        }
-        .qrcode-pix { display: flex; justify-content: center; align-items: center; margin: 20px 0; }
-        .item-parcela { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
-        .item-parcela:last-child { border-bottom: none; }
-    </style>
-</head>
-<body>
-
-<div id="areaConsulta" class="card">
-    <h2 class="text-xl font-bold text-center mb-4 text-primary">🔍 Acompanhar Proposta</h2>
-    <div id="avisoErro" class="aviso-erro oculto"></div>
-    <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (11 números)" maxlength="11" class="w-full p-3 border border-gray-300 rounded-lg mb-4 text-center">
-    
-    <!-- ✅ BOTÃO REFORÇADO, NÃO TEM COMO NÃO FUNCIONAR -->
-    <button id="btnConsultar" class="btn btn-primary">
-        <i class="fas fa-search"></i> CONSULTAR
-    </button>
-</div>
-
-<div id="conteudoProposta" class="hidden"></div>
-
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
@@ -143,18 +8,22 @@ let dadosProposta = null;
 let qtdEscolhida = 0;
 let streamCam = null;
 
-// ✅ FORÇA O CLIQUE — NÃO DEIXA TRAVAR
-document.getElementById('btnConsultar').addEventListener('click', function(){
-    buscarProposta();
-});
+// Garante que o evento só será anexado após o DOM estar totalmente carregado
+document.addEventListener('DOMContentLoaded', () => {
+    const btnConsultar = document.getElementById('btnConsultar');
+    if (btnConsultar) {
+        btnConsultar.addEventListener('click', function(e) {
+            e.preventDefault();
+            buscarProposta();
+        });
+    }
 
-window.onload = () => {
     const cpfUrl = new URLSearchParams(window.location.search).get('cpf');
     if(cpfUrl) {
         document.getElementById('cpfConsulta').value = cpfUrl.replace(/\D/g,'');
         buscarProposta();
     }
-};
+});
 
 function calcularDiasUteis(dataInicio, totalDiasUteis) {
     if(!totalDiasUteis || totalDiasUteis <= 0) return { faltam: 0, porcentagem: 0, classe: 'barra-entrega-verde' };
@@ -212,9 +81,19 @@ async function gerarPixViaAPI(valor, descricao) {
         const sub26 = '00' + String(gui.length).padStart(2, '0') + gui + '01' + String(chave.length).padStart(2, '0') + chave;
         const campo26 = '26' + String(sub26.length).padStart(2, '0') + sub26;
         const payloadSemCrc = '000201' + campo26 + '5204000053039865802BR59' + String(nome.length).padStart(2, '0') + nome + '60' + String(cidade.length).padStart(2, '0') + cidade + '62070503***54' + String(valorStr.length).padStart(2, '0') + valorStr + '6304';
+        
         function calculaCRC16(payload) {
             let polinomio = 0x1021; let res = 0xFFFF; let dados = new TextEncoder().encode(payload);
-            for (let i = 0; i < dados.length; i++) { res ^= (dados[i] << 8); for (let j = 0; j < 8; j++) res = ((res << 1) ^ polinomio) & 0xFFFF; else res = (res << 1) & 0xFFFF; }
+            for (let i = 0; i < dados.length; i++) { 
+                res ^= (dados[i] << 8); 
+                for (let j = 0; j < 8; j++) {
+                    if ((res & 0x8000) !== 0) {
+                        res = ((res << 1) ^ polinomio) & 0xFFFF;
+                    } else {
+                        res = (res << 1) & 0xFFFF;
+                    }
+                }
+            }
             return res.toString(16).toUpperCase().padStart(4, '0');
         }
         return payloadSemCrc + calculaCRC16(payloadSemCrc);
@@ -222,7 +101,9 @@ async function gerarPixViaAPI(valor, descricao) {
 }
 
 async function buscarProposta() {
-    const cpf = document.getElementById('cpfConsulta').value.replace(/\D/g,'');
+    const cpfInput = document.getElementById('cpfConsulta');
+    if(!cpfInput) return;
+    const cpf = cpfInput.value.replace(/\D/g,'');
     const aviso = document.getElementById('avisoErro');
     aviso.classList.add('oculto');
 
@@ -238,7 +119,7 @@ async function buscarProposta() {
 
     const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
     if(error || !data) {
-        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada.</div>`;
+        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada. <br><br><button onclick="window.location.reload()" class="btn btn-primary mt-2">Tentar novamente</button></div>`;
         return;
     }
 
@@ -290,10 +171,10 @@ async function montarTela(p) {
             <p><strong>📱 WhatsApp:</strong> ${p.whatsapp || 'Não informado'}</p>
             <p><strong>🏠 Endereço:</strong> ${p.endereco || 'Não informado'}</p>
             <hr class="my-2 border-gray-300">
-            <p><strong>Valor do pedido:</strong> R$ ${v.toLocaleString('pt-BR', 2)}</p>
-            <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', 2)}</p>
+            <p><strong>Valor do pedido:</strong> R$ ${v.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+            <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
             <p><strong>Quantidade de parcelas:</strong> ${qtdEscolhidaFinal}x</p>
-            <p><strong>Total com juros:</strong> R$ ${total.toLocaleString('pt-BR', 2)}</p>
+            <p><strong>Total com juros:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
         </div>
     `;
 
@@ -309,7 +190,7 @@ async function montarTela(p) {
                 ${Array.from({length: q}, (_, i) => {
                     const n = i + 1;
                     const val = ((total - e) * (Math.pow(1 + j/100, n) * (j/100)) / (Math.pow(1 + j/100, n) - 1));
-                    return `<option value="${n}">${n}x de R$ ${val.toLocaleString('pt-BR', 2)}</option>`;
+                    return `<option value="${n}">${n}x de R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</option>`;
                 }).join('')}
             </select>
             <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar</button>
@@ -320,8 +201,8 @@ async function montarTela(p) {
             <div class="texto-contrato">
                 <strong>CONTRATO DE CRÉDITO</strong><br><br>
                 FlashCred e ${p.nome}.<br>
-                Valor total: R$ ${total.toLocaleString('pt-BR', 2)}<br>
-                Entrada: R$ ${e.toLocaleString('pt-BR', 2)}<br>
+                Valor total: R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>
+                Entrada: R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>
                 Prazo entrega: ${diasUteisEntrega} dias úteis.<br><br>
                 Ao assinar, concorda com todas as condições.
             </div>
@@ -352,7 +233,7 @@ async function montarTela(p) {
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO!</div>
-            <p class="mb-3">Entrada: <strong>R$ ${e.toLocaleString('pt-BR', 2)}</strong>.</p>
+            <p class="mb-3">Entrada: <strong>R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong>.</p>
             <button onclick="carregarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Gerar Pix</button>
             <div id="areaPixGerado" class="oculto">
                 <div class="qrcode-pix" id="qrcode-pix"></div>
@@ -378,7 +259,7 @@ async function montarTela(p) {
                 const valorParcela = ((total - e) * (Math.pow(1 + j/100, qtdEscolhidaFinal) * (j/100)) / (Math.pow(1 + j/100, qtdEscolhidaFinal) - 1));
                 return `<div class="item-parcela">
                     <div style="display: flex; justify-content: space-between;">
-                        <span><strong>${n}ª</strong> • R$ ${valorParcela.toLocaleString('pt-BR', 2)} • Venc: ${dt}</span>
+                        <span><strong>${n}ª</strong> • R$ ${valorParcela.toLocaleString('pt-BR', {minimumFractionDigits: 2})} • Venc: ${dt}</span>
                         <span class="font-bold ${ok?'text-green-600':'text-orange-500'}">${ok?'PAGA':'PENDENTE'}</span>
                     </div>
                     ${!ok ? `<div class="barra-parcela"><div class="${prazo.classe} h-full"></div></div><div class="texto-prazo-parcela">${prazo.texto}</div><button onclick="pagarParcela(${n}, ${valorParcela})" class="btn btn-pix" style="padding:8px; font-size:14px;">Gerar Pix</button>` : ''}
@@ -442,5 +323,3 @@ function ativarTempoReal(cpf) {
     .on('postgres_changes', {event:'*',schema:'public',table:'propostas',filter:`cpf=eq.${cpf}`}, ()=>buscarProposta()).subscribe();
 }
 </script>
-</body>
-</html>
