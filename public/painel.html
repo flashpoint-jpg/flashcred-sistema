@@ -48,19 +48,22 @@
         .sino { font-size: 22px; cursor: pointer; position: relative; }
         .sino-badge { position: absolute; top: -8px; right: -8px; background: var(--perigo); color: white; font-size: 11px; font-weight: bold; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
         .area-senha { max-width: 420px; margin: 80px auto; text-align: center; }
-        input { padding: 10px 12px; border: 1px solid var(--borda); border-radius: 6px; font-size: 15px; }
+        input, select { padding: 10px 12px; border: 1px solid var(--borda); border-radius: 6px; font-size: 15px; }
         .oculto { display: none !important; }
         .separador { border-bottom: 1px solid var(--borda); margin: 16px 0; }
         .info-parcela { font-size: 13px; padding: 7px 10px; border-radius: 6px; margin: 4px 0; }
         .titulo-secao { font-size: 18px; font-weight: bold; color: var(--primary); margin-bottom: 12px; }
-        .destaque { background: #F0FDF4; padding: 8px 12px; border-radius: 8px; border-left: 4px solid #10B981; }
+        .destaque { background: #F0FDF4; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #10B981; font-size: 16px; }
         .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
         .modal-conteudo { background: white; border-radius: 12px; padding: 24px; max-width: 520px; width: 100%; max-height: 90vh; overflow-y: auto; }
         .form-linha { margin-bottom: 14px; }
         .form-linha label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
-        .form-linha input { width: 100%; }
+        .form-linha input, .form-linha select { width: 100%; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .area-pdf { position: absolute; left: -9999px; top: 0; background: white; padding: 40px; max-width: 800px; }
+        .escolha-entrada { display: flex; gap: 10px; margin: 8px 0; }
+        .opcao-entrada { flex: 1; padding: 10px; border: 2px solid var(--borda); border-radius: 6px; text-align: center; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+        .opcao-entrada.ativa { border-color: var(--primary); background: #EFF6FF; color: var(--primary); }
+        .campo-desativado { opacity: 0.4; pointer-events: none; }
         .whatsapp-link { color: #25D366; font-weight: bold; text-decoration: none; }
     </style>
 </head>
@@ -104,7 +107,7 @@
     </div>
 </div>
 
-<!-- ✏️ MODAL EDITAR -->
+<!-- ✏️ MODAL EDITAR — COM CÁLCULO AUTOMÁTICO + ENTRADA VALOR/PORCENTAGEM -->
 <div id="modalEditar" class="modal oculto" onclick="fecharModalEditar(event)">
     <div class="modal-conteudo" onclick="event.stopPropagation()">
         <h3 class="titulo-secao" style="margin-bottom: 16px;">📝 Editar Proposta</h3>
@@ -117,7 +120,7 @@
 </div>
 
 <!-- 📄 ÁREA OCULTA PARA GERAR PDF -->
-<div id="areaPDF" class="area-pdf"></div>
+<div id="areaPDF" class="oculto"></div>
 
 <script>
 // ==============================================
@@ -134,9 +137,10 @@ let propostas = [];
 let filtroAtual = 'todas';
 let canalRealtime = null;
 let propostaEditando = null;
+let tipoEntrada = 'valor'; // 'valor' ou 'porcentagem'
 
 // ==============================================
-// ✅ LOGIN COM SESSÃO SALVA
+// ✅ LOGIN
 // ==============================================
 function entrar() {
     const senha = document.getElementById('senha').value;
@@ -180,11 +184,36 @@ function salvarToken() {
     const token = document.getElementById('tokenMP').value.trim();
     if(!token) { alert('Digite o Token!'); return; }
     localStorage.setItem('tokenMP', token);
-    alert('✅ Token SALVO! Pix em produção ativado!');
+    alert('✅ Token SALVO!');
 }
 
 // ==============================================
-// ✅ CARREGAR PROPOSTAS — LÊ WHATSAPP DIREITO DO BANCO
+// ✅ CÁLCULO AUTOMÁTICO — ENTRADA POR VALOR OU PORCENTAGEM
+// ==============================================
+function calcularValoresEditar() {
+    const valorSolicitado = parseFloat(document.getElementById('edt_valor').value) || 0;
+    const juros = parseFloat(document.getElementById('edt_juros').value) || 5;
+    const valorTotal = valorSolicitado * (1 + juros / 100);
+
+    let valorEntrada = 0;
+    if(tipoEntrada === 'valor') {
+        valorEntrada = parseFloat(document.getElementById('edt_entrada_valor').value) || 0;
+    } else {
+        const pct = parseFloat(document.getElementById('edt_entrada_pct').value) || 0;
+        valorEntrada = valorSolicitado * (pct / 100);
+        document.getElementById('edt_entrada_valor').value = valorEntrada.toFixed(2);
+    }
+
+    const saldo = valorTotal - valorEntrada;
+
+    document.getElementById('calc_total').innerHTML = 
+        `💰 Valor Total com Juros: <strong>R$ ${valorTotal.toLocaleString('pt-BR', {minimumFractionDigits:2})}</strong>`;
+    document.getElementById('calc_saldo').innerHTML = 
+        `💵 Saldo a Pagar: <strong>R$ ${saldo.toLocaleString('pt-BR', {minimumFractionDigits:2})}</strong>`;
+}
+
+// ==============================================
+// ✅ CARREGAR PROPOSTAS — LÊ WHATSAPP DO BANCO
 // ==============================================
 async function carregarPropostas() {
     try {
@@ -197,50 +226,36 @@ async function carregarPropostas() {
         propostas = data || [];
         renderizarPropostas();
     } catch(e) {
-        console.error('Erro ao carregar:', e);
+        console.error('Erro:', e);
     }
 }
 
 // ==============================================
-// ✅ TEMPO REAL FORÇA ATUALIZAÇÃO INSTANTÂNEA!
+// ✅ TEMPO REAL — ATUALIZA SEM F5
 // ==============================================
 function ativarRealtime() {
     if(canalRealtime) supabase.removeChannel(canalRealtime);
     canalRealtime = supabase.channel('atualizacao_propostas', { config: { broadcast: { self: true } } })
-        .on('postgres_changes', { event:'INSERT', schema:'public', table:'propostas' }, (payload) => {
-            console.log('📥 NOVA PROPOSTA CHEGOU!', payload);
+        .on('postgres_changes', { event:'*', schema:'public', table:'propostas' }, (payload) => {
             carregarPropostas();
         })
-        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'propostas' }, (payload) => {
-            console.log('🔄 PROPOSTA ALTERADA!', payload);
-            carregarPropostas();
-        })
-        .on('postgres_changes', { event:'DELETE', schema:'public', table:'propostas' }, (payload) => {
-            console.log('🗑️ PROPOSTA EXCLUÍDA!', payload);
-            carregarPropostas();
-        })
-        .subscribe((status) => {
-            console.log('📡 Realtime conectado:', status);
-        });
+        .subscribe();
 }
 
-// ==============================================
-// ✅ FILTROS
-// ==============================================
 function filtrar(f) {
     filtroAtual = f;
     renderizarPropostas();
 }
 
 // ==============================================
-// ✅ APROVAR + ATUALIZA NA HORA
+// ✅ APROVAR
 // ==============================================
 async function aprovarProposta(id) {
-    const valorEnt = prompt('Valor da Entrada:');
+    const valorEnt = prompt('Valor da Entrada (R$):');
     if(!valorEnt) return;
     const qtd = prompt('Quantidade máxima de parcelas:');
     if(!qtd) return;
-    const diasEntrega = prompt('📦 Quantos dias para entrega?','7');
+    const diasEntrega = prompt('📦 Dias para entrega?','7');
     if(diasEntrega === null) return;
 
     const { error } = await supabase.from('propostas').update({
@@ -254,10 +269,10 @@ async function aprovarProposta(id) {
 
     const p = propostas.find(x=>x.id===id);
     const whats = p ? String(p.whatsapp||'').replace(/\D/g,'') : '';
-    if(whats && confirm(`✅ Aprovada! Entrega em ${diasEntrega} dias.\n📲 Enviar mensagem com LINK pelo WhatsApp?`)) {
+    if(whats && confirm(`✅ Aprovada! Entrega em ${diasEntrega} dias.\n📲 Enviar mensagem pelo WhatsApp?`)) {
         enviarWhatsApp(p);
     }
-    alert('✅ APROVADA! Já aparece pro cliente!');
+    alert('✅ APROVADA!');
 }
 
 // ==============================================
@@ -274,7 +289,7 @@ async function reprovarProposta(id) {
 // ✅ MARCAR ENTRADA PAGA
 // ==============================================
 async function marcarEntradaPagaManual(id) {
-    if(!confirm('💰 Cliente pagou a entrada EM DINHEIRO?\n\nIsso LIBERA IMEDIATAMENTE as parcelas!')) return;
+    if(!confirm('💰 Cliente pagou a entrada em dinheiro?\nIsso LIBERA as parcelas!')) return;
 
     const p = propostas.find(x=>x.id===id);
     if(!p) return;
@@ -314,25 +329,26 @@ async function marcarEntradaPagaManual(id) {
 }
 
 // ==============================================
-// ✅ EXCLUIR — SOME NA HORA SEM PRECISAR DE F5!
+// ✅ EXCLUIR
 // ==============================================
 async function excluirProposta(id) {
     if(!confirm('⚠️ EXCLUIR? Essa ação não tem volta!')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ EXCLUÍDA! Sumiu automaticamente!');
+    else alert('✅ EXCLUÍDA!');
 }
 
 // ==============================================
-// ✅ EDITAR PROPOSTA
+// ✅ ABRIR EDITAR — COM CÁLCULO + ENTRADA VALOR/PORCENTAGEM
 // ==============================================
 function abrirEditar(id) {
     propostaEditando = propostas.find(x=>x.id===id);
     if(!propostaEditando) return;
 
     const valor = Number(propostaEditando.valor_desejado||0);
-    const juros = Number(propostaEditando.juros_mensal||5)/100;
-    const totalComJuros = valor * (1 + juros);
+    const juros = Number(propostaEditando.juros_mensal||5);
+    const entradaValor = Number(propostaEditando.valor_entrada||0);
+    const entradaPct = valor > 0 ? (entradaValor / valor * 100) : 0;
 
     document.getElementById('formEditar').innerHTML = `
         <div class="form-linha">
@@ -344,50 +360,87 @@ function abrirEditar(id) {
             <input type="text" id="edt_cpf" value="${propostaEditando.cpf||''}">
         </div>
         <div class="form-linha">
-            <label>WhatsApp</label>
+            <label>📱 WhatsApp</label>
             <input type="text" id="edt_whatsapp" value="${propostaEditando.whatsapp||''}">
         </div>
         <div class="form-linha">
             <label>Endereço / CEP</label>
             <input type="text" id="edt_endereco" value="${propostaEditando.endereco||''}">
         </div>
+
         <div class="grid-2">
             <div class="form-linha">
                 <label>Valor Solicitado (R$)</label>
-                <input type="number" step="0.01" id="edt_valor" value="${valor}">
+                <input type="number" step="0.01" id="edt_valor" value="${valor}" oninput="calcularValoresEditar()">
             </div>
             <div class="form-linha">
                 <label>Juros (% ao mês)</label>
-                <input type="number" step="0.1" id="edt_juros" value="${propostaEditando.juros_mensal||5}">
+                <input type="number" step="0.1" id="edt_juros" value="${juros}" oninput="calcularValoresEditar()">
             </div>
         </div>
-        <div class="form-linha destaque">
-            <strong>💰 Valor Total com Juros: R$ ${totalComJuros.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong>
+
+        <!-- ✅ ESCOLHA: ENTRADA POR VALOR OU PORCENTAGEM -->
+        <div class="form-linha">
+            <label>Valor da Entrada</label>
+            <div class="escolha-entrada">
+                <div class="opcao-entrada ativa" id="op_valor" onclick="selecionarTipoEntrada('valor')">💰 Valor</div>
+                <div class="opcao-entrada" id="op_pct" onclick="selecionarTipoEntrada('porcentagem')">📊 %</div>
+            </div>
         </div>
+
         <div class="grid-2">
             <div class="form-linha">
-                <label>Valor da Entrada (R$)</label>
-                <input type="number" step="0.01" id="edt_entrada" value="${propostaEditando.valor_entrada||0}">
+                <label>Valor (R$)</label>
+                <input type="number" step="0.01" id="edt_entrada_valor" value="${entradaValor.toFixed(2)}" oninput="calcularValoresEditar()">
             </div>
+            <div class="form-linha">
+                <label>Porcentagem (%)</label>
+                <input type="number" step="1" id="edt_entrada_pct" value="${entradaPct.toFixed(0)}" oninput="calcularValoresEditar()">
+            </div>
+        </div>
+
+        <!-- ✅ CÁLCULO EM TEMPO REAL -->
+        <div class="form-linha destaque">
+            <div id="calc_total"></div>
+            <div id="calc_saldo" style="margin-top:6px;"></div>
+        </div>
+
+        <div class="grid-2">
             <div class="form-linha">
                 <label>Quantidade de Parcelas</label>
                 <input type="number" id="edt_qtdparc" value="${propostaEditando.quantidade_parcelas||0}">
             </div>
-        </div>
-        <div class="form-linha">
-            <label>Dias para Entrega</label>
-            <input type="number" id="edt_diasentrega" value="${propostaEditando.dias_entrega||7}">
+            <div class="form-linha">
+                <label>Dias para Entrega</label>
+                <input type="number" id="edt_diasentrega" value="${propostaEditando.dias_entrega||7}">
+            </div>
         </div>
     `;
+
+    tipoEntrada = 'valor';
+    calcularValoresEditar();
     document.getElementById('modalEditar').classList.remove('oculto');
 }
 
+// ==============================================
+// ✅ TROCAR ENTRE VALOR E PORCENTAGEM
+// ==============================================
+function selecionarTipoEntrada(tipo) {
+    tipoEntrada = tipo;
+    document.getElementById('op_valor').classList.toggle('ativa', tipo === 'valor');
+    document.getElementById('op_pct').classList.toggle('ativa', tipo === 'porcentagem');
+    calcularValoresEditar();
+}
+
+// ==============================================
+// ✅ SALVAR EDIÇÃO
+// ==============================================
 async function salvarEdicao() {
     if(!propostaEditando) return;
 
     const valor = parseFloat(document.getElementById('edt_valor').value);
     const juros = parseFloat(document.getElementById('edt_juros').value);
-    const entrada = parseFloat(document.getElementById('edt_entrada').value);
+    const entrada = parseFloat(document.getElementById('edt_entrada_valor').value);
     const qtd = parseInt(document.getElementById('edt_qtdparc').value);
     const diasEntrega = parseInt(document.getElementById('edt_diasentrega').value);
 
@@ -403,9 +456,9 @@ async function salvarEdicao() {
         dias_entrega: diasEntrega
     }).eq('id', propostaEditando.id);
 
-    if(error) alert('❌ Erro: ' + error.message);
+    if(error) alert('❌ Erro: ' + error.message + '\n\n⚠️ Crie as colunas no banco com o comando SQL que te passei!');
     else {
-        alert('✅ SALVO! Atualizado automaticamente!');
+        alert('✅ SALVO!');
         fecharModalEditar();
     }
 }
@@ -417,11 +470,11 @@ function fecharModalEditar(e) {
 }
 
 // ==============================================
-// ✅ ENVIAR WHATSAPP — LÊ DO BANCO CORRETAMENTE
+// ✅ ENVIAR WHATSAPP
 // ==============================================
 function enviarWhatsApp(p) {
     const whats = String(p.whatsapp||'').replace(/\D/g,'');
-    if(!whats) { alert('⚠️ Cliente não informou o WhatsApp! Peça para preencher!'); return; }
+    if(!whats) { alert('⚠️ Cliente não informou o WhatsApp!'); return; }
 
     const valor = Number(p.valor_desejado||0);
     const juros = Number(p.juros_mensal||5)/100;
@@ -430,7 +483,7 @@ function enviarWhatsApp(p) {
     const cpfLimpo = (p.cpf||'').replace(/\D/g,'');
 
     const texto = encodeURIComponent(
-        `Olá ${p.nome || 'Cliente'}! 👋\n\n✅ Sua proposta foi APROVADA!\n\n💰 Valor Solicitado: ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n💵 Valor Total com Juros: ${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n📦 Entrega em ${diasEntrega} dias\n\n🔗 Acesse aqui com seu CPF para ver detalhes, escolher parcelas, assinar contrato e gerar o Pix:\n${LINK_CONSULTA}?cpf=${cpfLimpo}\n\nAtenciosamente,\nFlashCred ✅`
+        `Olá ${p.nome || 'Cliente'}! 👋\n\n✅ Sua proposta foi APROVADA!\n\n💰 Valor Solicitado: ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n💵 Valor Total com Juros: ${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n📦 Entrega em ${diasEntrega} dias\n\n🔗 Acesse aqui com seu CPF:\n${LINK_CONSULTA}?cpf=${cpfLimpo}\n\nAtenciosamente,\nFlashCred ✅`
     );
     window.open(`https://wa.me/55${whats}?text=${texto}`, '_blank');
 }
@@ -467,11 +520,11 @@ async function gerarPDF(id) {
 
     const opt = { margin: 10, filename: `Proposta-${p.nome||'Cliente'}.pdf`, image: 'jpeg', html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
     await html2pdf().set(opt).from(area).save();
-    alert('✅ PDF gerado com sucesso!');
+    alert('✅ PDF gerado!');
 }
 
 // ==============================================
-// ✅ EXIBIR WHATSAPP DIRETO DO BANCO + ATUALIZAÇÃO INSTANTÂNEA
+// ✅ EXIBIR WHATSAPP + TODOS OS DADOS NA LISTA
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -490,7 +543,7 @@ function renderizarPropostas() {
         const status = p.status || 'Nova';
         const entradaPaga = !!p.entrada_paga;
         
-        // ✅ PEGA O WHATSAPP DIRETO DO BANCO — EXATAMENTE COMO O CLIENTE DIGITOU!
+        // ✅ WHATSAPP VISÍVEL DIRETO DO BANCO
         const whatsBruto = p.whatsapp || '';
         const whatsLimpo = whatsBruto.replace(/\D/g,'');
         
@@ -525,7 +578,7 @@ function renderizarPropostas() {
                 </span>
             </div>
             <div class="linha">
-                <span class="etiqueta">Endereço/CEP:</span>
+                <span class="etiqueta">Endereço:</span>
                 <span class="valor" style="font-size:13px;">${endereco}</span>
             </div>
             <div class="linha">
@@ -563,7 +616,7 @@ function renderizarPropostas() {
                     if(parc.paga) { st='✅ PAGA'; cor='#D1FAE5'; }
                     else if(dias<0) { st=`⚠️ ${Math.abs(dias)}d atraso`; cor='#FEE2E2'; }
                     else if(dias<=7) st=`⏳ ${dias}d`;
-                    return `<div class="info-parcela" style="background:${cor}">${i+1}ª · ${v} · Vence: ${dt} · ${st}</div>`;
+                    return `<div style="background:${cor}; padding:6px 10px; border-radius:6px; font-size:13px;">${i+1}ª · ${v} · Vence: ${dt} · ${st}</div>`;
                 }).join('')}
             </div>` : ''}
 
@@ -574,11 +627,11 @@ function renderizarPropostas() {
                 <button onclick="reprovarProposta(${p.id})" class="botao botao-perigo botao-pequeno">❌ Reprovar</button>
                 ` : ''}
                 ${status === 'Aprovada' && !entradaPaga ? `
-                <button onclick="marcarEntradaPagaManual(${p.id})" class="botao botao-roxo botao-pequeno">💰 Entrada Paga (Dinheiro)</button>
+                <button onclick="marcarEntradaPagaManual(${p.id})" class="botao botao-roxo botao-pequeno">💰 Entrada Paga</button>
                 ` : ''}
                 <button onclick="abrirEditar(${p.id})" class="botao botao-azul botao-pequeno">✏️ Editar</button>
                 <button onclick="gerarPDF(${p.id})" class="botao botao-alerta botao-pequeno">📄 Gerar PDF</button>
-                ${whatsLimpo ? `<button onclick="enviarWhatsApp(${p.id})" class="botao botao-whatsapp botao-pequeno">💬 Enviar WhatsApp</button>` : ''}
+                ${whatsLimpo ? `<button onclick="enviarWhatsApp(${p.id})" class="botao botao-whatsapp botao-pequeno">💬 WhatsApp</button>` : ''}
                 <button onclick="excluirProposta(${p.id})" class="botao botao-perigo botao-pequeno">🗑️ Excluir</button>
             </div>
         </div>`;
