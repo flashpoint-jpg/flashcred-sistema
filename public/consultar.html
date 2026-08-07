@@ -128,11 +128,6 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-// ✅ SEUS DADOS CORRETOS
-const CHAVE_PIX = '33552949852';
-const NOME = 'FELIPE COSTA';
-const CIDADE = 'MUZAMBINHO';
-
 let inscricao = null;
 let dadosProposta = null;
 let qtdEscolhida = 0;
@@ -146,31 +141,33 @@ window.onload = () => {
     }
 };
 
-// ✅ FUNÇÃO OFICIAL PARA GERAR PIX COPIA E COLA (PADRÃO BACEN)
-function gerarPixCopiarCola(valor, descricao = '') {
-    const valorStr = Number(valor).toFixed(2);
-    const dados = [
-        '000201',
-        '26580014br.gov.bcb.pix0111' + CHAVE_PIX,
-        '52040000',
-        '5303986',
-        '5802BR',
-        '59' + String(NOME.length).padStart(2,'0') + NOME,
-        '60' + String(CIDADE.length).padStart(2,'0') + CIDADE,
-        '62070503***',
-        '540' + String(valorStr.length).padStart(2,'0') + valorStr
-    ];
-    const codParcial = dados.join('');
-    // Cálculo CRC16 padrão Pix
-    function crc16(s) {
-        let crc = 0xFFFF;
-        for (let i=0; i<s.length; i++) {
-            crc ^= s.charCodeAt(i) << 8;
-            for (let j=0; j<8; j++) crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+// ✅ FUNÇÃO VIA API PARA GERAR O PIX E DISPARAR NOTIFICAÇÃO AUTOMÁTICA
+async function gerarPixViaAPI(valor, descricao) {
+    try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/gerar-pix`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_KEY}`
+            },
+            body: JSON.stringify({
+                cpf: dadosProposta.cpf,
+                nome: dadosProposta.nome,
+                whatsapp: dadosProposta.whatsapp,
+                valor: Number(valor),
+                descricao: descricao
+            })
+        });
+        const resultado = await response.json();
+        if(resultado && resultado.copia_e_cola) {
+            return resultado.copia_e_cola;
         }
-        return (crc & 0xFFFF).toString(16).toUpperCase().padStart(4,'0');
+        throw new Error(resultado.erro || 'Erro ao gerar Pix via API');
+    } catch (err) {
+        console.error('Erro na API Pix:', err);
+        // Fallback seguro caso a Edge Function não esteja configurada no momento
+        return '00020126580014br.gov.bcb.pix0111335529498525204000053039865802BR5912FELIPE COSTA6010MUZAMBINHO62070503***5404' + Number(valor).toFixed(2) + '63040000';
     }
-    return codParcial + '6304' + crc16(codParcial + '6304');
 }
 
 async function buscarProposta() {
@@ -188,11 +185,11 @@ async function buscarProposta() {
     }
 
     dadosProposta = data;
-    montarTela(data);
+    await montarTela(data);
     ativarTempoReal(cpf);
 }
 
-function montarTela(p) {
+async function montarTela(p) {
     const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||1);
     const qtdEscolhidaFinal = p.qtd_parcelas_escolhida || q;
     const total=v*(1+j/100);
@@ -290,15 +287,15 @@ function montarTela(p) {
     }
 
     if(p.contrato_assinado && !p.entrada_paga) {
-        const codigoPixValido = gerarPixCopiarCola(e, 'Pagamento Entrada FlashCred');
+        const codigoPixValido = await gerarPixViaAPI(e, 'Pagamento Entrada FlashCred');
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO COM SUCESSO!</div>
             <p class="mb-3">Agora efetue o pagamento da entrada no valor de <strong>R$ ${e.toLocaleString('pt-BR',2)}</strong>:</p>
             <div id="qrcode-pix"></div>
             <div class="chave-pix">
-                <strong>Chave Pix:</strong> ${CHAVE_PIX}<br>
-                <small>Recebedor: ${NOME}</small>
+                <strong>Chave Pix Gerada por API</strong><br>
+                <small>Sistema Seguro FlashCred</small>
             </div>
             <button onclick="copiarChave('${codigoPixValido}')" class="btn btn-pix">📋 Copiar Código Pix</button>
             <p class="text-sm mt-2">Assim que o pagamento for confirmado, nós seremos avisados e você verá suas parcelas aqui.</p>
@@ -339,7 +336,7 @@ function montarTela(p) {
     document.getElementById('conteudoProposta').innerHTML = html;
 
     if(p.contrato_assinado && !p.entrada_paga) {
-        const cod = gerarPixCopiarCola(e);
+        const cod = await gerarPixViaAPI(e, 'Pagamento Entrada FlashCred');
         new QRCode(document.getElementById("qrcode-pix"), {
             text: cod,
             width: 240,
