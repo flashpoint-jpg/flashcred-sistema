@@ -47,13 +47,27 @@
         .campo { width: 100%; padding: 10px 12px; border: 1px solid var(--borda); border-radius:8px; margin-bottom: 10px; font-size:14px; transition: 0.2s; }
         .campo:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(10,36,99,0.1); }
         
-        /* ✅ CRONOGRAMA COMPACTO */
         .bloco-parcelas { margin-top:12px; border:1px solid var(--borda); border-radius:8px; overflow:hidden; }
         .cabecalho-cronograma { background:#F8FAFC; padding:10px 14px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-weight:600; color:var(--primary); }
         .corpo-cronograma { display:none; padding:12px; background:white; }
         .corpo-cronograma.aberto { display:block; }
         .item-parcela { display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid var(--borda); font-size:13px; }
         .item-parcela:last-child { border-bottom:none; }
+
+        /* ✅ PRAZO DE ENTREGA BEM DESTACADO */
+        .prazo-entrega { 
+            background: #FFFBEB; 
+            border: 2px solid var(--alerta); 
+            border-radius: 8px; 
+            padding: 12px 16px; 
+            margin: 10px 0;
+            font-size: 16px; 
+            font-weight: 700; 
+            color: #92400E;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
         
         .tipo-data { display: flex; gap: 20px; margin-bottom: 12px; padding: 8px 0; }
         .item-tipo { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight:500; cursor: pointer; }
@@ -105,7 +119,7 @@
         <h3 class="titulo-bloco">📝 Dados da Proposta</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div><span class="label-campo">👤 Nome Completo</span><input type="text" id="nome" class="campo"></div>
-            <div><span class="label-campo">📄 CPF</span><input type="text" id="cpf" maxlength="11" class="campo"></div>
+            <div><span class="label-campo">📄 CPF (apenas números)</span><input type="text" id="cpf" maxlength="11" class="campo"></div>
             <div><span class="label-campo">📱 WhatsApp com DDD</span><input type="text" id="whatsapp" maxlength="11" class="campo" placeholder="Ex: 11999998888"></div>
             <div><span class="label-campo">🏠 CEP</span><input type="text" id="cep" maxlength="8" class="campo"></div>
             <div class="md:col-span-2"><span class="label-campo">📍 Endereço Completo</span><input type="text" id="endereco" class="campo"></div>
@@ -119,10 +133,10 @@
                 <div class="titulo-bloco">📅 Datas de Vencimento</div>
                 <div class="tipo-data">
                     <label class="item-tipo">
-                        <input type="radio" name="tipo_data" value="automatico" checked onchange="mostrarOpcoesData(this.closest('.area-edicao'))"> ✅ Automático (preenche sozinho)
+                        <input type="radio" name="tipo_data" value="automatico" checked onchange="mostrarOpcoesData(this.closest('.area-edicao'))"> ✅ Automático
                     </label>
                     <label class="item-tipo">
-                        <input type="radio" name="tipo_data" value="manual" onchange="mostrarOpcoesData(this.closest('.area-edicao'))"> ✏️ Manual (você escolhe cada data)
+                        <input type="radio" name="tipo_data" value="manual" onchange="mostrarOpcoesData(this.closest('.area-edicao'))"> ✏️ Manual
                     </label>
                 </div>
                 <div id="opcoesData" class="pl-4">
@@ -151,32 +165,25 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
 const SENHA = 'flash2026';
-const LINK_CONSULTA = window.location.href.replace('painel.html','consultar.html');
+const LINK_CONSULTA = new URL('consultar.html', window.location.href).href;
 const NUMERO_SUPORTE = '5511973294235';
 
 let inscricaoTempoReal = null;
 
 window.onload = () => {
-    if(localStorage.getItem('logado_flashcred') === 'SIM') {
-        mostrarPainel();
-    }
+    if(localStorage.getItem('logado_flashcred') === 'SIM') mostrarPainel();
 };
 
 function entrar() {
     const s = document.getElementById('senha').value.trim();
-    if(s === SENHA) {
-        localStorage.setItem('logado_flashcred', 'SIM');
-        mostrarPainel();
-    } else {
-        alert('Senha incorreta! Tente novamente.');
-    }
+    if(s === SENHA) { localStorage.setItem('logado_flashcred', 'SIM'); mostrarPainel(); }
+    else alert('Senha incorreta!');
 }
 
 function sair() {
     localStorage.removeItem('logado_flashcred');
     document.getElementById('telaLogin').style.display = 'block';
     document.getElementById('telaPrincipal').style.display = 'none';
-    document.getElementById('senha').value = '';
     if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
 }
 
@@ -188,61 +195,42 @@ function mostrarPainel() {
 }
 
 function atualizarCalculo(bloco) {
-    const v = Number(bloco.querySelector('#valor_desejado').value) || 0;
-    const e = Number(bloco.querySelector('#valor_entrada').value) || 0;
-    const j = Number(bloco.querySelector('#juros_mensal').value) || 0;
-    const q = Number(bloco.querySelector('#quantidade_parcelas').value) || 1;
-    const total = v * (1 + j/100);
-    const saldo = total - e;
-    const parcela = q===1 ? total : saldo * (Math.pow(1+j/100,q) * (j/100)) / (Math.pow(1+j/100,q)-1);
-    const elemResumo = bloco.querySelector('.resumo-valores');
-    if(elemResumo) {
-        elemResumo.innerHTML = `💵 Total: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 📉 Saldo: R$ ${saldo.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 🧾 ${q}x de R$ ${parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
-    }
-    if(bloco.querySelector('input[name="tipo_data"]:checked')?.value === 'automatico') {
-        gerarDatasAutomaticas(bloco);
-    } else {
-        criarCamposDatas(bloco);
-    }
+    const v = Number(bloco.querySelector('#valor_desejado').value)||0;
+    const e = Number(bloco.querySelector('#valor_entrada').value)||0;
+    const j = Number(bloco.querySelector('#juros_mensal').value)||0;
+    const q = Number(bloco.querySelector('#quantidade_parcelas').value)||1;
+    const total = v*(1+j/100);
+    const saldo = total-e;
+    const parcela = q===1 ? total : saldo*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1);
+    const res = bloco.querySelector('.resumo-valores');
+    if(res) res.innerHTML = `💵 Total: R$ ${total.toLocaleString('pt-BR',2)} | 📉 Saldo: R$ ${saldo.toLocaleString('pt-BR',2)} | 🧾 ${q}x de R$ ${parcela.toLocaleString('pt-BR',2)}`;
+    bloco.querySelector('input[name="tipo_data"]:checked')?.value==='automatico' ? gerarDatasAutomaticas(bloco) : criarCamposDatas(bloco);
 }
 
 function mostrarOpcoesData(bloco) {
     const tipo = bloco.querySelector('input[name="tipo_data"]:checked').value;
-    const intervalo = bloco.querySelector('#intervalo_auto');
-    const lista = bloco.querySelector('#listaDatas');
-    
-    if(tipo === 'automatico') {
-        intervalo.style.display = 'block';
-        gerarDatasAutomaticas(bloco);
-    } else {
-        intervalo.style.display = 'none';
-        criarCamposDatas(bloco);
-    }
+    bloco.querySelector('#intervalo_auto').style.display = tipo==='automatico'?'block':'none';
+    tipo==='automatico' ? gerarDatasAutomaticas(bloco) : criarCamposDatas(bloco);
 }
 
 function gerarDatasAutomaticas(bloco) {
-    const qtd = Number(bloco.querySelector('#quantidade_parcelas').value) || 1;
-    const dias = Number(bloco.querySelector('#intervalo_auto').value) || 30;
+    const qtd = Number(bloco.querySelector('#quantidade_parcelas').value)||1;
+    const dias = Number(bloco.querySelector('#intervalo_auto').value)||30;
     const lista = bloco.querySelector('#listaDatas');
-    const dataBase = new Date();
-    dataBase.setDate(dataBase.getDate() + dias);
-
-    let html = '';
-    for(let i=0; i<qtd; i++) {
-        const d = new Date(dataBase);
-        d.setDate(d.getDate() + (i * dias));
+    const base = new Date(); base.setDate(base.getDate()+dias);
+    let html='';
+    for(let i=0;i<qtd;i++){
+        const d = new Date(base); d.setDate(d.getDate()+(i*dias));
         html += `<input type="date" name="data_parcela" value="${d.toISOString().split('T')[0]}" class="campo !p-2 text-sm">`;
     }
     lista.innerHTML = html;
 }
 
 function criarCamposDatas(bloco) {
-    const qtd = Number(bloco.querySelector('#quantidade_parcelas').value) || 1;
+    const qtd = Number(bloco.querySelector('#quantidade_parcelas').value)||1;
     const lista = bloco.querySelector('#listaDatas');
-    let html = '';
-    for(let i=0; i<qtd; i++) {
-        html += `<input type="date" name="data_parcela" class="campo !p-2 text-sm">`;
-    }
+    let html='';
+    for(let i=0;i<qtd;i++) html += `<input type="date" name="data_parcela" class="campo !p-2 text-sm">`;
     lista.innerHTML = html;
 }
 
@@ -253,18 +241,14 @@ async function carregarPropostas() {
     let totalRecebido=0, totalReceber=0, qtdPagas=0, qtdPendentes=0, novas=0;
     data.forEach(i=>{
         const v=Number(i.valor_desejado||0), e=Number(i.valor_entrada||0), j=Number(i.juros_mensal||5), total=v*(1+j/100);
-        if(i.entrada_paga){ totalRecebido+=e; } else { totalReceber+=total; }
-        
-        const qtdParc = Number(i.quantidade_parcelas||1);
-        const pagasCount = Number(i.parcelas_pagas||0);
-        qtdPagas += pagasCount;
-        qtdPendentes += (qtdParc - pagasCount);
-
+        i.entrada_paga ? totalRecebido+=e : totalReceber+=total;
+        const qtdParc=Number(i.quantidade_parcelas||1), pagas=Number(i.parcelas_pagas||0);
+        qtdPagas+=pagas; qtdPendentes+=qtdParc-pagas;
         if(i.status==='Nova') novas++;
     });
 
-    document.getElementById('totalRecebido').innerText = `R$ ${totalRecebido.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
-    document.getElementById('totalReceber').innerText = `R$ ${totalReceber.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+    document.getElementById('totalRecebido').innerText = `R$ ${totalRecebido.toLocaleString('pt-BR',2)}`;
+    document.getElementById('totalReceber').innerText = `R$ ${totalReceber.toLocaleString('pt-BR',2)}`;
     document.getElementById('qtdPagas').innerText = qtdPagas;
     document.getElementById('qtdPendentes').innerText = qtdPendentes;
     document.getElementById('contadorNotif').innerText = novas;
@@ -273,46 +257,41 @@ async function carregarPropostas() {
     data.forEach(i=>{
         const v=Number(i.valor_desejado||0), e=Number(i.valor_entrada||0), j=Number(i.juros_mensal||5), q=Number(i.quantidade_parcelas||1);
         const total=v*(1+j/100);
-        const valorParcela = q === 1 ? total : ((total - e) * (Math.pow(1 + j/100, q) * (j/100))) / (Math.pow(1 + j/100, q) - 1);
-        const parcelasPagasCount = Number(i.parcelas_pagas || 0);
-        const datasSalvas = i.datas_parcelas || [];
-        const whatsappCliente = (i.whatsapp || i.telefone || '').trim();
+        const parcela = q===1 ? total : ((total-e)*(Math.pow(1+j/100,q)*(j/100)))/(Math.pow(1+j/100,q)-1);
+        const pagas=Number(i.parcelas_pagas||0), datas=i.datas_parcelas||[];
+        const wpp=(i.whatsapp||i.telefone||'').trim();
+        const cpfLimpo=String(i.cpf||'').replace(/\D/g,'');
 
-        // ✅ CRONOGRAMA FECHADO POR PADRÃO
-        let htmlParcelas = `
+        let htmlParc = `
         <div class="bloco-parcelas">
             <div class="cabecalho-cronograma" onclick="this.nextElementSibling.classList.toggle('aberto'); this.querySelector('i').classList.toggle('fa-chevron-down'); this.querySelector('i').classList.toggle('fa-chevron-up')">
-                <span>📋 Ver Cronograma de Parcelas (${q})</span>
-                <i class="fas fa-chevron-down"></i>
+                <span>📋 Ver Cronograma (${q})</span><i class="fas fa-chevron-down"></i>
             </div>
             <div class="corpo-cronograma">`;
-
-        for(let p=1; p<=q; p++) {
-            const dataVenc = datasSalvas[p-1] ? new Date(datasSalvas[p-1]).toLocaleDateString('pt-BR') : 'A definir';
-            const paga = p <= parcelasPagasCount;
-            htmlParcelas += `
-                <div class="item-parcela">
-                    <span><strong>${p}ª</strong> | R$ ${valorParcela.toLocaleString('pt-BR',2)} | ${dataVenc} | <span class="${paga?'text-sucesso font-bold':'text-alerta'}">${paga?'PAGA':'PENDENTE'}</span></span>
-                    <button onclick="enviarCobrancaWpp('${i.nome||'Cliente'}', ${p}, ${q}, ${valorParcela}, '${dataVenc}', '${whatsappCliente}')" class="botao botao-wpp !py-1 !px-2 text-xs"><i class="fab fa-whatsapp"></i> Cobrar</button>
-                </div>`;
+        for(let p=1;p<=q;p++){
+            const dt=datas[p-1]?new Date(datas[p-1]).toLocaleDateString('pt-BR'):'A definir';
+            const ok=p<=pagas;
+            htmlParc += `<div class="item-parcela"><span><strong>${p}ª</strong> | R$ ${parcela.toLocaleString('pt-BR',2)} | ${dt} | <span class="${ok?'text-sucesso font-bold':'text-alerta'}">${ok?'PAGA':'PENDENTE'}</span></span><button onclick="enviarCobrancaWpp('${i.nome||'Cliente'}',${p},${q},${parcela},'${dt}','${wpp}')" class="botao botao-wpp !py-1 !px-2 text-xs"><i class="fab fa-whatsapp"></i></button></div>`;
         }
-        htmlParcelas += `</div></div>`;
+        htmlParc += `</div></div>`;
 
         html += `
         <div class="linha-proposta">
             <div class="mb-3">
-                <strong class="text-lg">${i.nome || 'Sem nome'}</strong> | ${(i.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}<br>
-                📱 WhatsApp: ${whatsappCliente || 'Não informado'} | 📍 ${i.endereco||'Não informado'} - CEP ${i.cep||'Não informado'}<br>
+                <strong class="text-lg">${i.nome||'Sem nome'}</strong> | ${cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}<br>
+                📱 WhatsApp: ${wpp||'Não informado'} | 📍 ${i.endereco||'Não informado'} - CEP ${i.cep||'Não informado'}<br>
                 Valor Total: R$ ${v.toLocaleString('pt-BR',2)} | Entrada: R$ ${e.toLocaleString('pt-BR',2)} | Total com Juros: R$ ${total.toLocaleString('pt-BR',2)}<br>
-                Situação: <strong>${i.status}</strong> | Entrada: <strong class="${i.entrada_paga?'text-sucesso':'text-alerta'}">${i.entrada_paga?'PAGA':'PENDENTE'}</strong> | Entrega em ${i.dias_entrega||7} dias
+                Situação: <strong>${i.status}</strong> | Entrada: <strong class="${i.entrada_paga?'text-sucesso':'text-alerta'}">${i.entrada_paga?'PAGA':'PENDENTE'}</strong>
+                <!-- ✅ PRAZO DE ENTREGA BEM DESTACADO -->
+                <div class="prazo-entrega"><i class="fas fa-truck"></i> 🚚 ENTREGA EM ATÉ ${i.dias_entrega||7} DIAS ÚTEIS</div>
             </div>
-            ${htmlParcelas}
+            ${htmlParc}
             <div class="flex gap-2 mt-4 flex-wrap">
                 ${i.status!=='Aprovada'?`<button onclick="mudarStatus('${i.id}','Aprovada')" class="botao botao-sucesso">✅ Aprovar</button>`:''}
                 ${i.status!=='Reprovada'?`<button onclick="mudarStatus('${i.id}','Reprovada')" class="botao botao-perigo">❌ Reprovar</button>`:''}
                 <button onclick="editar('${i.id}')" class="botao botao-primario">✏️ Editar</button>
-                <button onclick="enviarLink('${i.id}','${i.cpf}','${whatsappCliente}')" class="botao botao-sucesso">📲 Enviar Link</button>
-                ${!i.entrada_paga?`<button onclick="marcarEntradaPaga('${i.id}')" class="botao botao-alerta">💵 Marcar Entrada Paga</button>`:''}
+                <button onclick="enviarLink('${cpfLimpo}','${wpp}')" class="botao botao-sucesso">📲 Enviar Link</button>
+                ${!i.entrada_paga?`<button onclick="marcarEntradaPaga('${i.id}')" class="botao botao-alerta">💵 Marcar Entrada</button>`:''}
                 <button onclick="excluir('${i.id}')" class="botao botao-perigo">🗑️ Excluir</button>
             </div>
             <div id="editar-${i.id}" class="area-edicao"></div>
@@ -321,35 +300,25 @@ async function carregarPropostas() {
     document.getElementById('listaPropostas').innerHTML = html;
 }
 
-async function mudarStatus(id, status) {
-    await supabase.from('propostas').update({status}).eq('id',id);
-    carregarPropostas();
+async function mudarStatus(id,status){await supabase.from('propostas').update({status}).eq('id',id);carregarPropostas();}
+async function marcarEntradaPaga(id){if(!confirm('Confirmar entrada paga?'))return;await supabase.from('propostas').update({entrada_paga:true}).eq('id',id);carregarPropostas();}
+
+function enviarCobrancaWpp(nome,p,q,valor,dt,wpp){
+    if(!wpp){alert('Sem WhatsApp!');return;}
+    const msg = `Olá ${nome}! ${p}ª/${q} R$ ${valor.toLocaleString('pt-BR',2)} - Venc: ${dt} | Acesse: ${LINK_CONSULTA}?cpf=${String(wpp).replace(/\D/g,'')}`;
+    window.open(`https://wa.me/55${wpp}?text=${encodeURIComponent(msg)}`);
 }
 
-async function marcarEntradaPaga(id) {
-    if(!confirm('Confirmar que a entrada já foi paga?')) return;
-    await supabase.from('propostas').update({entrada_paga:true}).eq('id',id);
-    carregarPropostas();
-}
-
-// ✅ COBRANÇA JÁ COM NÚMERO DO CLIENTE
-function enviarCobrancaWpp(nomeCliente, parcelaNum, totalParcelas, valorParcela, dataVenc, numCliente) {
-    if(!numCliente) { alert('WhatsApp do cliente não cadastrado!'); return; }
-    const mensagem = `Olá, ${nomeCliente}! Tudo bem?\n\nSegue aviso da sua ${parcelaNum}ª parcela de ${totalParcelas} da FlashCred:\n💳 Valor: R$ ${valorParcela.toLocaleString('pt-BR',2)}\n📅 Vencimento: ${dataVenc}\n\nAcesse seu painel para pagar: ${LINK_CONSULTA}?cpf=${nomeCliente.replace(/\D/g,'')}\nAgradecemos!`;
-    window.open(`https://wa.me/55${numCliente}?text=${encodeURIComponent(mensagem)}`);
-}
-
-async function editar(id) {
-    const el = document.getElementById(`editar-${id}`);
-    if(el.classList.contains('ativa')) { el.classList.remove('ativa'); return; }
-    
-    const {data} = await supabase.from('propostas').select('*').eq('id',id).single();
+async function editar(id){
+    const el=document.getElementById(`editar-${id}`);
+    if(el.classList.contains('ativa')){el.classList.remove('ativa');return;}
+    const {data}=await supabase.from('propostas').select('*').eq('id',id).single();
     el.innerHTML = `
         <h3 class="titulo-bloco">✏️ Editar Proposta</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><span class="label-campo">Nome Completo</span><input type="text" id="nome" value="${data.nome||''}" class="campo"></div>
+            <div><span class="label-campo">Nome</span><input type="text" id="nome" value="${data.nome||''}" class="campo"></div>
             <div><span class="label-campo">CPF</span><input type="text" id="cpf" maxlength="11" value="${data.cpf||''}" class="campo"></div>
-            <div><span class="label-campo">WhatsApp</span><input type="text" id="whatsapp" value="${(data.whatsapp || data.telefone || '')}" class="campo"></div>
+            <div><span class="label-campo">WhatsApp</span><input type="text" id="whatsapp" value="${(data.whatsapp||data.telefone||'')}" class="campo"></div>
             <div><span class="label-campo">CEP</span><input type="text" id="cep" value="${data.cep||''}" class="campo"></div>
             <div class="md:col-span-2"><span class="label-campo">Endereço</span><input type="text" id="endereco" value="${data.endereco||''}" class="campo"></div>
             <div><span class="label-campo">Valor Total</span><input type="number" id="valor_desejado" value="${data.valor_desejado||0}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
@@ -358,16 +327,14 @@ async function editar(id) {
             <div><span class="label-campo">Parcelas</span><input type="number" id="quantidade_parcelas" min="1" max="48" value="${data.quantidade_parcelas||1}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">Dias Entrega</span><input type="number" id="dias_entrega" value="${data.dias_entrega||7}" class="campo"></div>
             <div class="md:col-span-2">
-                <div class="titulo-bloco">📅 Datas de Vencimento</div>
+                <div class="titulo-bloco">📅 Datas</div>
                 <div class="tipo-data">
                     <label class="item-tipo"><input type="radio" name="tipo_data" value="automatico" ${!data.datas_parcelas?.length?'checked':''} onchange="mostrarOpcoesData(this.closest('.area-edicao'))"> Automático</label>
                     <label class="item-tipo"><input type="radio" name="tipo_data" value="manual" ${data.datas_parcelas?.length?'checked':''} onchange="mostrarOpcoesData(this.closest('.area-edicao'))"> Manual</label>
                 </div>
                 <div id="opcoesData" class="pl-4">
                     <select id="intervalo_auto" class="campo !w-auto" onchange="gerarDatasAutomaticas(this.closest('.area-edicao'))">
-                        <option value="30">A cada 30 dias</option>
-                        <option value="15">A cada 15 dias</option>
-                        <option value="7">A cada 7 dias</option>
+                        <option value="30">30 dias</option><option value="15">15 dias</option><option value="7">7 dias</option>
                     </select>
                     <div id="listaDatas" class="lista-datas"></div>
                 </div>
@@ -378,87 +345,44 @@ async function editar(id) {
             <button onclick="salvarEdicao('${id}')" class="botao botao-sucesso">💾 Salvar</button>
             <button onclick="fecharEdicao('${id}')" class="botao botao-cinza">❌ Cancelar</button>
         </div>`;
-    
     el.classList.add('ativa');
-    if(data.datas_parcelas?.length) {
-        const lista = el.querySelector('#listaDatas');
-        lista.innerHTML = '';
-        data.datas_parcelas.forEach(dt => {
-            lista.innerHTML += `<input type="date" name="data_parcela" value="${new Date(dt).toISOString().split('T')[0]}" class="campo !p-2 text-sm">`;
-        });
-    } else {
-        gerarDatasAutomaticas(el);
-    }
+    if(data.datas_parcelas?.length){
+        const l=el.querySelector('#listaDatas');l.innerHTML='';
+        data.datas_parcelas.forEach(d=>l.innerHTML+=`<input type="date" name="data_parcela" value="${new Date(d).toISOString().split('T')[0]}" class="campo !p-2 text-sm">`);
+    }else gerarDatasAutomaticas(el);
     atualizarCalculo(el);
 }
-
-function fecharEdicao(id) { document.getElementById(`editar-${id}`).classList.remove('ativa'); }
-
-async function salvarEdicao(id) {
-    const bloco = document.getElementById(`editar-${id}`);
-    const dados = pegarDados(bloco);
-    await supabase.from('propostas').update(dados).eq('id',id);
-    bloco.classList.remove('ativa');
-    carregarPropostas();
-}
-
-function abrirNovo() { 
-    document.getElementById('formNovo').classList.toggle('ativa'); 
-    if(document.getElementById('formNovo').classList.contains('ativa')) {
-        gerarDatasAutomaticas(document.getElementById('formNovo'));
-    }
-}
-function fecharNovo() { document.getElementById('formNovo').classList.remove('ativa'); }
-
-async function salvarNovo() {
-    const dados = pegarDados(document.getElementById('formNovo'));
-    await supabase.from('propostas').insert([dados]);
-    fecharNovo();
-    carregarPropostas();
-}
-
-function pegarDados(bloco) {
-    const camposData = bloco.querySelectorAll('input[name="data_parcela"]');
-    const datas = Array.from(camposData).map(i => i.value).filter(d => d);
-
+function fecharEdicao(id){document.getElementById(`editar-${id}`).classList.remove('ativa');}
+async function salvarEdicao(id){const b=document.getElementById(`editar-${id}`);await supabase.from('propostas').update(pegarDados(b)).eq('id',id);b.classList.remove('ativa');carregarPropostas();}
+function abrirNovo(){document.getElementById('formNovo').classList.toggle('ativa');}
+function fecharNovo(){document.getElementById('formNovo').classList.remove('ativa');}
+async function salvarNovo(){await supabase.from('propostas').insert([pegarDados(document.getElementById('formNovo'))]);fecharNovo();carregarPropostas();}
+function pegarDados(b){
+    const d=Array.from(b.querySelectorAll('input[name="data_parcela"]')).map(i=>i.value).filter(x=>x);
     return {
-        nome: bloco.querySelector('#nome').value.trim(),
-        cpf: bloco.querySelector('#cpf').value.trim(),
-        whatsapp: bloco.querySelector('#whatsapp').value.trim() || '',
-        cep: bloco.querySelector('#cep').value.trim(),
-        endereco: bloco.querySelector('#endereco').value.trim(),
-        valor_desejado: Number(bloco.querySelector('#valor_desejado').value)||0,
-        valor_entrada: Number(bloco.querySelector('#valor_entrada').value)||0,
-        juros_mensal: Number(bloco.querySelector('#juros_mensal').value)||5,
-        quantidade_parcelas: Number(bloco.querySelector('#quantidade_parcelas').value)||1,
-        dias_entrega: Number(bloco.querySelector('#dias_entrega').value)||7,
-        datas_parcelas: datas,
-        status: 'Nova',
-        entrada_paga: false,
-        parcelas_pagas: 0
+        nome:b.querySelector('#nome').value.trim(),
+        cpf:b.querySelector('#cpf').value.trim().replace(/\D/g,''),
+        whatsapp:b.querySelector('#whatsapp').value.trim().replace(/\D/g,''),
+        cep:b.querySelector('#cep').value.trim().replace(/\D/g,''),
+        endereco:b.querySelector('#endereco').value.trim(),
+        valor_desejado:Number(b.querySelector('#valor_desejado').value)||0,
+        valor_entrada:Number(b.querySelector('#valor_entrada').value)||0,
+        juros_mensal:Number(b.querySelector('#juros_mensal').value)||5,
+        quantidade_parcelas:Number(b.querySelector('#quantidade_parcelas').value)||1,
+        dias_entrega:Number(b.querySelector('#dias_entrega').value)||7,
+        datas_parcelas:d, status:'Nova', entrada_paga:false, parcelas_pagas:0
     };
 }
-
-// ✅ ENVIO DO LINK JÁ COM NÚMERO PRONTO
-function enviarLink(id, cpf, numCliente) {
-    if(!numCliente) { alert('WhatsApp do cliente não cadastrado!'); return; }
-    const link = `${LINK_CONSULTA}?cpf=${cpf}`;
-    const mensagem = `Olá! Sua proposta foi aprovada pela FlashCred 🟢\n\nAcesse aqui para ver detalhes, escolher parcelas e efetuar os pagamentos:\n👉 ${encodeURIComponent(link)}\n\nQualquer dúvida é só chamar!`;
-    window.open(`https://wa.me/55${numCliente}?text=${encodeURIComponent(mensagem)}`);
+function enviarLink(cpf,wpp){
+    if(!wpp||cpf.length!==11){alert('Dados inválidos!');return;}
+    const link=`${LINK_CONSULTA}?cpf=${cpf}`;
+    const msg=`Olá! Sua proposta foi APROVADA 🟢\nAcesse: ${encodeURIComponent(link)}\nObrigado!`;
+    window.open(`https://wa.me/55${wpp}?text=${encodeURIComponent(msg)}`);
 }
-
-async function excluir(id) {
-    if(!confirm('Tem certeza que deseja excluir?')) return;
-    await supabase.from('propostas').delete().eq('id',id);
-    carregarPropostas();
-}
-
-function ativarTempoReal() {
-    if(inscricaoTempoReal) return;
-    inscricaoTempoReal = supabase
-        .channel('mudancas_propostas_admin')
-        .on('postgres_changes',{event:'*',schema:'public',table:'propostas'},()=>carregarPropostas())
-        .subscribe();
+async function excluir(id){if(!confirm('Excluir?'))return;await supabase.from('propostas').delete().eq('id',id);carregarPropostas();}
+function ativarTempoReal(){
+    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+    inscricaoTempoReal = supabase.channel('atualizacao').on('postgres_changes',{event:'*',schema:'public',table:'propostas'},()=>carregarPropostas()).subscribe(s=>{if(s!=='SUBSCRIBED') setTimeout(ativarTempoReal,3000);});
 }
 </script>
 </body>
