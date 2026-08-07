@@ -32,11 +32,22 @@
         .btn-primary { background: #0A2463; color: white; }
         .btn-success { background: #10B981; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
+        .btn-cinza { background: #CBD5E1; color: #334155; }
         .loading { text-align: center; padding: 20px; color: #64748B; }
         .spinner { animation: gira 1s linear infinite; }
         @keyframes gira { 100% { transform: rotate(360deg); } }
 
-        /* ✅ PRAZO DE ENTREGA BEM DESTACADO NA TELA DO CLIENTE */
+        /* ✅ BARRA DE PROGRESSO COMPLETA */
+        .progresso { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; }
+        .progresso::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 3px; background: #E2E8F0; z-index: 0; }
+        .passo { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 12px; font-weight: 500; color: #94A3B8; }
+        .passo.ativo { color: #0A2463; font-weight: 700; }
+        .passo.concluido { color: #10B981; }
+        .bolinha { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; }
+        .passo.ativo .bolinha { background: #0A2463; color: white; }
+        .passo.concluido .bolinha { background: #10B981; color: white; }
+
+        /* ✅ AVISO DE ENTREGA SÓ APARECE DEPOIS DA APROVAÇÃO */
         .aviso-entrega {
             background: #FFFBEB;
             border: 3px solid #F59E0B;
@@ -99,16 +110,43 @@ function montarTela(p) {
     const parcela = q===1 ? total : ((total-e)*(Math.pow(1+j/100,q)*(j/100)))/(Math.pow(1+j/100,q)-1);
     const dias = p.dias_entrega || 7;
 
+    // ✅ Define qual passo está ativo
+    let passoAtual = 1;
+    if(p.status === 'Aprovada') passoAtual = 2;
+    if(p.status === 'Aprovada' && !p.entrada_paga) passoAtual = 3;
+    if(p.entrada_paga) passoAtual = 4;
+
     let html = `
     <div class="card">
         <h2 class="text-xl font-bold text-primary mb-2">Olá, ${p.nome || 'Cliente'}!</h2>
-        <p class="mb-2">Sua proposta está: <strong class="${p.status==='Aprovada'?'text-green-600':'text-orange-500'}">${p.status}</strong></p>
+        <p class="mb-3">Sua proposta está: <strong class="${p.status==='Aprovada'?'text-green-600':'text-orange-500'}">${p.status}</strong></p>
 
-        <!-- ✅ AQUI FICA O PRAZO BEM DESTACADO -->
+        <!-- ✅ BARRA DE PROGRESSO COMPLETA -->
+        <div class="progresso">
+            <div class="passo ${passoAtual>=1?'concluido':'ativo'}">
+                <div class="bolinha">${passoAtual>1?'✓':'1'}</div>
+                <span>Proposta</span>
+            </div>
+            <div class="passo ${passoAtual>=2?(passoAtual>2?'concluido':'ativo'):''}">
+                <div class="bolinha">${passoAtual>2?'✓':'2'}</div>
+                <span>Aprovada</span>
+            </div>
+            <div class="passo ${passoAtual>=3?(passoAtual>3?'concluido':'ativo'):''}">
+                <div class="bolinha">${passoAtual>3?'✓':'3'}</div>
+                <span>Contrato</span>
+            </div>
+            <div class="passo ${passoAtual>=4?'ativo':''}">
+                <div class="bolinha">4</div>
+                <span>Pagamento</span>
+            </div>
+        </div>
+
+        <!-- ✅ AVISO DE ENTREGA SÓ APARECE SE FOR APROVADA -->
+        ${p.status === 'Aprovada' ? `
         <div class="aviso-entrega">
             <i class="fas fa-truck"></i> 🚚 AVISO IMPORTANTE:<br>
             A ENTREGA SERÁ FEITA EM ATÉ <span class="text-2xl">${dias}</span> DIAS ÚTEIS APÓS CONFIRMAÇÃO DO PAGAMENTO!
-        </div>
+        </div>` : ''}
 
         <div class="bg-gray-50 p-3 rounded-lg mb-3">
             <p><strong>Valor do pedido:</strong> R$ ${v.toLocaleString('pt-BR',2)}</p>
@@ -118,23 +156,36 @@ function montarTela(p) {
         </div>
     `;
 
+    // ✅ Se ainda não aprovada: só mostra aguardando
+    if(p.status === 'Nova' || p.status === 'Em Análise') {
+        html += `
+        <div class="text-center p-4 bg-yellow-50 rounded-lg">
+            <i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i>
+            <p class="font-semibold">Aguardando análise da proposta...</p>
+            <p class="text-sm text-gray-600">Assim que aprovado você receberá a atualização aqui.</p>
+        </div>`;
+    }
+
+    // ✅ Se aprovada e não pagou entrada: mostra escolha de parcelas e contrato
     if(p.status === 'Aprovada' && !p.entrada_paga) {
         html += `
         <div class="card">
             <h3 class="font-bold text-lg mb-2">Escolha a quantidade de parcelas:</h3>
             <p class="text-sm text-gray-600 mb-3">Você pode escolher de 1 até ${q} parcelas</p>
-            <select id="escolherParcela" class="w-full p-3 border rounded-lg mb-3" onchange="atualizarValor(this.value, ${e}, ${j}, ${v})">
+            <select id="escolherParcela" class="w-full p-3 border rounded-lg mb-3">
                 ${Array.from({length:q}, (_,i)=>`<option value="${i+1}">${i+1}x de R$ ${ ((total-e)*(Math.pow(1+j/100,i+1)*(j/100))/(Math.pow(1+j/100,i+1)-1)).toLocaleString('pt-BR',2) }</option>`).join('')}
             </select>
-            <button onclick="liberarContrato()" class="btn btn-success">✅ Aceitar e Continuar</button>
+            <button onclick="liberarContrato()" class="btn btn-success">✅ Aceitar e Assinar Contrato</button>
         </div>`;
     }
 
+    // ✅ Se já pagou entrada: mostra sucesso e parcelas
     if(p.entrada_paga) {
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> ENTRADA PAGA COM SUCESSO!</div>
-            <p>Aguarde a confirmação para acessar suas parcelas e contrato.</p>
+            <p class="mb-2">Em breve você receberá acesso às suas parcelas e ao contrato completo.</p>
+            <p class="text-sm text-gray-600">Nós já fomos notificados e vamos conferir o pagamento.</p>
         </div>`;
     }
 
@@ -150,14 +201,8 @@ function montarTela(p) {
     document.getElementById('conteudoProposta').innerHTML = html;
 }
 
-function atualizarValor(qtd,e,j,v) {
-    const total=v*(1+j/100);
-    const parcela = ((total-e)*(Math.pow(1+j/100,qtd)*(j/100)))/(Math.pow(1+j/100,qtd)-1);
-}
-
 function liberarContrato() {
-    alert('Agora você será direcionado para assinar o contrato e gerar o Pix!');
-    // Aqui continua o fluxo de assinatura e Pix
+    alert('Agora você será direcionado para assinar o contrato e gerar o Pix da entrada!');
 }
 
 function ativarTempoReal(cpf) {
