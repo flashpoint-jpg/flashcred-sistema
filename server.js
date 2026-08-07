@@ -1,37 +1,42 @@
 const express = require('express');
-const fetch = require('node-fetch');
-const cors = require('cors');
 const path = require('path');
 const app = express();
-const PORTA = process.env.PORT || 3000;
 
-app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public'), { etag: false, lastModified: false }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// ✅ TOKEN EXATO — NÃO ALTERE
-const MP_TOKEN = 'APP_USR-8158139097874832-0727';
-
-// ✅ ROTA GARANTIDA
 app.post('/gerar-pix', async (req, res) => {
+    // 1. Pega o token das variáveis de ambiente do Render
+    const token = process.env.MP_TOKEN;
+
+    // 2. Verificação de segurança (se cair aqui, o erro é no painel do Render)
+    if (!token) {
+        console.error("ERRO: A variável MP_TOKEN não foi encontrada no Render.");
+        return res.status(400).json({ message: "authorization value not present" });
+    }
+
     try {
-        const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
-            method: 'POST',
+        const respostaMP = await fetch("https://api.mercadopago.com/v1/payments", {
+            method: "POST",
             headers: {
-                'Authorization': `Bearer ${MP_TOKEN}`,
-                'Content-Type': 'application/json'
+                "Authorization": `Bearer ${token.trim()}`,
+                "Content-Type": "application/json",
+                "X-Idempotency-Key": "ID-" + Date.now()
             },
             body: JSON.stringify(req.body)
         });
-        const dados = await resposta.json();
-        res.status(resposta.status).json(dados);
+
+        const dados = await respostaMP.json();
+        
+        if (!respostaMP.ok) {
+            return res.status(respostaMP.status).json(dados);
+        }
+
+        res.json(dados);
     } catch (erro) {
-        res.status(500).json({ erro: erro.message });
+        res.status(500).json({ message: erro.message });
     }
 });
 
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'consultar.html'));
-});
-
-app.listen(PORTA, () => console.log('✅ SERVIDOR PRONTO — SEM CACHE!'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
