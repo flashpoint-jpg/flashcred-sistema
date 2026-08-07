@@ -15,6 +15,7 @@
             --perigo: #EF4444;
             --azul: #3B82F6;
             --roxo: #8B5CF6;
+            --whats: #25D366;
             --bg-body: #F8FAFC;
             --borda: #E2E8F0;
             --texto: #334155;
@@ -25,7 +26,7 @@
         .container { max-width: 1200px; margin: 0 auto; }
         .cartao { background: white; border-radius: 12px; border: 1px solid var(--borda); padding: 18px; margin-bottom: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
         .linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
-        .etiqueta { font-weight: 600; color: var(--texto-claro); min-width: 130px; font-size: 14px; }
+        .etiqueta { font-weight: 600; color: var(--texto-claro); min-width: 140px; font-size: 14px; }
         .valor { font-weight: 700; font-size: 15px; }
         .botao { padding: 10px 14px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; transition: all 0.2s; }
         .botao:hover { transform: translateY(-1px); }
@@ -35,7 +36,7 @@
         .botao-perigo { background: var(--perigo); color: white; }
         .botao-azul { background: var(--azul); color: white; }
         .botao-roxo { background: var(--roxo); color: white; }
-        .botao-whatsapp { background: #25D366; color: white; }
+        .botao-whatsapp { background: var(--whats); color: white; }
         .botao-cinza { background: #94A3B8; color: white; }
         .botao-pequeno { padding: 8px 12px; font-size: 13px; }
         .status { display: inline-block; padding: 5px 12px; border-radius: 20px; font-weight: 600; font-size: 13px; }
@@ -60,6 +61,7 @@
         .form-linha input { width: 100%; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .area-pdf { position: absolute; left: -9999px; top: 0; background: white; padding: 40px; max-width: 800px; }
+        .whatsapp-link { color: #25D366; font-weight: bold; text-decoration: none; }
     </style>
 </head>
 <body>
@@ -132,10 +134,9 @@ let propostas = [];
 let filtroAtual = 'todas';
 let canalRealtime = null;
 let propostaEditando = null;
-let ultimaQtd = 0;
 
 // ==============================================
-// ✅ LOGIN COM SALVAMENTO DE SESSÃO — NÃO VOLTA MAIS!
+// ✅ LOGIN COM SESSÃO SALVA
 // ==============================================
 function entrar() {
     const senha = document.getElementById('senha').value;
@@ -152,7 +153,6 @@ function entrar() {
     }
 }
 
-// ✅ VERIFICA SE JÁ ESTÁ LOGADO AO CARREGAR
 window.onload = function() {
     if(localStorage.getItem('logadoFlashCred') === 'SIM') {
         document.getElementById('telaLogin').classList.add('oculto');
@@ -202,18 +202,15 @@ async function carregarPropostas() {
 }
 
 // ==============================================
-// ✅ TEMPO REAL CORRIGIDO — ATUALIZA SOZINHO!
+// ✅ TEMPO REAL
 // ==============================================
 function ativarRealtime() {
     if(canalRealtime) supabase.removeChannel(canalRealtime);
     canalRealtime = supabase.channel('mudancas_propostas', { config: { broadcast: { self: true } } })
         .on('postgres_changes', { event:'*', schema:'public', table:'propostas' }, (payload) => {
-            console.log('🔄 Atualização detectada!', payload);
             carregarPropostas();
         })
-        .subscribe((status) => {
-            console.log('📡 Realtime status:', status);
-        });
+        .subscribe();
 }
 
 // ==============================================
@@ -225,7 +222,7 @@ function filtrar(f) {
 }
 
 // ==============================================
-// ✅ APROVAR + WHATSAPP COM LINK
+// ✅ APROVAR + PERGUNTA ENVIAR WHATSAPP
 // ==============================================
 async function aprovarProposta(id) {
     const valorEnt = prompt('Valor da Entrada:');
@@ -410,11 +407,11 @@ function fecharModalEditar(e) {
 }
 
 // ==============================================
-// ✅ ENVIAR WHATSAPP COM LINK
+// ✅ ENVIAR WHATSAPP COM LINK — BOTÃO VISÍVEL!
 // ==============================================
 function enviarWhatsApp(p) {
     const whats = String(p.whatsapp||'').replace(/\D/g,'');
-    if(!whats) { alert('⚠️ Sem WhatsApp cadastrado!'); return; }
+    if(!whats) { alert('⚠️ Sem WhatsApp cadastrado para este cliente!'); return; }
 
     const valor = Number(p.valor_desejado||0);
     const juros = Number(p.juros_mensal||5)/100;
@@ -429,7 +426,7 @@ function enviarWhatsApp(p) {
 }
 
 // ==============================================
-// ✅ GERAR PDF DA PROPOSTA
+// ✅ GERAR PDF DA PROPOSTA — BOTÃO VISÍVEL!
 // ==============================================
 async function gerarPDF(id) {
     const p = propostas.find(x=>x.id===id);
@@ -450,9 +447,9 @@ async function gerarPDF(id) {
         <hr style="margin:15px 0;">
         <p><strong>Valor Solicitado:</strong> ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
         <p><strong>Juros:</strong> ${(juros*100).toFixed(1)}% ao mês</p>
-        <p style="font-size:18px; color:#10B981;"><strong>VALOR TOTAL:</strong> ${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
-        <p><strong>Entrada:</strong> ${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
-        <p><strong>Parcelas:</strong> ${p.quantidade_parcelas||0}x</p>
+        <p style="font-size:18px; color:#10B981;"><strong>VALOR TOTAL COM JUROS:</strong> ${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
+        <p><strong>Valor da Entrada:</strong> ${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
+        <p><strong>Quantidade de Parcelas:</strong> ${p.quantidade_parcelas||0}x</p>
         <p><strong>Prazo de entrega:</strong> ${p.dias_entrega||7} dias</p>
         <hr style="margin:15px 0;">
         <p style="text-align:right;">Muzambinho - MG, ${dt}</p>
@@ -460,11 +457,11 @@ async function gerarPDF(id) {
 
     const opt = { margin: 10, filename: `Proposta-${p.nome||'Cliente'}.pdf`, image: 'jpeg', html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
     await html2pdf().set(opt).from(area).save();
-    alert('✅ PDF gerado!');
+    alert('✅ PDF gerado com sucesso!');
 }
 
 // ==============================================
-// ✅ RENDERIZAR LISTA
+// ✅ RENDERIZAR LISTA — WHATSAPP VISÍVEL + TODOS OS BOTÕES!
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -501,18 +498,41 @@ function renderizarPropostas() {
                 <span class="status ${classeStatus}">${entradaPaga ? '💳 Paga' : status}</span>
             </div>
 
-            <div class="linha"><span class="etiqueta">CPF:</span><span class="valor">${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span></div>
-            <div class="linha"><span class="etiqueta">WhatsApp:</span><span class="valor">${whats ? `<a href="https://wa.me/55${whats}" target="_blank" style="color:#25D366; font-weight:bold;">📲 ${whats}</a>` : 'Não informado'}</span></div>
-            <div class="linha"><span class="etiqueta">Endereço/CEP:</span><span class="valor" style="font-size:13px;">${endereco}</span></div>
-            <div class="linha"><span class="etiqueta">Valor Solicitado:</span><span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>
-            <div class="linha destaque"><span class="etiqueta">💰 TOTAL COM JUROS:</span><span class="valor">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>
             <div class="linha">
-                <span class="etiqueta">Entrada:</span><span class="valor">${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ${entradaPaga ? '✅ PAGA' : ''}</span>
-                <span class="etiqueta" style="margin-left: 16px;">Parcelas:</span><span class="valor">${p.quantidade_parcelas || 0}x</span>
+                <span class="etiqueta">CPF:</span>
+                <span class="valor">${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span>
             </div>
             <div class="linha">
-                <span class="etiqueta">📦 Entrega em:</span><span class="valor">${diasEntrega} dias</span>
-                <span class="etiqueta" style="margin-left: 16px;">Juros:</span><span class="valor">${(juros*100).toFixed(1)}% ao mês</span>
+                <span class="etiqueta">📱 WhatsApp:</span>
+                <span class="valor">
+                    ${whats 
+                        ? `<a href="https://wa.me/55${whats}" target="_blank" class="whatsapp-link">📲 ${whats}</a>` 
+                        : '<span style="color:red;">⚠️ NÃO INFORMADO</span>'}
+                </span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">Endereço/CEP:</span>
+                <span class="valor" style="font-size:13px;">${endereco}</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">Valor Solicitado:</span>
+                <span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+            </div>
+            <div class="linha destaque">
+                <span class="etiqueta">💰 TOTAL COM JUROS:</span>
+                <span class="valor">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">Entrada:</span>
+                <span class="valor">${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ${entradaPaga ? '✅ PAGA' : ''}</span>
+                <span class="etiqueta" style="margin-left: 16px;">Parcelas:</span>
+                <span class="valor">${p.quantidade_parcelas || 0}x</span>
+            </div>
+            <div class="linha">
+                <span class="etiqueta">📦 Entrega em:</span>
+                <span class="valor">${diasEntrega} dias</span>
+                <span class="etiqueta" style="margin-left: 16px;">Juros:</span>
+                <span class="valor">${(juros*100).toFixed(1)}% ao mês</span>
             </div>
 
             ${dadosParcelas.length > 0 ? `
@@ -544,7 +564,7 @@ function renderizarPropostas() {
                 ` : ''}
                 <button onclick="abrirEditar(${p.id})" class="botao botao-azul botao-pequeno">✏️ Editar</button>
                 <button onclick="gerarPDF(${p.id})" class="botao botao-alerta botao-pequeno">📄 Gerar PDF</button>
-                ${whats ? `<button onclick="enviarWhatsApp(${p.id})" class="botao botao-whatsapp botao-pequeno">💬 WhatsApp com Link</button>` : ''}
+                ${whats ? `<button onclick="enviarWhatsApp(${p.id})" class="botao botao-whatsapp botao-pequeno">💬 Enviar WhatsApp</button>` : ''}
                 <button onclick="excluirProposta(${p.id})" class="botao botao-perigo botao-pequeno">🗑️ Excluir</button>
             </div>
         </div>`;
