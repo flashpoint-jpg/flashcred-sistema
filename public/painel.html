@@ -7,10 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        :root {
-            --primary: #0A2463; --sucesso: #10B981; --alerta: #F59E0B; --perigo: #EF4444;
-            --bg-body: #F8FAFC; --borda: #E2E8F0; --texto: #334155; --texto-claro: #64748B;
-        }
+        :root { --primary: #0A2463; --sucesso: #10B981; --alerta: #F59E0B; --perigo: #EF4444; --bg-body: #F8FAFC; --borda: #E2E8F0; --texto: #334155; --texto-claro: #64748B; }
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
         body { background: var(--bg-body); color: var(--texto); }
         .cartao { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -21,33 +18,38 @@
         .botao-perigo { background: var(--perigo); color: white; }
         .botao-cinza { background: var(--borda); color: var(--texto); }
         .botao-wpp { background: #25D366; color: white; }
-        .barra-resumo { background: white; border-radius: 8px; padding: 12px; margin-bottom: 16px; display: flex; gap: 15px; }
+        .barra-resumo { background: white; border-radius: 8px; padding: 12px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 12px; }
         .linha-proposta { border-bottom: 1px solid var(--borda); padding: 16px 0; }
         .bloco-parcelas { background: #f1f5f9; padding: 10px; border-radius: 6px; margin-top: 10px; }
-        .campo { width: 100%; padding: 8px; border: 1px solid var(--borda); border-radius: 6px; margin-bottom: 8px; }
         .area-edicao { display:none; margin-top:15px; padding:12px; background:#f8fafc; border-radius:6px; border:1px solid var(--borda); }
         .area-edicao.ativa { display:block; }
+        .campo { width: 100%; padding: 8px; border: 1px solid var(--borda); border-radius: 6px; margin-bottom: 8px; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
     </style>
 </head>
 <body>
-<div id="telaLogin" class="container" style="max-width:400px; margin: 100px auto; padding: 20px;">
+
+<div id="telaLogin" class="container" style="max-width:400px; margin-top:100px;">
     <div class="cartao text-center">
-        <h2 class="mb-4">🔐 Acesso FlashCred</h2>
-        <input type="password" id="senha" placeholder="Senha" class="campo text-center">
+        <h2>🔐 Acesso FlashCred</h2>
+        <input type="password" id="senha" class="campo text-center">
         <button onclick="entrar()" class="botao botao-primario w-full">Entrar</button>
     </div>
 </div>
 
-<div id="telaPrincipal" class="container" style="display:none; max-width: 1200px; margin: 0 auto; padding: 20px;">
+<div id="telaPrincipal" class="container" style="display:none;">
     <div class="flex justify-between items-center mb-5">
-        <h1>⚙️ Painel Administrativo</h1>
+        <h1>⚙️ Painel FlashCred</h1>
         <button onclick="sair()" class="botao botao-cinza">Sair</button>
     </div>
-    <div class="barra-resumo">
-        <div>💰 Recebido: <span id="totalRecebido" class="text-sucesso font-bold">R$ 0,00</span></div>
-        <div>⏳ A Receber: <span id="totalReceber" class="text-alerta font-bold">R$ 0,00</span></div>
-        <div>📋 Pendentes: <span id="qtdPendentes" class="font-bold">0</span></div>
+
+    <div class="barra-resumo" id="barraResumo">
+        <!-- Resumos aqui -->
+        <div>💰 Total: <span id="totalRecebido">R$ 0,00</span></div>
     </div>
+
+    <button onclick="abrirNovo()" class="botao botao-sucesso mb-3">➕ Nova Proposta</button>
+    <div id="formNovo" class="area-edicao mb-4"></div>
     <div id="listaPropostas"></div>
 </div>
 
@@ -56,22 +58,10 @@ const supabase = window.supabase.createClient('https://rgcclordmqjmwuzrrfbd.supa
 const SENHA = 'flash2026';
 const NUMERO_WPP = '5511973294235';
 
-function entrar() {
-    if(document.getElementById('senha').value === SENHA) {
-        localStorage.setItem('logado_flashcred', 'SIM');
-        window.location.reload();
-    } else alert('Senha incorreta!');
-}
-
-function sair() { localStorage.removeItem('logado_flashcred'); window.location.reload(); }
-
-window.onload = () => {
-    if(localStorage.getItem('logado_flashcred') === 'SIM') {
-        document.getElementById('telaLogin').style.display = 'none';
-        document.getElementById('telaPrincipal').style.display = 'block';
-        carregarPropostas();
-    }
-};
+// [FUNÇÕES DE LOGIN E UI MANTIDAS]
+function entrar() { if(document.getElementById('senha').value === SENHA) { localStorage.setItem('logado_flashcred', 'SIM'); location.reload(); } else alert('Senha errada!'); }
+function sair() { localStorage.removeItem('logado_flashcred'); location.reload(); }
+window.onload = () => { if(localStorage.getItem('logado_flashcred') === 'SIM') { document.getElementById('telaLogin').style.display='none'; document.getElementById('telaPrincipal').style.display='block'; carregarPropostas(); } };
 
 async function carregarPropostas() {
     const {data} = await supabase.from('propostas').select('*').order('created_at',{ascending:false});
@@ -82,26 +72,41 @@ async function carregarPropostas() {
         const vParcela = q === 1 ? total : ((total - e) * (Math.pow(1 + j/100, q) * (j/100))) / (Math.pow(1 + j/100, q) - 1);
         const dataCriacao = new Date(i.created_at);
 
-        let htmlParcelas = '<div class="bloco-parcelas"><p class="font-bold text-xs mb-2">📋 Cronograma de Pagamento:</p>';
+        // Lista de Parcelas com datas
+        let htmlParcelas = '<div class="bloco-parcelas"><p class="font-bold text-xs mb-1">📅 Cronograma de Parcelas:</p>';
         for(let p=1; p<=q; p++) {
             let venc = new Date(dataCriacao);
             venc.setMonth(venc.getMonth() + p);
-            const dataStr = venc.toLocaleDateString('pt-BR');
+            const d = venc.toLocaleDateString('pt-BR');
             htmlParcelas += `
-                <div class="flex justify-between items-center bg-white p-2 mb-1 rounded border text-xs">
-                    <span><strong>Parc ${p}/${q}</strong> | Venc: ${dataStr} | <strong>R$ ${vParcela.toFixed(2)}</strong></span>
-                    <button onclick="cobrar('${i.nome}', ${p}, ${q}, ${vParcela.toFixed(2)}, '${dataStr}')" class="botao botao-wpp">Cobrar</button>
+                <div class="flex justify-between items-center text-xs bg-white p-2 rounded border mb-1">
+                    <span>Parc ${p}/${q} | <strong>Venc: ${d}</strong> | R$ ${vParcela.toFixed(2)}</span>
+                    <button onclick="cobrar('${i.nome}',${p},${q},${vParcela.toFixed(2)},'${d}')" class="botao botao-wpp !py-1 !px-2">Cobrar</button>
                 </div>`;
         }
-        html += `<div class="linha-proposta"><strong>${i.nome}</strong> - ${i.cpf}<br>${htmlParcelas}</div>`;
+        htmlParcelas += '</div>';
+
+        html += `
+        <div class="linha-proposta">
+            <strong>${i.nome}</strong> | Status: <strong>${i.status}</strong>
+            ${htmlParcelas}
+            <div class="flex gap-2 mt-2">
+                <button onclick="mudarStatus('${i.id}','Aprovada')" class="botao botao-sucesso">Aprovar</button>
+                <button onclick="excluir('${i.id}')" class="botao botao-perigo">Excluir</button>
+            </div>
+        </div>`;
     });
     document.getElementById('listaPropostas').innerHTML = html;
 }
 
-function cobrar(nome, p, total, valor, data) {
-    const msg = `Olá, ${nome}! Segue a cobrança da parcela ${p}/${total}.\n\n💳 Valor: R$ ${valor}\n📅 Vencimento: ${data}\n\nFavor confirmar pagamento.`;
+function cobrar(nome, p, tot, val, data) {
+    const msg = `Olá ${nome}, segue cobrança da parcela ${p}/${tot}. Valor: R$ ${val}, Vencimento: ${data}.`;
     window.open(`https://wa.me/${NUMERO_WPP}?text=${encodeURIComponent(msg)}`);
 }
+
+async function mudarStatus(id, status) { await supabase.from('propostas').update({status}).eq('id',id); carregarPropostas(); }
+async function excluir(id) { if(confirm('Excluir?')) { await supabase.from('propostas').delete().eq('id',id); carregarPropostas(); } }
+function abrirNovo() { document.getElementById('formNovo').classList.toggle('ativa'); }
 </script>
 </body>
 </html>
