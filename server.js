@@ -1,42 +1,37 @@
-const express = require('express');
-const path = require('path');
-const app = express();
-
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.post('/gerar-pix', async (req, res) => {
-    const token = process.env.MP_TOKEN;
-
-    if (!token) {
-        console.error("ERRO: A variável MP_TOKEN não foi encontrada no Render.");
-        return res.status(400).json({ message: "authorization value not present" });
-    }
-
+app.post('/webhook', async (req, res) => {
     try {
-        const respostaMP = await fetch("https://api.mercadopago.com/v1/payments", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${token.trim()}`,
-                "Content-Type": "application/json",
-                "X-Idempotency-Key": "ID-" + Date.now()
-            },
-            body: JSON.stringify(req.body)
-        });
+        const { type, data } = req.body;
 
-        const dados = await respostaMP.json();
-        
-        if (!respostaMP.ok) {
-            console.error("Erro do Mercado Pago:", dados);
-            return res.status(respostaMP.status).json({ message: dados.message || "Erro ao gerar pagamento" });
+        if (type === 'payment') {
+            const paymentId = data.id;
+            
+            // Busca os detalhes do pagamento no Mercado Pago
+            const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+                headers: { 'Authorization': `Bearer ${process.env.MP_TOKEN.trim()}` }
+            });
+            const pag = await response.json();
+
+            if (pag.status === 'approved') {
+                const ref = pag.external_reference; // Ex: "12_entrada" ou "12_parcela_1"
+                
+                if (ref) {
+                    const partes = ref.split('_');
+                    const propostaId = partes[0];
+
+                    if (ref.includes('entrada')) {
+                        // Dá baixa na entrada
+                        await supabase.from('propostas').update({ entrada_paga: true }).eq('id', propostaId);
+                    } else if (ref.includes('parcela')) {
+                        const numParcela = parseInt(partes[2]);
+                        // Atualiza a contagem de parcelas pagas no Supabase
+                        await supabase.from('propostas').update({ parcelas_pagas: numParcela }).eq('id', propostaId);
+                    }
+                }
+            }
         }
-
-        res.json(dados);
-    } catch (erro) {
-        console.error("Erro interno:", erro);
-        res.status(500).json({ message: erro.message });
+        res.sendStatus(200);
+    } catch (error) {
+        console.error('Erro no webhook:', error);
+        res.sendStatus(500);
     }
 });
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Servidor rodando na porta ${PORT}`));
