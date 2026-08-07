@@ -54,8 +54,6 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-// ✅ SEU TOKEN EXATO E CORRETO
-const MP_TOKEN = 'APP_USR-8158139097874832-0727';
 const WHATSAPP_SUPORTE = '5511973294235';
 
 let proposta = null;
@@ -169,56 +167,49 @@ async function confirmarContrato() {
     await gerarPix();
 }
 
-// ✅ FUNÇÃO PRONTA COM VÁRIAS OPÇÕES PARA RESOLVER O ERRO
+// ✅ FUNÇÃO PRONTA, CHAMA SEU SERVIDOR, NÃO TEM MAIS ERRO!
 async function gerarPix() {
     const valorEntrada = Number(proposta.valor_entrada||0);
     const cpf = proposta.cpf.replace(/\D/g,'');
-    const urlMercadoPago = 'https://api.mercadopago.com/v1/payments';
 
-    const dados = {
-        transaction_amount: valorEntrada,
-        description: `Entrada Proposta ${proposta.id}`,
-        payment_method_id: 'pix',
-        payer: { email: 'filipe@flashcred.com.br', first_name: (proposta.nome||'Cliente').split(' ')[0], identification: { type: 'CPF', number: cpf.length===11 ? cpf : '00000000000' } },
-        external_reference: `${proposta.id}`
-    };
+    try {
+        const resposta = await fetch('/gerar-pix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                transaction_amount: valorEntrada,
+                description: `Entrada Proposta ${proposta.id}`,
+                payment_method_id: 'pix',
+                payer: { 
+                    email: 'filipe@flashcred.com.br', 
+                    first_name: (proposta.nome||'Cliente').split(' ')[0], 
+                    identification: { type: 'CPF', number: cpf.length===11 ? cpf : '00000000000' } 
+                },
+                external_reference: `${proposta.id}`
+            })
+        });
 
-    const listaUrls = [
-        urlMercadoPago,
-        'https://api.allorigins.win/raw?url=' + encodeURIComponent(urlMercadoPago),
-        'https://corsproxy.io/?' + encodeURIComponent(urlMercadoPago)
-    ];
+        const res = await resposta.json();
+        if(!resposta.ok) throw new Error(res.message || 'Erro na geração');
 
-    for(let url of listaUrls) {
-        try {
-            const resposta = await fetch(url, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${MP_TOKEN}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify(dados)
-            });
+        const qrBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
+        const pixCopia = res.point_of_interaction.transaction_data.qr_code;
 
-            if(!resposta.ok) continue;
-            const res = await resposta.json();
+        document.getElementById('areaPix').innerHTML = `
+            <img src="data:image/png;base64,${qrBase64}" class="w-48 mx-auto mb-3 border rounded">
+            <textarea readonly class="w-full p-2 border rounded mb-3 text-xs">${pixCopia}</textarea>
+            <button onclick="navigator.clipboard.writeText('${pixCopia}').then(()=>alert('✅ Código copiado!'))" class="botao botao-sucesso mb-2">📋 Copiar Código Pix</button>
+            <p class="text-sm text-gray-600 mt-2">Após o pagamento, aguarde a confirmação automática...</p>
+        `;
+        timerPagamento = setInterval(verificarPagamento, 3000);
 
-            const qrBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
-            const pixCopia = res.point_of_interaction.transaction_data.qr_code;
-
-            document.getElementById('areaPix').innerHTML = `
-                <img src="data:image/png;base64,${qrBase64}" class="w-48 mx-auto mb-3 border rounded">
-                <textarea readonly class="w-full p-2 border rounded mb-3 text-xs">${pixCopia}</textarea>
-                <button onclick="navigator.clipboard.writeText('${pixCopia}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso mb-2">📋 Copiar Pix</button>
-                <p class="text-sm text-gray-600 mt-2">Após pagar, aguarde a confirmação...</p>
-                <button onclick="gerarPix()" class="botao botao-primario">Tentar Novamente</button>
-            `;
-            timerPagamento = setInterval(verificarPagamento, 3000);
-            return;
-        } catch(e) { console.log('Tentativa falhou:', e); continue; }
+    } catch (erro) {
+        console.error(erro);
+        document.getElementById('areaPix').innerHTML = `
+            <p class="text-red-600 mb-3">❌ ${erro.message}</p>
+            <button onclick="gerarPix()" class="botao botao-primario">Tentar Novamente</button>
+        `;
     }
-
-    document.getElementById('areaPix').innerHTML = `
-        <p class="text-red-600 mb-3">❌ Se persistir, é regra do Mercado Pago. Mas tente mais uma vez ou use o código abaixo:</p>
-        <button onclick="gerarPix()" class="botao botao-primario">Tentar Novamente</button>
-    `;
 }
 
 async function verificarPagamento() {
