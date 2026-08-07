@@ -1,40 +1,490 @@
-<!-- Substitua sua função irEtapa3 e gerarPixMercadoPago por estas: -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minha Proposta | FlashCred</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0A2463',
+                        pix: '#32BCAD',
+                        sucesso: '#10B981',
+                        alerta: '#F59E0B',
+                        perigo: '#EF4444',
+                        fundo: '#F8FAFC'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background: #F8FAFC; min-height: 100vh; }
+        .cartao { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .botao { padding: 12px; border-radius: 8px; font-weight: bold; border: none; width: 100%; font-size: 16px; margin-top: 10px; cursor: pointer; transition: 0.2s; }
+        .botao:disabled { background: #ccc; cursor: not-allowed; opacity: 0.7; }
+        .botao-primario { background: #0A2463; color: white; }
+        .botao-sucesso { background: #10B981; color: white; }
+        .botao-cinza { background: #E5E7EB; color: #374151; }
+        .contrato { background: #f9fafb; border: 1px solid #ddd; border-radius: 8px; padding: 15px; max-height: 250px; overflow-y: auto; font-size: 14px; line-height: 1.6; }
+        canvas, video { border: 2px solid #ccc; border-radius: 8px; background: white; width: 100%; max-width: 360px; }
+        .barra-progresso { height: 10px; background: #E2E8F0; border-radius: 5px; overflow: hidden; margin-bottom: 20px; }
+        .barra-progresso > div { height: 100%; background: #0A2463; width: 0%; transition: all 0.4s ease; }
+        .etapa-indicador { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 11px; color: #94A3B8; text-align: center; }
+        .etapa-indicador span.active { color: #0A2463; font-weight: bold; }
+        .opcao-parcela { border: 2px solid #E2E8F0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.2s; margin-bottom: 10px; text-align: center; background: white; }
+        .opcao-parcela:hover { border-color: #3B82F6; background: #EFF6FF; }
+        .opcao-parcela.selecionada { border-color: #0A2463; background: #DBEAFE; font-weight: bold; }
+        .parcela-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .parcela-paga { background: #f0fdf4; border-left: 4px solid #10B981; }
+        .parcela-pendente { background: #fffbeb; border-left: 4px solid #f59e0b; }
+    </style>
+</head>
+<body class="p-4">
+
+<div class="max-w-md mx-auto">
+    <h1 class="text-2xl font-bold text-center text-primary mb-4">📋 Minha Proposta</h1>
+    
+    <!-- BARRA DE PROGRESSO -->
+    <div class="etapa-indicador">
+        <span id="etapa-ind-1">1. Escolher Parcela</span>
+        <span id="etapa-ind-2">2. Contrato</span>
+        <span id="etapa-ind-3">3. Pagamento</span>
+        <span id="etapa-ind-4">4. Parcelas</span>
+    </div>
+    <div class="barra-progresso">
+        <div id="barra-progresso"></div>
+    </div>
+
+    <div id="conteudo"></div>
+</div>
+
 <script>
-async function irEtapa3() {
-    etapaAtual = 3;
+const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+
+const MP_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
+const WHATSAPP = '5511973294235';
+
+let proposta = null;
+let etapaAtual = 1;
+let qtdParcelasEscolhida = null;
+let assinaturaCanvas = null, assinaturaContext = null, assinando = false;
+let temAssinaturaValida = false;
+let streamCamera = null;
+let intervalChecagemPagamento = null;
+
+window.onload = async () => {
+    const params = new URLSearchParams(window.location.search);
+    let cpf = (params.get('cpf') || '').replace(/\D/g, '');
+    
+    if(!cpf || cpf.length !== 11) {
+        document.getElementById('conteudo').innerHTML = `
+            <div class="cartao p-5 text-center">
+                <p class="mb-3">Digite seu CPF para consultar:</p>
+                <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" class="w-full p-3 border rounded-lg text-center text-lg">
+                <button onclick="buscar()" class="botao botao-primario">Consultar</button>
+            </div>
+        `;
+        return;
+    }
+    await carregar(cpf);
+};
+
+async function buscar() {
+    let cpf = document.getElementById('cpf').value.replace(/\D/g, '');
+    if(cpf.length !== 11) { alert('CPF inválido!'); return; }
+    window.location.search = '?cpf=' + cpf;
+}
+
+async function carregar(cpf) {
+    const {data, error} = await supabase
+        .from('propostas')
+        .select('*')
+        .ilike('cpf', '%' + cpf + '%')
+        .order('created_at', {ascending:false})
+        .limit(1);
+
+    if(error || !data || data.length === 0) {
+        document.getElementById('conteudo').innerHTML = `
+            <div class="cartao p-5 text-center">
+                <p class="text-red-600 font-bold">Proposta não encontrada!</p>
+                <a href="?" class="inline-block mt-4 text-primary">← Tentar novamente</a>
+            </div>
+        `;
+        return;
+    }
+
+    proposta = data[0];
+    
+    if(proposta.entrada_paga) {
+        etapaAtual = 4;
+        atualizarBarra();
+        mostrarParcelasLiberadas();
+        return;
+    }
+
+    if((proposta.status || 'Nova') !== 'Aprovada') {
+        document.getElementById('conteudo').innerHTML = `
+            <div class="cartao p-5 text-center">
+                <p class="text-lg font-bold text-alerta">⏳ Aguardando Aprovação</p>
+                <p class="text-gray-600 mt-2">Sua proposta está em análise.</p>
+                <a href="https://wa.me/${WHATSAPP}" target="_blank" class="botao botao-sucesso mt-4">Falar no WhatsApp</a>
+            </div>
+        `;
+        return;
+    }
+
+    renderizarEtapa1_EscolherParcelas();
+}
+
+function calcularValores(valor, entrada, juros, qtd) {
+    const total = valor * (1 + juros / 100);
+    const saldo = total - entrada;
+    let parcela = 0;
+    if(qtd === 1) parcela = total;
+    else if(saldo > 0 && qtd > 0) {
+        const tx = juros / 100;
+        parcela = saldo * Math.pow(1+tx, qtd) * tx / (Math.pow(1+tx, qtd) - 1);
+    }
+    return {total, parcela, saldo};
+}
+
+function atualizarBarra() {
+    const porcentagens = { 1: '25%', 2: '50%', 3: '75%', 4: '100%' };
+    document.getElementById('barra-progresso').style.width = porcentagens[etapaAtual] || '0%';
+    for (let i = 1; i <= 4; i++) {
+        const ind = document.getElementById(`etapa-ind-${i}`);
+        if (ind) ind.classList.toggle('active', i === etapaAtual);
+    }
+}
+
+// ========= ETAPA 1 — ESCOLHER PARCELAS =========
+function renderizarEtapa1_EscolherParcelas() {
+    etapaAtual = 1;
     atualizarBarra();
+    temAssinaturaValida = false;
+    if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
+
+    const valor = Number(proposta.valor_desejado || 0);
     const entrada = Number(proposta.valor_entrada || 0);
+    const juros = Number(proposta.juros_mensal || 5);
+    const qtdMax = Number(proposta.quantidade_parcelas || 1);
+    const dias = Number(proposta.dias_entrega || 7);
+
+    let opcoes = '';
+    for(let i=1; i<=qtdMax; i++) {
+        const calc = calcularValores(valor, entrada, juros, i);
+        opcoes += `
+        <div class="opcao-parcela" onclick="escolherParcela(${i})">
+            <strong>${i}x</strong> — R$ ${calc.parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}/mês
+            <div class="text-sm text-gray-500">Total: R$ ${calc.total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+        </div>`;
+    }
 
     document.getElementById('conteudo').innerHTML = `
-        <div class="cartao p-5 text-center">
-            <h2 class="text-lg font-bold mb-3 text-primary">💳 Pagamento da Entrada</h2>
-            <p class="text-2xl font-bold text-sucesso mb-4">R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-            <p class="text-sm text-gray-600 mb-6">Você será redirecionado para o ambiente seguro do Mercado Pago para finalizar seu PIX.</p>
-            <button onclick="gerarCheckoutMP()" class="botao botao-sucesso">Pagar com PIX no Mercado Pago</button>
-            <button onclick="irEtapa2()" class="botao botao-cinza mt-3">Voltar</button>
+        <div class="cartao p-5">
+            <h2 class="text-lg font-bold text-primary mb-3">👤 ${proposta.nome || 'Cliente'}</h2>
+            <div class="space-y-2 text-sm mb-4">
+                <p><strong>CPF:</strong> ${(proposta.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
+                <p><strong>Valor Solicitado:</strong> R$ ${valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                <p class="text-sucesso font-bold">💵 Entrada: R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                <p><strong>📦 Entrega em:</strong> ${dias} dias após confirmação</p>
+            </div>
+
+            <p class="font-bold mb-3">Escolha em quantas vezes deseja pagar:</p>
+            ${opcoes}
+
+            <button id="btnAvancar" class="botao botao-primario" onclick="irEtapa2()" disabled>Continuar → Ler e Assinar Contrato</button>
         </div>
     `;
 }
 
-async function gerarCheckoutMP() {
+function escolherParcela(qtd) {
+    qtdParcelasEscolhida = qtd;
+    document.querySelectorAll('.opcao-parcela').forEach((el, i) => {
+        el.classList.toggle('selecionada', i + 1 === qtd);
+    });
+    document.getElementById('btnAvancar').disabled = false;
+}
+
+// ========= ETAPA 2 — CONTRATO + ASSINATURA + SELFIE =========
+function irEtapa2() {
+    etapaAtual = 2;
+    atualizarBarra();
+    temAssinaturaValida = false;
+
+    const valor = Number(proposta.valor_desejado || 0);
     const entrada = Number(proposta.valor_entrada || 0);
+    const juros = Number(proposta.juros_mensal || 5);
+    const calc = calcularValores(valor, entrada, juros, qtdParcelasEscolhida);
+    const dias = Number(proposta.dias_entrega || 7);
+
+    document.getElementById('conteudo').innerHTML = `
+        <div class="cartao p-5">
+            <h2 class="text-lg font-bold mb-3">📄 Contrato de Compra e Parcelamento</h2>
+            <div class="contrato mb-4">
+                <p>Eu, <strong>${proposta.nome || 'Cliente'}</strong>, CPF ${(proposta.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}, declaro que li e aceito:</p>
+                <p class="mt-2">• Valor do produto: R$ ${valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                <p>• Entrada: R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                <p>• Pagamento em ${qtdParcelasEscolhida}x de R$ ${calc.parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                <p>• Valor total: R$ ${calc.total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                <p>• Entrega em até ${dias} dias após confirmação do pagamento da entrada.</p>
+                <p class="mt-3">Declaro que ao deixar de pagar estarei prejudicando a confiança concedida. Pense bem antes de assumir este compromisso. Conte comigo. Vamos fazer um mundo melhor.</p>
+            </div>
+
+            <label class="flex items-center mb-4 cursor-pointer">
+                <input type="checkbox" id="aceitoContrato" onchange="verificarContrato()" style="transform:scale(1.5); margin-right:10px;">
+                <span>Li e concordo com o contrato acima</span>
+            </label>
+
+            <p class="font-bold mb-2">📸 Foto (Selfie) — opcional:</p>
+            <video id="camera" autoplay playsinline style="display:none;"></video>
+            <button onclick="ligarCamera()" id="btnCamera" class="botao botao-cinza" style="padding:8px; font-size:14px;">📸 Ligar Câmera</button>
+            <button onclick="tirarFoto()" id="btnFoto" class="botao botao-sucesso" style="padding:8px; font-size:14px; display:none;">✅ Tirar Foto</button>
+            <canvas id="fotoTirada" style="display:none; max-width:200px;"></canvas>
+
+            <p class="font-bold mt-4 mb-2">✍️ Assine abaixo:</p>
+            <canvas id="assinatura" width="340" height="130"></canvas>
+            <button onclick="limparAssinatura()" class="botao botao-cinza" style="padding:8px; font-size:14px; margin-top:8px;">Limpar Assinatura</button>
+
+            <button id="btnAvancar2" class="botao botao-primario mt-4" onclick="irEtapa3()" disabled>Continuar → Ir para Pagamento</button>
+            <button onclick="renderizarEtapa1_EscolherParcelas()" class="botao botao-cinza">← Voltar</button>
+        </div>
+    `;
+
+    setTimeout(() => initAssinatura(), 50);
+}
+
+async function ligarCamera() {
     try {
-        const res = await fetch('https://api.mercadopago.com/checkout/preferences', {
+        streamCamera = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+        const video = document.getElementById('camera');
+        video.style.display = 'block';
+        video.srcObject = streamCamera;
+        document.getElementById('btnCamera').style.display = 'none';
+        document.getElementById('btnFoto').style.display = 'block';
+    } catch(e) {
+        alert('Câmera não disponível. Pode assinar normalmente.');
+    }
+}
+
+function tirarFoto() {
+    const video = document.getElementById('camera');
+    const canvas = document.getElementById('fotoTirada');
+    canvas.style.display = 'block';
+    const ctx = canvas.getContext('2d');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
+    document.getElementById('camera').style.display = 'none';
+    document.getElementById('btnFoto').style.display = 'none';
+    verificarContrato();
+}
+
+function verificarContrato() {
+    const aceito = document.getElementById('aceitoContrato').checked;
+    document.getElementById('btnAvancar2').disabled = !(aceito && temAssinaturaValida);
+}
+
+function initAssinatura() {
+    assinaturaCanvas = document.getElementById('assinatura');
+    if(!assinaturaCanvas) return;
+    assinaturaContext = assinaturaCanvas.getContext('2d');
+    assinaturaContext.lineWidth = 3;
+    assinaturaContext.lineCap = 'round';
+    assinaturaContext.strokeStyle = '#000';
+
+    function pos(e) {
+        const r = assinaturaCanvas.getBoundingClientRect();
+        const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+        const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+        return {x, y};
+    }
+
+    assinaturaCanvas.onmousedown = assinaturaCanvas.ontouchstart = e => {
+        e.preventDefault(); assinando = true;
+        assinaturaContext.beginPath();
+        const p = pos(e);
+        assinaturaContext.moveTo(p.x, p.y);
+        temAssinaturaValida = true;
+        verificarContrato();
+    };
+    assinaturaCanvas.onmousemove = assinaturaCanvas.ontouchmove = e => {
+        if(!assinando) return; e.preventDefault();
+        const p = pos(e);
+        assinaturaContext.lineTo(p.x, p.y);
+        assinaturaContext.stroke();
+    };
+    assinaturaCanvas.onmouseup = assinaturaCanvas.ontouchend = () => {
+        assinando = false;
+        verificarContrato();
+    };
+}
+
+function limparAssinatura() {
+    if(assinaturaContext) {
+        assinaturaContext.clearRect(0,0,assinaturaCanvas.width,assinaturaCanvas.height);
+        temAssinaturaValida = false;
+        verificarContrato();
+    }
+}
+
+// ========= ETAPA 3 — PAGAMENTO SEGURO VIA MERCADO PAGO =========
+async function irEtapa3() {
+    etapaAtual = 3;
+    atualizarBarra();
+
+    const entrada = Number(proposta.valor_entrada || 0);
+
+    document.getElementById('conteudo').innerHTML = `
+        <div class="cartao p-5 text-center">
+            <h2 class="text-lg font-bold mb-3">💳 Pagamento da Entrada</h2>
+            <p class="text-xl font-bold text-sucesso mb-4">R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+            <div id="areaCheckout" class="py-4">
+                <i class="fas fa-circle-notch fa-spin text-2xl text-primary"></i>
+                <p class="mt-2 text-sm text-gray-600">Preparando ambiente de pagamento seguro...</p>
+            </div>
+            <button onclick="irEtapa2()" class="botao botao-cinza mt-2">← Voltar</button>
+        </div>
+    `;
+
+    await gerarCheckoutMercadoPago();
+    iniciarMonitoramentoPagamento();
+}
+
+async function gerarCheckoutMercadoPago() {
+    const entrada = Number(proposta.valor_entrada || 0);
+
+    try {
+        const resposta = await fetch('https://api.mercadopago.com/checkout/preferences', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${MP_TOKEN}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                items: [{ title: `Entrada Proposta #${proposta.id}`, unit_price: entrada, quantity: 1, currency_id: 'BRL' }],
-                payment_methods: { excluded_payment_types: [{ id: "credit_card" }, { id: "debit_card" }] },
+                items: [{
+                    title: `Entrada - Proposta #${proposta.id}`,
+                    unit_price: entrada,
+                    quantity: 1,
+                    currency_id: 'BRL'
+                }],
+                payment_methods: {
+                    excluded_payment_types: [{ id: "credit_card" }, { id: "debit_card" }],
+                    installments: 1
+                },
                 external_reference: `${proposta.id}`,
-                back_urls: { success: window.location.href, failure: window.location.href, pending: window.location.href },
+                back_urls: {
+                    success: window.location.href,
+                    pending: window.location.href,
+                    failure: window.location.href
+                },
                 auto_return: "approved"
             })
         });
-        const data = await res.json();
-        if(data.init_point) window.location.href = data.init_point;
-    } catch(e) { alert('Erro ao abrir checkout. Tente novamente.'); }
+
+        if (!resposta.ok) throw new Error('Erro ao criar preferência de pagamento.');
+
+        const res = await resposta.json();
+
+        if (res.init_point) {
+            document.getElementById('areaCheckout').innerHTML = `
+                <p class="text-sm text-gray-700 mb-4">Clique no botão abaixo para abrir o ambiente seguro de pagamento Pix do Mercado Pago:</p>
+                <a href="${res.init_point}" class="botao botao-sucesso block text-center" style="text-decoration: none;">Pagar Entrada com Pix Agora</a>
+                <p class="text-xs text-gray-500 mt-4"><i class="fas fa-sync-alt fa-spin"></i> Esta página atualizará automaticamente assim que o pagamento for aprovado.</p>
+            `;
+        } else {
+            throw new Error('Link de pagamento indisponível.');
+        }
+
+    } catch (err) {
+        console.error(err);
+        document.getElementById('areaCheckout').innerHTML = `
+            <div class="p-3 bg-red-100 text-red-800 rounded-lg text-sm mb-3">
+                Erro ao gerar link de pagamento automático.
+            </div>
+            <button onclick="gerarCheckoutMercadoPago()" class="botao botao-primario">Tentar Novamente</button>
+        `;
+    }
+}
+
+function iniciarMonitoramentoPagamento() {
+    if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
+    
+    // Verifica a cada 4 segundos se o banco atualizou a coluna 'entrada_paga' para true
+    intervalChecagemPagamento = setInterval(async () => {
+        const { data, error } = await supabase
+            .from('propostas')
+            .select('entrada_paga')
+            .eq('id', proposta.id)
+            .single();
+
+        if (!error && data && data.entrada_paga) {
+            clearInterval(intervalChecagemPagamento);
+            proposta.entrada_paga = true;
+            etapaAtual = 4;
+            atualizarBarra();
+            mostrarParcelasLiberadas();
+        }
+    }, 4000);
+}
+
+// ========= ETAPA 4 — PARCELAS LIBERADAS =========
+async function mostrarParcelasLiberadas() {
+    if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
+
+    document.getElementById('conteudo').innerHTML = `
+        <div class="cartao p-5 text-center">
+            <div class="p-3 bg-green-50 text-sucesso rounded-lg mb-4 font-bold text-sm">
+                🎉 Entrada confirmada com sucesso! Suas parcelas estão liberadas.
+            </div>
+            <h2 class="text-lg font-bold text-primary mb-3">📅 Cronograma de Parcelas</h2>
+            <div id="listaParcelas" class="text-left space-y-2">
+                <p class="text-sm text-gray-500 text-center">Carregando parcelas...</p>
+            </div>
+            <a href="https://wa.me/${WHATSAPP}" target="_blank" class="botao botao-sucesso mt-4">Falar com Suporte no WhatsApp</a>
+        </div>
+    `;
+
+    const { data, error } = await supabase
+        .from('parcelas')
+        .select('*')
+        .eq('proposta_id', proposta.id)
+        .order('numero', { ascending: true });
+
+    const container = document.getElementById('listaParcelas');
+    if (error || !data || data.length === 0) {
+        container.innerHTML = `<p class="text-sm text-gray-600 text-center">Nenhuma parcela gerada ainda. Aguarde instantes.</p>`;
+        return;
+    }
+
+    let html = '';
+    data.forEach(p => {
+        const paga = p.status === 'Paga' || p.pago;
+        html += `
+            <div class="parcela-item ${paga ? 'parcela-paga' : 'parcela-pendente'}">
+                <div>
+                    <strong>Parcela ${p.numero}</strong><br>
+                    <span class="text-xs text-gray-600">Vencimento: ${p.vencimento ? new Date(p.vencimento).toLocaleDateString('pt-BR') : 'A definir'}</span>
+                </div>
+                <div class="text-right">
+                    <span class="font-bold">R$ ${Number(p.valor || 0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</span><br>
+                    <span class="text-xs font-bold ${paga ? 'text-sucesso' : 'text-alerta'}">${paga ? 'Paga ✅' : 'Pendente ⏳'}</span>
+                </div>
+            </div>
+        `;
+    });
+    container.innerHTML = html;
 }
 </script>
+
+</body>
+</html>
