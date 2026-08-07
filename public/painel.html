@@ -184,7 +184,7 @@ function salvarToken() {
 }
 
 // ==============================================
-// ✅ CARREGAR PROPOSTAS
+// ✅ CARREGAR PROPOSTAS — LÊ WHATSAPP DIREITO DO BANCO
 // ==============================================
 async function carregarPropostas() {
     try {
@@ -197,20 +197,31 @@ async function carregarPropostas() {
         propostas = data || [];
         renderizarPropostas();
     } catch(e) {
-        console.error('Erro:', e);
+        console.error('Erro ao carregar:', e);
     }
 }
 
 // ==============================================
-// ✅ TEMPO REAL
+// ✅ TEMPO REAL FORÇA ATUALIZAÇÃO INSTANTÂNEA!
 // ==============================================
 function ativarRealtime() {
     if(canalRealtime) supabase.removeChannel(canalRealtime);
-    canalRealtime = supabase.channel('mudancas_propostas', { config: { broadcast: { self: true } } })
-        .on('postgres_changes', { event:'*', schema:'public', table:'propostas' }, (payload) => {
+    canalRealtime = supabase.channel('atualizacao_propostas', { config: { broadcast: { self: true } } })
+        .on('postgres_changes', { event:'INSERT', schema:'public', table:'propostas' }, (payload) => {
+            console.log('📥 NOVA PROPOSTA CHEGOU!', payload);
             carregarPropostas();
         })
-        .subscribe();
+        .on('postgres_changes', { event:'UPDATE', schema:'public', table:'propostas' }, (payload) => {
+            console.log('🔄 PROPOSTA ALTERADA!', payload);
+            carregarPropostas();
+        })
+        .on('postgres_changes', { event:'DELETE', schema:'public', table:'propostas' }, (payload) => {
+            console.log('🗑️ PROPOSTA EXCLUÍDA!', payload);
+            carregarPropostas();
+        })
+        .subscribe((status) => {
+            console.log('📡 Realtime conectado:', status);
+        });
 }
 
 // ==============================================
@@ -222,7 +233,7 @@ function filtrar(f) {
 }
 
 // ==============================================
-// ✅ APROVAR + PERGUNTA ENVIAR WHATSAPP
+// ✅ APROVAR + ATUALIZA NA HORA
 // ==============================================
 async function aprovarProposta(id) {
     const valorEnt = prompt('Valor da Entrada:');
@@ -303,13 +314,13 @@ async function marcarEntradaPagaManual(id) {
 }
 
 // ==============================================
-// ✅ EXCLUIR
+// ✅ EXCLUIR — SOME NA HORA SEM PRECISAR DE F5!
 // ==============================================
 async function excluirProposta(id) {
     if(!confirm('⚠️ EXCLUIR? Essa ação não tem volta!')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ EXCLUÍDA!');
+    else alert('✅ EXCLUÍDA! Sumiu automaticamente!');
 }
 
 // ==============================================
@@ -394,9 +405,8 @@ async function salvarEdicao() {
 
     if(error) alert('❌ Erro: ' + error.message);
     else {
-        alert('✅ SALVO!');
+        alert('✅ SALVO! Atualizado automaticamente!');
         fecharModalEditar();
-        carregarPropostas();
     }
 }
 
@@ -407,11 +417,11 @@ function fecharModalEditar(e) {
 }
 
 // ==============================================
-// ✅ ENVIAR WHATSAPP COM LINK — BOTÃO VISÍVEL!
+// ✅ ENVIAR WHATSAPP — LÊ DO BANCO CORRETAMENTE
 // ==============================================
 function enviarWhatsApp(p) {
     const whats = String(p.whatsapp||'').replace(/\D/g,'');
-    if(!whats) { alert('⚠️ Sem WhatsApp cadastrado para este cliente!'); return; }
+    if(!whats) { alert('⚠️ Cliente não informou o WhatsApp! Peça para preencher!'); return; }
 
     const valor = Number(p.valor_desejado||0);
     const juros = Number(p.juros_mensal||5)/100;
@@ -426,7 +436,7 @@ function enviarWhatsApp(p) {
 }
 
 // ==============================================
-// ✅ GERAR PDF DA PROPOSTA — BOTÃO VISÍVEL!
+// ✅ GERAR PDF
 // ==============================================
 async function gerarPDF(id) {
     const p = propostas.find(x=>x.id===id);
@@ -461,7 +471,7 @@ async function gerarPDF(id) {
 }
 
 // ==============================================
-// ✅ RENDERIZAR LISTA — WHATSAPP VISÍVEL + TODOS OS BOTÕES!
+// ✅ EXIBIR WHATSAPP DIRETO DO BANCO + ATUALIZAÇÃO INSTANTÂNEA
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -479,7 +489,11 @@ function renderizarPropostas() {
         const valorTotal = valor * (1 + juros);
         const status = p.status || 'Nova';
         const entradaPaga = !!p.entrada_paga;
-        const whats = String(p.whatsapp||'').replace(/\D/g,'');
+        
+        // ✅ PEGA O WHATSAPP DIRETO DO BANCO — EXATAMENTE COMO O CLIENTE DIGITOU!
+        const whatsBruto = p.whatsapp || '';
+        const whatsLimpo = whatsBruto.replace(/\D/g,'');
+        
         const endereco = p.endereco || 'Não informado';
         const diasEntrega = p.dias_entrega || 7;
         const dadosParcelas = p.parcelas || [];
@@ -505,8 +519,8 @@ function renderizarPropostas() {
             <div class="linha">
                 <span class="etiqueta">📱 WhatsApp:</span>
                 <span class="valor">
-                    ${whats 
-                        ? `<a href="https://wa.me/55${whats}" target="_blank" class="whatsapp-link">📲 ${whats}</a>` 
+                    ${whatsLimpo 
+                        ? `<a href="https://wa.me/55${whatsLimpo}" target="_blank" class="whatsapp-link">📲 ${whatsBruto}</a>` 
                         : '<span style="color:red;">⚠️ NÃO INFORMADO</span>'}
                 </span>
             </div>
@@ -564,7 +578,7 @@ function renderizarPropostas() {
                 ` : ''}
                 <button onclick="abrirEditar(${p.id})" class="botao botao-azul botao-pequeno">✏️ Editar</button>
                 <button onclick="gerarPDF(${p.id})" class="botao botao-alerta botao-pequeno">📄 Gerar PDF</button>
-                ${whats ? `<button onclick="enviarWhatsApp(${p.id})" class="botao botao-whatsapp botao-pequeno">💬 Enviar WhatsApp</button>` : ''}
+                ${whatsLimpo ? `<button onclick="enviarWhatsApp(${p.id})" class="botao botao-whatsapp botao-pequeno">💬 Enviar WhatsApp</button>` : ''}
                 <button onclick="excluirProposta(${p.id})" class="botao botao-perigo botao-pequeno">🗑️ Excluir</button>
             </div>
         </div>`;
