@@ -81,6 +81,7 @@ let proposta = null;
 let etapaAtual = 1;
 let qtdParcelasEscolhida = null;
 let assinaturaCanvas = null, assinaturaContext = null, assinando = false;
+let temAssinaturaValida = false; // ✅ NOVA FORMA DE VERIFICAR
 let streamCamera = null;
 
 window.onload = async () => {
@@ -164,6 +165,7 @@ function calcularValores(valor, entrada, juros, qtd) {
 function renderizarEtapa1_EscolherParcelas() {
     etapaAtual = 1;
     atualizarBarra();
+    temAssinaturaValida = false; // Reseta ao voltar
 
     const valor = Number(proposta.valor_desejado || 0);
     const entrada = Number(proposta.valor_entrada || 0);
@@ -211,6 +213,7 @@ function escolherParcela(qtd) {
 function irEtapa2() {
     etapaAtual = 2;
     atualizarBarra();
+    temAssinaturaValida = false; // Reseta ao entrar
 
     const valor = Number(proposta.valor_desejado || 0);
     const entrada = Number(proposta.valor_entrada || 0);
@@ -236,7 +239,7 @@ function irEtapa2() {
                 <span>Li e concordo com o contrato acima</span>
             </label>
 
-            <p class="font-bold mb-2">📸 Foto (Selfie) — ou assine abaixo:</p>
+            <p class="font-bold mb-2">📸 Foto (Selfie) — opcional:</p>
             <video id="camera" autoplay playsinline style="display:none;"></video>
             <button onclick="ligarCamera()" id="btnCamera" class="botao botao-cinza" style="padding:8px; font-size:14px;">📸 Ligar Câmera</button>
             <button onclick="tirarFoto()" id="btnFoto" class="botao botao-sucesso" style="padding:8px; font-size:14px; display:none;">✅ Tirar Foto</button>
@@ -281,10 +284,11 @@ function tirarFoto() {
     verificarContrato();
 }
 
+// ✅ NOVA VERIFICAÇÃO — MAIS CONFIÁVEL!
 function verificarContrato() {
     const aceito = document.getElementById('aceitoContrato').checked;
-    const temAssinatura = assinaturaContext && assinaturaContext.getImageData(10,10,1,1).data[3] > 0;
-    document.getElementById('btnAvancar2').disabled = !aceito || !temAssinatura;
+    // Agora usa a variável de controle, não só a leitura do pixel
+    document.getElementById('btnAvancar2').disabled = !(aceito && temAssinaturaValida);
 }
 
 function initAssinatura() {
@@ -304,23 +308,29 @@ function initAssinatura() {
 
     assinaturaCanvas.onmousedown = assinaturaCanvas.ontouchstart = e => {
         e.preventDefault(); assinando = true;
-        const p = pos(e);
         assinaturaContext.beginPath();
+        const p = pos(e);
         assinaturaContext.moveTo(p.x, p.y);
+        // ✅ Marca que começou a assinar
+        temAssinaturaValida = true;
+        verificarContrato();
     };
     assinaturaCanvas.onmousemove = assinaturaCanvas.ontouchmove = e => {
         if(!assinando) return; e.preventDefault();
         const p = pos(e);
         assinaturaContext.lineTo(p.x, p.y);
         assinaturaContext.stroke();
+    };
+    assinaturaCanvas.onmouseup = assinaturaCanvas.ontouchend = () => {
+        assinando = false;
         verificarContrato();
     };
-    assinaturaCanvas.onmouseup = assinaturaCanvas.ontouchend = () => { assinando = false; verificarContrato(); };
 }
 
 function limparAssinatura() {
     if(assinaturaContext) {
         assinaturaContext.clearRect(0,0,assinaturaCanvas.width,assinaturaCanvas.height);
+        temAssinaturaValida = false; // ✅ ZERA SE LIMPAR
         verificarContrato();
     }
 }
