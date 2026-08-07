@@ -35,10 +35,12 @@
         .botao-alerta { background: var(--alerta); color: #1F2937; }
         .botao-cinza { background: #94A3B8; color: white; }
         .botao-pequeno { padding: 6px 10px; font-size: 12px; }
+        .botao-manual { background: #8B5CF6; color: white; }
         .status { display: inline-block; padding: 4px 10px; border-radius: 20px; font-weight: 600; font-size: 12px; }
         .status-nova { background: #FEF3C7; color: #92400E; }
         .status-aprovada { background: #D1FAE5; color: #065F46; }
         .status-reprovada { background: #FEE2E2; color: #991B1B; }
+        .status-paga { background: #D1FAE5; color: #065F46; border: 2px solid #10B981; }
         .barra-superior { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .area-senha { max-width: 420px; margin: 80px auto; text-align: center; }
         input { padding: 8px 10px; border: 1px solid var(--borda); border-radius: 6px; font-size: 14px; }
@@ -70,6 +72,7 @@
                 <button onclick="filtrar('todas')" class="botao botao-cinza botao-pequeno">Todas</button>
                 <button onclick="filtrar('Nova')" class="botao botao-alerta botao-pequeno">📄 Novas</button>
                 <button onclick="filtrar('Aprovada')" class="botao botao-sucesso botao-pequeno">✅ Aprovadas</button>
+                <button onclick="filtrar('Paga')" class="botao botao-sucesso botao-pequeno">💰 Pagas</button>
                 <button onclick="sair()" class="botao botao-perigo botao-pequeno">Sair</button>
             </div>
         </div>
@@ -79,7 +82,7 @@
 
 <script>
 // ==============================================
-// ✅ CONFIGURAÇÕES — LINK CORRIGIDO!
+// ✅ CONFIGURAÇÕES
 // ==============================================
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
@@ -87,7 +90,10 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 const SENHA = 'flash2026';
 
-// ✅ LINK CORRIGIDO — AGORA VAI FUNCIONAR SEMPRE!
+// ✅ SEU TOKEN DO MERCADO PAGO DE PRODUÇÃO
+const MP_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
+
+// ✅ LINK CORRIGIDO
 const BASE_URL = window.location.origin + window.location.pathname.replace('painel.html','');
 const LINK_CONSULTA = BASE_URL + 'consulta.html';
 
@@ -123,14 +129,14 @@ function sair() {
 }
 
 // ==============================================
-// ✅ PEGA WHATSAPP DE QUALQUER CAMPO
+// ✅ PEGA WHATSAPP
 // ==============================================
 function pegarWhatsapp(p) {
     return p.whatsapp || p.telefone || p.celular || p.contato || '';
 }
 
 // ==============================================
-// ✅ CÁLCULO CORRIGIDO — SEM VALOR NEGATIVO
+// ✅ CÁLCULO CORRIGIDO
 // ==============================================
 function calcularValores(valor, entrada, jurosPct, qtd) {
     const valorTotal = valor * (1 + jurosPct / 100);
@@ -146,30 +152,31 @@ function calcularValores(valor, entrada, jurosPct, qtd) {
     return { valorTotal, saldo, valorParcela };
 }
 
-function calcularEAtualizar(id) {
+// ==============================================
+// ✅ DÁ BAIXA MANUAL — BOTÃO NOVO!
+// ==============================================
+async function entradaPagaManualmente(id) {
     const prop = propostas.find(x=>x.id===id);
     if(!prop) return;
 
-    const valor = parseFloat(document.getElementById(`val_${id}`)?.value || prop.valor_desejado || 0);
-    const juros = parseFloat(document.getElementById(`jur_${id}`)?.value || prop.juros_mensal || 5);
-    const entrada = parseFloat(document.getElementById(`ent_${id}`)?.value || prop.valor_entrada || 0);
-    const qtd = parseInt(document.getElementById(`par_${id}`)?.value || prop.quantidade_parcelas || 1);
+    if(!confirm(`💰 Dar baixa MANUAL?\n\nCliente: ${prop.nome}\nEntrada: R$ ${(prop.valor_entrada||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}\n\nIsso libera as parcelas para o cliente.`)) return;
 
-    const calc = calcularValores(valor, entrada, juros, qtd);
+    const { error } = await supabase.from('propostas').update({
+        entrada_paga: true,
+        status_pagamento: 'pago',
+        data_pagamento_entrada: new Date().toISOString()
+    }).eq('id', id);
 
-    const calcDiv = document.getElementById(`calc_${id}`);
-    if(calcDiv) {
-        calcDiv.innerHTML = `💰 Total: R$ ${calc.valorTotal.toLocaleString('pt-BR',{minimumFractionDigits:2})} | Saldo: R$ ${calc.saldo.toLocaleString('pt-BR',{minimumFractionDigits:2})} | ${qtd}x de R$ ${calc.valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+    if(error) {
+        alert('❌ Erro: ' + error.message);
+    } else {
+        alert('✅ BAIXA CONFIRMADA!\n\nCliente já pode ver as parcelas!');
+        carregarPropostas();
     }
-
-    prop.valor_desejado = valor;
-    prop.juros_mensal = juros;
-    prop.valor_entrada = entrada;
-    prop.quantidade_parcelas = qtd;
 }
 
 // ==============================================
-// ✅ CARREGAR PROPOSTAS EM TEMPO REAL
+// ✅ CARREGAR PROPOSTAS
 // ==============================================
 async function carregarPropostas() {
     try {
@@ -200,7 +207,7 @@ function filtrar(f) {
 }
 
 // ==============================================
-// ✅ SALVAR ALTERAÇÕES
+// ✅ SALVAR / EDITAR
 // ==============================================
 async function salvarEdicao(id) {
     const prop = propostas.find(x=>x.id===id);
@@ -222,7 +229,7 @@ async function salvarEdicao(id) {
     if(error) {
         alert('❌ Erro: ' + error.message);
     } else {
-        alert('✅ SALVO com sucesso!');
+        alert('✅ SALVO!');
         editandoId = null;
         carregarPropostas();
     }
@@ -271,19 +278,19 @@ async function aprovarProposta(id) {
 // ✅ REPROVAR / EXCLUIR
 // ==============================================
 async function reprovarProposta(id) {
-    if(!confirm('❌ Reprovar esta proposta?')) return;
+    if(!confirm('❌ Reprovar?')) return;
     const { error } = await supabase.from('propostas').update({status:'Reprovada'}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
 }
 
 async function excluirProposta(id) {
-    if(!confirm('⚠️ EXCLUIR? Não tem volta!')) return;
+    if(!confirm('⚠️ EXCLUIR?')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
 }
 
 // ==============================================
-// ✅ ENVIAR WHATSAPP — LINK CORRIGIDO!
+// ✅ ENVIAR WHATSAPP
 // ==============================================
 function enviarWhatsApp(p) {
     const whats = pegarWhatsapp(p).replace(/\D/g,'');
@@ -297,7 +304,6 @@ function enviarWhatsApp(p) {
     const dias = Number(p.dias_entrega||7);
     const cpfLimpo = (p.cpf||'').replace(/\D/g,'');
 
-    // ✅ LINK COMPLETO E CORRIGIDO — NÃO DÁ MAIS PÁGINA BRANCA!
     const linkCompleto = LINK_CONSULTA + '?cpf=' + cpfLimpo;
 
     const texto = encodeURIComponent(
@@ -307,12 +313,13 @@ function enviarWhatsApp(p) {
 }
 
 // ==============================================
-// ✅ MOSTRA TUDO NA LISTA — PARCELAS, VALORES, DIAS!
+// ✅ RENDERIZA — COM BOTÃO DE BAIXA MANUAL
 // ==============================================
 function renderizarPropostas() {
     let filtradas = [...propostas];
     if(filtroAtual === 'Nova') filtradas = propostas.filter(p => !p.status || p.status === 'Nova');
     else if(filtroAtual === 'Aprovada') filtradas = propostas.filter(p => p.status === 'Aprovada');
+    else if(filtroAtual === 'Paga') filtradas = propostas.filter(p => p.entrada_paga === true);
 
     let html = '';
     filtradas.forEach(p => {
@@ -323,6 +330,7 @@ function renderizarPropostas() {
         const qtd = Number(p.quantidade_parcelas||1);
         const dias = Number(p.dias_entrega||7);
         const status = p.status || 'Nova';
+        const entradaPaga = p.entrada_paga === true;
         const whatsBruto = pegarWhatsapp(p);
         const whatsLimpo = whatsBruto.replace(/\D/g,'');
         const endereco = p.endereco || 'Não informado';
@@ -332,6 +340,7 @@ function renderizarPropostas() {
         let classeStatus = 'status-nova';
         if(status === 'Aprovada') classeStatus = 'status-aprovada';
         if(status === 'Reprovada') classeStatus = 'status-reprovada';
+        if(entradaPaga) classeStatus = 'status-paga';
 
         const emEdicao = editandoId === id;
 
@@ -339,10 +348,9 @@ function renderizarPropostas() {
         <div class="cartao ${emEdicao ? 'em-edicao' : ''}">
             <div class="linha" style="justify-content:space-between;">
                 <h3 style="font-size:16px; font-weight:bold; color:var(--primary);">👤 ${p.nome||'Sem nome'}</h3>
-                <span class="status ${classeStatus}">${status}</span>
+                <span class="status ${classeStatus}">${entradaPaga ? '💰 Entrada Paga' : status}</span>
             </div>
 
-            <!-- ✅ CPF E WHATSAPP SEMPRE VISÍVEIS -->
             <div class="linha">
                 <span class="etiqueta">CPF:</span>
                 <span class="valor">${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span>
@@ -357,7 +365,6 @@ function renderizarPropostas() {
                 ${whatsLimpo ? `<button onclick="enviarWhatsApp(propostas.find(x=>x.id===${id}))" class="botao botao-whatsapp botao-pequeno" style="margin-left:auto;">💬 Enviar</button>` : ''}
             </div>
 
-            <!-- ✅ ENDEREÇO E DIAS DE ENTREGA VISÍVEIS -->
             <div class="linha">
                 <span class="etiqueta">📍 Endereço:</span>
                 <span class="valor" style="font-size:13px;">${endereco}</span>
@@ -367,7 +374,6 @@ function renderizarPropostas() {
                 <span class="valor">${dias} dias</span>
             </div>
 
-            <!-- ✅ VALORES E PARCELAS SEMPRE VISÍVEIS -->
             <div class="destaque">
                 <div class="linha">
                     <span class="etiqueta">Valor Solicitado:</span>
@@ -390,7 +396,6 @@ function renderizarPropostas() {
             <div class="separador"></div>
 
             ${emEdicao ? `
-            <!-- ✅ EDIÇÃO DIRETO NA TELA -->
             <div class="grid-3">
                 <div><label style="font-size:12px; font-weight:600;">Valor</label><input type="number" step="0.01" id="val_${id}" value="${valor}" oninput="calcularEAtualizar(${id})"></div>
                 <div><label style="font-size:12px; font-weight:600;">Juros %</label><input type="number" step="0.1" id="jur_${id}" value="${juros}" oninput="calcularEAtualizar(${id})"></div>
@@ -409,11 +414,13 @@ function renderizarPropostas() {
                 <button onclick="cancelarEdicao()" class="botao botao-cinza">Cancelar</button>
             </div>
             ` : `
-            <!-- ✅ BOTÕES DE AÇÃO -->
             <div class="linha">
                 ${status === 'Nova' ? `
                 <button onclick="aprovarProposta(${id})" class="botao botao-sucesso botao-pequeno">✅ Aprovar</button>
                 <button onclick="reprovarProposta(${id})" class="botao botao-perigo botao-pequeno">❌ Reprovar</button>
+                ` : ''}
+                ${status === 'Aprovada' && !entradaPaga ? `
+                <button onclick="entradaPagaManualmente(${id})" class="botao botao-manual botao-pequeno">💰 Entrada Paga (Dinheiro)</button>
                 ` : ''}
                 <button onclick="iniciarEdicao(${id})" class="botao botao-azul botao-pequeno">✏️ Editar</button>
                 ${whatsLimpo ? `<button onclick="enviarWhatsApp(propostas.find(x=>x.id===${id}))" class="botao botao-whatsapp botao-pequeno">💬 WhatsApp</button>` : ''}
