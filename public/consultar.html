@@ -28,16 +28,18 @@
         * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
         body { background: #F8FAFC; color: #1E293B; padding: 16px; max-width: 600px; margin: 0 auto; }
         .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .btn { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; margin: 8px 0; font-size: 16px; }
+        .btn { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; margin: 8px 0; font-size: 16px; transition: 0.2s; }
+        .btn:hover { transform: translateY(-1px); }
         .btn-primary { background: #0A2463; color: white; }
         .btn-success { background: #10B981; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
         .btn-cinza { background: #CBD5E1; color: #334155; }
+        .btn-pix { background: #32BCAD; color: white; }
         .loading { text-align: center; padding: 20px; color: #64748B; }
         .spinner { animation: gira 1s linear infinite; }
         @keyframes gira { 100% { transform: rotate(360deg); } }
 
-        /* ✅ BARRA DE PROGRESSO COMPLETA */
+        /* BARRA DE PROGRESSO */
         .progresso { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; }
         .progresso::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 3px; background: #E2E8F0; z-index: 0; }
         .passo { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 12px; font-weight: 500; color: #94A3B8; }
@@ -47,7 +49,7 @@
         .passo.ativo .bolinha { background: #0A2463; color: white; }
         .passo.concluido .bolinha { background: #10B981; color: white; }
 
-        /* ✅ AVISO DE ENTREGA SÓ APARECE DEPOIS DA APROVAÇÃO */
+        /* AVISO DE ENTREGA SÓ QUANDO APROVADO */
         .aviso-entrega {
             background: #FFFBEB;
             border: 3px solid #F59E0B;
@@ -59,6 +61,12 @@
             font-weight: 700;
             color: #92400E;
         }
+
+        /* CONTRATO E ASSINATURA */
+        .texto-contrato { max-height: 250px; overflow-y: auto; padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 12px 0; font-size: 14px; line-height: 1.6; }
+        .area-assinatura { border: 2px dashed #94A3B8; border-radius: 8px; padding: 20px; text-align: center; margin: 12px 0; }
+        .chave-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 8px; padding: 12px; text-align: center; font-weight: 600; margin: 12px 0; word-break: break-all; }
+        .oculto { display: none !important; }
     </style>
 </head>
 <body>
@@ -77,6 +85,8 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
 let inscricao = null;
+let dadosProposta = null;
+let qtdEscolhida = 0;
 
 window.onload = () => {
     const cpfUrl = new URLSearchParams(window.location.search).get('cpf');
@@ -100,6 +110,7 @@ async function buscarProposta() {
         return;
     }
 
+    dadosProposta = data;
     montarTela(data);
     ativarTempoReal(cpf);
 }
@@ -107,41 +118,36 @@ async function buscarProposta() {
 function montarTela(p) {
     const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||1);
     const total=v*(1+j/100);
-    const parcela = q===1 ? total : ((total-e)*(Math.pow(1+j/100,q)*(j/100)))/(Math.pow(1+j/100,q)-1);
     const dias = p.dias_entrega || 7;
 
-    // ✅ Define qual passo está ativo
-    let passoAtual = 1;
-    if(p.status === 'Aprovada') passoAtual = 2;
-    if(p.status === 'Aprovada' && !p.entrada_paga) passoAtual = 3;
-    if(p.entrada_paga) passoAtual = 4;
+    // Define passo da barra de progresso
+    let passo = 1;
+    if(p.status === 'Aprovada') passo = 2;
+    if(p.contrato_assinado) passo = 3;
+    if(p.entrada_paga) passo = 4;
 
     let html = `
     <div class="card">
         <h2 class="text-xl font-bold text-primary mb-2">Olá, ${p.nome || 'Cliente'}!</h2>
         <p class="mb-3">Sua proposta está: <strong class="${p.status==='Aprovada'?'text-green-600':'text-orange-500'}">${p.status}</strong></p>
 
-        <!-- ✅ BARRA DE PROGRESSO COMPLETA -->
+        <!-- BARRA DE PROGRESSO -->
         <div class="progresso">
-            <div class="passo ${passoAtual>=1?'concluido':'ativo'}">
-                <div class="bolinha">${passoAtual>1?'✓':'1'}</div>
-                <span>Proposta</span>
+            <div class="passo ${passo>=1?'concluido':''}">
+                <div class="bolinha">${passo>1?'✓':'1'}</div><span>Proposta</span>
             </div>
-            <div class="passo ${passoAtual>=2?(passoAtual>2?'concluido':'ativo'):''}">
-                <div class="bolinha">${passoAtual>2?'✓':'2'}</div>
-                <span>Aprovada</span>
+            <div class="passo ${passo>=2?(passo>2?'concluido':'ativo'):''}">
+                <div class="bolinha">${passo>2?'✓':'2'}</div><span>Aprovada</span>
             </div>
-            <div class="passo ${passoAtual>=3?(passoAtual>3?'concluido':'ativo'):''}">
-                <div class="bolinha">${passoAtual>3?'✓':'3'}</div>
-                <span>Contrato</span>
+            <div class="passo ${passo>=3?(passo>3?'concluido':'ativo'):''}">
+                <div class="bolinha">${passo>3?'✓':'3'}</div><span>Contrato</span>
             </div>
-            <div class="passo ${passoAtual>=4?'ativo':''}">
-                <div class="bolinha">4</div>
-                <span>Pagamento</span>
+            <div class="passo ${passo>=4?'ativo':''}">
+                <div class="bolinha">4</div><span>Pagamento</span>
             </div>
         </div>
 
-        <!-- ✅ AVISO DE ENTREGA SÓ APARECE SE FOR APROVADA -->
+        <!-- AVISO DE ENTREGA SÓ SE APROVADA -->
         ${p.status === 'Aprovada' ? `
         <div class="aviso-entrega">
             <i class="fas fa-truck"></i> 🚚 AVISO IMPORTANTE:<br>
@@ -151,41 +157,86 @@ function montarTela(p) {
         <div class="bg-gray-50 p-3 rounded-lg mb-3">
             <p><strong>Valor do pedido:</strong> R$ ${v.toLocaleString('pt-BR',2)}</p>
             <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR',2)}</p>
-            <p><strong>${q}x de:</strong> R$ ${parcela.toLocaleString('pt-BR',2)}</p>
             <p><strong>Total com juros:</strong> R$ ${total.toLocaleString('pt-BR',2)}</p>
         </div>
     `;
 
-    // ✅ Se ainda não aprovada: só mostra aguardando
+    // ETAPA 1: AGUARDANDO ANÁLISE
     if(p.status === 'Nova' || p.status === 'Em Análise') {
         html += `
         <div class="text-center p-4 bg-yellow-50 rounded-lg">
             <i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i>
             <p class="font-semibold">Aguardando análise da proposta...</p>
-            <p class="text-sm text-gray-600">Assim que aprovado você receberá a atualização aqui.</p>
+            <p class="text-sm text-gray-600">Assim que aprovado você verá as opções aqui.</p>
         </div>`;
     }
 
-    // ✅ Se aprovada e não pagou entrada: mostra escolha de parcelas e contrato
-    if(p.status === 'Aprovada' && !p.entrada_paga) {
+    // ETAPA 2: APROVADA → ESCOLHER PARCELAS
+    if(p.status === 'Aprovada' && !p.contrato_assinado && !p.entrada_paga) {
         html += `
         <div class="card">
             <h3 class="font-bold text-lg mb-2">Escolha a quantidade de parcelas:</h3>
-            <p class="text-sm text-gray-600 mb-3">Você pode escolher de 1 até ${q} parcelas</p>
-            <select id="escolherParcela" class="w-full p-3 border rounded-lg mb-3">
-                ${Array.from({length:q}, (_,i)=>`<option value="${i+1}">${i+1}x de R$ ${ ((total-e)*(Math.pow(1+j/100,i+1)*(j/100))/(Math.pow(1+j/100,i+1)-1)).toLocaleString('pt-BR',2) }</option>`).join('')}
+            <p class="text-sm text-gray-600 mb-3">De 1 até ${q} parcelas</p>
+            <select id="qtdParcelas" class="w-full p-3 border rounded-lg mb-3" onchange="atualizarValorParcela(this.value)">
+                ${Array.from({length:q}, (_,i)=>{
+                    const valorParc = ((total-e)*(Math.pow(1+j/100,i+1)*(j/100))/(Math.pow(1+j/100,i+1)-1));
+                    return `<option value="${i+1}">${i+1}x de R$ ${valorParc.toLocaleString('pt-BR',2)}</option>`;
+                }).join('')}
             </select>
-            <button onclick="liberarContrato()" class="btn btn-success">✅ Aceitar e Assinar Contrato</button>
+            <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar para o Contrato</button>
+        </div>
+
+        <!-- CONTRATO E ASSINATURA → OCULTO ATÉ ESCOLHER PARCELAS -->
+        <div id="blocoContrato" class="oculto">
+            <h3 class="font-bold text-lg mb-2">📄 Termos do Contrato</h3>
+            <div class="texto-contrato">
+                <strong>CONTRATO DE CRÉDITO E COMPRA</strong><br><br>
+                Pelo presente instrumento, o cliente acima qualificado contrata os serviços da FlashCred, comprometendo-se a efetuar o pagamento do valor acordado, acrescido de juros e encargos contratados, nas datas e valores definidos.<br><br>
+                A entrega do produto será realizada em até ${dias} dias úteis após a confirmação do pagamento da entrada.<br><br>
+                Ao prosseguir, o cliente declara que leu, compreendeu e aceita todos os termos e condições deste contrato.
+            </div>
+            <label class="flex items-center gap-2 mb-3 font-medium">
+                <input type="checkbox" id="aceitoContrato"> Li e aceito os termos do contrato
+            </label>
+            <button onclick="mostrarAssinatura()" class="btn btn-primary">✍️ Assinar Contrato</button>
+
+            <div id="areaAssinatura" class="area-assinatura oculto">
+                <p class="font-semibold mb-2">Escolha como quer assinar:</p>
+                <button onclick="confirmarAssinatura()" class="btn btn-success">✍️ Assinatura Digital</button>
+                <p class="text-sm text-gray-500 mt-2">Ou envie uma foto do seu documento com rosto para validação.</p>
+            </div>
+        </div>
+        `;
+    }
+
+    // ETAPA 3: CONTRATO ASSINADO → MOSTRAR PIX
+    if(p.contrato_assinado && !p.entrada_paga) {
+        html += `
+        <div class="card text-center">
+            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO!</div>
+            <p class="mb-3">Agora efetue o pagamento da entrada para liberar seu pedido:</p>
+            <div id="qrcode-pix" class="flex justify-center my-4"></div>
+            <div class="chave-pix" id="chavePix">
+                Chave Pix (Mercado Pago - Produção)<br>
+                <small>Clique para copiar</small>
+            </div>
+            <button onclick="copiarChave()" class="btn btn-pix">📋 Copiar Chave Pix</button>
+            <p class="text-sm text-gray-600 mt-2">Assim que o pagamento for confirmado, você e nós seremos notificados imediatamente.</p>
         </div>`;
     }
 
-    // ✅ Se já pagou entrada: mostra sucesso e parcelas
+    // ETAPA 4: ENTRADA PAGA → LIBERA PARCELAS
     if(p.entrada_paga) {
         html += `
         <div class="card text-center">
-            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> ENTRADA PAGA COM SUCESSO!</div>
-            <p class="mb-2">Em breve você receberá acesso às suas parcelas e ao contrato completo.</p>
-            <p class="text-sm text-gray-600">Nós já fomos notificados e vamos conferir o pagamento.</p>
+            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
+            <p class="mb-3">Sua entrada foi paga com sucesso! 🎉</p>
+            <p class="mb-2">Acesse abaixo o cronograma completo de suas parcelas:</p>
+            <div class="bg-gray-50 p-3 rounded-lg">
+                <strong>Parcelas contratadas:</strong><br>
+                ${qtdEscolhida>0?qtdEscolhida:q}x de R$ ${ ((total-e)*(Math.pow(1+j/100,qtdEscolhida||q)*(j/100))/(Math.pow(1+j/100,qtdEscolhida||q)-1)).toLocaleString('pt-BR',2)}
+            </div>
+            <a href="https://wa.me/5511973294235?text=Olá, já paguei a entrada e quero conferir minhas parcelas CPF: ${p.cpf}" target="_blank" class="btn btn-success mt-3">📄 Ver Detalhes e Enviar Comprovante</a>
         </div>`;
     }
 
@@ -199,10 +250,52 @@ function montarTela(p) {
     </div>`;
 
     document.getElementById('conteudoProposta').innerHTML = html;
+
+    // Se já assinou, gera QR Code (aqui ligado ao Mercado Pago quando configurado)
+    if(p.contrato_assinado && !p.entrada_paga) {
+        gerarQrCodePix();
+    }
 }
 
-function liberarContrato() {
-    alert('Agora você será direcionado para assinar o contrato e gerar o Pix da entrada!');
+function atualizarValorParcela(qtd) {
+    qtdEscolhida = Number(qtd);
+}
+
+function abrirContrato() {
+    if(!document.getElementById('qtdParcelas')) return;
+    qtdEscolhida = Number(document.getElementById('qtdParcelas').value);
+    document.getElementById('blocoContrato').classList.remove('oculto');
+}
+
+function mostrarAssinatura() {
+    if(!document.getElementById('aceitoContrato').checked) {
+        alert('Você precisa aceitar os termos do contrato primeiro!');
+        return;
+    }
+    document.getElementById('areaAssinatura').classList.remove('oculto');
+}
+
+async function confirmarAssinatura() {
+    if(!confirm('Confirmar assinatura do contrato? Isso é definitivo.')) return;
+    await supabase.from('propostas').update({contrato_assinado: true, qtd_parcelas_escolhida: qtdEscolhida}).eq('id', dadosProposta.id);
+    alert('Contrato assinado com sucesso! Agora aguarde, estamos preparando o seu Pix...');
+}
+
+function gerarQrCodePix() {
+    // Aqui vai ligar direto na API do Mercado Pago com seu Token de Produção
+    const chave = 'seu_qr_code_mercado_pago_aqui'; // ← ligar com token
+    new QRCode(document.getElementById("qrcode-pix"), {
+        text: chave,
+        width: 220,
+        height: 220
+    });
+    document.getElementById('chavePix').dataset.chave = chave;
+}
+
+function copiarChave() {
+    const chave = document.getElementById('chavePix').dataset.chave;
+    navigator.clipboard.writeText(chave);
+    alert('Chave Pix copiada! ✅');
 }
 
 function ativarTempoReal(cpf) {
