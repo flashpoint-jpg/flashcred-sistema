@@ -27,10 +27,10 @@
         body { background: #F8FAFC; min-height: 100vh; }
         .cartao { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
         .destaque { background: #F0FDF4; border-left: 4px solid #10B981; }
-        .opcao-parcela { border: 2px solid #E2E8F0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.2s; }
+        .opcao-parcela { border: 2px solid #E2E8F0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.2s; margin-bottom: 10px; }
         .opcao-parcela:hover { border-color: #3B82F6; background: #EFF6FF; }
         .opcao-parcela.selecionada { border-color: #0A2463; background: #DBEAFE; font-weight: bold; }
-        .botao-avancar { background: #0A2463; color: white; padding: 14px; border-radius: 10px; font-weight: bold; border: none; width: 100%; font-size: 16px; }
+        .botao-avancar { background: #0A2463; color: white; padding: 14px; border-radius: 10px; font-weight: bold; border: none; width: 100%; font-size: 16px; margin-top: 20px; }
         .botao-avancar:disabled { background: #94A3B8; cursor: not-allowed; }
     </style>
 </head>
@@ -49,23 +49,23 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let proposta = null;
 let qtdParcelasEscolhida = null;
 
-// ✅ PEGA O CPF DA URL
+// ✅ PEGA CPF DA URL
 function pegarCPFdaURL() {
     const params = new URLSearchParams(window.location.search);
     let cpf = params.get('cpf') || '';
     return cpf.replace(/\D/g, '');
 }
 
-// ✅ CARREGA A PROPOSTA
+// ✅ CARREGA PROPOSTA
 async function carregarProposta() {
     const cpf = pegarCPFdaURL();
     if(!cpf) {
         document.getElementById('conteudo').innerHTML = `
             <div class="cartao p-6 text-center">
                 <i class="fas fa-user-search text-4xl text-gray-400 mb-4"></i>
-                <p class="text-lg">Digite seu CPF para consultar sua proposta:</p>
-                <input type="text" id="cpfInput" placeholder="000.000.000-00" class="w-full p-3 border rounded-lg mt-4 text-center text-lg" maxlength="14">
-                <button onclick="buscarProposta()" class="botao-avancar mt-4">Consultar</button>
+                <p class="text-lg mb-4">Digite seu CPF para consultar:</p>
+                <input type="text" id="cpfInput" placeholder="000.000.000-00" class="w-full p-3 border rounded-lg text-center text-lg" maxlength="14">
+                <button onclick="buscarProposta()" class="botao-avancar">Consultar</button>
             </div>
         `;
         return;
@@ -94,7 +94,6 @@ async function buscarPorCPF(cpfLimpo) {
                 <div class="cartao p-6 text-center">
                     <i class="fas fa-exclamation-circle text-4xl text-red-400 mb-4"></i>
                     <p class="text-lg font-bold text-red-600">Proposta não encontrada!</p>
-                    <p class="text-gray-500 mt-2">Verifique o CPF digitado.</p>
                     <a href="consulta.html" class="inline-block mt-4 text-primary underline">← Tentar novamente</a>
                 </div>
             `;
@@ -107,32 +106,34 @@ async function buscarPorCPF(cpfLimpo) {
     } catch(e) {
         document.getElementById('conteudo').innerHTML = `
             <div class="cartao p-6 text-center">
-                <p class="text-red-600">Erro ao carregar: ${e.message}</p>
+                <p class="text-red-600">Erro: ${e.message}</p>
             </div>
         `;
     }
 }
 
-// ✅ CÁLCULO CORRIGIDO — SEM VALOR NEGATIVO!
-function calcularValores(valor, entrada, juros, qtd) {
-    const valorTotal = valor * (1 + juros / 100);
-    const saldo = valorTotal - entrada; // ✅ VALOR - ENTRADA (NÃO INVERTE!)
+// ✅ CÁLCULO CORRIGIDO
+function calcularValores(valor, entrada, jurosPct, qtd) {
+    const valorTotal = valor * (1 + jurosPct / 100);
+    const saldo = valorTotal - entrada;
     
     let valorParcela = 0;
     if(qtd === 1) {
         valorParcela = valorTotal;
     } else if(saldo > 0 && qtd > 0) {
-        valorParcela = saldo * Math.pow(1 + juros/100, qtd) * (juros/100) / (Math.pow(1 + juros/100, qtd) - 1);
+        const taxa = jurosPct / 100;
+        valorParcela = saldo * Math.pow(1 + taxa, qtd) * taxa / (Math.pow(1 + taxa, qtd) - 1);
     }
     return { valorTotal, saldo, valorParcela };
 }
 
-// ✅ EXIBE TUDO CORRETAMENTE
+// ✅ EXIBE TUDO + DIAS DE ENTREGA
 function renderizarProposta() {
     const valor = Number(proposta.valor_desejado || 0);
     const entrada = Number(proposta.valor_entrada || 0);
     const juros = Number(proposta.juros_mensal || 5);
     const qtdMax = Number(proposta.quantidade_parcelas || 1);
+    const dias = Number(proposta.dias_entrega || 7);
     const status = proposta.status || 'Nova';
 
     let html = `
@@ -142,6 +143,7 @@ function renderizarProposta() {
             <div class="flex justify-between"><span class="text-gray-600">CPF:</span><span class="font-bold">${(proposta.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span></div>
             <div class="flex justify-between"><span class="text-gray-600">Valor do Produto:</span><span class="font-bold">R$ ${valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
             <div class="flex justify-between destaque p-2 rounded"><span class="text-gray-600">Entrada:</span><span class="font-bold text-sucesso">R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span></div>
+            <div class="flex justify-between"><span class="text-gray-600">📦 Entrega em:</span><span class="font-bold">${dias} dias</span></div>
     `;
 
     if(status !== 'Aprovada') {
@@ -149,11 +151,10 @@ function renderizarProposta() {
             <div class="mt-4 p-4 bg-amber-50 rounded-lg text-center">
                 <i class="fas fa-clock text-amber-500 text-2xl mb-2"></i>
                 <p class="font-bold text-amber-700">Aguardando aprovação</p>
-                <p class="text-sm text-amber-600 mt-1">Sua proposta está em análise.</p>
             </div>
         `;
     } else {
-        // ✅ PROPOSTA APROVADA → MOSTRA PARCELAS
+        // ✅ MOSTRA PARCELAS CORRETAMENTE
         const calc1 = calcularValores(valor, entrada, juros, 1);
         const calc2 = qtdMax >= 2 ? calcularValores(valor, entrada, juros, 2) : null;
 
@@ -162,8 +163,9 @@ function renderizarProposta() {
                 <span class="text-gray-600 font-bold">💰 Valor Total com Juros:</span>
                 <span class="font-bold text-xl text-primary">R$ ${calc1.valorTotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
             </div>
-            <div class="text-sm text-gray-500 mt-2">Escolha em quantas vezes deseja pagar:</div>
-            <div class="space-y-3 mt-2">
+            <p class="text-sm text-gray-500 mt-4">Escolha em quantas vezes deseja pagar:</p>
+            
+            <div id="opcoesParcelas">
                 <div class="opcao-parcela" onclick="escolherParcela(1)">
                     <span class="font-bold">1x de R$ ${calc1.valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</span>
                 </div>
@@ -173,7 +175,11 @@ function renderizarProposta() {
                 </div>
                 ` : ''}
             </div>
-            <button id="btnAvancar" class="botao-avancar mt-6" disabled>Avançar → Confirmar Entrega</button>
+
+            <!-- ✅ BOTÃO AVANÇAR FUNCIONANDO! -->
+            <button id="btnAvancar" class="botao-avancar" onclick="confirmarEntrega()" disabled>
+                Avançar → Confirmar Entrega
+            </button>
         `;
     }
 
@@ -181,16 +187,25 @@ function renderizarProposta() {
     document.getElementById('conteudo').innerHTML = html;
 }
 
-// ✅ ESCOLHE PARCELA
+// ✅ ESCOLHE PARCELA E LIBERA BOTÃO
 function escolherParcela(qtd) {
     qtdParcelasEscolhida = qtd;
     document.querySelectorAll('.opcao-parcela').forEach((el, i) => {
-        el.classList.toggle('selecionada', i+1 === qtd);
+        el.classList.toggle('selecionada', i + 1 === qtd);
     });
     document.getElementById('btnAvancar').disabled = false;
 }
 
-// ✅ CARREGA AO ABRIR
+// ✅ CONFIRMA ENTREGA — VAI PRA FRENTE!
+function confirmarEntrega() {
+    if(!qtdParcelasEscolhida) {
+        alert('⚠️ Escolha a quantidade de parcelas primeiro!');
+        return;
+    }
+    alert(`✅ Entrega confirmada!\n\n📦 Você escolheu ${qtdParcelasEscolhida}x.\n📦 Entrega em ${proposta.dias_entrega || 7} dias.\n\nObrigado! Em breve receberá mais informações.`);
+}
+
+// ✅ INICIA AO CARREGAR
 window.onload = carregarProposta;
 </script>
 </body>
