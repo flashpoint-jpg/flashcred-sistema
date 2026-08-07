@@ -46,7 +46,15 @@
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
         .campo { width: 100%; padding: 10px 12px; border: 1px solid var(--borda); border-radius:8px; margin-bottom: 10px; font-size:14px; transition: 0.2s; }
         .campo:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(10,36,99,0.1); }
-        .bloco-parcelas { background: #F8FAFC; padding: 16px; border-radius:10px; margin-top:16px; border:1px solid var(--borda); }
+        
+        /* ✅ CRONOGRAMA COMPACTO */
+        .bloco-parcelas { margin-top:12px; border:1px solid var(--borda); border-radius:8px; overflow:hidden; }
+        .cabecalho-cronograma { background:#F8FAFC; padding:10px 14px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-weight:600; color:var(--primary); }
+        .corpo-cronograma { display:none; padding:12px; background:white; }
+        .corpo-cronograma.aberto { display:block; }
+        .item-parcela { display:flex; justify-content:space-between; align-items:center; padding:8px 10px; border-bottom:1px solid var(--borda); font-size:13px; }
+        .item-parcela:last-child { border-bottom:none; }
+        
         .tipo-data { display: flex; gap: 20px; margin-bottom: 12px; padding: 8px 0; }
         .item-tipo { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight:500; cursor: pointer; }
         .lista-datas { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
@@ -268,28 +276,34 @@ async function carregarPropostas() {
         const valorParcela = q === 1 ? total : ((total - e) * (Math.pow(1 + j/100, q) * (j/100))) / (Math.pow(1 + j/100, q) - 1);
         const parcelasPagasCount = Number(i.parcelas_pagas || 0);
         const datasSalvas = i.datas_parcelas || [];
+        const whatsappCliente = (i.whatsapp || i.telefone || '').trim();
 
-        // ✅ CORREÇÃO PRINCIPAL: PEGA O WHATSAPP DE FORMA GARANTIDA
-        const whatsappCliente = (i.whatsapp || i.telefone || 'Não informado').trim();
+        // ✅ CRONOGRAMA FECHADO POR PADRÃO
+        let htmlParcelas = `
+        <div class="bloco-parcelas">
+            <div class="cabecalho-cronograma" onclick="this.nextElementSibling.classList.toggle('aberto'); this.querySelector('i').classList.toggle('fa-chevron-down'); this.querySelector('i').classList.toggle('fa-chevron-up')">
+                <span>📋 Ver Cronograma de Parcelas (${q})</span>
+                <i class="fas fa-chevron-down"></i>
+            </div>
+            <div class="corpo-cronograma">`;
 
-        let htmlParcelas = '<div class="bloco-parcelas"><p class="font-bold mb-2">📋 Cronograma de Pagamentos:</p><div class="space-y-2">';
         for(let p=1; p<=q; p++) {
             const dataVenc = datasSalvas[p-1] ? new Date(datasSalvas[p-1]).toLocaleDateString('pt-BR') : 'A definir';
             const paga = p <= parcelasPagasCount;
             htmlParcelas += `
-                <div class="flex justify-between items-center text-sm bg-white p-3 rounded-lg border">
-                    <span><strong>Parc ${p}/${q}</strong> | Venc: ${dataVenc} | <strong>R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong> - <span class="${paga?'text-sucesso font-bold':'text-alerta'}">${paga?'✅ PAGA':'⏳ PENDENTE'}</span></span>
-                    <button onclick="enviarCobrancaWpp('${i.nome||'Cliente'}', ${p}, ${q}, ${valorParcela}, '${dataVenc}')" class="botao botao-wpp !py-1 !px-2 text-xs"><i class="fab fa-whatsapp"></i> Cobrar</button>
+                <div class="item-parcela">
+                    <span><strong>${p}ª</strong> | R$ ${valorParcela.toLocaleString('pt-BR',2)} | ${dataVenc} | <span class="${paga?'text-sucesso font-bold':'text-alerta'}">${paga?'PAGA':'PENDENTE'}</span></span>
+                    <button onclick="enviarCobrancaWpp('${i.nome||'Cliente'}', ${p}, ${q}, ${valorParcela}, '${dataVenc}', '${whatsappCliente}')" class="botao botao-wpp !py-1 !px-2 text-xs"><i class="fab fa-whatsapp"></i> Cobrar</button>
                 </div>`;
         }
-        htmlParcelas += '</div></div>';
+        htmlParcelas += `</div></div>`;
 
         html += `
         <div class="linha-proposta">
             <div class="mb-3">
                 <strong class="text-lg">${i.nome || 'Sem nome'}</strong> | ${(i.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}<br>
-                📱 WhatsApp: ${whatsappCliente} | 📍 ${i.endereco||'Não informado'} - CEP ${i.cep||'Não informado'}<br>
-                Valor Total: R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2})} | Entrada: R$ ${e.toLocaleString('pt-BR',{minimumFractionDigits:2})} | Total com Juros: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}<br>
+                📱 WhatsApp: ${whatsappCliente || 'Não informado'} | 📍 ${i.endereco||'Não informado'} - CEP ${i.cep||'Não informado'}<br>
+                Valor Total: R$ ${v.toLocaleString('pt-BR',2)} | Entrada: R$ ${e.toLocaleString('pt-BR',2)} | Total com Juros: R$ ${total.toLocaleString('pt-BR',2)}<br>
                 Situação: <strong>${i.status}</strong> | Entrada: <strong class="${i.entrada_paga?'text-sucesso':'text-alerta'}">${i.entrada_paga?'PAGA':'PENDENTE'}</strong> | Entrega em ${i.dias_entrega||7} dias
             </div>
             ${htmlParcelas}
@@ -297,7 +311,7 @@ async function carregarPropostas() {
                 ${i.status!=='Aprovada'?`<button onclick="mudarStatus('${i.id}','Aprovada')" class="botao botao-sucesso">✅ Aprovar</button>`:''}
                 ${i.status!=='Reprovada'?`<button onclick="mudarStatus('${i.id}','Reprovada')" class="botao botao-perigo">❌ Reprovar</button>`:''}
                 <button onclick="editar('${i.id}')" class="botao botao-primario">✏️ Editar</button>
-                <button onclick="enviarLink('${i.id}','${i.cpf}')" class="botao botao-sucesso">📲 Enviar Link</button>
+                <button onclick="enviarLink('${i.id}','${i.cpf}','${whatsappCliente}')" class="botao botao-sucesso">📲 Enviar Link</button>
                 ${!i.entrada_paga?`<button onclick="marcarEntradaPaga('${i.id}')" class="botao botao-alerta">💵 Marcar Entrada Paga</button>`:''}
                 <button onclick="excluir('${i.id}')" class="botao botao-perigo">🗑️ Excluir</button>
             </div>
@@ -318,9 +332,11 @@ async function marcarEntradaPaga(id) {
     carregarPropostas();
 }
 
-function enviarCobrancaWpp(nomeCliente, parcelaNum, totalParcelas, valorParcela, dataVenc) {
-    const mensagem = `Olá, ${nomeCliente}! Tudo bem?\n\nSegue aviso da sua Parcela ${parcelaNum}/${totalParcelas} da FlashCred:\n💳 Valor: R$ ${valorParcela.toLocaleString('pt-BR',2)}\n📅 Vencimento: ${dataVenc}\n\nPor favor, acesse seu painel para efetuar o pagamento. Obrigado!`;
-    window.open(`https://wa.me/${NUMERO_SUPORTE}?text=${encodeURIComponent(mensagem)}`);
+// ✅ COBRANÇA JÁ COM NÚMERO DO CLIENTE
+function enviarCobrancaWpp(nomeCliente, parcelaNum, totalParcelas, valorParcela, dataVenc, numCliente) {
+    if(!numCliente) { alert('WhatsApp do cliente não cadastrado!'); return; }
+    const mensagem = `Olá, ${nomeCliente}! Tudo bem?\n\nSegue aviso da sua ${parcelaNum}ª parcela de ${totalParcelas} da FlashCred:\n💳 Valor: R$ ${valorParcela.toLocaleString('pt-BR',2)}\n📅 Vencimento: ${dataVenc}\n\nAcesse seu painel para pagar: ${LINK_CONSULTA}?cpf=${nomeCliente.replace(/\D/g,'')}\nAgradecemos!`;
+    window.open(`https://wa.me/55${numCliente}?text=${encodeURIComponent(mensagem)}`);
 }
 
 async function editar(id) {
@@ -408,7 +424,6 @@ function pegarDados(bloco) {
     return {
         nome: bloco.querySelector('#nome').value.trim(),
         cpf: bloco.querySelector('#cpf').value.trim(),
-        // ✅ SALVA O WHATSAPP COM CERTEZA
         whatsapp: bloco.querySelector('#whatsapp').value.trim() || '',
         cep: bloco.querySelector('#cep').value.trim(),
         endereco: bloco.querySelector('#endereco').value.trim(),
@@ -424,15 +439,16 @@ function pegarDados(bloco) {
     };
 }
 
-function enviarLink(id,cpf) {
+// ✅ ENVIO DO LINK JÁ COM NÚMERO PRONTO
+function enviarLink(id, cpf, numCliente) {
+    if(!numCliente) { alert('WhatsApp do cliente não cadastrado!'); return; }
     const link = `${LINK_CONSULTA}?cpf=${cpf}`;
-    const num = prompt('Confirme o número do cliente com DDD:', '55'+cpf.substring(0,2)+cpf.substring(2,11));
-    if(!num) return;
-    window.open(`https://wa.me/${num}?text=Olá! Sua proposta foi aprovada pela FlashCred. Acesse para ver detalhes e efetuar os pagamentos: ${encodeURIComponent(link)}`);
+    const mensagem = `Olá! Sua proposta foi aprovada pela FlashCred 🟢\n\nAcesse aqui para ver detalhes, escolher parcelas e efetuar os pagamentos:\n👉 ${encodeURIComponent(link)}\n\nQualquer dúvida é só chamar!`;
+    window.open(`https://wa.me/55${numCliente}?text=${encodeURIComponent(mensagem)}`);
 }
 
 async function excluir(id) {
-    if(!confirm('Tem certeza que deseja excluir esta proposta? Essa ação não pode ser desfeita.')) return;
+    if(!confirm('Tem certeza que deseja excluir?')) return;
     await supabase.from('propostas').delete().eq('id',id);
     carregarPropostas();
 }
