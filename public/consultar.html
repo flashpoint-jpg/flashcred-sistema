@@ -81,7 +81,7 @@ let proposta = null;
 let etapaAtual = 1;
 let qtdParcelasEscolhida = null;
 let assinaturaCanvas = null, assinaturaContext = null, assinando = false;
-let temAssinaturaValida = false; // ✅ NOVA FORMA DE VERIFICAR
+let temAssinaturaValida = false;
 let streamCamera = null;
 
 window.onload = async () => {
@@ -161,11 +161,20 @@ function calcularValores(valor, entrada, juros, qtd) {
     return {total, parcela, saldo};
 }
 
+function atualizarBarra() {
+    const porcentagens = { 1: '25%', 2: '50%', 3: '75%', 4: '100%' };
+    document.getElementById('barra-progresso').style.width = porcentagens[etapaAtual] || '0%';
+    for (let i = 1; i <= 4; i++) {
+        const ind = document.getElementById(`etapa-ind-${i}`);
+        if (ind) ind.classList.toggle('active', i === etapaAtual);
+    }
+}
+
 // ========= ETAPA 1 — ESCOLHER PARCELAS =========
 function renderizarEtapa1_EscolherParcelas() {
     etapaAtual = 1;
     atualizarBarra();
-    temAssinaturaValida = false; // Reseta ao voltar
+    temAssinaturaValida = false;
 
     const valor = Number(proposta.valor_desejado || 0);
     const entrada = Number(proposta.valor_entrada || 0);
@@ -213,7 +222,7 @@ function escolherParcela(qtd) {
 function irEtapa2() {
     etapaAtual = 2;
     atualizarBarra();
-    temAssinaturaValida = false; // Reseta ao entrar
+    temAssinaturaValida = false;
 
     const valor = Number(proposta.valor_desejado || 0);
     const entrada = Number(proposta.valor_entrada || 0);
@@ -284,10 +293,8 @@ function tirarFoto() {
     verificarContrato();
 }
 
-// ✅ NOVA VERIFICAÇÃO — MAIS CONFIÁVEL!
 function verificarContrato() {
     const aceito = document.getElementById('aceitoContrato').checked;
-    // Agora usa a variável de controle, não só a leitura do pixel
     document.getElementById('btnAvancar2').disabled = !(aceito && temAssinaturaValida);
 }
 
@@ -311,7 +318,6 @@ function initAssinatura() {
         assinaturaContext.beginPath();
         const p = pos(e);
         assinaturaContext.moveTo(p.x, p.y);
-        // ✅ Marca que começou a assinar
         temAssinaturaValida = true;
         verificarContrato();
     };
@@ -330,12 +336,12 @@ function initAssinatura() {
 function limparAssinatura() {
     if(assinaturaContext) {
         assinaturaContext.clearRect(0,0,assinaturaCanvas.width,assinaturaCanvas.height);
-        temAssinaturaValida = false; // ✅ ZERA SE LIMPAR
+        temAssinaturaValida = false;
         verificarContrato();
     }
 }
 
-// ========= ETAPA 3 — PAGAMENTO PIX =========
+// ========= ETAPA 3 — PAGAMENTO PIX (ATUALIZADA E CORRIGIDA) =========
 async function irEtapa3() {
     etapaAtual = 3;
     atualizarBarra();
@@ -348,7 +354,7 @@ async function irEtapa3() {
             <p class="text-xl font-bold text-sucesso mb-4">R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
             <div id="areaPix">
                 <i class="fas fa-circle-notch fa-spin text-2xl text-primary"></i>
-                <p class="mt-2">Gerando QR Code...</p>
+                <p class="mt-2">Gerando QR Code oficial...</p>
             </div>
             <p class="text-sm text-gray-600 mt-4">Após pagar, aguarde a confirmação. As parcelas serão liberadas automaticamente.</p>
             <button onclick="irEtapa2()" class="botao botao-cinza">← Voltar</button>
@@ -368,55 +374,66 @@ async function gerarPixMercadoPago() {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${MP_TOKEN}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Idempotency-Key': 'PROP-' + proposta.id + '-' + Date.now()
             },
             body: JSON.stringify({
                 transaction_amount: entrada,
-                description: `Entrada - ${(proposta.nome||'').substring(0,40)}`,
+                description: `Entrada - Proposta #${proposta.id}`,
                 payment_method_id: 'pix',
                 payer: {
-                    email: 'pagamento@flashcred.com.br',
-                    identification: { type: 'CPF', number: cpfLimpo.substring(0,11) || '00000000000' }
+                    email: `cliente_${proposta.id}@flashcred.com.br`,
+                    first_name: (proposta.nome || 'Cliente').split(' ')[0],
+                    last_name: (proposta.nome || 'Cliente').split(' ').slice(1).join(' ') || 'Cliente',
+                    identification: { 
+                        type: 'CPF', 
+                        number: cpfLimpo.length === 11 ? cpfLimpo : '00000000000' 
+                    }
                 },
                 external_reference: `PROP-${proposta.id}`
             })
         });
 
-        const res = await resposta.json();
-        if(res.error) throw res.error;
+        if (!resposta.ok) {
+            throw new Error(`Erro HTTP: ${resposta.status}`);
+        }
 
-        if(res.point_of_interaction?.transaction_data) {
+        const res = await resposta.json();
+
+        if (res.point_of_interaction && res.point_of_interaction.transaction_data) {
             const qr64 = res.point_of_interaction.transaction_data.qr_code_base64;
             const pixCode = res.point_of_interaction.transaction_data.qr_code;
+            
+            proposta.ultimo_payment_id = res.id;
+
             document.getElementById('areaPix').innerHTML = `
-                <img src="data:image/png;base64,${qr64}" alt="QR Code" style="width:220px; margin:0 auto;">
-                <div class="chave-pix mt-3" onclick="copiarPix('${pixCode.replace(/'/g,"\\'")}')">
-                    Clique para copiar o código Pix
+                <div style="background: white; padding: 10px; display: inline-block; border-radius: 8px;">
+                    <img src="data:image/png;base64,${qr64}" alt="QR Code Pix" style="width:200px; height:200px; margin:0 auto; display: block;">
                 </div>
-                <p class="text-sucesso font-bold mt-3">✅ QR Code gerado!</p>
+                <div class="chave-pix mt-3" onclick="copiarPix('${pixCode.replace(/'/g, "\\'")}')">
+                    <i class="fas fa-copy"></i> ${pixCode}
+                </div>
+                <p class="text-xs text-gray-500 mt-2">Toque na caixa acima para copiar o código Pix</p>
+                <p class="text-sucesso font-bold mt-2">✅ Pix Dinâmico gerado com sucesso!</p>
             `;
             return;
+        } else {
+            throw new Error('Dados de transação ausentes na resposta.');
         }
-    } catch {}
 
-    // Fallback: chave fixa
-    document.getElementById('areaPix').innerHTML = `
-        <div id="qrcode"></div>
-        <div class="chave-pix mt-3" onclick="copiarPix('${CHAVE_PIX}')">${CHAVE_PIX} (Clique para copiar)</div>
-    `;
-    setTimeout(() => {
-        const pix = `00020126330014br.gov.bcb.pix0111${CHAVE_PIX}52040000530398654030105802BR5913FLASH POINT6009SAO PAULO62070503***6304XXXX`;
-        if(window.QRCode) new QRCode(document.getElementById('qrcode'), { text: pix.replace('XXXX', calcularCRC(pix.replace('XXXX',''))), width:200, height:200 });
-    }, 200);
-}
-
-function calcularCRC(str) {
-    let crc = 0xFFFF;
-    for(let i=0; i<str.length; i++) {
-        crc ^= str.charCodeAt(i) << 8;
-        for(let j=0; j<8; j++) crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
+    } catch (err) {
+        console.warn("Aviso na API do Mercado Pago, alternando para chave segura de contingência:", err);
+        
+        document.getElementById('areaPix').innerHTML = `
+            <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 mb-3">
+                <i class="fas fa-info-circle"></i> Utilizando chave de recebimento rápida:
+            </div>
+            <div class="chave-pix mt-3" onclick="copiarPix('${CHAVE_PIX}')">
+                <strong>Chave Pix (Telefone/CPF):</strong><br>${CHAVE_PIX}<br><span class="text-xs text-blue-600">(Clique para copiar)</span>
+            </div>
+            <p class="text-xs text-gray-600 mt-3">Faça um Pix no valor exato de <strong>R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong> e envie o comprovante no WhatsApp.</p>
+        `;
     }
-    return ((crc ^ 0xFFFF) & 0xFFFF).toString(16).toUpperCase().padStart(4,'0');
 }
 
 function copiarPix(t) {
@@ -433,7 +450,6 @@ function mostrarParcelasLiberadas() {
     const juros = Number(proposta.juros_mensal || 5);
     const qtd = Number(proposta.quantidade_parcelas || 1);
     const calc = calcularValores(valor, entrada, juros, qtd);
-    const dataPag = proposta.data_pagamento_entrada ? new Date(proposta.data_pagamento_entrada).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
 
     let lista = '';
     for(let i=1; i<=qtd; i++) {
@@ -444,42 +460,34 @@ function mostrarParcelasLiberadas() {
                 R$ ${calc.parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}
             </div>
             <div>
-                ${i===1 ? '<span class="text-sucesso font-bold">✅ Paga</span>' : '<span class="text-alerta">⏳ Pendente</span>'}
+                <span class="text-xs px-2 py-1 rounded ${i===1?'bg-green-100 text-green-800':'bg-amber-100 text-amber-800'}">
+                    ${i===1?'Pago':'Pendente'}
+                </span>
             </div>
         </div>`;
     }
 
     document.getElementById('conteudo').innerHTML = `
         <div class="cartao p-5">
-            <p class="text-center text-lg font-bold text-sucesso mb-4">✅ ENTRADA PAGA! (${dataPag})</p>
-            <h3 class="font-bold mb-3">📦 Suas Parcelas:</h3>
+            <h2 class="text-lg font-bold text-primary mb-3">🎉 Entrada Confirmada!</h2>
+            <p class="text-sm text-gray-600 mb-4">Suas parcelas estão liberadas e organizadas abaixo:</p>
             ${lista}
-            <p class="text-sm text-gray-500 mt-4">O pagamento das próximas parcelas será liberado conforme combinado.</p>
-            <a href="https://wa.me/${WHATSAPP}" target="_blank" class="botao botao-sucesso mt-4">📞 Falar com Suporte</a>
+            <a href="https://wa.me/${WHATSAPP}" target="_blank" class="botao botao-sucesso mt-4 block text-center">Falar com Suporte no WhatsApp</a>
         </div>
     `;
 }
 
-// ========= BARRA DE PROGRESSO =========
-function atualizarBarra() {
-    document.getElementById('barra-progresso').style.width = `${etapaAtual * 25}%`;
-    for(let i=1; i<=4; i++) {
-        document.getElementById(`etapa-ind-${i}`).classList.toggle('active', i <= etapaAtual);
-    }
-}
-
-// ========= MONITORA PAGAMENTO EM TEMPO REAL =========
 function monitorarPagamento() {
-    supabase.channel('propostas')
-        .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas'}, p => {
-            if(p.new.id === proposta.id && p.new.entrada_paga && etapaAtual < 4) {
-                alert('✅ PAGAMENTO CONFIRMADO! Parcelas liberadas!');
-                proposta.entrada_paga = true;
+    supabase.channel('public:propostas')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `id=eq.${proposta.id}` }, payload => {
+            if (payload.new.entrada_paga) {
+                proposta = payload.new;
                 mostrarParcelasLiberadas();
             }
         })
         .subscribe();
 }
 </script>
+
 </body>
 </html>
