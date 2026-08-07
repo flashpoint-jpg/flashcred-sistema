@@ -8,13 +8,13 @@ const PORTA = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// ✅ Faz o servidor entregar seus arquivos HTML, CSS, JS
-app.use(express.static(__dirname));
+// ✅ ISSO AQUI FAZ O SERVIDOR ENTREGAR TODOS OS ARQUIVOS DA PASTA
+app.use(express.static(path.join(__dirname)));
 
-// ✅ SEU TOKEN DE PRODUÇÃO
+// ✅ SEU TOKEN
 const MP_TOKEN = 'APP_USR-8158139097874832-0727';
 
-// ✅ Rota para gerar Pix (resolvendo o bloqueio)
+// ✅ ROTA DO PIX
 app.post('/gerar-pix', async (req, res) => {
     try {
         const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
@@ -25,7 +25,6 @@ app.post('/gerar-pix', async (req, res) => {
             },
             body: JSON.stringify(req.body)
         });
-
         const dados = await resposta.json();
         res.status(resposta.status).json(dados);
     } catch (erro) {
@@ -33,9 +32,9 @@ app.post('/gerar-pix', async (req, res) => {
     }
 });
 
-// ✅ Se acessar qualquer endereço, leva para a página principal
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+// ✅ SE ALGUMA ROTA NÃO EXISTIR, MANDA PARA A PÁGINA PRINCIPAL
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'consultar.html'));
 });
 
-app.listen(PORTA, () => console.log(`✅ Servidor rodando perfeitamente na porta ${PORTA}`));
+app.listen(PORTA, () => console.log('✅ Servidor online e funcionando!'));
