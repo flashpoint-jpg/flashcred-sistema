@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Administrativo | FlashCred</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -58,6 +59,7 @@
         .form-linha label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
         .form-linha input { width: 100%; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .area-pdf { position: absolute; left: -9999px; top: 0; background: white; padding: 40px; max-width: 800px; }
     </style>
 </head>
 <body>
@@ -66,7 +68,7 @@
     <!-- 🔐 TELA DE LOGIN -->
     <div id="telaLogin" class="area-senha">
         <h1 class="titulo-secao" style="font-size: 24px; margin-bottom: 24px; text-align: center;">🔐 Painel Administrativo FlashCred</h1>
-        <input type="password" id="senha" placeholder="Digite a senha de acesso" style="width: 100%; margin-bottom: 14px; padding: 14px; font-size: 16px;">
+        <input type="password" id="senha" placeholder="Digite a senha de acesso" style="width: 100%; margin-bottom: 14px; padding: 14px; font-size: 16px;" onkeydown="if(event.key==='Enter')entrar()">
         <button onclick="entrar()" class="botao botao-primario" style="width: 100%; font-size: 16px; padding: 14px;">Entrar no Sistema</button>
     </div>
 
@@ -112,6 +114,9 @@
     </div>
 </div>
 
+<!-- 📄 ÁREA OCULTA PARA GERAR PDF -->
+<div id="areaPDF" class="area-pdf"></div>
+
 <script>
 // ==============================================
 // ✅ CONFIGURAÇÕES
@@ -122,17 +127,20 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 const SENHA = 'flash2026';
 const LINK_CONSULTA = window.location.href.replace('painel.html','consulta.html');
+
 let propostas = [];
 let filtroAtual = 'todas';
 let canalRealtime = null;
 let propostaEditando = null;
+let ultimaQtd = 0;
 
 // ==============================================
-// ✅ LOGIN
+// ✅ LOGIN COM SALVAMENTO DE SESSÃO — NÃO VOLTA MAIS!
 // ==============================================
 function entrar() {
     const senha = document.getElementById('senha').value;
     if(senha === SENHA) {
+        localStorage.setItem('logadoFlashCred', 'SIM');
         document.getElementById('telaLogin').classList.add('oculto');
         document.getElementById('telaPrincipal').classList.remove('oculto');
         carregarPropostas();
@@ -143,7 +151,21 @@ function entrar() {
         alert('❌ Senha incorreta!');
     }
 }
+
+// ✅ VERIFICA SE JÁ ESTÁ LOGADO AO CARREGAR
+window.onload = function() {
+    if(localStorage.getItem('logadoFlashCred') === 'SIM') {
+        document.getElementById('telaLogin').classList.add('oculto');
+        document.getElementById('telaPrincipal').classList.remove('oculto');
+        carregarPropostas();
+        ativarRealtime();
+        const tokenSalvo = localStorage.getItem('tokenMP');
+        if(tokenSalvo) document.getElementById('tokenMP').value = tokenSalvo;
+    }
+};
+
 function sair() {
+    localStorage.removeItem('logadoFlashCred');
     if(canalRealtime) supabase.removeChannel(canalRealtime);
     document.getElementById('senha').value = '';
     document.getElementById('telaLogin').classList.remove('oculto');
@@ -176,20 +198,22 @@ async function carregarPropostas() {
         renderizarPropostas();
     } catch(e) {
         console.error('Erro:', e);
-        alert('⚠️ Erro ao carregar: ' + e.message);
     }
 }
 
 // ==============================================
-// ✅ TEMPO REAL
+// ✅ TEMPO REAL CORRIGIDO — ATUALIZA SOZINHO!
 // ==============================================
 function ativarRealtime() {
     if(canalRealtime) supabase.removeChannel(canalRealtime);
-    canalRealtime = supabase.channel('atualizacoes')
-        .on('postgres_changes', { event:'*', schema:'public', table:'propostas' }, () => {
+    canalRealtime = supabase.channel('mudancas_propostas', { config: { broadcast: { self: true } } })
+        .on('postgres_changes', { event:'*', schema:'public', table:'propostas' }, (payload) => {
+            console.log('🔄 Atualização detectada!', payload);
             carregarPropostas();
         })
-        .subscribe();
+        .subscribe((status) => {
+            console.log('📡 Realtime status:', status);
+        });
 }
 
 // ==============================================
@@ -201,7 +225,7 @@ function filtrar(f) {
 }
 
 // ==============================================
-// ✅ APROVAR + DIAS DE ENTREGA + WHATSAPP COM LINK!
+// ✅ APROVAR + WHATSAPP COM LINK
 // ==============================================
 async function aprovarProposta(id) {
     const valorEnt = prompt('Valor da Entrada:');
@@ -220,17 +244,12 @@ async function aprovarProposta(id) {
 
     if(error) { alert('❌ Erro: ' + error.message); return; }
 
-    // Pergunta se quer enviar mensagem pelo WhatsApp
     const p = propostas.find(x=>x.id===id);
     const whats = p ? String(p.whatsapp||'').replace(/\D/g,'') : '';
-    if(whats && confirm(`✅ Aprovada! Entrega em ${diasEntrega} dias.\n📲 Enviar mensagem pelo WhatsApp?`)) {
-        const valor = Number(p.valor_desejado||0);
-        const texto = encodeURIComponent(
-            `Olá ${p.nome || 'Cliente'}! 👋\n\n✅ Sua proposta foi APROVADA!\n\n💰 Valor: ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n📦 Entrega em ${diasEntrega} dias\n\n🔗 Acesse aqui para ver detalhes, assinar e gerar o Pix:\n${LINK_CONSULTA}?cpf=${(p.cpf||'').replace(/\D/g,'')}\n\nAtenciosamente,\nFlashCred ✅`
-        );
-        window.open(`https://wa.me/55${whats}?text=${texto}`, '_blank');
+    if(whats && confirm(`✅ Aprovada! Entrega em ${diasEntrega} dias.\n📲 Enviar mensagem com LINK pelo WhatsApp?`)) {
+        enviarWhatsApp(p);
     }
-    alert('✅ APROVADA!');
+    alert('✅ APROVADA! Já aparece pro cliente!');
 }
 
 // ==============================================
@@ -244,10 +263,10 @@ async function reprovarProposta(id) {
 }
 
 // ==============================================
-// ✅ MARCAR ENTRADA PAGA (DINHEIRO) — BOTÃO JÁ ESTÁ LÁ!
+// ✅ MARCAR ENTRADA PAGA
 // ==============================================
 async function marcarEntradaPagaManual(id) {
-    if(!confirm('💰 Cliente pagou a entrada EM DINHEIRO?\n\nIsso LIBERA IMEDIATAMENTE as parcelas para o cliente!')) return;
+    if(!confirm('💰 Cliente pagou a entrada EM DINHEIRO?\n\nIsso LIBERA IMEDIATAMENTE as parcelas!')) return;
 
     const p = propostas.find(x=>x.id===id);
     if(!p) return;
@@ -258,7 +277,6 @@ async function marcarEntradaPagaManual(id) {
     const valorTotal = Number(p.valor_desejado||0) * (1 + juros);
     const saldo = valorTotal - valorEnt;
 
-    // Gerar parcelas automaticamente
     const parcelas = [];
     const dtBase = new Date();
     for(let i=1; i<=qtd; i++) {
@@ -284,7 +302,7 @@ async function marcarEntradaPagaManual(id) {
     }).eq('id', id);
 
     if(error) alert('❌ Erro: ' + error.message);
-    else alert('✅ ENTRADA PAGA! Parcelas LIBERADAS para o cliente!');
+    else alert('✅ ENTRADA PAGA! Parcelas LIBERADAS!');
 }
 
 // ==============================================
@@ -336,7 +354,7 @@ function abrirEditar(id) {
             </div>
         </div>
         <div class="form-linha destaque">
-            <strong>Valor Total com Juros: R$ ${totalComJuros.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong>
+            <strong>💰 Valor Total com Juros: R$ ${totalComJuros.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong>
         </div>
         <div class="grid-2">
             <div class="form-linha">
@@ -379,7 +397,7 @@ async function salvarEdicao() {
 
     if(error) alert('❌ Erro: ' + error.message);
     else {
-        alert('✅ SALVO! Valor recalculado!');
+        alert('✅ SALVO!');
         fecharModalEditar();
         carregarPropostas();
     }
@@ -392,7 +410,61 @@ function fecharModalEditar(e) {
 }
 
 // ==============================================
-// ✅ RENDERIZAR LISTA — TEM TUDO!
+// ✅ ENVIAR WHATSAPP COM LINK
+// ==============================================
+function enviarWhatsApp(p) {
+    const whats = String(p.whatsapp||'').replace(/\D/g,'');
+    if(!whats) { alert('⚠️ Sem WhatsApp cadastrado!'); return; }
+
+    const valor = Number(p.valor_desejado||0);
+    const juros = Number(p.juros_mensal||5)/100;
+    const valorTotal = valor * (1 + juros);
+    const diasEntrega = p.dias_entrega || 7;
+    const cpfLimpo = (p.cpf||'').replace(/\D/g,'');
+
+    const texto = encodeURIComponent(
+        `Olá ${p.nome || 'Cliente'}! 👋\n\n✅ Sua proposta foi APROVADA!\n\n💰 Valor Solicitado: ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n💵 Valor Total com Juros: ${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n📦 Entrega em ${diasEntrega} dias\n\n🔗 Acesse aqui com seu CPF para ver detalhes, escolher parcelas, assinar contrato e gerar o Pix:\n${LINK_CONSULTA}?cpf=${cpfLimpo}\n\nAtenciosamente,\nFlashCred ✅`
+    );
+    window.open(`https://wa.me/55${whats}?text=${texto}`, '_blank');
+}
+
+// ==============================================
+// ✅ GERAR PDF DA PROPOSTA
+// ==============================================
+async function gerarPDF(id) {
+    const p = propostas.find(x=>x.id===id);
+    if(!p) return;
+
+    const valor = Number(p.valor_desejado||0);
+    const juros = Number(p.juros_mensal||5)/100;
+    const valorTotal = valor * (1 + juros);
+    const dt = new Date().toLocaleDateString('pt-BR');
+
+    const area = document.getElementById('areaPDF');
+    area.innerHTML = `
+        <h1 style="text-align:center; color:#0A2463; border-bottom:2px solid #ccc; padding-bottom:10px;">PROPOSTA DE CRÉDITO</h1>
+        <p><strong>Cliente:</strong> ${p.nome||'Não informado'}</p>
+        <p><strong>CPF:</strong> ${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
+        <p><strong>WhatsApp:</strong> ${p.whatsapp||'Não informado'}</p>
+        <p><strong>Endereço:</strong> ${p.endereco||'Não informado'}</p>
+        <hr style="margin:15px 0;">
+        <p><strong>Valor Solicitado:</strong> ${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
+        <p><strong>Juros:</strong> ${(juros*100).toFixed(1)}% ao mês</p>
+        <p style="font-size:18px; color:#10B981;"><strong>VALOR TOTAL:</strong> ${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
+        <p><strong>Entrada:</strong> ${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>
+        <p><strong>Parcelas:</strong> ${p.quantidade_parcelas||0}x</p>
+        <p><strong>Prazo de entrega:</strong> ${p.dias_entrega||7} dias</p>
+        <hr style="margin:15px 0;">
+        <p style="text-align:right;">Muzambinho - MG, ${dt}</p>
+    `;
+
+    const opt = { margin: 10, filename: `Proposta-${p.nome||'Cliente'}.pdf`, image: 'jpeg', html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } };
+    await html2pdf().set(opt).from(area).save();
+    alert('✅ PDF gerado!');
+}
+
+// ==============================================
+// ✅ RENDERIZAR LISTA
 // ==============================================
 function renderizarPropostas() {
     const lista = document.getElementById('listaPropostas');
@@ -429,37 +501,18 @@ function renderizarPropostas() {
                 <span class="status ${classeStatus}">${entradaPaga ? '💳 Paga' : status}</span>
             </div>
 
+            <div class="linha"><span class="etiqueta">CPF:</span><span class="valor">${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span></div>
+            <div class="linha"><span class="etiqueta">WhatsApp:</span><span class="valor">${whats ? `<a href="https://wa.me/55${whats}" target="_blank" style="color:#25D366; font-weight:bold;">📲 ${whats}</a>` : 'Não informado'}</span></div>
+            <div class="linha"><span class="etiqueta">Endereço/CEP:</span><span class="valor" style="font-size:13px;">${endereco}</span></div>
+            <div class="linha"><span class="etiqueta">Valor Solicitado:</span><span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>
+            <div class="linha destaque"><span class="etiqueta">💰 TOTAL COM JUROS:</span><span class="valor">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span></div>
             <div class="linha">
-                <span class="etiqueta">CPF:</span>
-                <span class="valor">${(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</span>
+                <span class="etiqueta">Entrada:</span><span class="valor">${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ${entradaPaga ? '✅ PAGA' : ''}</span>
+                <span class="etiqueta" style="margin-left: 16px;">Parcelas:</span><span class="valor">${p.quantidade_parcelas || 0}x</span>
             </div>
             <div class="linha">
-                <span class="etiqueta">WhatsApp:</span>
-                <span class="valor">${whats ? `<a href="https://wa.me/55${whats}" target="_blank" style="color:#25D366; font-weight:bold;">📲 ${whats}</a>` : 'Não informado'}</span>
-            </div>
-            <div class="linha">
-                <span class="etiqueta">Endereço/CEP:</span>
-                <span class="valor" style="font-size:13px;">${endereco}</span>
-            </div>
-            <div class="linha">
-                <span class="etiqueta">Valor Solicitado:</span>
-                <span class="valor">${valor.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
-            </div>
-            <div class="linha destaque">
-                <span class="etiqueta">💰 TOTAL COM JUROS:</span>
-                <span class="valor">${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
-            </div>
-            <div class="linha">
-                <span class="etiqueta">Entrada:</span>
-                <span class="valor">${Number(p.valor_entrada||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})} ${entradaPaga ? '✅ PAGA' : ''}</span>
-                <span class="etiqueta" style="margin-left: 16px;">Parcelas:</span>
-                <span class="valor">${p.quantidade_parcelas || 0}x</span>
-            </div>
-            <div class="linha">
-                <span class="etiqueta">📦 Entrega em:</span>
-                <span class="valor">${diasEntrega} dias</span>
-                <span class="etiqueta" style="margin-left: 16px;">Juros:</span>
-                <span class="valor">${p.juros_mensal || 5}% ao mês</span>
+                <span class="etiqueta">📦 Entrega em:</span><span class="valor">${diasEntrega} dias</span>
+                <span class="etiqueta" style="margin-left: 16px;">Juros:</span><span class="valor">${(juros*100).toFixed(1)}% ao mês</span>
             </div>
 
             ${dadosParcelas.length > 0 ? `
@@ -490,7 +543,8 @@ function renderizarPropostas() {
                 <button onclick="marcarEntradaPagaManual(${p.id})" class="botao botao-roxo botao-pequeno">💰 Entrada Paga (Dinheiro)</button>
                 ` : ''}
                 <button onclick="abrirEditar(${p.id})" class="botao botao-azul botao-pequeno">✏️ Editar</button>
-                ${whats ? `<button onclick="enviarWhatsApp('${whats}','${p.nome||'Cliente'}',${valorTotal},${diasEntrega})" class="botao botao-whatsapp botao-pequeno">💬 WhatsApp</button>` : ''}
+                <button onclick="gerarPDF(${p.id})" class="botao botao-alerta botao-pequeno">📄 Gerar PDF</button>
+                ${whats ? `<button onclick="enviarWhatsApp(${p.id})" class="botao botao-whatsapp botao-pequeno">💬 WhatsApp com Link</button>` : ''}
                 <button onclick="excluirProposta(${p.id})" class="botao botao-perigo botao-pequeno">🗑️ Excluir</button>
             </div>
         </div>`;
@@ -499,14 +553,6 @@ function renderizarPropostas() {
     lista.innerHTML = html || '<p style="text-align:center; padding:40px; color:var(--texto-claro);">Nenhuma proposta encontrada.</p>';
     document.getElementById('badgeSino').textContent = qtdNovas;
     document.getElementById('badgeSino').classList.toggle('oculto', qtdNovas === 0);
-}
-
-// Enviar WhatsApp manualmente
-function enviarWhatsApp(whats, nome, valorTotal, diasEntrega) {
-    const texto = encodeURIComponent(
-        `Olá ${nome}! 👋\n\n✅ Sua proposta foi APROVADA!\n\n💰 Valor Total: ${valorTotal.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}\n📦 Entrega em ${diasEntrega} dias\n\n🔗 Acesse aqui para ver detalhes, assinar e gerar o Pix:\n${LINK_CONSULTA}\n\nAtenciosamente,\nFlashCred ✅`
-    );
-    window.open(`https://wa.me/55${whats}?text=${texto}`, '_blank');
 }
 </script>
 </body>
