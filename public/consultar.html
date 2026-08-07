@@ -8,7 +8,6 @@ let dadosProposta = null;
 let qtdEscolhida = 0;
 let streamCam = null;
 
-// Inicialização segura ao carregar a página
 document.addEventListener('DOMContentLoaded', () => {
     const btnConsultar = document.getElementById('btnConsultar');
     if (btnConsultar) {
@@ -29,7 +28,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function formatarMoeda(valor) {
-    return Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const num = Number(valor);
+    if (isNaN(num)) return '0,00';
+    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function calcularDiasUteis(dataInicio, totalDiasUteis) {
@@ -141,166 +142,186 @@ async function buscarProposta() {
         ativarTempoReal(cpf);
     } catch (e) {
         console.error("Erro na consulta:", e);
-        conteudoProposta.innerHTML = `<div class="card text-center text-red-500">Ocorreu um erro ao carregar os dados. Tente novamente.</div>`;
+        conteudoProposta.innerHTML = `<div class="card text-center text-red-500"><i class="fas fa-exclamation-triangle text-3xl mb-2"></i><br>Ocorreu um erro ao processar os dados da proposta.<br><button onclick="window.location.reload()" class="btn btn-primary mt-3">Recarregar Página</button></div>`;
     }
 }
 
 async function montarTela(p) {
-    const v = Number(p.valor_desejado || 0);
-    const e = Number(p.valor_entrada || 0);
-    const j = Number(p.juros_mensal || 5);
-    const q = Number(p.quantidade_parcelas || 1);
-    const qtdEscolhidaFinal = Number(p.qtd_parcelas_escolhida || q);
-    const total = v * (1 + j / 100);
-    const diasUteisEntrega = p.dias_entrega || 7;
-    const datas = p.datas_parcelas || [];
-    const pagas = Number(p.parcelas_pagas || 0);
+    try {
+        const v = Number(p.valor_desejado || 0);
+        const e = Number(p.valor_entrada || 0);
+        const j = Number(p.juros_mensal || 5);
+        const q = Number(p.quantidade_parcelas || 1);
+        const qtdEscolhidaFinal = Number(p.qtd_parcelas_escolhida || q);
+        const total = v * (1 + j / 100);
+        const diasUteisEntrega = p.dias_entrega || 7;
+        const datas = p.datas_parcelas || [];
+        const pagas = Number(p.parcelas_pagas || 0);
 
-    let passo = 1;
-    if(p.status === 'Aprovada') passo = 2;
-    if(p.contrato_assinado) passo = 3;
-    if(p.entrada_paga) passo = 4;
+        let passo = 1;
+        if(p.status === 'Aprovada') passo = 2;
+        if(p.contrato_assinado) passo = 3;
+        if(p.entrada_paga) passo = 4;
 
-    const dadosEntrega = calcularDiasUteis(new Date(), diasUteisEntrega);
+        const dadosEntrega = calcularDiasUteis(new Date(), diasUteisEntrega);
 
-    let html = `
-    <div class="card">
-        <h2 class="text-xl font-bold text-primary mb-2 text-center">Olá, ${p.nome || 'Cliente'}!</h2>
-        <p class="mb-3 text-center">Sua proposta está: <strong class="${p.status==='Aprovada'?'text-green-600':'text-orange-500'}">${p.status}</strong></p>
-
-        <div class="progresso">
-            <div class="passo ${passo>=1?'concluido':''}"><div class="bolinha">${passo>1?'✓':'1'}</div><span>Proposta</span></div>
-            <div class="passo ${passo>=2?(passo>2?'concluido':'ativo'):''}"><div class="bolinha">${passo>2?'✓':'2'}</div><span>Aprovada</span></div>
-            <div class="passo ${passo>=3?(passo>3?'concluido':'ativo'):''}"><div class="bolinha">${passo>3?'✓':'3'}</div><span>Contrato</span></div>
-            <div class="passo ${passo>=4?'ativo':''}"><div class="bolinha">4</div><span>Pagamento</span></div>
-        </div>
-
-        ${p.status === 'Aprovada' ? `
-        <div class="aviso-entrega">
-            <i class="fas fa-truck"></i> 🚚 ENTREGA EM ATÉ ${diasUteisEntrega} DIAS ÚTEIS<br>
-            <div class="barra-entrega"><div class="${dadosEntrega.classe} h-full" style="width:${dadosEntrega.porcentagem}%"></div></div>
-            <div class="texto-entrega">Faltam <strong>${dadosEntrega.faltam}</strong> dias úteis</div>
-        </div>` : ''}
-
-        <div class="bg-gray-50 p-3 rounded-lg mb-3">
-            <p><strong>👤 Cliente:</strong> ${p.nome}</p>
-            <p><strong>📄 CPF:</strong> ${String(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}</p>
-            <p><strong>📱 WhatsApp:</strong> ${p.whatsapp || 'Não informado'}</p>
-            <p><strong>🏠 Endereço:</strong> ${p.endereco || 'Não informado'}</p>
-            <hr class="my-2 border-gray-300">
-            <p><strong>Valor do pedido:</strong> R$ ${formatarMoeda(v)}</p>
-            <p><strong>Entrada:</strong> R$ ${formatarMoeda(e)}</p>
-            <p><strong>Quantidade de parcelas:</strong> ${qtdEscolhidaFinal}x</p>
-            <p><strong>Total com juros:</strong> R$ ${formatarMoeda(total)}</p>
-        </div>
-    `;
-
-    if(p.status === 'Nova' || p.status === 'Em Análise') {
-        html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i><p class="font-semibold">Aguardando análise...</p></div>`;
-    }
-
-    if(p.status === 'Aprovada' && !p.contrato_assinado && !p.entrada_paga) {
-        html += `
+        let html = `
         <div class="card">
-            <h3 class="font-bold text-lg mb-2 text-center">Escolha a quantidade de parcelas:</h3>
-            <select id="qtdParcelas" class="w-full p-3 border rounded-lg mb-3">
-                ${Array.from({length: q}, (_, i) => {
-                    const n = i + 1;
-                    const val = ((total - e) * (Math.pow(1 + j/100, n) * (j/100)) / (Math.pow(1 + j/100, n) - 1));
-                    return `<option value="${n}">${n}x de R$ ${formatarMoeda(val)}</option>`;
-                }).join('')}
-            </select>
-            <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar</button>
-        </div>
+            <h2 class="text-xl font-bold text-primary mb-2 text-center">Olá, ${p.nome || 'Cliente'}!</h2>
+            <p class="mb-3 text-center">Sua proposta está: <strong class="${p.status==='Aprovada'?'text-green-600':'text-orange-500'}">${p.status || 'Pendente'}</strong></p>
 
-        <div id="blocoContrato" class="oculto">
-            <h3 class="font-bold text-lg mb-2 text-center">📄 Termos do Contrato</h3>
-            <div class="texto-contrato">
-                <strong>CONTRATO DE CRÉDITO</strong><br><br>
-                FlashCred e ${p.nome}.<br>
-                Valor total: R$ ${formatarMoeda(total)}<br>
-                Entrada: R$ ${formatarMoeda(e)}<br>
-                Prazo entrega: ${diasUteisEntrega} dias úteis.<br><br>
-                Ao assinar, concorda com todas as condições.
+            <div class="progresso">
+                <div class="passo ${passo>=1?'concluido':''}"><div class="bolinha">${passo>1?'✓':'1'}</div><span>Proposta</span></div>
+                <div class="passo ${passo>=2?(passo>2?'concluido':'ativo'):''}"><div class="bolinha">${passo>2?'✓':'2'}</div><span>Aprovada</span></div>
+                <div class="passo ${passo>=3?(passo>3?'concluido':'ativo'):''}"><div class="bolinha">${passo>3?'✓':'3'}</div><span>Contrato</span></div>
+                <div class="passo ${passo>=4?'ativo':''}"><div class="bolinha">4</div><span>Pagamento</span></div>
             </div>
-            <label class="flex items-center gap-2 mb-3 font-medium">
-                <input type="checkbox" id="aceitoContrato"> Li e aceito os termos
-            </label>
-            <button onclick="mostrarOpcoesAssinatura()" class="btn btn-primary">✍️ Assinar</button>
 
-            <div id="opcoesAssinatura" class="oculto mt-4">
-                <p class="font-semibold mb-2 text-center">Escolha:</p>
-                <button onclick="mostrarAssinaturaTexto()" class="btn btn-success mb-2">✍️ Escrever nome</button>
-                <button onclick="abrirCamera()" class="btn btn-cam">📸 Tirar foto</button>
+            ${p.status === 'Aprovada' ? `
+            <div class="aviso-entrega">
+                <i class="fas fa-truck"></i> 🚚 ENTREGA EM ATÉ ${diasUteisEntrega} DIAS ÚTEIS<br>
+                <div class="barra-entrega"><div class="${dadosEntrega.classe} h-full" style="width:${dadosEntrega.porcentagem}%"></div></div>
+                <div class="texto-entrega">Faltam <strong>${dadosEntrega.faltam}</strong> dias úteis</div>
+            </div>` : ''}
 
-                <div id="areaAssinaturaTexto" class="oculto mt-3">
-                    <input type="text" id="assinaturaTexto" class="campo-assinatura" placeholder="Seu nome completo">
-                    <button onclick="confirmarAssinatura()" class="btn btn-success mt-2">✅ Confirmar</button>
+            <div class="bg-gray-50 p-3 rounded-lg mb-3">
+                <p><strong>👤 Cliente:</strong> ${p.nome || ''}</p>
+                <p><strong>📄 CPF:</strong> ${String(p.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}</p>
+                <p><strong>📱 WhatsApp:</strong> ${p.whatsapp || 'Não informado'}</p>
+                <p><strong>🏠 Endereço:</strong> ${p.endereco || 'Não informado'}</p>
+                <hr class="my-2 border-gray-300">
+                <p><strong>Valor do pedido:</strong> R$ ${formatarMoeda(v)}</p>
+                <p><strong>Entrada:</strong> R$ ${formatarMoeda(e)}</p>
+                <p><strong>Quantidade de parcelas:</strong> ${qtdEscolhidaFinal}x</p>
+                <p><strong>Total com juros:</strong> R$ ${formatarMoeda(total)}</p>
+            </div>
+        `;
+
+        if(p.status === 'Nova' || p.status === 'Em Análise' || !p.status) {
+            html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i><p class="font-semibold">Aguardando análise...</p></div>`;
+        }
+
+        if(p.status === 'Aprovada' && !p.contrato_assinado && !p.entrada_paga) {
+            html += `
+            <div class="card">
+                <h3 class="font-bold text-lg mb-2 text-center">Escolha a quantidade de parcelas:</h3>
+                <select id="qtdParcelas" class="w-full p-3 border rounded-lg mb-3">
+                    ${Array.from({length: q > 0 ? q : 1}, (_, i) => {
+                        const n = i + 1;
+                        let val = 0;
+                        try {
+                            const taxa = j / 100;
+                            val = ((total - e) * (Math.pow(1 + taxa, n) * taxa)) / (Math.pow(1 + taxa, n) - 1);
+                            if (isNaN(val) || !isFinite(val)) val = (total - e) / n;
+                        } catch(err) {
+                            val = (total - e) / n;
+                        }
+                        return `<option value="${n}">${n}x de R$ ${formatarMoeda(val)}</option>`;
+                    }).join('')}
+                </select>
+                <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar</button>
+            </div>
+
+            <div id="blocoContrato" class="oculto">
+                <h3 class="font-bold text-lg mb-2 text-center">📄 Termos do Contrato</h3>
+                <div class="texto-contrato">
+                    <strong>CONTRATO DE CRÉDITO</strong><br><br>
+                    FlashCred e ${p.nome || ''}.<br>
+                    Valor total: R$ ${formatarMoeda(total)}<br>
+                    Entrada: R$ ${formatarMoeda(e)}<br>
+                    Prazo entrega: ${diasUteisEntrega} dias úteis.<br><br>
+                    Ao assinar, concorda com todas as condições.
                 </div>
+                <label class="flex items-center gap-2 mb-3 font-medium">
+                    <input type="checkbox" id="aceitoContrato"> Li e aceito os termos
+                </label>
+                <button onclick="mostrarOpcoesAssinatura()" class="btn btn-primary">✍️ Assinar</button>
 
-                <div id="areaCamera" class="area-cam oculto mt-3">
-                    <video id="videoCam" autoplay playsinline></video>
-                    <button onclick="tirarFoto()" class="btn btn-success mt-2">📸 Confirmar</button>
-                </div>
-            </div>
-        </div>`;
-    }
+                <div id="opcoesAssinatura" class="oculto mt-4">
+                    <p class="font-semibold mb-2 text-center">Escolha:</p>
+                    <button onclick="mostrarAssinaturaTexto()" class="btn btn-success mb-2">✍️ Escrever nome</button>
+                    <button onclick="abrirCamera()" class="btn btn-cam">📸 Tirar foto</button>
 
-    if(p.contrato_assinado && !p.entrada_paga) {
-        html += `
-        <div class="card text-center">
-            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO!</div>
-            <p class="mb-3">Entrada: <strong>R$ ${formatarMoeda(e)}</strong>.</p>
-            <button onclick="carregarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Gerar Pix</button>
-            <div id="areaPixGerado" class="oculto">
-                <div class="qrcode-pix" id="qrcode-pix"></div>
-                <div class="chave-pix"><strong>Pix Gerado</strong></div>
-                <button id="btnCopiarPix" class="btn btn-pix">📋 Copiar Código</button>
-            </div>
-        </div>`;
-    }
-
-    if(p.entrada_paga) {
-        html += `
-        <div class="card text-center">
-            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
-            <p class="mb-4">Suas parcelas:</p>
-            
-            <h3 class="font-bold text-lg mb-2 text-primary">📋 PARCELAS</h3>
-            ${Array.from({length: qtdEscolhidaFinal}, (_, i) => {
-                const n = i + 1;
-                const dt = datas[i] ? new Date(datas[i]).toLocaleDateString('pt-BR') : 'A definir';
-                const dtOriginal = datas[i] || null;
-                const ok = n <= pagas;
-                const prazo = prazoParcela(dtOriginal);
-                const valorParcela = ((total - e) * (Math.pow(1 + j/100, qtdEscolhidaFinal) * (j/100)) / (Math.pow(1 + j/100, qtdEscolhidaFinal) - 1));
-                return `<div class="item-parcela">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span><strong>${n}ª</strong> • R$ ${formatarMoeda(valorParcela)} • Venc: ${dt}</span>
-                        <span class="font-bold ${ok?'text-green-600':'text-orange-500'}">${ok?'PAGA':'PENDENTE'}</span>
+                    <div id="areaAssinaturaTexto" class="oculto mt-3">
+                        <input type="text" id="assinaturaTexto" class="campo-assinatura" placeholder="Seu nome completo">
+                        <button onclick="confirmarAssinatura()" class="btn btn-success mt-2">✅ Confirmar</button>
                     </div>
-                    ${!ok ? `<div class="barra-parcela"><div class="${prazo.classe} h-full"></div></div><div class="texto-prazo-parcela">${prazo.texto}</div><button onclick="pagarParcela(${n}, ${valorParcela})" class="btn btn-pix" style="padding:8px; font-size:14px;">Gerar Pix</button>` : ''}
-                </div>`;
-            }).join('')}
 
-            <div id="areaPixParcelaGerado" class="oculto mt-4">
-                <div class="qrcode-pix" id="qrcode-pix-parcela"></div>
-                <div class="chave-pix"><strong>Pix da Parcela</strong></div>
-                <button id="btnCopiarPixParcela" class="btn btn-pix">📋 Copiar</button>
+                    <div id="areaCamera" class="area-cam oculto mt-3">
+                        <video id="videoCam" autoplay playsinline></video>
+                        <button onclick="tirarFoto()" class="btn btn-success mt-2">📸 Confirmar</button>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        if(p.contrato_assinado && !p.entrada_paga) {
+            html += `
+            <div class="card text-center">
+                <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO!</div>
+                <p class="mb-3">Entrada: <strong>R$ ${formatarMoeda(e)}</strong>.</p>
+                <button onclick="carregarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Gerar Pix</button>
+                <div id="areaPixGerado" class="oculto">
+                    <div class="qrcode-pix" id="qrcode-pix"></div>
+                    <div class="chave-pix"><strong>Pix Gerado</strong></div>
+                    <button id="btnCopiarPix" class="btn btn-pix">📋 Copiar Código</button>
+                </div>
+            </div>`;
+        }
+
+        if(p.entrada_paga) {
+            html += `
+            <div class="card text-center">
+                <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
+                <p class="mb-4">Suas parcelas:</p>
+                
+                <h3 class="font-bold text-lg mb-2 text-primary">📋 PARCELAS</h3>
+                ${Array.from({length: qtdEscolhidaFinal}, (_, i) => {
+                    const n = i + 1;
+                    const dt = datas[i] ? new Date(datas[i]).toLocaleDateString('pt-BR') : 'A definir';
+                    const dtOriginal = datas[i] || null;
+                    const ok = n <= pagas;
+                    const prazo = prazoParcela(dtOriginal);
+                    let valorParcela = 0;
+                    try {
+                        const taxa = j / 100;
+                        valorParcela = ((total - e) * (Math.pow(1 + taxa, qtdEscolhidaFinal) * taxa)) / (Math.pow(1 + taxa, qtdEscolhidaFinal) - 1);
+                        if (isNaN(valorParcela) || !isFinite(valorParcela)) valorParcela = (total - e) / qtdEscolhidaFinal;
+                    } catch(err) {
+                        valorParcela = (total - e) / qtdEscolhidaFinal;
+                    }
+
+                    return `<div class="item-parcela">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span><strong>${n}ª</strong> • R$ ${formatarMoeda(valorParcela)} • Venc: ${dt}</span>
+                            <span class="font-bold ${ok?'text-green-600':'text-orange-500'}">${ok?'PAGA':'PENDENTE'}</span>
+                        </div>
+                        ${!ok ? `<div class="barra-parcela"><div class="${prazo.classe} h-full"></div></div><div class="texto-prazo-parcela">${prazo.texto}</div><button onclick="pagarParcela(${n}, ${valorParcela})" class="btn btn-pix" style="padding:8px; font-size:14px;">Gerar Pix</button>` : ''}
+                    </div>`;
+                }).join('')}
+
+                <div id="areaPixParcelaGerado" class="oculto mt-4">
+                    <div class="qrcode-pix" id="qrcode-pix-parcela"></div>
+                    <div class="chave-pix"><strong>Pix da Parcela</strong></div>
+                    <button id="btnCopiarPixParcela" class="btn btn-pix">📋 Copiar</button>
+                </div>
+            </div>`;
+        }
+
+        html += `
+            <div class="mt-4">
+                <a href="https://wa.me/5511973294235?text=Suporte CPF: ${p.cpf}" target="_blank" class="btn" style="background:#25D366;color:white;">
+                    <i class="fab fa-whatsapp"></i> Falar com Suporte
+                </a>
+                <button onclick="window.location.reload()" class="btn btn-alerta">🔄 Atualizar</button>
             </div>
         </div>`;
+
+        document.getElementById('conteudoProposta').innerHTML = html;
+    } catch (errRender) {
+        console.error("Erro ao montar tela:", errRender);
+        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center text-red-500"><i class="fas fa-exclamation-triangle text-3xl mb-2"></i><br>Erro ao exibir as informações da proposta.<br><button onclick="window.location.reload()" class="btn btn-primary mt-3">Recarregar</button></div>`;
     }
-
-    html += `
-        <div class="mt-4">
-            <a href="https://wa.me/5511973294235?text=Suporte CPF: ${p.cpf}" target="_blank" class="btn" style="background:#25D366;color:white;">
-                <i class="fab fa-whatsapp"></i> Falar com Suporte
-            </a>
-            <button onclick="window.location.reload()" class="btn btn-alerta">🔄 Atualizar</button>
-        </div>
-    </div>`;
-
-    document.getElementById('conteudoProposta').innerHTML = html;
 }
 
 async function carregarPixEntrada(valor) {
