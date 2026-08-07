@@ -36,6 +36,13 @@
         .area-edicao { display:none; margin-top:15px; padding:12px; background:#f8fafc; border-radius:6px; border:1px solid #e2e8f0; }
         .area-edicao.ativa { display:block; }
         .resumo-valores { font-weight:bold; margin-top:8px; padding:8px; background:#ecfdf5; border-radius:4px; }
+        /* 📊 BARRA DE RESUMO NO TOPO */
+        .barra-resumo { background: white; border-radius: 8px; padding: 12px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+        .item-resumo { display: flex; flex-direction: column; font-size: 13px; }
+        .item-resumo span:first-child { color: #64748B; }
+        .item-resumo span:last-child { font-weight: bold; font-size: 15px; }
+        .sininho { position: relative; cursor: pointer; }
+        .contador-notif { position: absolute; top: -8px; right: -8px; background: #EF4444; color: white; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; }
     </style>
 </head>
 <body class="p-3">
@@ -53,6 +60,30 @@
     </div>
 
     <div id="areaPrincipal" class="hidden">
+        <!-- 📊 BARRA DE RESUMO ADICIONADA AQUI -->
+        <div class="barra-resumo" id="barraResumo">
+            <div class="item-resumo">
+                <span>💰 Total Recebido</span>
+                <span id="totalRecebido" class="text-sucesso">R$ 0,00</span>
+            </div>
+            <div class="item-resumo">
+                <span>⏳ A Receber</span>
+                <span id="totalReceber" class="text-alerta">R$ 0,00</span>
+            </div>
+            <div class="item-resumo">
+                <span>🧾 Parcelas Pagas</span>
+                <span id="qtdPagas">0</span>
+            </div>
+            <div class="item-resumo">
+                <span>📋 Aguardando</span>
+                <span id="qtdPendentes">0</span>
+            </div>
+            <div class="sininho">
+                <i class="fas fa-bell text-xl text-primary"></i>
+                <div class="contador-notif" id="contadorNotif">0</div>
+            </div>
+        </div>
+
         <button onclick="abrirNovo()" class="botao botao-sucesso mb-3">➕ Nova Proposta</button>
         <div id="formNovo" class="area-edicao mb-4">
             <h3 class="font-bold mb-2">Nova Proposta</h3>
@@ -102,9 +133,9 @@ function atualizarCalculo(bloco) {
     const valorParcela = qtd > 0 ? saldo / qtd : 0;
 
     bloco.querySelector('.resumo-valores').innerHTML = `
-    💵 Total c/ juros: R$ ${total.toLocaleString('pt-BR',{minFraction:2})} | 
-    📉 Saldo: R$ ${saldo.toLocaleString('pt-BR',{minFraction:2})} | 
-    🧾 ${qtd}x de R$ ${valorParcela.toLocaleString('pt-BR',{minFraction:2})}
+    💵 Total c/ juros: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 
+    📉 Saldo: R$ ${saldo.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 
+    🧾 ${qtd}x de R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}
     `;
 }
 
@@ -121,8 +152,39 @@ function sair() { location.reload(); }
 async function carregarPropostas() {
     const {data} = await supabase.from('propostas').select('*').order('created_at', {ascending:false});
     if(!data) return;
-    let html = '';
 
+    // 📊 CALCULA VALORES PARA A BARRA DE RESUMO
+    let totalRecebido = 0;
+    let totalReceber = 0;
+    let qtdPagas = 0;
+    let qtdPendentes = 0;
+    let novas = 0;
+
+    data.forEach(item => {
+        const valor = Number(item.valor_desejado||0);
+        const entrada = Number(item.valor_entrada||0);
+        const juros = Number(item.juros_mensal||5);
+        const total = valor * (1 + juros / 100);
+
+        if(item.entrada_paga) {
+            totalRecebido += entrada;
+            qtdPagas += Number(item.quantidade_parcelas||0);
+        } else {
+            totalReceber += total;
+            qtdPendentes += Number(item.quantidade_parcelas||0);
+        }
+
+        if(item.status === 'Nova') novas++;
+    });
+
+    // 📌 ATUALIZA A BARRA NO TOPO
+    document.getElementById('totalRecebido').innerText = `R$ ${totalRecebido.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+    document.getElementById('totalReceber').innerText = `R$ ${totalReceber.toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+    document.getElementById('qtdPagas').innerText = qtdPagas;
+    document.getElementById('qtdPendentes').innerText = qtdPendentes;
+    document.getElementById('contadorNotif').innerText = novas;
+
+    let html = '';
     data.forEach(item => {
         const valor = Number(item.valor_desejado||0);
         const entrada = Number(item.valor_entrada||0);
@@ -137,8 +199,8 @@ async function carregarPropostas() {
                 <strong>${item.nome || 'Sem nome'}</strong>
                 <div class="text-sm text-gray-600">CPF: ${(item.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')} | Tel: ${item.whatsapp||'Não informado'}</div>
                 <div class="text-sm mt-1">
-                    Valor: R$ ${valor.toLocaleString('pt-BR',{minFraction:2})} | Entrada: R$ ${entrada.toLocaleString('pt-BR',{minFraction:2})} | 
-                    Total: R$ ${total.toLocaleString('pt-BR',{minFraction:2})} | ${qtd}x de R$ ${parcela.toLocaleString('pt-BR',{minFraction:2})}
+                    Valor: R$ ${valor.toLocaleString('pt-BR',{minimumFractionDigits:2})} | Entrada: R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 
+                    Total: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})} | ${qtd}x de R$ ${parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}
                 </div>
                 ${item.entrada_paga ? `<div class="text-sm font-bold text-sucesso mt-1">✅ Entrada Paga</div>` : ''}
             </div>
