@@ -50,13 +50,12 @@
         .whatsapp-link { color: #25D366; font-weight: bold; text-decoration: none; }
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; width: 100%; margin-top: 6px; }
         .em-edicao { border: 2px solid var(--azul); background: #EFF6FF; }
-        .dados-extra { background: #F8FAFC; padding: 8px 12px; border-radius: 6px; margin-top: 6px; font-size: 13px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- 🔐 LOGIN -->
+    <!-- 🔐 TELA DE LOGIN -->
     <div id="telaLogin" class="area-senha">
         <h1 style="font-size: 24px; margin-bottom: 24px;">🔐 Painel Administrativo FlashCred</h1>
         <input type="password" id="senha" placeholder="Digite a senha" style="width: 100%; margin-bottom: 14px; padding: 14px; font-size: 16px;" onkeydown="if(event.key==='Enter')entrar()">
@@ -87,8 +86,9 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
 const SENHA = 'flash2026';
-// ✅ LINK CORRIGIDO — PEGA O ENDEREÇO AUTOMATICAMENTE
-const BASE_URL = window.location.href.replace('painel.html','');
+
+// ✅ LINK CORRIGIDO — AGORA VAI FUNCIONAR SEMPRE!
+const BASE_URL = window.location.origin + window.location.pathname.replace('painel.html','');
 const LINK_CONSULTA = BASE_URL + 'consulta.html';
 
 let propostas = [];
@@ -123,14 +123,14 @@ function sair() {
 }
 
 // ==============================================
-// ✅ LER WHATSAPP DE QUALQUER NOME
+// ✅ PEGA WHATSAPP DE QUALQUER CAMPO
 // ==============================================
 function pegarWhatsapp(p) {
     return p.whatsapp || p.telefone || p.celular || p.contato || '';
 }
 
 // ==============================================
-// ✅ CÁLCULO CORRIGIDO — SEM NEGATIVO!
+// ✅ CÁLCULO CORRIGIDO — SEM VALOR NEGATIVO
 // ==============================================
 function calcularValores(valor, entrada, jurosPct, qtd) {
     const valorTotal = valor * (1 + jurosPct / 100);
@@ -169,7 +169,7 @@ function calcularEAtualizar(id) {
 }
 
 // ==============================================
-// ✅ CARREGAR PROPOSTAS
+// ✅ CARREGAR PROPOSTAS EM TEMPO REAL
 // ==============================================
 async function carregarPropostas() {
     try {
@@ -222,7 +222,7 @@ async function salvarEdicao(id) {
     if(error) {
         alert('❌ Erro: ' + error.message);
     } else {
-        alert('✅ SALVO!');
+        alert('✅ SALVO com sucesso!');
         editandoId = null;
         carregarPropostas();
     }
@@ -239,7 +239,7 @@ function cancelarEdicao() {
 }
 
 // ==============================================
-// ✅ APROVAR
+// ✅ APROVAR PROPOSTA
 // ==============================================
 async function aprovarProposta(id) {
     const prop = propostas.find(x=>x.id===id);
@@ -271,13 +271,13 @@ async function aprovarProposta(id) {
 // ✅ REPROVAR / EXCLUIR
 // ==============================================
 async function reprovarProposta(id) {
-    if(!confirm('❌ Reprovar?')) return;
+    if(!confirm('❌ Reprovar esta proposta?')) return;
     const { error } = await supabase.from('propostas').update({status:'Reprovada'}).eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
 }
 
 async function excluirProposta(id) {
-    if(!confirm('⚠️ EXCLUIR?')) return;
+    if(!confirm('⚠️ EXCLUIR? Não tem volta!')) return;
     const { error } = await supabase.from('propostas').delete().eq('id', id);
     if(error) alert('❌ Erro: ' + error.message);
 }
@@ -291,20 +291,23 @@ function enviarWhatsApp(p) {
 
     const valor = Number(p.valor_desejado||0);
     const juros = Number(p.juros_mensal||5);
-    const calc = calcularValores(valor, Number(p.valor_entrada||0), juros, Number(p.quantidade_parcelas||1));
+    const entrada = Number(p.valor_entrada||0);
+    const qtd = Number(p.quantidade_parcelas||1);
+    const calc = calcularValores(valor, entrada, juros, qtd);
+    const dias = Number(p.dias_entrega||7);
     const cpfLimpo = (p.cpf||'').replace(/\D/g,'');
 
-    // ✅ LINK COMPLETO E CORRETO
+    // ✅ LINK COMPLETO E CORRIGIDO — NÃO DÁ MAIS PÁGINA BRANCA!
     const linkCompleto = LINK_CONSULTA + '?cpf=' + cpfLimpo;
 
     const texto = encodeURIComponent(
-        `Olá ${p.nome||'Cliente'}! ✅ Sua proposta foi APROVADA!\n\n💰 Valor: R$ ${valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}\n💵 Total com Juros: R$ ${calc.valorTotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}\n📦 Entrega em ${p.dias_entrega||7} dias\n\n🔗 Acesse aqui:\n${linkCompleto}`
+        `Olá ${p.nome||'Cliente'}! ✅ Sua proposta foi APROVADA!\n\n💰 Valor: R$ ${valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}\n💵 Total com Juros: R$ ${calc.valorTotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}\n📦 Entrega em ${dias} dias\n\n🔗 Acesse com seu CPF:\n${linkCompleto}`
     );
     window.open(`https://wa.me/55${whats}?text=${texto}`, '_blank');
 }
 
 // ==============================================
-// ✅ RENDERIZA — MOSTRA TUDO NA LISTA!
+// ✅ MOSTRA TUDO NA LISTA — PARCELAS, VALORES, DIAS!
 // ==============================================
 function renderizarPropostas() {
     let filtradas = [...propostas];
@@ -364,7 +367,7 @@ function renderizarPropostas() {
                 <span class="valor">${dias} dias</span>
             </div>
 
-            <!-- ✅ VALORES E PARCELAS VISÍVEIS SEMPRE -->
+            <!-- ✅ VALORES E PARCELAS SEMPRE VISÍVEIS -->
             <div class="destaque">
                 <div class="linha">
                     <span class="etiqueta">Valor Solicitado:</span>
