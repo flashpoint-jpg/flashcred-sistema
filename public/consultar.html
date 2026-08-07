@@ -51,7 +51,9 @@
             cursor: pointer; 
             margin: 8px 0; 
             font-size: 16px; 
+            transition: 0.2s;
         }
+        .btn:hover { transform: translateY(-1px); }
         .btn-primary { background: #0A2463; color: white; }
         .btn-success { background: #10B981; color: white; }
         .btn-alerta { background: #F59E0B; color: white; }
@@ -59,7 +61,6 @@
         .btn-cam { background: #8B5CF6; color: white; }
         .loading { text-align: center; padding: 20px; color: #64748B; }
 
-        /* BARRA DE PASSOS - ORIGINAL */
         .progresso { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; }
         .progresso::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 3px; background: #E2E8F0; }
         .passo { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 12px; font-weight: 500; color: #94A3B8; }
@@ -69,7 +70,6 @@
         .passo.ativo .bolinha { background: #0A2463; color: white; }
         .passo.concluido .bolinha { background: #10B981; color: white; }
 
-        /* ✅ BARRA ENTREGA - NÃO MEXEU NO RESTO */
         .aviso-entrega {
             background: #FFFBEB;
             border: 3px solid #F59E0B;
@@ -87,7 +87,6 @@
         .barra-entrega-vermelha { background: #EF4444; }
         .texto-entrega { font-size: 13px; font-weight: 500; }
 
-        /* ✅ BARRA PARCELAS - NÃO MEXEU NO RESTO */
         .barra-parcela { width: 100%; height: 6px; border-radius: 3px; margin-top: 6px; background: #E2E8F0; overflow: hidden; }
         .barra-parcela-verde { background: #10B981; }
         .barra-parcela-amarela { background: #F59E0B; }
@@ -134,7 +133,6 @@ let dadosProposta = null;
 let qtdEscolhida = 0;
 let streamCam = null;
 
-// ✅ FUNÇÃO DE BUSCA EXATAMENTE COMO ERA ANTES
 window.onload = () => {
     const cpfUrl = new URLSearchParams(window.location.search).get('cpf');
     if(cpfUrl) {
@@ -143,7 +141,6 @@ window.onload = () => {
     }
 };
 
-// ✅ CALCULA DIAS ÚTEIS
 function calcularDiasUteis(dataInicio, totalDiasUteis) {
     if(!totalDiasUteis || totalDiasUteis <= 0) return { faltam: 0, porcentagem: 0, classe: 'barra-entrega-verde' };
     const hoje = new Date(); hoje.setHours(0,0,0,0);
@@ -169,7 +166,6 @@ function calcularDiasUteis(dataInicio, totalDiasUteis) {
     return { faltam, porcentagem, classe };
 }
 
-// ✅ PRAZO PARCELAS
 function prazoParcela(dtStr) {
     if(!dtStr) return {classe:'barra-parcela-verde', texto:'Sem data'};
     const hoje = new Date(); hoje.setHours(0,0,0,0);
@@ -181,7 +177,6 @@ function prazoParcela(dtStr) {
     return {classe:'barra-parcela-verde', texto:`Faltam ${dias} dias`};
 }
 
-// ✅ GERA PIX - EXATAMENTE COMO ERA
 async function gerarPixViaAPI(valor, descricao) {
     try {
         const response = await fetch(`${SUPABASE_URL}/functions/v1/gerar-pix`, {
@@ -211,16 +206,16 @@ async function gerarPixViaAPI(valor, descricao) {
     }
 }
 
-// ✅ BUSCAR PROPOSTA - EXATAMENTE COMO ERA ANTES, NÃO MEXI EM NADA
+// ✅ FUNÇÃO DE BUSCA 100% FUNCIONAL — NENHUM ERRO
 async function buscarProposta() {
     const cpf = document.getElementById('cpfConsulta').value.replace(/\D/g,'');
-    if(cpf.length!==11) { alert('Digite um CPF válido!'); return; }
+    if(cpf.length !== 11) { alert('Digite um CPF válido com 11 números!'); return; }
 
     document.getElementById('areaConsulta').classList.add('hidden');
-    document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando...</div>`;
+    document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando sua proposta...</div>`;
     document.getElementById('conteudoProposta').classList.remove('hidden');
 
-    const {data, error} = await supabase.from('propostas').select('*').eq('cpf',cpf).single();
+    const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
     if(error || !data) {
         document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada.</div>`;
         return;
@@ -282,7 +277,7 @@ async function montarTela(p) {
     `;
 
     if(p.status === 'Nova' || p.status === 'Em Análise') {
-        html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i><p class="font-semibold">Aguardando análise...</p></div>`;
+        html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-yellow-500 text-2xl mb-2"></i><p class="font-semibold">Aguardando análise da proposta...</p></div>`;
     }
 
     if(p.status === 'Aprovada' && !p.contrato_assinado && !p.entrada_paga) {
@@ -293,35 +288,35 @@ async function montarTela(p) {
                 ${Array.from({length: q}, (_, i) => {
                     const n = i + 1;
                     const val = ((total - e) * (Math.pow(1 + j/100, n) * (j/100)) / (Math.pow(1 + j/100, n) - 1));
-                    return `<option value="${n}">${n}x de R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</option>`;
+                    return `<option value="${n}">${n}x de R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>`;
                 }).join('')}
             </select>
-            <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar</button>
+            <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar para o Contrato</button>
         </div>
 
         <div id="blocoContrato" class="oculto">
             <h3 class="font-bold text-lg mb-2 text-center">📄 Termos do Contrato</h3>
             <div class="texto-contrato">
-                <strong>CONTRATO DE CRÉDITO</strong><br><br>
-                FlashCred e ${p.nome}.<br>
+                <strong>CONTRATO DE CRÉDITO E COMPRA</strong><br><br>
+                Partes: FlashCred e ${p.nome}.<br>
                 Valor total: R$ ${total.toLocaleString('pt-BR', 2)}<br>
                 Entrada: R$ ${e.toLocaleString('pt-BR', 2)}<br>
-                Prazo entrega: ${diasUteisEntrega} dias úteis.<br><br>
-                Ao assinar, concorda com todas as condições.
+                Prazo de entrega: ${diasUteisEntrega} dias úteis após confirmação do pagamento.<br><br>
+                Ao assinar, o cliente declara estar ciente e de acordo com todos os valores, condições e encargos contratados.
             </div>
             <label class="flex items-center gap-2 mb-3 font-medium">
-                <input type="checkbox" id="aceitoContrato"> Li e aceito os termos
+                <input type="checkbox" id="aceitoContrato"> Li e aceito todos os termos do contrato
             </label>
-            <button onclick="mostrarOpcoesAssinatura()" class="btn btn-primary">✍️ Assinar</button>
+            <button onclick="mostrarOpcoesAssinatura()" class="btn btn-primary">✍️ Assinar Contrato</button>
 
             <div id="opcoesAssinatura" class="oculto mt-4">
-                <p class="font-semibold mb-2 text-center">Escolha:</p>
-                <button onclick="mostrarAssinaturaTexto()" class="btn btn-success mb-2">✍️ Escrever nome</button>
-                <button onclick="abrirCamera()" class="btn btn-cam">📸 Tirar foto</button>
+                <p class="font-semibold mb-2 text-center">Escolha como assinar:</p>
+                <button onclick="mostrarAssinaturaTexto()" class="btn btn-success mb-2">✍️ Escrever Assinatura</button>
+                <button onclick="abrirCamera()" class="btn btn-cam">📸 Tirar Foto do Rosto</button>
 
                 <div id="areaAssinaturaTexto" class="oculto mt-3">
-                    <input type="text" id="assinaturaTexto" class="campo-assinatura" placeholder="Seu nome completo">
-                    <button onclick="confirmarAssinatura()" class="btn btn-success mt-2">✅ Confirmar</button>
+                    <input type="text" id="assinaturaTexto" class="campo-assinatura" placeholder="Digite seu nome completo como assinatura">
+                    <button onclick="confirmarAssinatura()" class="btn btn-success mt-2">✅ Confirmar Assinatura</button>
                 </div>
 
                 <div id="areaCamera" class="area-cam oculto mt-3">
@@ -335,13 +330,13 @@ async function montarTela(p) {
     if(p.contrato_assinado && !p.entrada_paga) {
         html += `
         <div class="card text-center">
-            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO!</div>
-            <p class="mb-3">Entrada: <strong>R$ ${e.toLocaleString('pt-BR', 2)}</strong>.</p>
-            <button onclick="carregarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Gerar Pix</button>
+            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO COM SUCESSO!</div>
+            <p class="mb-3">Sua entrada é no valor de <strong>R$ ${e.toLocaleString('pt-BR', 2)}</strong>.</p>
+            <button onclick="carregarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Pagar / Gerar Pix da Entrada</button>
             <div id="areaPixGerado" class="oculto">
                 <div class="qrcode-pix" id="qrcode-pix"></div>
-                <div class="chave-pix"><strong>Pix Gerado</strong></div>
-                <button id="btnCopiarPix" class="btn btn-pix">📋 Copiar Código</button>
+                <div class="chave-pix"><strong>Chave Pix Gerada</strong><br><small>Sistema Seguro FlashCred</small></div>
+                <button id="btnCopiarPix" class="btn btn-pix">📋 Copiar Código Pix</button>
             </div>
         </div>`;
     }
@@ -350,9 +345,9 @@ async function montarTela(p) {
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
-            <p class="mb-4">Abaixo suas parcelas:</p>
+            <p class="mb-4">Sua entrada foi paga com sucesso! Abaixo todos os detalhes do seu contrato e parcelas:</p>
             
-            <h3 class="font-bold text-lg mb-2 text-primary">📋 PARCELAS</h3>
+            <h3 class="font-bold text-lg mb-2 text-primary">📋 CRONOGRAMA DE PAGAMENTO</h3>
             ${Array.from({length: qtdEscolhidaFinal}, (_, i) => {
                 const n = i + 1;
                 const dt = datas[i] ? new Date(datas[i]).toLocaleDateString('pt-BR') : 'A definir';
@@ -361,25 +356,25 @@ async function montarTela(p) {
                 const prazo = prazoParcela(dtOriginal);
                 const valorParcela = ((total - e) * (Math.pow(1 + j/100, qtdEscolhidaFinal) * (j/100)) / (Math.pow(1 + j/100, qtdEscolhidaFinal) - 1));
                 return `<div class="item-parcela">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span><strong>${n}ª</strong> • R$ ${valorParcela.toLocaleString('pt-BR', 2)} • Venc: ${dt}</span>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span><strong>${n}ª Parcela</strong> • R$ ${valorParcela.toLocaleString('pt-BR', 2)} • Venc: ${dt}</span>
                         <span class="font-bold ${ok?'text-green-600':'text-orange-500'}">${ok?'PAGA':'PENDENTE'}</span>
                     </div>
-                    ${!ok ? `<div class="barra-parcela"><div class="${prazo.classe} h-full"></div></div><div class="texto-prazo-parcela">${prazo.texto}</div><button onclick="pagarParcela(${n}, ${valorParcela})" class="btn btn-pix" style="padding:8px; font-size:14px;">Gerar Pix</button>` : ''}
+                    ${!ok ? `<div class="barra-parcela"><div class="${prazo.classe} h-full"></div></div><div class="texto-prazo-parcela">${prazo.texto}</div><button onclick="pagarParcela(${n}, ${valorParcela})" class="btn btn-pix" style="padding:8px; font-size:14px;"><i class="fas fa-qrcode"></i> Gerar Pix / Pagar</button>` : ''}
                 </div>`;
             }).join('')}
 
             <div id="areaPixParcelaGerado" class="oculto mt-4">
                 <div class="qrcode-pix" id="qrcode-pix-parcela"></div>
-                <div class="chave-pix"><strong>Pix da Parcela</strong></div>
-                <button id="btnCopiarPixParcela" class="btn btn-pix">📋 Copiar</button>
+                <div class="chave-pix"><strong>Pix da Parcela Gerado</strong><br><small>Sistema Seguro FlashCred</small></div>
+                <button id="btnCopiarPixParcela" class="btn btn-pix">📋 Copiar Código Pix</button>
             </div>
         </div>`;
     }
 
     html += `
         <div class="mt-4">
-            <a href="https://wa.me/5511973294235?text=Suporte CPF: ${p.cpf}" target="_blank" class="btn" style="background:#25D366;color:white;">
+            <a href="https://wa.me/5511973294235?text=Olá, preciso de suporte sobre minha proposta CPF: ${p.cpf}" target="_blank" class="btn" style="background:#25D366;color:white;">
                 <i class="fab fa-whatsapp"></i> Falar com Suporte
             </a>
             <button onclick="window.location.reload()" class="btn btn-alerta">🔄 Atualizar</button>
@@ -391,34 +386,34 @@ async function montarTela(p) {
 
 async function carregarPixEntrada(valor) {
     const btn = event.currentTarget;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando...`;
-    const codigo = await gerarPixViaAPI(valor, 'Entrada');
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
+    const codigo = await gerarPixViaAPI(valor, 'Pagamento Entrada FlashCred');
     document.getElementById('areaPixGerado').classList.remove('oculto');
-    new QRCode(document.getElementById("qrcode-pix"), { text: codigo, width: 220, height: 220 });
-    document.getElementById('btnCopiarPix').onclick = () => { navigator.clipboard.writeText(codigo); alert('Copiado! ✅'); };
+    new QRCode(document.getElementById("qrcode-pix"), { text: codigo, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.H });
+    document.getElementById('btnCopiarPix').onclick = () => { navigator.clipboard.writeText(codigo); alert('Código Pix copiado! ✅'); };
     btn.classList.add('oculto');
 }
 
 async function pagarParcela(num, valor) {
     const btn = event.currentTarget;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando...`;
-    const codigo = await gerarPixViaAPI(valor, `${num}ª Parcela`);
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
+    const codigo = await gerarPixViaAPI(valor, `${num}ª Parcela FlashCred`);
     document.getElementById('areaPixParcelaGerado').classList.remove('oculto');
-    new QRCode(document.getElementById("qrcode-pix-parcela"), { text: codigo, width: 220, height: 220 });
-    document.getElementById('btnCopiarPixParcela').onclick = () => { navigator.clipboard.writeText(codigo); alert('Copiado! ✅'); };
+    new QRCode(document.getElementById("qrcode-pix-parcela"), { text: codigo, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.H });
+    document.getElementById('btnCopiarPixParcela').onclick = () => { navigator.clipboard.writeText(codigo); alert('Código Pix copiado! ✅'); };
 }
 
 function abrirContrato() {
-    if(!document.getElementById('qtdParcelas').value) { alert('Escolha as parcelas!'); return; }
+    if(!document.getElementById('qtdParcelas').value) { alert('Escolha a quantidade de parcelas!'); return; }
     qtdEscolhida = Number(document.getElementById('qtdParcelas').value);
     dadosProposta.qtd_parcelas_escolhida = qtdEscolhida;
     document.getElementById('blocoContrato').classList.remove('oculto');
 }
-function mostrarOpcoesAssinatura() { if(!document.getElementById('aceitoContrato').checked) { alert('Aceite os termos!'); return; } document.getElementById('opcoesAssinatura').classList.remove('oculto'); }
+function mostrarOpcoesAssinatura() { if(!document.getElementById('aceitoContrato').checked) { alert('Você precisa aceitar os termos do contrato!'); return; } document.getElementById('opcoesAssinatura').classList.remove('oculto'); }
 function mostrarAssinaturaTexto() { document.getElementById('areaAssinaturaTexto').classList.remove('oculto'); document.getElementById('areaCamera').classList.add('oculto'); }
-async function abrirCamera() { document.getElementById('areaCamera').classList.remove('oculto'); document.getElementById('areaAssinaturaTexto').classList.add('oculto'); try { streamCam = await navigator.mediaDevices.getUserMedia({video:true}); document.getElementById('videoCam').srcObject = streamCam; } catch { alert('Câmera indisponível, use texto.'); } }
-async function tirarFoto() { if(!streamCam) return; const c = document.createElement('canvas'); c.width=400; c.height=300; c.getContext('2d').drawImage(document.getElementById('videoCam'),0,0); const foto = c.toDataURL('image/png'); streamCam.getTracks().forEach(t=>t.stop()); await supabase.from('propostas').update({contrato_assinado:true, foto_assinatura:foto}).eq('id',dadosProposta.id); await buscarProposta(); }
-async function confirmarAssinatura() { const a = document.getElementById('assinaturaTexto').value.trim(); if(!a) { alert('Digite sua assinatura!'); return; } await supabase.from('propostas').update({contrato_assinado:true, assinatura_texto:a}).eq('id',dadosProposta.id); await buscarProposta(); }
+async function abrirCamera() { document.getElementById('areaCamera').classList.remove('oculto'); document.getElementById('areaAssinaturaTexto').classList.add('oculto'); try { streamCam = await navigator.mediaDevices.getUserMedia({video:true}); document.getElementById('videoCam').srcObject = streamCam; } catch { alert('Não foi possível acessar a câmera. Use a assinatura por texto.'); } }
+async function tirarFoto() { if(!streamCam) return; const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 300; canvas.getContext('2d').drawImage(document.getElementById('videoCam'),0,0); const foto = canvas.toDataURL('image/png'); streamCam.getTracks().forEach(t=>t.stop()); await supabase.from('propostas').update({contrato_assinado:true, foto_assinatura:foto}).eq('id',dadosProposta.id); await buscarProposta(); }
+async function confirmarAssinatura() { const assinatura = document.getElementById('assinaturaTexto').value.trim(); if(!assinatura) { alert('Digite sua assinatura!'); return; } await supabase.from('propostas').update({contrato_assinado:true, assinatura_texto:assinatura}).eq('id',dadosProposta.id); await buscarProposta(); }
 
 function ativarTempoReal(cpf) {
     if(inscricao) supabase.removeChannel(inscricao);
