@@ -6,10 +6,8 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.post('/gerar-pix', async (req, res) => {
-    // 1. Pega o token das variáveis de ambiente do Render
     const token = process.env.MP_TOKEN;
 
-    // 2. Verificação de segurança (se cair aqui, o erro é no painel do Render)
     if (!token) {
         console.error("ERRO: A variável MP_TOKEN não foi encontrada no Render.");
         return res.status(400).json({ message: "authorization value not present" });
@@ -29,11 +27,13 @@ app.post('/gerar-pix', async (req, res) => {
         const dados = await respostaMP.json();
         
         if (!respostaMP.ok) {
-            return res.status(respostaMP.status).json(dados);
+            console.error("Erro do Mercado Pago:", dados);
+            return res.status(respostaMP.status).json({ message: dados.message || "Erro ao gerar pagamento" });
         }
 
         res.json(dados);
     } catch (erro) {
+        console.error("Erro interno:", erro);
         res.status(500).json({ message: erro.message });
     }
 });
