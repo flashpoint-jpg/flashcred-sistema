@@ -8,7 +8,7 @@ let dadosProposta = null;
 let qtdEscolhida = 0;
 let streamCam = null;
 
-// Garante que o evento só será anexado após o DOM estar totalmente carregado
+// Inicialização segura ao carregar a página
 document.addEventListener('DOMContentLoaded', () => {
     const btnConsultar = document.getElementById('btnConsultar');
     if (btnConsultar) {
@@ -19,14 +19,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const cpfUrl = new URLSearchParams(window.location.search).get('cpf');
-    if(cpfUrl) {
-        document.getElementById('cpfConsulta').value = cpfUrl.replace(/\D/g,'');
-        buscarProposta();
+    if (cpfUrl) {
+        const campoCpf = document.getElementById('cpfConsulta');
+        if (campoCpf) {
+            campoCpf.value = cpfUrl.replace(/\D/g,'');
+            buscarProposta();
+        }
     }
 });
 
+function formatarMoeda(valor) {
+    return Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function calcularDiasUteis(dataInicio, totalDiasUteis) {
-    if(!totalDiasUteis || totalDiasUteis <= 0) return { faltam: 0, porcentagem: 0, classe: 'barra-entrega-verde' };
+    if (!totalDiasUteis || totalDiasUteis <= 0) return { faltam: 0, porcentagem: 0, classe: 'barra-entrega-verde' };
     const hoje = new Date(); hoje.setHours(0,0,0,0);
     let dataAlvo = new Date(dataInicio);
     let contador = 0;
@@ -102,30 +109,40 @@ async function gerarPixViaAPI(valor, descricao) {
 
 async function buscarProposta() {
     const cpfInput = document.getElementById('cpfConsulta');
-    if(!cpfInput) return;
-    const cpf = cpfInput.value.replace(/\D/g,'');
     const aviso = document.getElementById('avisoErro');
+    if (!cpfInput || !aviso) return;
+    
     aviso.classList.add('oculto');
+    const cpf = cpfInput.value.replace(/\D/g,'');
 
     if(cpf.length !== 11) {
-        aviso.textContent = `⚠️ CPF tem ${cpf.length} números — precisa de 11 dígitos!`;
+        aviso.textContent = `⚠️ O CPF precisa ter 11 dígitos (informado: ${cpf.length})`;
         aviso.classList.remove('oculto');
         return;
     }
 
-    document.getElementById('areaConsulta').classList.add('hidden');
-    document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando...</div>`;
-    document.getElementById('conteudoProposta').classList.remove('hidden');
-
-    const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
-    if(error || !data) {
-        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada. <br><br><button onclick="window.location.reload()" class="btn btn-primary mt-2">Tentar novamente</button></div>`;
-        return;
+    const areaConsulta = document.getElementById('areaConsulta');
+    const conteudoProposta = document.getElementById('conteudoProposta');
+    if (areaConsulta) areaConsulta.classList.add('hidden');
+    if (conteudoProposta) {
+        conteudoProposta.innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Buscando proposta...</div>`;
+        conteudoProposta.classList.remove('hidden');
     }
 
-    dadosProposta = data; 
-    await montarTela(data); 
-    ativarTempoReal(cpf);
+    try {
+        const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
+        if(error || !data) {
+            conteudoProposta.innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl mb-2"></i><br>Proposta não encontrada.<br><br><button onclick="window.location.reload()" class="btn btn-primary" style="padding:10px; font-size:14px;">Tentar outro CPF</button></div>`;
+            return;
+        }
+
+        dadosProposta = data; 
+        await montarTela(data); 
+        ativarTempoReal(cpf);
+    } catch (e) {
+        console.error("Erro na consulta:", e);
+        conteudoProposta.innerHTML = `<div class="card text-center text-red-500">Ocorreu um erro ao carregar os dados. Tente novamente.</div>`;
+    }
 }
 
 async function montarTela(p) {
@@ -171,10 +188,10 @@ async function montarTela(p) {
             <p><strong>📱 WhatsApp:</strong> ${p.whatsapp || 'Não informado'}</p>
             <p><strong>🏠 Endereço:</strong> ${p.endereco || 'Não informado'}</p>
             <hr class="my-2 border-gray-300">
-            <p><strong>Valor do pedido:</strong> R$ ${v.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
-            <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+            <p><strong>Valor do pedido:</strong> R$ ${formatarMoeda(v)}</p>
+            <p><strong>Entrada:</strong> R$ ${formatarMoeda(e)}</p>
             <p><strong>Quantidade de parcelas:</strong> ${qtdEscolhidaFinal}x</p>
-            <p><strong>Total com juros:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+            <p><strong>Total com juros:</strong> R$ ${formatarMoeda(total)}</p>
         </div>
     `;
 
@@ -190,7 +207,7 @@ async function montarTela(p) {
                 ${Array.from({length: q}, (_, i) => {
                     const n = i + 1;
                     const val = ((total - e) * (Math.pow(1 + j/100, n) * (j/100)) / (Math.pow(1 + j/100, n) - 1));
-                    return `<option value="${n}">${n}x de R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</option>`;
+                    return `<option value="${n}">${n}x de R$ ${formatarMoeda(val)}</option>`;
                 }).join('')}
             </select>
             <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar</button>
@@ -201,8 +218,8 @@ async function montarTela(p) {
             <div class="texto-contrato">
                 <strong>CONTRATO DE CRÉDITO</strong><br><br>
                 FlashCred e ${p.nome}.<br>
-                Valor total: R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>
-                Entrada: R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>
+                Valor total: R$ ${formatarMoeda(total)}<br>
+                Entrada: R$ ${formatarMoeda(e)}<br>
                 Prazo entrega: ${diasUteisEntrega} dias úteis.<br><br>
                 Ao assinar, concorda com todas as condições.
             </div>
@@ -233,7 +250,7 @@ async function montarTela(p) {
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO!</div>
-            <p class="mb-3">Entrada: <strong>R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong>.</p>
+            <p class="mb-3">Entrada: <strong>R$ ${formatarMoeda(e)}</strong>.</p>
             <button onclick="carregarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Gerar Pix</button>
             <div id="areaPixGerado" class="oculto">
                 <div class="qrcode-pix" id="qrcode-pix"></div>
@@ -259,7 +276,7 @@ async function montarTela(p) {
                 const valorParcela = ((total - e) * (Math.pow(1 + j/100, qtdEscolhidaFinal) * (j/100)) / (Math.pow(1 + j/100, qtdEscolhidaFinal) - 1));
                 return `<div class="item-parcela">
                     <div style="display: flex; justify-content: space-between;">
-                        <span><strong>${n}ª</strong> • R$ ${valorParcela.toLocaleString('pt-BR', {minimumFractionDigits: 2})} • Venc: ${dt}</span>
+                        <span><strong>${n}ª</strong> • R$ ${formatarMoeda(valorParcela)} • Venc: ${dt}</span>
                         <span class="font-bold ${ok?'text-green-600':'text-orange-500'}">${ok?'PAGA':'PENDENTE'}</span>
                     </div>
                     ${!ok ? `<div class="barra-parcela"><div class="${prazo.classe} h-full"></div></div><div class="texto-prazo-parcela">${prazo.texto}</div><button onclick="pagarParcela(${n}, ${valorParcela})" class="btn btn-pix" style="padding:8px; font-size:14px;">Gerar Pix</button>` : ''}
@@ -306,16 +323,49 @@ async function pagarParcela(num, valor) {
 }
 
 function abrirContrato() {
-    if(!document.getElementById('qtdParcelas').value) { alert('Escolha as parcelas!'); return; }
-    qtdEscolhida = Number(document.getElementById('qtdParcelas').value);
+    const select = document.getElementById('qtdParcelas');
+    if(!select || !select.value) { alert('Escolha as parcelas!'); return; }
+    qtdEscolhida = Number(select.value);
     dadosProposta.qtd_parcelas_escolhida = qtdEscolhida;
     document.getElementById('blocoContrato').classList.remove('oculto');
 }
-function mostrarOpcoesAssinatura() { if(!document.getElementById('aceitoContrato').checked) { alert('Aceite os termos!'); return; } document.getElementById('opcoesAssinatura').classList.remove('oculto'); }
-function mostrarAssinaturaTexto() { document.getElementById('areaAssinaturaTexto').classList.remove('oculto'); document.getElementById('areaCamera').classList.add('oculto'); }
-async function abrirCamera() { document.getElementById('areaCamera').classList.remove('oculto'); document.getElementById('areaAssinaturaTexto').classList.add('oculto'); try { streamCam = await navigator.mediaDevices.getUserMedia({video:true}); document.getElementById('videoCam').srcObject = streamCam; } catch { alert('Câmera indisponível, use texto.'); } }
-async function tirarFoto() { if(!streamCam) return; const c = document.createElement('canvas'); c.width=400; c.height=300; c.getContext('2d').drawImage(document.getElementById('videoCam'),0,0); const foto = c.toDataURL('image/png'); streamCam.getTracks().forEach(t=>t.stop()); await supabase.from('propostas').update({contrato_assinado:true, foto_assinatura:foto}).eq('id',dadosProposta.id); await buscarProposta(); }
-async function confirmarAssinatura() { const a = document.getElementById('assinaturaTexto').value.trim(); if(!a) { alert('Digite sua assinatura!'); return; } await supabase.from('propostas').update({contrato_assinado:true, assinatura_texto:a}).eq('id',dadosProposta.id); await buscarProposta(); }
+function mostrarOpcoesAssinatura() { 
+    const termos = document.getElementById('aceitoContrato');
+    if(!termos || !termos.checked) { alert('Aceite os termos!'); return; } 
+    document.getElementById('opcoesAssinatura').classList.remove('oculto'); 
+}
+function mostrarAssinaturaTexto() { 
+    document.getElementById('areaAssinaturaTexto').classList.remove('oculto'); 
+    document.getElementById('areaCamera').classList.add('oculto'); 
+}
+async function abrirCamera() { 
+    document.getElementById('areaCamera').classList.remove('oculto'); 
+    document.getElementById('areaAssinaturaTexto').classList.add('oculto'); 
+    try { 
+        streamCam = await navigator.mediaDevices.getUserMedia({video:true}); 
+        document.getElementById('videoCam').srcObject = streamCam; 
+    } catch { 
+        alert('Câmera indisponível, use texto.'); 
+    } 
+}
+async function tirarFoto() { 
+    if(!streamCam) return; 
+    const c = document.createElement('canvas'); 
+    c.width=400; c.height=300; 
+    c.getContext('2d').drawImage(document.getElementById('videoCam'),0,0); 
+    const foto = c.toDataURL('image/png'); 
+    streamCam.getTracks().forEach(t=>t.stop()); 
+    await supabase.from('propostas').update({contrato_assinado:true, foto_assinatura:foto}).eq('id',dadosProposta.id); 
+    await buscarProposta(); 
+}
+async function confirmarAssinatura() { 
+    const campoAss = document.getElementById('assinaturaTexto');
+    if (!campoAss) return;
+    const a = campoAss.value.trim(); 
+    if(!a) { alert('Digite sua assinatura!'); return; } 
+    await supabase.from('propostas').update({contrato_assinado:true, assinatura_texto:a}).eq('id',dadosProposta.id); 
+    await buscarProposta(); 
+}
 
 function ativarTempoReal(cpf) {
     if(inscricao) supabase.removeChannel(inscricao);
