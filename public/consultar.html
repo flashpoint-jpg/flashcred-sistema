@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minha Proposta | FlashCred</title>
+    <title>Acompanhar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
         tailwind.config = {
@@ -13,6 +14,7 @@
                 extend: {
                     colors: {
                         primary: '#0A2463',
+                        pix: '#32BCAD',
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444',
@@ -23,324 +25,146 @@
         }
     </script>
     <style>
-        body { background: #F8FAFC; min-height: 100vh; padding: 12px; }
-        .cartao { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .botao { padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; width: 100%; margin-top: 8px; }
-        .botao-primario { background: #0A2463; color: white; }
-        .botao-sucesso { background: #10B981; color: white; }
-        .botao-cinza { background: #E2E8F0; color: #334155; }
-        .barra-progresso { height: 8px; background: #E2E8F0; border-radius: 4px; overflow: hidden; margin: 12px 0; }
-        .barra-progresso > div { height: 100%; background: #0A2463; width: 0%; transition: 0.3s; }
-        .etapas { display: flex; justify-content: space-between; font-size: 12px; color: #64748B; margin-bottom: 8px; flex-wrap: wrap; gap: 4px; }
-        .etapas span.ativo { color: #0A2463; font-weight: bold; }
-        .opcao-parcela { border: 2px solid #E2E8F0; border-radius: 8px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: 0.2s; }
-        .opcao-parcela.selecionada { border-color: #0A2463; background: #EFF6FF; }
-        textarea { resize: none; }
+        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background: #F8FAFC; color: #1E293B; padding: 16px; max-width: 600px; margin: 0 auto; }
+        .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .btn { width: 100%; padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; margin: 8px 0; font-size: 16px; }
+        .btn-primary { background: #0A2463; color: white; }
+        .btn-success { background: #10B981; color: white; }
+        .btn-alerta { background: #F59E0B; color: white; }
+        .loading { text-align: center; padding: 20px; color: #64748B; }
+        .spinner { animation: gira 1s linear infinite; }
+        @keyframes gira { 100% { transform: rotate(360deg); } }
+
+        /* ✅ PRAZO DE ENTREGA BEM DESTACADO NA TELA DO CLIENTE */
+        .aviso-entrega {
+            background: #FFFBEB;
+            border: 3px solid #F59E0B;
+            border-radius: 10px;
+            padding: 16px;
+            margin: 16px 0;
+            text-align: center;
+            font-size: 18px;
+            font-weight: 700;
+            color: #92400E;
+        }
     </style>
 </head>
-<body class="max-w-md mx-auto">
-    <div class="etapas">
-        <span id="e1" class="ativo">1. Escolher Parcela</span>
-        <span id="e2">2. Contrato</span>
-        <span id="e3">3. Pagamento</span>
-        <span id="e4">4. Concluído</span>
-    </div>
-    <div class="barra-progresso"><div id="barra" style="width: 25%"></div></div>
+<body>
 
-    <div id="conteudo"></div>
+<div id="areaConsulta" class="card">
+    <h2 class="text-xl font-bold text-center mb-4 text-primary">🔍 Acompanhar Proposta</h2>
+    <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="w-full p-3 border border-gray-300 rounded-lg mb-4 text-center text-lg">
+    <button onclick="buscarProposta()" class="btn btn-primary">Consultar</button>
+</div>
+
+<div id="conteudoProposta" class="hidden"></div>
 
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-const WHATSAPP_SUPORTE = '5511973294235';
+let inscricao = null;
 
-let proposta = null;
-let etapaAtual = 1;
-let qtdParcelasEscolhida = null;
-let timerPagamento = null;
-
-window.onload = async () => {
-    const cpf = new URLSearchParams(window.location.search).get('cpf') || '';
-    if(!cpf || cpf.length !== 11) {
-        document.getElementById('conteudo').innerHTML = `
-            <div class="cartao text-center">
-                <h3 class="text-xl font-bold mb-4">Consultar Proposta</h3>
-                <input type="text" id="cpf" placeholder="Digite seu CPF" maxlength="11" class="w-full p-3 border rounded mb-3">
-                <button onclick="buscarProposta()" class="botao botao-primario">Consultar</button>
-            </div>`;
-        return;
+window.onload = () => {
+    const cpfUrl = new URLSearchParams(window.location.search).get('cpf');
+    if(cpfUrl) {
+        document.getElementById('cpfConsulta').value = cpfUrl.replace(/\D/g,'');
+        buscarProposta();
     }
-    await carregarProposta(cpf);
-    ouvirMudancasEmTempoReal(cpf);
 };
 
 async function buscarProposta() {
-    const cpf = document.getElementById('cpf').value.replace(/\D/g,'');
-    if(cpf.length!==11) return alert('Digite um CPF válido!');
-    window.location.search = `?cpf=${cpf}`;
-}
+    const cpf = document.getElementById('cpfConsulta').value.replace(/\D/g,'');
+    if(cpf.length!==11) { alert('Digite um CPF válido!'); return; }
 
-async function carregarProposta(cpf) {
-    const {data, error} = await supabase.from('propostas').select('*').ilike('cpf', cpf).order('created_at',{ascending:false}).limit(1).single();
-    if(error || !data) return document.getElementById('conteudo').innerHTML = `<div class="cartao text-center"><p class="text-red-600">Proposta não encontrada!</p><a href="https://wa.me/${WHATSAPP_SUPORTE}" target="_blank" class="botao botao-primario mt-3">Falar com Suporte</a></div>`;
-    
-    proposta = data;
-    if(proposta.status !== 'Aprovada') {
-        document.getElementById('conteudo').innerHTML = `<div class="cartao text-center"><p class="text-alerta text-lg font-bold">⏳ Aguardando Análise</p><p>Sua proposta está em análise, em breve você receberá a confirmação.</p><a href="https://wa.me/${WHATSAPP_SUPORTE}" target="_blank" class="botao botao-primario mt-4">Falar com Suporte</a></div>`;
+    document.getElementById('areaConsulta').classList.add('hidden');
+    document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando sua proposta...</div>`;
+    document.getElementById('conteudoProposta').classList.remove('hidden');
+
+    const {data, error} = await supabase.from('propostas').select('*').eq('cpf',cpf).single();
+    if(error || !data) {
+        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-exclamation-circle text-red-500 text-3xl"></i><br>Proposta não encontrada ou ainda não enviada.</div>`;
         return;
     }
-    
-    if(proposta.entrada_paga) {
-        etapaAtual = 4;
-        mostrarParcelasAprovadas();
-        return;
-    }
-    mostrarOpcoesParcelas();
+
+    montarTela(data);
+    ativarTempoReal(cpf);
 }
 
-function ouvirMudancasEmTempoReal(cpf) {
-    supabase
-        .channel('mudancas-proposta')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas' }, payload => {
-            if (payload.new && payload.new.cpf === cpf) {
-                proposta = payload.new;
-                if (proposta.entrada_paga && etapaAtual < 4) {
-                    mostrarParcelasAprovadas();
-                } else if (etapaAtual === 4) {
-                    mostrarParcelasAprovadas();
-                }
-            }
-        })
-        .subscribe();
-}
+function montarTela(p) {
+    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||1);
+    const total=v*(1+j/100);
+    const parcela = q===1 ? total : ((total-e)*(Math.pow(1+j/100,q)*(j/100)))/(Math.pow(1+j/100,q)-1);
+    const dias = p.dias_entrega || 7;
 
-function atualizarEtapa(n) {
-    etapaAtual = n;
-    document.getElementById('barra').style.width = `${n*25}%`;
-    for(let i=1;i<=4;i++) document.getElementById(`e${i}`).classList.toggle('ativo', i<=n);
-}
+    let html = `
+    <div class="card">
+        <h2 class="text-xl font-bold text-primary mb-2">Olá, ${p.nome || 'Cliente'}!</h2>
+        <p class="mb-2">Sua proposta está: <strong class="${p.status==='Aprovada'?'text-green-600':'text-orange-500'}">${p.status}</strong></p>
 
-function mostrarOpcoesParcelas() {
-    atualizarEtapa(1);
-    const valor = Number(proposta.valor_desejado||0);
-    const entrada = Number(proposta.valor_entrada||0);
-    const juros = Number(proposta.juros_mensal||5);
-    const maxParcelas = Number(proposta.quantidade_parcelas||1);
-    const diasEntrega = Number(proposta.dias_entrega||7);
-    const total = valor*(1+juros/100);
+        <!-- ✅ AQUI FICA O PRAZO BEM DESTACADO -->
+        <div class="aviso-entrega">
+            <i class="fas fa-truck"></i> 🚚 AVISO IMPORTANTE:<br>
+            A ENTREGA SERÁ FEITA EM ATÉ <span class="text-2xl">${dias}</span> DIAS ÚTEIS APÓS CONFIRMAÇÃO DO PAGAMENTO!
+        </div>
 
-    let html = `<div class="cartao">
-        <h3 class="text-lg font-bold mb-3">Olá, ${proposta.nome||'Cliente'}</h3>
-        <p class="mb-2">💰 Valor Total: <strong>R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></p>
-        <p class="mb-2">💸 Entrada: <strong>R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></p>
-        <p class="mb-3">Escolha até ${maxParcelas} vezes:</p>`;
-    
-    for(let i=1;i<=maxParcelas;i++) {
-        const valorParc = i===1 ? total : (total-entrada)*(Math.pow(1+juros/100,i)*(juros/100))/(Math.pow(1+juros/100,i)-1);
-        html += `<div class="opcao-parcela" onclick="escolherParcela(${i}, this)">
-            ${i}x de R$ ${valorParc.toLocaleString('pt-BR',{minimumFractionDigits:2})}
+        <div class="bg-gray-50 p-3 rounded-lg mb-3">
+            <p><strong>Valor do pedido:</strong> R$ ${v.toLocaleString('pt-BR',2)}</p>
+            <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR',2)}</p>
+            <p><strong>${q}x de:</strong> R$ ${parcela.toLocaleString('pt-BR',2)}</p>
+            <p><strong>Total com juros:</strong> R$ ${total.toLocaleString('pt-BR',2)}</p>
+        </div>
+    `;
+
+    if(p.status === 'Aprovada' && !p.entrada_paga) {
+        html += `
+        <div class="card">
+            <h3 class="font-bold text-lg mb-2">Escolha a quantidade de parcelas:</h3>
+            <p class="text-sm text-gray-600 mb-3">Você pode escolher de 1 até ${q} parcelas</p>
+            <select id="escolherParcela" class="w-full p-3 border rounded-lg mb-3" onchange="atualizarValor(this.value, ${e}, ${j}, ${v})">
+                ${Array.from({length:q}, (_,i)=>`<option value="${i+1}">${i+1}x de R$ ${ ((total-e)*(Math.pow(1+j/100,i+1)*(j/100))/(Math.pow(1+j/100,i+1)-1)).toLocaleString('pt-BR',2) }</option>`).join('')}
+            </select>
+            <button onclick="liberarContrato()" class="btn btn-success">✅ Aceitar e Continuar</button>
         </div>`;
     }
 
-    html += `<p class="mt-3 text-sm text-gray-600">🚚 Entrega em até ${diasEntrega} dias úteis após confirmação do pagamento.</p>
-    <button id="btnContinuar" onclick="irParaContrato()" class="botao botao-primario" disabled>Continuar</button></div>`;
-    document.getElementById('conteudo').innerHTML = html;
-}
-
-function escolherParcela(qtd, el) {
-    document.querySelectorAll('.opcao-parcela').forEach(x=>x.classList.remove('selecionada'));
-    el.classList.add('selecionada');
-    qtdParcelasEscolhida = qtd;
-    document.getElementById('btnContinuar').disabled = false;
-}
-
-function irParaContrato() {
-    if(!qtdParcelasEscolhida) return;
-    atualizarEtapa(2);
-    document.getElementById('conteudo').innerHTML = `<div class="cartao">
-        <h3 class="text-lg font-bold mb-3">📄 Contrato</h3>
-        <div class="border p-3 rounded mb-4 text-sm max-h-60 overflow-auto">
-            <p>Eu, <strong>${proposta.nome}</strong>, CPF <strong>${proposta.cpf}</strong>, declaro que li e aceito todos os termos para compra parcelada, no valor total de R$ ${(Number(proposta.valor_desejado)*(1+Number(proposta.juros_mensal||5)/100)).toLocaleString('pt-BR',{minimumFractionDigits:2})}, com entrada de R$ ${Number(proposta.valor_entrada||0).toLocaleString('pt-BR',{minimumFractionDigits:2})} e ${qtdParcelasEscolhida} parcelas mensais.</p>
-        </div>
-        <label class="flex items-center gap-2 mb-3"><input type="checkbox" id="aceitoContrato"> Li e aceito o contrato</label>
-        <button onclick="confirmarContrato()" class="botao botao-sucesso">Aceitar e Gerar Pix</button>
-        <button onclick="mostrarOpcoesParcelas()" class="botao botao-cinza">Voltar</button>
-    </div>`;
-}
-
-async function confirmarContrato() {
-    if(!document.getElementById('aceitoContrato').checked) return alert('Você precisa aceitar o contrato para continuar!');
-    atualizarEtapa(3);
-    document.getElementById('conteudo').innerHTML = `<div class="cartao text-center">
-        <h3 class="text-xl font-bold mb-3">💳 Pagamento da Entrada</h3>
-        <p class="text-2xl text-sucesso font-bold mb-4">R$ ${Number(proposta.valor_entrada||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-        <div id="areaPix" class="mb-4">
-            <i class="fas fa-spinner fa-spin text-2xl"></i>
-            <p>Gerando QR Code...</p>
-        </div>
-        <button onclick="irParaContrato()" class="botao botao-cinza">Voltar</button>
-    </div>`;
-    await gerarPix();
-}
-
-async function gerarPix() {
-    const valorEntrada = Number(proposta.valor_entrada||0);
-    const cpf = proposta.cpf.replace(/\D/g,'');
-
-    try {
-        const resposta = await fetch('/gerar-pix', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transaction_amount: valorEntrada,
-                description: `Entrada Proposta ${proposta.id}`,
-                payment_method_id: 'pix',
-                payer: { 
-                    email: 'filipe@flashcred.com.br', 
-                    first_name: (proposta.nome||'Cliente').split(' ')[0], 
-                    identification: { type: 'CPF', number: cpf.length===11 ? cpf : '00000000000' } 
-                },
-                external_reference: `${proposta.id}_entrada`
-            })
-        });
-
-        const res = await resposta.json();
-        if(!resposta.ok) throw new Error(res.message || 'Erro na geração');
-
-        const qrBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
-        const pixCopia = res.point_of_interaction.transaction_data.qr_code;
-
-        document.getElementById('areaPix').innerHTML = `
-            <img src="data:image/png;base64,${qrBase64}" class="w-48 mx-auto mb-3 border rounded">
-            <textarea readonly class="w-full p-2 border rounded mb-3 text-xs">${pixCopia}</textarea>
-            <button onclick="navigator.clipboard.writeText('${pixCopia}').then(()=>alert('✅ Código copiado!'))" class="botao botao-sucesso mb-2">📋 Copiar Código Pix</button>
-            <p class="text-sm text-gray-600 mt-2">Após o pagamento, aguarde a confirmação automática...</p>
-        `;
-
-    } catch (erro) {
-        console.error('ERRO:', erro);
-        document.getElementById('areaPix').innerHTML = `<p class="text-red-600">❌ ${erro.message}</p><button onclick="gerarPix()" class="botao botao-primario mt-3">Tentar Novamente</button>`;
-    }
-}
-
-function mostrarParcelasAprovadas() {
-    atualizarEtapa(4);
-    const valor = Number(proposta.valor_desejado||0);
-    const entrada = Number(proposta.valor_entrada||0);
-    const juros = Number(proposta.juros_mensal||5);
-    const qtd = qtdParcelasEscolhida || Number(proposta.quantidade_parcelas||1);
-    const parcelasPagasCount = Number(proposta.parcelas_pagas || 0);
-    // ✅ PEGA AS DATAS QUE VOCÊ CADASTRAR NO PAINEL
-    const datasParcelas = proposta.datas_parcelas || [];
-    const total = valor*(1+juros/100);
-    
-    const valorParcela = qtd === 1 ? total : ((total - entrada) * (Math.pow(1 + juros/100, qtd) * (juros/100))) / (Math.pow(1 + juros/100, qtd) - 1);
-
-    let html = `
-    <div class="cartao text-center">
-        <div class="text-sucesso text-3xl mb-2"><i class="fas fa-check-circle"></i></div>
-        <h3 class="text-xl font-bold mb-1">Entrada Quitada!</h3>
-        <p class="text-xs text-gray-500 mb-4">Acompanhe e pague suas parcelas abaixo:</p>
-
-        <h4 class="font-bold text-sm text-left mb-2 text-gray-700">📋 Suas Parcelas:</h4>
-        <div class="space-y-2 mb-4 max-h-56 overflow-auto text-left">`;
-
-    for (let i = 1; i <= qtd; i++) {
-        const estaPaga = i <= parcelasPagasCount;
-        // ✅ MOSTRA A DATA CADASTRADA, SE TIVER
-        const dataVencimento = datasParcelas[i-1] ? new Date(datasParcelas[i-1]).toLocaleDateString('pt-BR') : 'A definir';
-
+    if(p.entrada_paga) {
         html += `
-            <div class="border p-3 rounded-lg ${estaPaga ? 'bg-green-50 border-green-200' : 'bg-gray-50'} flex flex-col gap-2">
-                <div class="flex justify-between items-center text-sm">
-                    <span class="font-semibold text-gray-800">Parcela ${i} de ${qtd}</span>
-                    <span class="font-bold ${estaPaga ? 'text-green-600' : 'text-primary'}">R$ ${valorParcela.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
-                </div>
-                <!-- ✅ CAMPO NOVO: DATA DE VENCIMENTO -->
-                <div class="text-xs text-gray-600">📅 Vencimento: ${dataVencimento}</div>`;
-
-        if (estaPaga) {
-            html += `
-                <div class="text-center bg-green-100 text-green-700 py-2 rounded font-bold text-xs">
-                    <i class="fas fa-check"></i> Parcela Paga
-                </div>`;
-        } else {
-            html += `
-                <button onclick="gerarPixParcela(${i}, ${valorParcela})" class="botao botao-sucesso !mt-0 !py-2 text-xs">
-                    <i class="fas fa-qrcode"></i> Gerar Pix - Parcela ${i}
-                </button>`;
-        }
-
-        html += `</div>`;
+        <div class="card text-center">
+            <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> ENTRADA PAGA COM SUCESSO!</div>
+            <p>Aguarde a confirmação para acessar suas parcelas e contrato.</p>
+        </div>`;
     }
 
     html += `
+        <div class="mt-4">
+            <a href="https://wa.me/5511973294235?text=Olá, preciso de suporte sobre minha proposta CPF: ${p.cpf}" target="_blank" class="btn" style="background:#25D366;color:white;">
+                <i class="fab fa-whatsapp"></i> Falar com Suporte
+            </a>
+            <button onclick="window.location.reload()" class="btn btn-alerta">🔄 Atualizar</button>
         </div>
-        
-        <div id="areaPixParcela" class="mb-4"></div>
-
-        <a href="https://wa.me/${WHATSAPP_SUPORTE}?text=Olá,%20preciso%20de%20suporte%20sobre%20as%20parcelas%20da%20minha%20proposta%20 #${proposta.id}" target="_blank" class="botao bg-emerald-600 text-white flex items-center justify-center gap-2">
-            <i class="fab fa-whatsapp"></i> Falar com Suporte
-        </a>
-        
-        <button onclick="window.location.href = window.location.pathname" class="botao botao-cinza">
-            🔄 Fazer Nova Consulta
-        </button>
     </div>`;
 
-    document.getElementById('conteudo').innerHTML = html;
+    document.getElementById('conteudoProposta').innerHTML = html;
 }
 
-async function gerarPixParcela(numeroParcela, valorParcela) {
-    // ✅ CORRIGE O VALOR AUTOMATICAMENTE PARA NÃO DAR ERRO
-    let valorTratado = String(valorParcela)
-        .replace(/\./g, '')
-        .replace(',', '.');
-    const valorFormatado = Number(valorTratado).toFixed(2);
+function atualizarValor(qtd,e,j,v) {
+    const total=v*(1+j/100);
+    const parcela = ((total-e)*(Math.pow(1+j/100,qtd)*(j/100)))/(Math.pow(1+j/100,qtd)-1);
+}
 
-    document.getElementById('areaPixParcela').innerHTML = `
-        <div class="border p-3 rounded bg-white text-center mt-3 shadow-inner">
-            <p class="text-xs font-bold text-gray-700 mb-2">Gerando Pix da Parcela ${numeroParcela}...</p>
-            <i class="fas fa-spinner fa-spin text-primary text-xl"></i>
-        </div>`;
+function liberarContrato() {
+    alert('Agora você será direcionado para assinar o contrato e gerar o Pix!');
+    // Aqui continua o fluxo de assinatura e Pix
+}
 
-    try {
-        const resposta = await fetch('/gerar-pix', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                transaction_amount: Number(valorFormatado),
-                description: `Parcela ${numeroParcela} - Proposta ${proposta.id}`,
-                payment_method_id: 'pix',
-                payer: { 
-                    email: 'filipe@flashcred.com.br', 
-                    first_name: (proposta.nome||'Cliente').split(' ')[0], 
-                    identification: { type: 'CPF', number: proposta.cpf.replace(/\D/g,'') } 
-                },
-                external_reference: `${proposta.id}_parcela_${numeroParcela}`
-            })
-        });
-
-        const res = await resposta.json();
-        if(!resposta.ok) throw new Error(res.message || 'Erro na geração');
-
-        const qrBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
-        const pixCopia = res.point_of_interaction.transaction_data.qr_code;
-
-        document.getElementById('areaPixParcela').innerHTML = `
-            <div class="border p-3 rounded bg-blue-50 text-center mt-3">
-                <p class="text-xs font-bold text-primary mb-1">Pix Parcela ${numeroParcela} (R$ ${Number(valorFormatado).toLocaleString('pt-BR',{minimumFractionDigits:2})})</p>
-                <img src="data:image/png;base64,${qrBase64}" class="w-40 mx-auto my-2 border rounded">
-                <textarea readonly class="w-full p-2 border rounded mb-2 text-[10px] bg-white">${pixCopia}</textarea>
-                <button onclick="navigator.clipboard.writeText('${pixCopia}').then(()=>alert('✅ Código da parcela copiado!'))" class="botao botao-primario !py-2 text-xs">
-                    📋 Copiar Código Pix
-                </button>
-            </div>`;
-    } catch(err) {
-        document.getElementById('areaPixParcela').innerHTML = `<p class="text-red-600 text-xs mt-2">❌ Erro ao gerar Pix da parcela: ${err.message}</p>`;
-    }
+function ativarTempoReal(cpf) {
+    if(inscricao) supabase.removeChannel(inscricao);
+    inscricao = supabase.channel('cliente_' + cpf)
+        .on('postgres_changes', {event:'UPDATE',schema:'public',table:'propostas',filter:`cpf=eq.${cpf}`}, (m)=>montarTela(m.new))
+        .subscribe();
 }
 </script>
 </body>
