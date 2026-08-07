@@ -13,7 +13,6 @@
                 extend: {
                     colors: {
                         primary: '#0A2463',
-                        pix: '#32BCAD',
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444',
@@ -24,454 +23,227 @@
         }
     </script>
     <style>
-        body { background: #F8FAFC; min-height: 100vh; }
-        .cartao { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .botao { padding: 12px; border-radius: 8px; font-weight: bold; border: none; width: 100%; font-size: 16px; margin-top: 10px; cursor: pointer; transition: 0.2s; }
-        .botao:disabled { background: #ccc; cursor: not-allowed; opacity: 0.7; }
+        body { background: #F8FAFC; min-height: 100vh; padding: 12px; }
+        .cartao { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .botao { padding: 12px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .botao-primario { background: #0A2463; color: white; }
         .botao-sucesso { background: #10B981; color: white; }
-        .botao-cinza { background: #E5E7EB; color: #374151; }
-        .contrato { background: #f9fafb; border: 1px solid #ddd; border-radius: 8px; padding: 15px; max-height: 250px; overflow-y: auto; font-size: 14px; line-height: 1.6; }
-        canvas, video { border: 2px solid #ccc; border-radius: 8px; background: white; width: 100%; max-width: 360px; }
-        .barra-progresso { height: 10px; background: #E2E8F0; border-radius: 5px; overflow: hidden; margin-bottom: 20px; }
-        .barra-progresso > div { height: 100%; background: #0A2463; width: 0%; transition: all 0.4s ease; }
-        .etapa-indicador { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 11px; color: #94A3B8; text-align: center; }
-        .etapa-indicador span.active { color: #0A2463; font-weight: bold; }
-        .opcao-parcela { border: 2px solid #E2E8F0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.2s; margin-bottom: 10px; text-align: center; background: white; }
-        .opcao-parcela:hover { border-color: #3B82F6; background: #EFF6FF; }
-        .opcao-parcela.selecionada { border-color: #0A2463; background: #DBEAFE; font-weight: bold; }
-        .parcela-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .parcela-paga { background: #f0fdf4; border-left: 4px solid #10B981; }
-        .parcela-pendente { background: #fffbeb; border-left: 4px solid #f59e0b; }
+        .botao-cinza { background: #E2E8F0; color: #334155; }
+        .barra-progresso { height: 8px; background: #E2E8F0; border-radius: 4px; overflow: hidden; margin: 12px 0; }
+        .barra-progresso > div { height: 100%; background: #0A2463; width: 0%; transition: 0.3s; }
+        .etapas { display: flex; justify-content: space-between; font-size: 12px; color: #64748B; margin-bottom: 8px; }
+        .etapas span.ativo { color: #0A2463; font-weight: bold; }
+        .opcao-parcela { border: 2px solid #E2E8F0; border-radius: 8px; padding: 12px; margin-bottom: 8px; cursor: pointer; }
+        .opcao-parcela.selecionada { border-color: #0A2463; background: #EFF6FF; }
     </style>
 </head>
-<body class="p-4">
-
-<div class="max-w-md mx-auto">
-    <h1 class="text-2xl font-bold text-center text-primary mb-4">📋 Minha Proposta</h1>
-    
-    <div class="etapa-indicador">
-        <span id="etapa-ind-1">1. Escolher Parcela</span>
-        <span id="etapa-ind-2">2. Contrato</span>
-        <span id="etapa-ind-3">3. Pagamento Pix</span>
-        <span id="etapa-ind-4">4. Parcelas</span>
+<body class="max-w-md mx-auto">
+    <div class="etapas">
+        <span id="e1" class="ativo">1. Escolher Parcela</span>
+        <span id="e2">2. Contrato</span>
+        <span id="e3">3. Pagamento</span>
+        <span id="e4">4. Concluído</span>
     </div>
-    <div class="barra-progresso">
-        <div id="barra-progresso"></div>
-    </div>
+    <div class="barra-progresso"><div id="barra" style="width: 25%"></div></div>
 
     <div id="conteudo"></div>
-</div>
 
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-// ✅ SEU TOKEN DE PRODUÇÃO JÁ INSERIDO AQUI
-const MP_TOKEN = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
-const WHATSAPP = '5511973294235';
+// ✅ SEU TOKEN DE PRODUÇÃO CORRETO, DIRETO DA SUA TELA
+const MP_TOKEN = 'APP_USR-8158139097874832-0727';
+const WHATSAPP_SUPORTE = '5511973294235';
 
 let proposta = null;
 let etapaAtual = 1;
 let qtdParcelasEscolhida = null;
-let assinaturaCanvas = null, assinaturaContext = null, assinando = false;
-let temAssinaturaValida = false;
-let streamCamera = null;
-let intervalChecagemPagamento = null;
+let timerPagamento = null;
 
 window.onload = async () => {
-    const params = new URLSearchParams(window.location.search);
-    let cpf = (params.get('cpf') || '').replace(/\D/g, '');
-    
+    const cpf = new URLSearchParams(window.location.search).get('cpf') || '';
     if(!cpf || cpf.length !== 11) {
         document.getElementById('conteudo').innerHTML = `
-            <div class="cartao p-5 text-center">
-                <p class="mb-3">Digite seu CPF para consultar:</p>
-                <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" class="w-full p-3 border rounded-lg text-center text-lg">
-                <button onclick="buscar()" class="botao botao-primario">Consultar</button>
-            </div>
-        `;
+            <div class="cartao text-center">
+                <h3 class="text-xl font-bold mb-4">Consultar Proposta</h3>
+                <input type="text" id="cpf" placeholder="Digite seu CPF" maxlength="11" class="w-full p-3 border rounded mb-3">
+                <button onclick="buscarProposta()" class="botao botao-primario w-full">Consultar</button>
+            </div>`;
         return;
     }
-    await carregar(cpf);
+    await carregarProposta(cpf);
 };
 
-async function buscar() {
-    let cpf = document.getElementById('cpf').value.replace(/\D/g, '');
-    if(cpf.length !== 11) { alert('CPF inválido!'); return; }
-    window.location.search = '?cpf=' + cpf;
+async function buscarProposta() {
+    const cpf = document.getElementById('cpf').value.replace(/\D/g,'');
+    if(cpf.length!==11) return alert('CPF inválido!');
+    window.location.search = `?cpf=${cpf}`;
 }
 
-async function carregar(cpf) {
-    const {data, error} = await supabase
-        .from('propostas')
-        .select('*')
-        .ilike('cpf', '%' + cpf + '%')
-        .order('created_at', {ascending:false})
-        .limit(1);
-
-    if(error || !data || data.length === 0) {
-        document.getElementById('conteudo').innerHTML = `
-            <div class="cartao p-5 text-center">
-                <p class="text-red-600 font-bold">Proposta não encontrada!</p>
-                <a href="?" class="inline-block mt-4 text-primary">← Tentar novamente</a>
-            </div>
-        `;
+async function carregarProposta(cpf) {
+    const {data, error} = await supabase.from('propostas').select('*').ilike('cpf', cpf).order('created_at',{ascending:false}).limit(1).single();
+    if(error || !data) return document.getElementById('conteudo').innerHTML = `<div class="cartao text-center"><p class="text-red-600">Proposta não encontrada!</p></div>`;
+    
+    proposta = data;
+    if(proposta.status !== 'Aprovada') {
+        document.getElementById('conteudo').innerHTML = `<div class="cartao text-center"><p class="text-alerta text-lg font-bold">Aguardando aprovação</p><p>Em breve você receberá a confirmação.</p><a href="https://wa.me/${WHATSAPP_SUPORTE}" target="_blank" class="botao botao-primario w-full mt-4">Falar com Suporte</a></div>`;
         return;
     }
-
-    proposta = data[0];
-    
     if(proposta.entrada_paga) {
         etapaAtual = 4;
-        atualizarBarra();
-        mostrarParcelasLiberadas();
+        mostrarParcelas();
         return;
     }
-
-    if((proposta.status || 'Nova') !== 'Aprovada') {
-        document.getElementById('conteudo').innerHTML = `
-            <div class="cartao p-5 text-center">
-                <p class="text-lg font-bold text-alerta">⏳ Aguardando Aprovação</p>
-                <p class="text-gray-600 mt-2">Sua proposta está em análise.</p>
-                <a href="https://wa.me/${WHATSAPP}" target="_blank" class="botao botao-sucesso mt-4">Falar no WhatsApp</a>
-            </div>
-        `;
-        return;
-    }
-
-    renderizarEtapa1_EscolherParcelas();
+    mostrarOpcoesParcelas();
 }
 
-function calcularValores(valor, entrada, juros, qtd) {
-    const total = valor * (1 + juros / 100);
-    const saldo = total - entrada;
-    let parcela = 0;
-    if(qtd === 1) parcela = total;
-    else if(saldo > 0 && qtd > 0) {
-        const tx = juros / 100;
-        parcela = saldo * Math.pow(1+tx, qtd) * tx / (Math.pow(1+tx, qtd) - 1);
-    }
-    return {total, parcela, saldo};
-}
-
-function atualizarBarra() {
-    const porcentagens = { 1: '25%', 2: '50%', 3: '75%', 4: '100%' };
-    document.getElementById('barra-progresso').style.width = porcentagens[etapaAtual] || '0%';
-    for (let i = 1; i <= 4; i++) {
-        const ind = document.getElementById(`etapa-ind-${i}`);
-        if (ind) ind.classList.toggle('active', i === etapaAtual);
+function atualizarEtapa(n) {
+    etapaAtual = n;
+    document.getElementById('barra').style.width = `${n*25}%`;
+    for(let i=1;i<=4;i++) {
+        document.getElementById(`e${i}`).classList.toggle('ativo', i<=n);
     }
 }
 
-function renderizarEtapa1_EscolherParcelas() {
-    etapaAtual = 1;
-    atualizarBarra();
-    temAssinaturaValida = false;
-    if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
+function mostrarOpcoesParcelas() {
+    atualizarEtapa(1);
+    const valor = Number(proposta.valor_desejado||0);
+    const entrada = Number(proposta.valor_entrada||0);
+    const juros = Number(proposta.juros_mensal||5);
+    const maxParcelas = Number(proposta.quantidade_parcelas||1);
+    const diasEntrega = Number(proposta.dias_entrega||7);
+    const total = valor*(1+juros/100);
 
-    const valor = Number(proposta.valor_desejado || 0);
-    const entrada = Number(proposta.valor_entrada || 0);
-    const juros = Number(proposta.juros_mensal || 5);
-    const qtdMax = Number(proposta.quantidade_parcelas || 1);
-    const dias = Number(proposta.dias_entrega || 7);
-
-    let opcoes = '';
-    for(let i=1; i<=qtdMax; i++) {
-        const calc = calcularValores(valor, entrada, juros, i);
-        opcoes += `
-        <div class="opcao-parcela" onclick="escolherParcela(${i})">
-            <strong>${i}x</strong> — R$ ${calc.parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}/mês
-            <div class="text-sm text-gray-500">Total: R$ ${calc.total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>
+    let html = `<div class="cartao">
+        <h3 class="text-lg font-bold mb-3">Olá, ${proposta.nome||'Cliente'}</h3>
+        <p class="mb-2">Valor Total: <strong>R$ ${total.toLocaleString('pt-BR',{minFraction:2})}</strong></p>
+        <p class="mb-2">Entrada: <strong>R$ ${entrada.toLocaleString('pt-BR',{minFraction:2})}</strong></p>
+        <p class="mb-3">Escolha até ${maxParcelas} vezes:</p>`;
+    
+    for(let i=1;i<=maxParcelas;i++) {
+        const valorParc = i===1 ? total : (total-entrada)*(Math.pow(1+juros/100,i)*(juros/100))/(Math.pow(1+juros/100,i)-1);
+        html += `<div class="opcao-parcela" onclick="escolherParcela(${i}, this)">
+            ${i}x de R$ ${valorParc.toLocaleString('pt-BR',{minFraction:2})}
         </div>`;
     }
 
-    document.getElementById('conteudo').innerHTML = `
-        <div class="cartao p-5">
-            <h2 class="text-lg font-bold text-primary mb-3">👤 ${proposta.nome || 'Cliente'}</h2>
-            <div class="space-y-2 text-sm mb-4">
-                <p><strong>CPF:</strong> ${(proposta.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
-                <p><strong>Valor Solicitado:</strong> R$ ${valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                <p class="text-sucesso font-bold">💵 Entrada: R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                <p><strong>📦 Entrega em:</strong> ${dias} dias após confirmação</p>
-            </div>
-
-            <p class="font-bold mb-3">Escolha em quantas vezes deseja pagar:</p>
-            ${opcoes}
-
-            <button id="btnAvancar" class="botao botao-primario" onclick="irEtapa2()" disabled>Continuar → Ler e Assinar Contrato</button>
-        </div>
-    `;
+    html += `<p class="mt-3 text-sm text-gray-600">🚚 Entrega em até ${diasEntrega} dias úteis após confirmação do pagamento.</p>
+    <button id="btnContinuar" onclick="irParaContrato()" class="botao botao-primario w-full mt-4" disabled>Continuar</button></div>`;
+    document.getElementById('conteudo').innerHTML = html;
 }
 
-function escolherParcela(qtd) {
+function escolherParcela(qtd, el) {
+    document.querySelectorAll('.opcao-parcela').forEach(x=>x.classList.remove('selecionada'));
+    el.classList.add('selecionada');
     qtdParcelasEscolhida = qtd;
-    document.querySelectorAll('.opcao-parcela').forEach((el, i) => {
-        el.classList.toggle('selecionada', i + 1 === qtd);
-    });
-    document.getElementById('btnAvancar').disabled = false;
+    document.getElementById('btnContinuar').disabled = false;
 }
 
-function irEtapa2() {
-    etapaAtual = 2;
-    atualizarBarra();
-    temAssinaturaValida = false;
-
-    const valor = Number(proposta.valor_desejado || 0);
-    const entrada = Number(proposta.valor_entrada || 0);
-    const juros = Number(proposta.juros_mensal || 5);
-    const calc = calcularValores(valor, entrada, juros, qtdParcelasEscolhida);
-    const dias = Number(proposta.dias_entrega || 7);
-
-    document.getElementById('conteudo').innerHTML = `
-        <div class="cartao p-5">
-            <h2 class="text-lg font-bold mb-3">📄 Contrato de Compra e Parcelamento</h2>
-            <div class="contrato mb-4">
-                <p>Eu, <strong>${proposta.nome || 'Cliente'}</strong>, CPF ${(proposta.cpf||'').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}, declaro que li e aceito:</p>
-                <p class="mt-2">• Valor do produto: R$ ${valor.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                <p>• Entrada: R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                <p>• Pagamento em ${qtdParcelasEscolhida}x de R$ ${calc.parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                <p>• Valor total: R$ ${calc.total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                <p>• Entrega em até ${dias} dias após confirmação do pagamento da entrada.</p>
-                <p class="mt-3">Declaro que ao deixar de pagar estarei prejudicando a confiança concedida. Pense bem antes de assumir este compromisso.</p>
-            </div>
-
-            <label class="flex items-center mb-4 cursor-pointer">
-                <input type="checkbox" id="aceitoContrato" onchange="verificarContrato()" style="transform:scale(1.5); margin-right:10px;">
-                <span>Li e concordo com o contrato acima</span>
-            </label>
-
-            <p class="font-bold mb-2">📸 Foto (Selfie) — opcional:</p>
-            <video id="camera" autoplay playsinline style="display:none;"></video>
-            <button onclick="ligarCamera()" id="btnCamera" class="botao botao-cinza" style="padding:8px; font-size:14px;">📸 Ligar Câmera</button>
-            <button onclick="tirarFoto()" id="btnFoto" class="botao botao-sucesso" style="padding:8px; font-size:14px; display:none;">✅ Tirar Foto</button>
-            <canvas id="fotoTirada" style="display:none; max-width:200px;"></canvas>
-
-            <p class="font-bold mt-4 mb-2">✍️ Assine abaixo:</p>
-            <canvas id="assinatura" width="340" height="130"></canvas>
-            <button onclick="limparAssinatura()" class="botao botao-cinza" style="padding:8px; font-size:14px; margin-top:8px;">Limpar Assinatura</button>
-
-            <button id="btnAvancar2" class="botao botao-primario mt-4" onclick="irEtapa3()" disabled>Continuar → Gerar Pix</button>
-            <button onclick="renderizarEtapa1_EscolherParcelas()" class="botao botao-cinza">← Voltar</button>
+function irParaContrato() {
+    if(!qtdParcelasEscolhida) return;
+    atualizarEtapa(2);
+    document.getElementById('conteudo').innerHTML = `<div class="cartao">
+        <h3 class="text-lg font-bold mb-3">Contrato de Prestação</h3>
+        <div class="border p-3 rounded mb-4 text-sm max-h-60 overflow-auto">
+            <p>Eu, ${proposta.nome}, CPF ${proposta.cpf}, declaro que li e aceito os termos do contrato para compra parcelada, no valor total de R$ ${(Number(proposta.valor_desejado)*(1+Number(proposta.juros_mensal||5)/100)).toLocaleString('pt-BR',{minFraction:2})}, com entrada de R$ ${Number(proposta.valor_entrada||0).toLocaleString('pt-BR',{minFraction:2})} e ${qtdParcelasEscolhida} parcelas.</p>
         </div>
-    `;
-
-    setTimeout(() => initAssinatura(), 50);
+        <label class="flex items-center gap-2 mb-3"><input type="checkbox" id="aceitoContrato"> Li e aceito o contrato</label>
+        <button onclick="confirmarContrato()" class="botao botao-sucesso w-full">Aceitar e Gerar Pix</button>
+    </div>`;
 }
 
-async function ligarCamera() {
-    try {
-        streamCamera = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
-        const video = document.getElementById('camera');
-        video.style.display = 'block';
-        video.srcObject = streamCamera;
-        document.getElementById('btnCamera').style.display = 'none';
-        document.getElementById('btnFoto').style.display = 'block';
-    } catch(e) {
-        alert('Câmera não disponível. Pode assinar normalmente.');
-    }
-}
-
-function tirarFoto() {
-    const video = document.getElementById('camera');
-    const canvas = document.getElementById('fotoTirada');
-    canvas.style.display = 'block';
-    const ctx = canvas.getContext('2d');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0);
-    if(streamCamera) streamCamera.getTracks().forEach(t => t.stop());
-    document.getElementById('camera').style.display = 'none';
-    document.getElementById('btnFoto').style.display = 'none';
-    verificarContrato();
-}
-
-function verificarContrato() {
-    const aceito = document.getElementById('aceitoContrato').checked;
-    document.getElementById('btnAvancar2').disabled = !(aceito && temAssinaturaValida);
-}
-
-function initAssinatura() {
-    assinaturaCanvas = document.getElementById('assinatura');
-    if(!assinaturaCanvas) return;
-    assinaturaContext = assinaturaCanvas.getContext('2d');
-    assinaturaContext.lineWidth = 3;
-    assinaturaContext.lineCap = 'round';
-    assinaturaContext.strokeStyle = '#000';
-
-    function pos(e) {
-        const r = assinaturaCanvas.getBoundingClientRect();
-        const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
-        const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
-        return {x, y};
-    }
-
-    assinaturaCanvas.onmousedown = assinaturaCanvas.ontouchstart = e => {
-        e.preventDefault(); assinando = true;
-        assinaturaContext.beginPath();
-        const p = pos(e);
-        assinaturaContext.moveTo(p.x, p.y);
-        temAssinaturaValida = true;
-        verificarContrato();
-    };
-    assinaturaCanvas.onmousemove = assinaturaCanvas.ontouchmove = e => {
-        if(!assinando) return; e.preventDefault();
-        const p = pos(e);
-        assinaturaContext.lineTo(p.x, p.y);
-        assinaturaContext.stroke();
-    };
-    assinaturaCanvas.onmouseup = assinaturaCanvas.ontouchend = () => {
-        assinando = false;
-        verificarContrato();
-    };
-}
-
-function limparAssinatura() {
-    if(assinaturaContext) {
-        assinaturaContext.clearRect(0,0,assinaturaCanvas.width,assinaturaCanvas.height);
-        temAssinaturaValida = false;
-        verificarContrato();
-    }
-}
-
-async function irEtapa3() {
-    etapaAtual = 3;
-    atualizarBarra();
-
-    const entrada = Number(proposta.valor_entrada || 0);
-
-    document.getElementById('conteudo').innerHTML = `
-        <div class="cartao p-5 text-center">
-            <h2 class="text-lg font-bold mb-3">📲 Pagamento Pix - Entrada</h2>
-            <p class="text-xl font-bold text-sucesso mb-2">R$ ${entrada.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-            <div id="areaPix" class="py-4">
-                <i class="fas fa-circle-notch fa-spin text-3xl text-primary mb-2"></i>
-                <p class="text-sm text-gray-600">Gerando QR Code Pix oficial...</p>
-            </div>
-            <button onclick="irEtapa2()" class="botao botao-cinza mt-2">← Voltar</button>
+async function confirmarContrato() {
+    if(!document.getElementById('aceitoContrato').checked) return alert('Você precisa aceitar o contrato!');
+    atualizarEtapa(3);
+    document.getElementById('conteudo').innerHTML = `<div class="cartao text-center">
+        <h3 class="text-xl font-bold mb-3">Pagamento da Entrada</h3>
+        <p class="text-2xl text-sucesso font-bold mb-4">R$ ${Number(proposta.valor_entrada||0).toLocaleString('pt-BR',{minFraction:2})}</p>
+        <div id="areaPix" class="mb-4">
+            <i class="fas fa-spinner fa-spin text-2xl"></i>
+            <p>Gerando QR Code...</p>
         </div>
-    `;
-
-    await gerarPixDiretoMercadoPago();
-    iniciarMonitoramentoPagamento();
+        <button onclick="voltar()" class="botao botao-cinza w-full mt-2">Voltar</button>
+    </div>`;
+    await gerarPix();
 }
 
-async function gerarPixDiretoMercadoPago() {
-    const entrada = Number(proposta.valor_entrada || 0);
-    const cpfLimpo = (proposta.cpf || '').replace(/\D/g, '');
+async function gerarPix() {
+    const valorEntrada = Number(proposta.valor_entrada||0);
+    const cpf = proposta.cpf.replace(/\D/g,'');
 
     try {
         const resposta = await fetch('https://api.mercadopago.com/v1/payments', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${MP_TOKEN}`,
-                'Content-Type': 'application/json',
-                'X-Idempotency-Key': 'PROP-' + proposta.id + '-' + Date.now()
-            },
+            headers: { 'Authorization': `Bearer ${MP_TOKEN}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                transaction_amount: entrada,
-                description: `Entrada Proposta #${proposta.id}`,
+                transaction_amount: valorEntrada,
+                description: `Entrada Proposta ${proposta.id}`,
                 payment_method_id: 'pix',
-                payer: {
-                    email: `cliente_${proposta.id}@flashcred.com.br`,
-                    first_name: (proposta.nome || 'Cliente').split(' ')[0],
-                    identification: { type: 'CPF', number: cpfLimpo.length === 11 ? cpfLimpo : '00000000000' }
-                },
-                external_reference: `${proposta.id}`
+                payer: { email: 'felipecosta@flashcred.com.br', first_name: proposta.nome.split(' ')[0], identification: { type: 'CPF', number: cpf.length===11 ? cpf : '00000000000' } },
+                external_reference: proposta.id
             })
         });
 
         const res = await resposta.json();
-        console.log('Resposta Mercado Pago:', res);
+        if(!resposta.ok) throw new Error(res.message || 'Erro na API');
 
-        if (res.point_of_interaction?.transaction_data) {
-            const qrCodeBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
-            const pixCopiaCola = res.point_of_interaction.transaction_data.qr_code;
+        const qrBase64 = res.point_of_interaction.transaction_data.qr_code_base64;
+        const pixCopia = res.point_of_interaction.transaction_data.qr_code;
 
-            document.getElementById('areaPix').innerHTML = `
-                <p class="text-xs text-gray-600 mb-2">Aponte a câmera para o QR Code:</p>
-                <img src="data:image/png;base64,${qrCodeBase64}" class="w-48 h-48 mx-auto border-2 border-primary rounded-lg mb-3">
-                <p class="text-xs font-bold text-gray-700 mb-1">Ou Pix Copia e Cola:</p>
-                <textarea readonly class="w-full text-xs p-2 bg-gray-100 rounded border mb-3 h-16 select-all">${pixCopiaCola}</textarea>
-                <button onclick="copiarPix('${pixCopiaCola}')" class="botao botao-sucesso">📋 Copiar Código Pix</button>
-                <p class="text-xs text-gray-500 mt-3"><i class="fas fa-sync-alt fa-spin"></i> Aguardando confirmação...</p>
-            `;
-        } else {
-            throw new Error(res.message || res.error || 'Não foi possível gerar o Pix. Verifique o token.');
-        }
-
-    } catch (err) {
-        console.error('ERRO COMPLETO:', err);
         document.getElementById('areaPix').innerHTML = `
-            <div class="p-3 bg-red-100 text-red-800 rounded-lg text-sm mb-3">
-                ❌ ${err.message || 'Erro ao gerar QR Code. Verifique o Access Token de Produção.'}
-            </div>
-            <button onclick="gerarPixDiretoMercadoPago()" class="botao botao-primario">Tentar Novamente</button>
+            <img src="data:image/png;base64,${qrBase64}" class="w-48 mx-auto mb-3">
+            <textarea readonly class="w-full p-2 border rounded mb-3 text-xs">${pixCopia}</textarea>
+            <button onclick="navigator.clipboard.writeText('${pixCopia}');alert('Copiado!')" class="botao botao-sucesso w-full mb-2">Copiar Pix</button>
+            <p class="text-sm text-gray-600 mt-2">Após o pagamento, aguarde a confirmação automática...</p>
+        `;
+
+        timerPagamento = setInterval(verificarPagamento, 3000);
+    } catch (erro) {
+        console.error(erro);
+        document.getElementById('areaPix').innerHTML = `
+            <p class="text-perigo">❌ ${erro.message}</p>
+            <button onclick="gerarPix()" class="botao botao-primario w-full mt-3">Tentar Novamente</button>
         `;
     }
 }
 
-function copiarPix(codigo) {
-    navigator.clipboard.writeText(codigo);
-    alert('Código copiado!');
-}
-
-function iniciarMonitoramentoPagamento() {
-    if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
-    intervalChecagemPagamento = setInterval(async () => {
-        const { data } = await supabase.from('propostas').select('entrada_paga').eq('id', proposta.id).single();
-        if (data?.entrada_paga) {
-            clearInterval(intervalChecagemPagamento);
-            proposta.entrada_paga = true;
-            etapaAtual = 4;
-            atualizarBarra();
-            mostrarParcelasLiberadas();
-        }
-    }, 4000);
-}
-
-async function mostrarParcelasLiberadas() {
-    if(intervalChecagemPagamento) clearInterval(intervalChecagemPagamento);
-
-    const valor = Number(proposta.valor_desejado || 0);
-    const entrada = Number(proposta.valor_entrada || 0);
-    const juros = Number(proposta.juros_mensal || 5);
-    const calc = calcularValores(valor, entrada, juros, qtdParcelasEscolhida);
-    const dias = Number(proposta.dias_entrega || 7);
-
-    let listaParcelas = '';
-    for(let i=1; i<=qtdParcelasEscolhida; i++) {
-        const dataVenc = new Date();
-        dataVenc.setMonth(dataVenc.getMonth() + i);
-        listaParcelas += `
-        <div class="parcela-item parcela-pendente">
-            <div>
-                <strong>${i}ª Parcela</strong><br>
-                <small>Vencimento: ${dataVenc.toLocaleDateString('pt-BR')}</small>
-            </div>
-            <strong>R$ ${calc.parcela.toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong>
-        </div>`;
+async function verificarPagamento() {
+    const {data} = await supabase.from('propostas').select('entrada_paga').eq('id', proposta.id).single();
+    if(data?.entrada_paga) {
+        clearInterval(timerPagamento);
+        mostrarParcelas();
     }
+}
 
-    document.getElementById('conteudo').innerHTML = `
-        <div class="cartao p-5 text-center">
-            <div class="p-3 bg-green-50 text-sucesso rounded-lg mb-4">
-                <i class="fas fa-check-circle text-3xl mb-2"></i>
-                <h2 class="text-xl font-bold">Pagamento Confirmado!</h2>
-                <p class="text-sm mt-1">Entrada confirmada — pedido em separação.</p>
-                <p class="text-sm mt-1">Entrega prevista em até ${dias} dias úteis.</p>
-            </div>
+function mostrarParcelas() {
+    atualizarEtapa(4);
+    const valor = Number(proposta.valor_desejado||0);
+    const entrada = Number(proposta.valor_entrada||0);
+    const juros = Number(proposta.juros_mensal||5);
+    const qtd = qtdParcelasEscolhida || Number(proposta.quantidade_parcelas||1);
+    const total = valor*(1+juros/100);
 
-            <h3 class="font-bold text-lg mb-3">📋 Suas Parcelas</h3>
-            ${listaParcelas}
-
-            <div class="mt-4">
-                <a href="https://wa.me/${WHATSAPP}" target="_blank" class="botao botao-primario">💬 Falar com Suporte</a>
-                <button onclick="window.print()" class="botao botao-cinza">🖨️ Imprimir Contrato</button>
-            </div>
+    let html = `<div class="cartao text-center">
+        <div class="text-sucesso text-3xl mb-3"><i class="fas fa-check-circle"></i></div>
+        <h3 class="text-xl font-bold mb-3">Pagamento Confirmado!</h3>
+        <p class="mb-4">Seu pedido já está em processo de separação.</p>
+        <h4 class="font-bold mb-2">Seu Contrato de Parcelas:</h4>
+        <div class="text-left border rounded p-3 mb-4">
+            <p>Valor Total: R$ ${total.toLocaleString('pt-BR',{minFraction:2})}</p>
+            <p>Entrada Paga: R$ ${entrada.toLocaleString('pt-BR',{minFraction:2})}</p>
+            <p>${qtd}x de R$ ${(qtd===1 ? total : (total-entrada)*(Math.pow(1+juros/100,qtd)*(juros/100))/(Math.pow(1+juros/100,qtd)-1)).toLocaleString('pt-BR',{minFraction:2})}</p>
         </div>
-    `;
+        <button onclick="window.print()" class="botao botao-primario w-full mb-2">Imprimir Contrato</button>
+        <a href="https://wa.me/${WHATSAPP_SUPORTE}" target="_blank" class="botao botao-sucesso w-full">Falar com Suporte</a>
+    </div>`;
+    document.getElementById('conteudo').innerHTML = html;
+}
+
+function voltar() {
+    if(etapaAtual===3) irParaContrato();
+    else if(etapaAtual===2) mostrarOpcoesParcelas();
 }
 </script>
 </body>
