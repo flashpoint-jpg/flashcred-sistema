@@ -86,6 +86,14 @@
             color: #92400E;
             width: 100%;
         }
+
+        /* ✅ BARRAS DE PROGRESSO VOLTARAM */
+        .barra-progresso { margin: 12px 0; }
+        .cabecalho-barra { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
+        .fundo-barra { width: 100%; height: 8px; background: #E2E8F0; border-radius: 4px; overflow: hidden; }
+        .preenchimento-entrega { height: 100%; background: #F59E0B; transition: width 0.3s ease; }
+        .preenchimento-pagamento { height: 100%; background: #10B981; transition: width 0.3s ease; }
+
         .texto-contrato { max-height: 200px; overflow-y: auto; padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 10px 0; font-size: 14px; line-height: 1.6; width: 100%; }
         .campo-assinatura { width: 100%; padding: 12px; border: 2px dashed #64748B; border-radius: 8px; text-align: center; font-size: 16px; margin: 10px 0; background: #fff; }
         .area-cam { border: 2px solid #E2E8F0; border-radius: 8px; padding: 10px; margin: 10px 0; text-align: center; width: 100%; }
@@ -102,7 +110,7 @@
             width: 100%;
             font-size: 14px;
         }
-        .qrcode-pix { display: flex; justify-content: center; align-items: center; margin: 16px 0; width: 100%; padding: 12px; background: white; border-radius: 8px; border: 1px solid #E2E8F0; }
+        .qrcode-pix { display: flex; justify-content: center; align-items: center; margin: 16px 0; width: 100%; padding: 12px; background: white; border-radius: 8px; border: 1px solid #E2E8F0; min-height: 260px; }
 
         .item-parcela { 
             display: flex; 
@@ -268,7 +276,12 @@ async function montarTela(p) {
         </div>
 
         ${p.status==='Aprovada'?`
-        <div class="aviso-entrega"><i class="fas fa-truck"></i> ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS CONFIRMAÇÃO DO PAGAMENTO!</div>`:''}
+        <div class="aviso-entrega"><i class="fas fa-truck"></i> ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS CONFIRMAÇÃO DO PAGAMENTO!</div>
+        <!-- ✅ BARRA DE PROGRESSO DA ENTREGA VOLTOU -->
+        <div class="barra-progresso">
+            <div class="cabecalho-barra"><span>Prazo de Entrega</span><span>${dias} dias úteis</span></div>
+            <div class="fundo-barra"><div class="preenchimento-entrega" style="width:${p.entrada_paga?'0%':'100%'}"></div></div>
+        </div>`:''}
 
         <div class="bg-gray-50 p-3 rounded-lg mb-3">
             <p><strong>👤 Cliente:</strong> ${p.nome}</p>
@@ -320,7 +333,7 @@ async function montarTela(p) {
         <div class="card text-center">
             <div class="text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO COM SUCESSO!</div>
             <p class="mb-3 text-lg">Valor da entrada: <strong>R$ ${e.toLocaleString('pt-BR',2)}</strong></p>
-            <button onclick="gerarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Gerar Pix da Entrada</button>
+            <button onclick="gerarPixEntrada(${e})" class="btn btn-pix mb-3" id="btnGerarPix"><i class="fas fa-qrcode"></i> Gerar Pix da Entrada</button>
             <div id="pixGerado" class="oculto">
                 <div class="qrcode-pix" id="qrcode"></div>
                 <div class="chave-pix">
@@ -336,7 +349,11 @@ async function montarTela(p) {
         html+=`
         <div class="card">
             <div class="text-center text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
-            <div class="barra-parcelas"><div class="texto-barra"><span>Progresso de Pagamento</span><span>${pagas} de ${qtd} parcelas pagas (${perc}%)</span></div><div class="fundo-barra"><div class="preenchimento-parcelas" style="width:${perc}%"></div></div></div>
+            <!-- ✅ BARRA DE PROGRESSO DO PAGAMENTO VOLTOU -->
+            <div class="barra-progresso">
+                <div class="cabecalho-barra"><span>Progresso de Pagamento</span><span>${pagas} de ${qtd} parcelas pagas (${perc}%)</span></div>
+                <div class="fundo-barra"><div class="preenchimento-pagamento" style="width:${perc}%"></div></div>
+            </div>
             <h3 class="text-center text-xl font-bold my-4">📋 Suas Parcelas</h3>
             ${Array.from({length:qtd},(_,i)=>{
                 const n=i+1;
@@ -361,20 +378,28 @@ async function montarTela(p) {
 }
 
 async function gerarPixEntrada(v){
-    const btn = event.target;
+    const btn = document.getElementById('btnGerarPix');
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
     btn.disabled = true;
     const codigo = gerarPixValido(v, 'Pagamento Entrada FlashCred');
+    
     setTimeout(()=>{
         document.getElementById('pixGerado').classList.remove('oculto');
         document.getElementById('qrcode').innerHTML = '';
-        new QRCode(document.getElementById('qrcode'), { text: codigo, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.H });
+        new QRCode(document.getElementById('qrcode'), { 
+            text: codigo, 
+            width: 240, 
+            height: 240, 
+            correctLevel: QRCode.CorrectLevel.H 
+        });
+        
         document.getElementById('copiarPix').onclick = async () => {
             await navigator.clipboard.writeText(codigo);
             mostrarMensagem('fas fa-check-circle', 'Código Copiado!', 'Agora é só colar no app do seu banco e efetuar o pagamento.', 'sucesso');
         };
+        
         btn.innerHTML = `<i class="fas fa-check-circle"></i> Pix Gerado`;
-    }, 1000);
+    }, 800);
 }
 
 async function pagarParcela(n,v){
