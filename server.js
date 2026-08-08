@@ -1,96 +1,365 @@
-const express = require('express');
-const path = require('path');
-const { createClient } = require('@supabase/supabase-js');
-
-const app = express();
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Configuração do Supabase no Backend
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-// Dica: Utilize a chave service_role do Supabase nas variáveis de ambiente do Render para ter permissão total de update
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Rota para gerar o Pix (Entrada ou Parcelas)
-app.post('/gerar-pix', async (req, res) => {
-    try {
-        // Usa o seu token fixo ou busca da variável de ambiente (já deixamos configurado com o seu)
-        const token = process.env.MP_TOKEN || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
-        if (!token) {
-            return res.status(400).json({ message: "authorization value not present" });
-        }
-
-        const respostaMP = await fetch("https://api.mercadopago.com/v1/payments", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${token.trim()}`,
-                "Content-Type": "application/json",
-                "X-Idempotency-Key": "ID-" + Date.now()
-            },
-            body: JSON.stringify(req.body)
-        });
-
-        const dados = await respostaMP.json();
-        
-        if (!respostaMP.ok) {
-            return res.status(respostaMP.status).json({ message: dados.message || "Erro ao gerar pagamento" });
-        }
-
-        // Retorna os dados do Pix formatados para o frontend exibir o QR Code e o Copia e Cola
-        return res.status(200).json({
-            sucesso: true,
-            qrcode: dados.point_of_interaction.transaction_data.qr_code_base64,
-            copia_cola: dados.point_of_interaction.transaction_data.qr_code
-        });
-
-    } catch (erro) {
-        console.error("Erro interno ao gerar Pix:", erro);
-        return res.status(500).json({ message: "Erro interno no servidor" });
-    }
-});
-
-// Rota de Webhook (Baixa Automática em Tempo Real)
-app.post('/api/webhook-pix', async (req, res) => {
-    try {
-        const evento = req.body;
-        const token = process.env.MP_TOKEN || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
-
-        if (evento.type === 'payment' || (evento.action && evento.action.includes('payment'))) {
-            const paymentId = evento.data?.id;
-
-            if (paymentId) {
-                const respPagamento = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-                    headers: { 'Authorization': `Bearer ${token.trim()}` }
-                });
-                const pagamento = await respPagamento.json();
-
-                if (pagamento.status === 'approved') {
-                    const propostaId = pagamento.external_reference;
-
-                    if (propostaId) {
-                        // DA A BAIXA AUTOMÁTICA NO SUPABASE
-                        await supabase.from('propostas')
-                            .update({ 
-                                entrada_paga: true, 
-                                status: 'Em Andamento' 
-                            })
-                            .eq('id', propostaId);
-                        
-                        console.log(`✅ Proposta ${propostaId} paga e atualizada automaticamente!`);
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acompanhar Proposta | FlashCred</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0A2463',
+                        pix: '#32BCAD',
+                        sucesso: '#10B981',
+                        alerta: '#F59E0B',
+                        perigo: '#EF4444'
                     }
                 }
             }
         }
+    </script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background: #F8FAFC; color: #1E293B; padding: 16px; max-width: 600px; margin: 0 auto; }
+        .cartao { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
+        .botao { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 16px; }
+        .botao-pix { background: #32BCAD; color: white; }
+        .botao-sucesso { background: #10B981; color: white; }
+        .botao-alerta { background: #F59E0B; color: white; }
+        .botao-wpp { background: #25D366; color: white; margin-top: 12px; }
+        .botao-voltar { background: #94A3B8; color: white; margin-bottom: 12px; }
+        .botao-pequeno { width: auto; padding: 8px 16px; font-size: 14px; }
+        .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
+        .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; padding: 0 4px; }
+        .barra-etapas::before { content: ''; position: absolute; top: 12px; left: 8%; right: 8%; height: 3px; background: #E2E8F0; z-index: 0; }
+        .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 10px; font-weight: 500; color: #94A3B8; text-align: center; width: 18%; }
+        .etapa.ativa { color: #0A2463; font-weight: 700; }
+        .etapa.concluida { color: #10B981; }
+        .bolinha { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; }
+        .etapa.ativa .bolinha { background: #0A2463; color: white; }
+        .etapa.concluida .bolinha { background: #10B981; color: white; }
+        .bloco-entrega { background: #FFFBEB; border: 2px solid #F59E0B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
+        .resumo-contrato { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 16px; margin: 16px 0; }
+        .resumo-contrato p { margin: 8px 0; font-size: 15px; }
+        .resumo-contrato strong { color: #0A2463; }
+        .contrato { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; max-height: 220px; overflow-y: auto; margin: 16px 0; font-size: 14px; line-height: 1.7; }
+        .qrcode-area { display: flex; justify-content: center; padding: 20px; background: white; border-radius: 10px; border: 1px solid #E2E8F0; margin: 16px 0; }
+        .codigo-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 16px; text-align: center; font-weight: 600; margin: 16px 0; word-break: break-all; font-size: 12px; }
+        .item-parcela { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
+        .item-parcela:last-child { border-bottom: none; }
+        .luz { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        .luz-verde { background: #10B981; }
+        .luz-amarela { background: #F59E0B; animation: piscar 1.2s infinite; }
+        .luz-vermelha { background: #EF4444; animation: piscar 1s infinite; }
+        @keyframes piscar { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+        .tela { display: none; }
+        .tela.visivel { display: block; }
+        .oculto { display: none !important; }
+        .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
+        .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
+        .carregando { text-align: center; padding: 20px; color: #64748B; }
+    </style>
+</head>
+<body>
 
-        return res.status(200).send('OK');
-    } catch (erro) {
-        console.error('Erro no Webhook:', erro);
-        return res.status(500).send('Erro interno');
+<div id="telaConsulta" class="tela visivel">
+    <div class="cartao">
+        <h2 class="text-xl font-bold text-center mb-6 text-primary">🔍 Acompanhar Proposta</h2>
+        <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="campo">
+        <button onclick="consultar()" class="botao botao-pix">Consultar</button>
+    </div>
+</div>
+
+<div id="telaProposta" class="tela">
+    <button onclick="voltarInicio()" class="botao botao-voltar"><i class="fas fa-arrow-left"></i> Consultar Outro CPF</button>
+    <div class="barra-etapas" id="barraEtapas"></div>
+    <div class="cartao" id="conteudoProposta"></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+
+const URL_BACKEND = 'https://SEU-SERVIDOR-AQUI.onrender.com';
+
+let propostaAtual = null;
+
+window.onload = () => {
+    const params = new URLSearchParams(window.location.search);
+    const cpfUrl = params.get('cpf');
+    if(cpfUrl) {
+        document.getElementById('cpfConsulta').value = cpfUrl.replace(/\D/g,'');
+        consultar();
     }
-});
+};
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-});
+function voltarInicio() {
+    propostaAtual = null;
+    document.getElementById('cpfConsulta').value = '';
+    document.getElementById('telaProposta').classList.remove('visivel');
+    document.getElementById('telaConsulta').classList.add('visivel');
+}
+
+async function consultar() {
+    const cpf = document.getElementById('cpfConsulta').value.trim().replace(/\D/g,'');
+    if(cpf.length !== 11) return alert('Digite o CPF completo!');
+
+    const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
+    if(error || !data) return alert('Proposta não encontrada! Verifique o CPF.');
+
+    propostaAtual = data;
+    mostrarProposta(data);
+    
+    supabase.channel(`proposta_${propostaAtual.id}`)
+        .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, (res)=>{
+            propostaAtual = res.new;
+            mostrarProposta(res.new);
+        }).subscribe();
+}
+
+function formatarValor(v) {
+    return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function mostrarProposta(p) {
+    document.getElementById('telaConsulta').classList.remove('visivel');
+    document.getElementById('telaProposta').classList.add('visivel');
+
+    let etapa = 1;
+    if(p.status === 'Aprovada') etapa = 2;
+    if(p.contrato_assinado) etapa = 3;
+    if(p.entrada_paga) etapa = 4;
+
+    document.getElementById('barraEtapas').innerHTML = `
+        <div class="etapa ${etapa>=1?(etapa>1?'concluida':'ativa'):''}"><div class="bolinha">${etapa>1?'✓':'1'}</div><span>Análise</span></div>
+        <div class="etapa ${etapa>=2?(etapa>2?'concluida':'ativa'):''}"><div class="bolinha">${etapa>2?'✓':'2'}</div><span>Parcelas</span></div>
+        <div class="etapa ${etapa>=3?'concluida':'ativa'}"><div class="bolinha">${etapa>=3?'✓':'3'}</div><span>Contrato</span></div>
+        <div class="etapa ${etapa>=4?'concluida':''}"><div class="bolinha">${etapa>=4?'✓':'4'}</div><span>Entrada</span></div>
+        <div class="etapa ${etapa>=5?'concluida':''}"><div class="bolinha">${etapa>=5?'✓':'5'}</div><span>Entrega</span></div>
+    `;
+
+    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
+    const total = v*(1 + j/100);
+    const valorParcela = q > 0 ? ((total - e) * (Math.pow(1 + j/100, q) * (j/100)) / (Math.pow(1 + j/100, q) - 1)) : 0;
+    const dias = p.dias_entrega || 7;
+
+    let html = `<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
+
+    if(p.status === 'Nova') {
+        html += `<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação da proposta...</p></div>`;
+    }
+
+    if(p.status === 'Aprovada' && !p.qtd_parcelas_escolhida) {
+        html += `
+        <div class="bloco-entrega">
+            <i class="fas fa-truck text-alerta text-xl mb-2"></i>
+            <p class="font-bold">ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO DA ENTRADA!</p>
+        </div>
+        <div class="resumo-contrato">
+            <h4 class="font-bold text-lg mb-2">📋 Detalhes da Proposta</h4>
+            <p><strong>Valor do Produto:</strong> R$ ${formatarValor(v)}</p>
+            <p><strong>Valor da Entrada:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Máximo de Parcelas:</strong> até ${q}x</p>
+            <p><strong>Juros:</strong> ${j}% ao mês</p>
+        </div>
+        <p class="font-bold mt-4 mb-2">Escolha a quantidade de parcelas:</p>
+        <select id="qtdEscolhida" class="campo">
+            ${Array.from({length:q}, (_,i)=>{
+                const n=i+1;
+                const val = ((total-e)*(Math.pow(1+j/100,n)*(j/100))/(Math.pow(1+j/100,n)-1));
+                return `<option value="${n}">${n}x de R$ ${formatarValor(val)}</option>`;
+            }).join('')}
+        </select>
+        <button onclick="confirmarParcelas()" class="botao botao-sucesso mt-2">Continuar para o Contrato</button>`;
+    }
+
+    if(p.status === 'Aprovada' && p.qtd_parcelas_escolhida && !p.contrato_assinado) {
+        const qtdEsc = p.qtd_parcelas_escolhida;
+        const valParc = ((total-e)*(Math.pow(1+j/100,qtdEsc)*(j/100))/(Math.pow(1+j/100,qtdEsc)-1));
+        html += `
+        <div class="resumo-contrato">
+            <h4 class="font-bold mb-2">📋 Resumo da sua escolha</h4>
+            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Entrada:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>${qtdEsc}x de:</strong> R$ ${formatarValor(valParc)}</p>
+            <p><strong>Juros:</strong> ${j}% ao mês</p>
+            <p><strong>Entrega:</strong> até ${dias} dias úteis</p>
+        </div>
+
+        <h4 class="font-bold mt-4 mb-2">📄 CONTRATO</h4>
+        <div class="contrato">
+            Valor total: R$ ${formatarValor(total)}<br>
+            Entrada: R$ ${formatarValor(e)}<br>
+            ${qtdEsc}x de R$ ${formatarValor(valParc)}<br>
+            Juros: ${j}% a.m.<br>
+            Entrega: até ${dias} dias úteis após confirmação do pagamento.<br>
+            Ao marcar abaixo, confirmo que li e aceito todos os termos.
+        </div>
+
+        <div class="mt-4">
+            <label class="flex items-center gap-2 mb-4 font-medium"><input type="checkbox" id="aceitoContrato"> Li e concordo</label>
+            <button onclick="assinarContrato()" class="botao botao-sucesso">✍️ Assinar</button>
+        </div>`;
+    }
+
+    if(p.contrato_assinado && !p.entrada_paga) {
+        html += `
+        <div class="sucesso-box">
+            <i class="fas fa-check-circle"></i>
+            <h3 class="text-xl font-bold">CONTRATO ASSINADO!</h3>
+        </div>
+        <div class="bloco-entrega">
+            <i class="fas fa-shipping-fast text-alerta text-xl mb-2"></i>
+            <p class="font-bold">Prazo de Envio: até ${dias} dias úteis após compensação da entrada.</p>
+        </div>
+        <div class="resumo-contrato">
+            <h4 class="font-bold mb-2">Resumo de Pagamento</h4>
+            <p><strong>Total do Contrato:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Valor da Entrada:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>Restante:</strong> ${q}x de R$ ${formatarValor(valorParcela)}</p>
+        </div>
+        <button onclick="gerarPix(${e})" class="botao botao-pix mt-4">Gerar Pix da Entrada</button>
+        <div id="areaPix" class="oculto"></div>`;
+    }
+
+    if(p.entrada_paga) {
+        html += `
+        <div class="sucesso-box">
+            <i class="fas fa-check-double"></i>
+            <h3 class="text-xl font-bold">ENTRADA CONFIRMADA!</h3>
+        </div>
+
+        <div class="bloco-entrega" style="background: #ECFDF5; border-color: #10B981;">
+            <i class="fas fa-box-open text-sucesso text-2xl mb-2"></i>
+            <p class="font-bold text-lg text-sucesso">PROCESSO DE ENTREGA EM ANDAMENTO</p>
+            <p class="text-sm mt-1">Seu pedido está sendo preparado. Prazo estimado de entrega: <strong>até ${dias} dias úteis</strong>.</p>
+        </div>
+
+        <div class="resumo-contrato">
+            <h4 class="font-bold text-lg mb-2">📝 DADOS DO CONTRATO</h4>
+            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Entrada Paga:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>Total Restante:</strong> R$ ${formatarValor(total - e)}</p>
+            <p><strong>Quantidade de Parcelas:</strong> ${q}x</p>
+            <p><strong>Valor de Cada Parcela:</strong> R$ ${formatarValor(valorParcela)}</p>
+            <p><strong>Juros:</strong> ${j}% ao mês</p>
+        </div>
+
+        <h3 class="font-bold text-lg mt-4 mb-2">📅 Suas Parcelas</h3>
+        ${(p.datas_parcelas||[]).map((dt,idx)=>{
+            const valor = valorParcela;
+            const pg = idx+1 <= (p.parcelas_pagas||0);
+            const hoje = new Date();
+            const vencto = new Date(dt);
+            let cor = 'luz-amarela';
+            if(pg) cor='luz-verde';
+            else if(vencto < hoje) cor='luz-vermelha';
+
+            return `<div class="item-parcela">
+                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${new Date(dt).toLocaleDateString('pt-BR')}</div>
+                ${pg?'<span class="text-sucesso font-bold">PAGA</span>':`<button onclick="gerarPix(${valor})" class="botao botao-pix botao-pequeno">Pagar</button>`}
+            </div>`;
+        }).join('')}
+
+        <div id="areaPix" class="oculto mt-4"></div>`;
+    }
+
+    html += `<a href="https://wa.me/5511973294235" target="_blank" class="botao botao-wpp mt-4">💬 Falar com o Suporte</a>`;
+    document.getElementById('conteudoProposta').innerHTML = html;
+}
+
+async function confirmarParcelas() {
+    const qtd = Number(document.getElementById('qtdEscolhida').value);
+    await supabase.from('propostas').update({qtd_parcelas_escolhida: qtd}).eq('id', propostaAtual.id);
+    mostrarProposta({...propostaAtual, qtd_parcelas_escolhida: qtd});
+}
+
+async function assinarContrato() {
+    if(!document.getElementById('aceitoContrato').checked) return alert('Você precisa concordar com os termos!');
+    await supabase.from('propostas').update({contrato_assinado: true}).eq('id', propostaAtual.id);
+    mostrarProposta({...propostaAtual, contrato_assinado: true});
+}
+
+async function gerarPix(valor) {
+    const area = document.getElementById('areaPix');
+    area.classList.remove('oculto');
+    area.innerHTML = `<div class="carregando"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Gerando Pix...</p></div>`;
+
+    try {
+        const res = await fetch(`${URL_BACKEND}/api/criar-pix`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({valor, propostaId: propostaAtual.id, nome: propostaAtual.nome})
+        });
+        const dados = await res.json();
+        if(!dados.sucesso) throw new Error(dados.erro || 'Erro ao gerar');
+
+        area.innerHTML = `
+        <div class="qrcode-area"><img src="data:image/png;base64,${dados.qrcode}" width="240" height="240"></div>
+        <div class="codigo-pix">${dados.copia_cola}</div>
+        <button onclick="navigator.clipboard.writeText('${dados.copia_cola}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso">Copiar Código</button>
+        `;
+    } catch {
+        // Fallback corrigido para o padrão EMV do Pix do Banco Central
+        function pixBC(v) {
+            const chave = 'suporte@flashcred.com.br';
+            const nomeRecebedor = 'FELIPE COSTA';
+            const cidadeRecebedor = 'MUZAMBINHO';
+
+            function campo(id, txt) {
+                const len = String(txt.length).padStart(2, '0');
+                return id + len + txt;
+            }
+
+            function crc16(payload) {
+                let polinomio = 0x1021;
+                let resultado = 0xFFFF;
+                for (let i = 0; i < payload.length; i++) {
+                    resultado ^= (payload.charCodeAt(i) << 8);
+                    for (let j = 0; j < 8; j++) {
+                        if ((resultado & 0x8000) !== 0) {
+                            resultado = ((resultado << 1) ^ polinomio);
+                        } else {
+                            resultado = (resultado << 1);
+                        }
+                        resultado &= 0xFFFF;
+                    }
+                }
+                return resultado.toString(16).toUpperCase().padStart(4, '0');
+            }
+
+            let payloadGui = campo('00', 'br.gov.bcb.pix') + campo('01', chave);
+            let payload = campo('00', '01') +
+                          campo('26', payloadGui) +
+                          campo('52', '0000') +
+                          campo('53', '986') +
+                          campo('54', v.toFixed(2)) +
+                          campo('58', 'BR') +
+                          campo('59', nomeRecebedor) +
+                          campo('60', cidadeRecebedor) +
+                          campo('62', campo('05', '***')) +
+                          '6304';
+
+            return payload + crc16(payload);
+        }
+
+        const cod = pixBC(valor);
+        area.innerHTML = `
+        <div class="qrcode-area"><div id="qrcode"></div></div>
+        <div class="codigo-pix">${cod}</div>
+        <button onclick="navigator.clipboard.writeText('${cod}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso">Copiar Código</button>
+        `;
+        document.getElementById('qrcode').innerHTML = '';
+        new QRCode(document.getElementById('qrcode'), {text: cod, width: 240, height: 240});
+    }
+}
+</script>
+</body>
+</html>
