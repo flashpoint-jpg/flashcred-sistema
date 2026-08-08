@@ -59,7 +59,14 @@
         .item-parcela { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border-bottom:1px solid var(--borda); font-size:13px; }
         .item-parcela:last-child { border-bottom:none; }
 
-        .prazo-entrega { background:#FFFBEB; border:2px solid var(--alerta); border-radius:8px; padding:12px 16px; margin:10px 0; font-size:16px; font-weight:700; color:#92400E; display:flex; align-items:center; gap:8px; }
+        .prazo-entrega { background:#FFFBEB; border:2px solid var(--alerta); border-radius:8px; padding:12px 16px; margin:10px 0; font-size:16px; font-weight:700; color:#92400E; }
+        .prazo-entrega.concluido { background:#ECFDF5; border-color:var(--sucesso); color:#065F46; }
+        .barra-entrega { margin-top:8px; }
+        .info-entrega { display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:4px; }
+        .fundo-barra-entrega { width:100%; height:10px; border-radius:5px; background:#FDE68A; overflow:hidden; }
+        .preenchimento-entrega { height:100%; background:var(--alerta); transition:width 0.5s ease; }
+        .preenchimento-concluido { background:var(--sucesso); }
+
         .indicador-status { display:inline-flex; align-items:center; gap:6px; margin-right:8px; }
         .luz-status { width:12px; height:12px; border-radius:50%; display:inline-block; }
         .luz-amarela { background:var(--alerta); animation:piscar 1.2s infinite; }
@@ -67,7 +74,6 @@
         .luz-verde-fixa { background:var(--sucesso); }
         .luz-vermelha { background:var(--perigo); }
         .luz-vermelha-piscando { background:var(--perigo); animation:piscarForte 1s infinite; }
-        .luz-laranja { background:var(--alerta); animation:piscar 1.2s infinite; }
         .texto-piscando { animation:piscar 1.2s infinite; }
         .aviso-vencimento { font-weight:700; padding:6px 10px; border-radius:6px; display:inline-block; margin-top:4px; font-size:12px; }
         .aviso-avencer { background:#FFFBEB; color:#92400E; border:1px solid var(--alerta); animation:piscar 1.5s infinite; }
@@ -78,7 +84,6 @@
         .linha-barra { display:flex; flex-direction:column; gap:4px; }
         .etiqueta-barra { font-size:12px; font-weight:600; color:var(--texto-claro); display:flex; justify-content:space-between; }
         .container-barra { width:100%; height:8px; border-radius:4px; background:#E2E8F0; overflow:hidden; position:relative; }
-        .preenchimento-entrega { height:100%; background:var(--alerta); transition:width 0.5s ease; }
         .preenchimento-pagas { height:100%; background:var(--sucesso); transition:width 0.5s ease; position:absolute; left:0; top:0; }
         .preenchimento-alerta { height:100%; background:var(--alerta); transition:width 0.5s ease; position:absolute; left:0; top:0; }
         .preenchimento-vencidas { height:100%; background:var(--perigo); transition:width 0.5s ease; position:absolute; left:0; top:0; }
@@ -175,6 +180,37 @@ const TOKEN_MERCADO_PAGO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb7
 
 let inscricaoTempoReal = null;
 
+// ✅ FUNÇÃO PRONTA: CONTA SOMENTE DIAS ÚTEIS (segunda a sexta)
+function contarDiasUteis(dataInicio, diasUteisTotais) {
+    let data = new Date(dataInicio);
+    let contados = 0;
+    while(contados < diasUteisTotais) {
+        const diaSemana = data.getDay();
+        if(diaSemana !== 0 && diaSemana !== 6) contados++;
+        if(contados < diasUteisTotais) data.setDate(data.getDate() + 1);
+    }
+    return data;
+}
+
+function calcularProgressoEntrega(diasUteisTotais) {
+    if(!diasUteisTotais || diasUteisTotais <= 0) return { perc:0, restante:0 };
+    const inicio = new Date();
+    const fim = contarDiasUteis(inicio, diasUteisTotais);
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    if(hoje >= fim) return { perc:100, restante:0 };
+
+    let passados = 0;
+    let temp = new Date(inicio);
+    while(temp < hoje) {
+        const d = temp.getDay();
+        if(d !== 0 && d !== 6) passados++;
+        temp.setDate(temp.getDate() + 1);
+    }
+    const perc = Math.min(100, Math.round((passados / diasUteisTotais) * 100));
+    const restante = Math.max(0, diasUteisTotais - passados);
+    return { perc, restante };
+}
+
 window.onload = () => { if(localStorage.getItem('logado_flashcred') === 'SIM') mostrarPainel(); };
 function entrar() { const s = document.getElementById('senha').value.trim(); if(s === SENHA) { localStorage.setItem('logado_flashcred', 'SIM'); mostrarPainel(); } else alert('Senha incorreta!'); }
 function sair() { localStorage.removeItem('logado_flashcred'); document.getElementById('telaLogin').style.display = 'block'; document.getElementById('telaPrincipal').style.display = 'none'; if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal); }
@@ -223,8 +259,8 @@ function analisarVencimento(dtStr) {
 
     if(dias < 0) return { status:'vencida', texto:`Vencida há ${Math.abs(dias)} dias`, classe:'destaque-perigo', luz:'luz-vermelha-piscando', aviso:'<div class="aviso-vencimento aviso-vencida">🔴 PARCELA VENCIDA!</div>', perc:100 };
     if(dias === 0) return { status:'hoje', texto:'Vence HOJE!', classe:'destaque-perigo', luz:'luz-vermelha-piscando', aviso:'<div class="aviso-vencimento avencer-hoje">🔴 VENCE HOJE!</div>', perc:100 };
-    if(dias <= 5) return { status:'proximo', texto:`Faltam ${dias} dias`, classe:'destaque-alerta', luz:'luz-amarela', aviso:`<div class="aviso-vencimento aviso-avencer">🟡 Atenção: faltam ${dias} dias</div>`, perc:Math.round((1 - dias/5)*100) };
-    return { status:'ok', texto:`Faltam ${dias} dias`, classe:'', luz:'luz-verde-fixa', aviso:'', perc:Math.round((1 - dias/30)*100) };
+    if(dias <= 5) return { status:'proximo', texto:`Faltam ${dias} dias úteis`, classe:'destaque-alerta', luz:'luz-amarela', aviso:`<div class="aviso-vencimento aviso-avencer">🟡 Atenção: faltam ${dias} dias úteis</div>`, perc:Math.round((1 - dias/5)*100) };
+    return { status:'ok', texto:`Faltam ${dias} dias úteis`, classe:'', luz:'luz-verde-fixa', aviso:'', perc:Math.round((1 - dias/30)*100) };
 }
 
 async function carregarPropostas() {
@@ -260,11 +296,15 @@ async function carregarPropostas() {
         const total=v*(1+j/100);
         const parcela = q===1 ? total : ((total-e)*(Math.pow(1+j/100,q)*(j/100)))/(Math.pow(1+j/100,q)-1);
         const pagas=Number(i.parcelas_pagas||0), datas=i.datas_parcelas||[], dias=i.dias_entrega||7;
+        const progEntrega = calcularProgressoEntrega(dias);
         let wpp=(i.whatsapp||'').trim().replace(/\D/g,'');
         const cpfLimpo=String(i.cpf||'').replace(/\D/g,'');
 
         const porcentGeral = q > 0 ? Math.round((pagas/q)*100) : 0;
         const classeGeral = porcentGeral===0 ? 'barra-geral-amarela' : porcentGeral<100 ? 'barra-geral-verde' : 'barra-geral-vermelha';
+        const classeBarraEntrega = progEntrega.perc >= 100 ? 'preenchimento-concluido' : '';
+        const classePrazo = progEntrega.perc >= 100 ? 'concluido' : '';
+        const textoEntrega = progEntrega.perc >= 100 ? '✅ Prazo concluído' : `🚚 Faltam ${progEntrega.restante} de ${dias} dias úteis`;
 
         let corStatus='', textoStatus='', luz='';
         if(i.status==='Nova') { corStatus='destaque-alerta'; textoStatus='NOVA'; luz='luz-amarela'; }
@@ -282,8 +322,18 @@ async function carregarPropostas() {
                         <p><strong>Endereço:</strong> ${i.endereco||'Não informado'} | CEP: ${i.cep||'Não informado'}</p>
                     </div>
                     <p class="mt-2">💵 Total: R$ ${total.toLocaleString('pt-BR',2)} | 💸 Entrada: R$ ${e.toLocaleString('pt-BR',2)} | 🧾 ${q}x de R$ ${parcela.toLocaleString('pt-BR',2)}</p>
-                    <p>🚚 Entrega em até ${dias} dias úteis</p>
-                    <div class="prazo-entrega"><i class="fas fa-truck"></i> 🚚 ENTREGA EM ATÉ ${dias} DIAS ÚTEIS</div>
+                    
+                    <!-- ✅ BARRA DE PROGRESSO DA ENTREGA (SÓ DIAS ÚTEIS) -->
+                    <div class="prazo-entrega ${classePrazo}">
+                        <div class="info-entrega">
+                            <span>${textoEntrega}</span>
+                            <span>${progEntrega.perc}%</span>
+                        </div>
+                        <div class="fundo-barra-entrega">
+                            <div class="preenchimento-entrega ${classeBarraEntrega}" style="width:${progEntrega.perc}%"></div>
+                        </div>
+                    </div>
+
                     <div class="texto-progresso">Progresso: ${pagas}/${q} parcelas pagas</div>
                     <div class="barra-geral"><div class="${classeGeral} h-full" style="width:${porcentGeral}%"></div></div>
                 </div>
