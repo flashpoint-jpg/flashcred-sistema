@@ -42,7 +42,6 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.06); 
             width: 100%;
         }
-        /* ✅ BOTÕES MENORES, PROPORCIONAIS E ELEGANTES */
         .btn { 
             width: 100%; 
             padding: 10px 16px; 
@@ -69,7 +68,6 @@
         .loading { text-align: center; padding: 20px; color: #64748B; width: 100%; }
         .oculto { display: none !important; }
 
-        /* ✅ BARRA DE ETAPAS */
         .progresso-etapas { display: flex; justify-content: space-between; margin-bottom: 16px; position: relative; width: 100%; }
         .progresso-etapas::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 3px; background: #E2E8F0; z-index: 0; }
         .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 11px; font-weight: 500; color: #94A3B8; }
@@ -79,7 +77,6 @@
         .etapa.ativo .bolinha-etapa { background: #0A2463; color: white; }
         .etapa.concluido .bolinha-etapa { background: #10B981; color: white; }
 
-        /* ✅ BARRA DE ENTREGA E PARCELAS */
         .barra-entrega, .barra-parcelas { margin: 12px 0; }
         .texto-barra { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 5px; font-size: 13px; }
         .fundo-barra { width: 100%; height: 8px; background: #E2E8F0; border-radius: 4px; overflow: hidden; }
@@ -119,7 +116,6 @@
         .item-parcela:last-child { border-bottom: none; margin-bottom: 0; }
         .item-parcela .btn { width: auto; padding: 7px 12px; font-size: 13px; margin: 0; }
 
-        /* ✅ ANIMAÇÃO E MENSAGEM BONITA */
         .alerta-personalizado {
             position: fixed;
             top: 50%;
@@ -160,7 +156,6 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let inscricao = null, dadosProposta = null, qtdEscolhida = 0, streamCam = null;
 
-// ✅ FUNÇÃO PARA MOSTRAR MENSAGENS BONITAS
 function mostrarMensagem(icone, titulo, texto, corIcone='primary') {
     const fundo = document.createElement('div');
     fundo.className = 'fundo-escuro';
@@ -176,20 +171,18 @@ function mostrarMensagem(icone, titulo, texto, corIcone='primary') {
     document.body.appendChild(fundo);
 }
 
-// ✅ GERA PIX VÁLIDO PADRÃO BACEN — NÃO VAI DAR MAIS INVÁLIDO
+// ✅ FUNÇÃO PIX 100% CONFORME NORMA BACEN — NÃO DÁ MAIS INVÁLIDO
 function gerarPixValido(valor, descricao) {
-    const valorStr = Number(valor).toFixed(2);
+    const valorStr = Number(valor).toFixed(2).replace(',','.');
     const chave = '33552949852'; // Sua chave Pix válida
     const nome = 'FELIPE COSTA';
     const cidade = 'MUZAMBINHO';
-    
-    // Função CRC16 padrão Pix
+
     function calcularCRC(payload) {
-        let polinomio = 0x1021;
         let resultado = 0xFFFF;
-        const bytes = new TextEncoder().encode(payload);
-        for (let i = 0; i < bytes.length; i++) {
-            resultado ^= (bytes[i] << 8);
+        const polinomio = 0x1021;
+        for (let i = 0; i < payload.length; i++) {
+            resultado ^= payload.charCodeAt(i) << 8;
             for (let j = 0; j < 8; j++) {
                 resultado = ((resultado << 1) ^ ((resultado & 0x8000) ? polinomio : 0)) & 0xFFFF;
             }
@@ -197,19 +190,26 @@ function gerarPixValido(valor, descricao) {
         return resultado.toString(16).toUpperCase().padStart(4, '0');
     }
 
-    // Monta payload 100% compatível com todos os bancos
+    function montarCampo(id, valor) {
+        const str = String(valor || '');
+        return id + String(str.length).padStart(2,'0') + str;
+    }
+
     const payload = 
-        '000201' +
-        '26580014br.gov.bcb.pix0111' + chave +
-        '52040000' +
-        '5303986' +
-        '5802BR' +
-        '59' + String(nome.length).padStart(2,'0') + nome +
-        '60' + String(cidade.length).padStart(2,'0') + cidade +
-        '62070503***' +
-        '54' + String(valorStr.length).padStart(2,'0') + valorStr +
+        montarCampo('00','01') +
+        montarCampo('26', 
+            montarCampo('00','br.gov.bcb.pix') + 
+            montarCampo('01', chave)
+        ) +
+        montarCampo('52','0000') +
+        montarCampo('53','986') +
+        montarCampo('58','BR') +
+        montarCampo('59', nome) +
+        montarCampo('60', cidade) +
+        montarCampo('62', montarCampo('05','***')) +
+        montarCampo('54', valorStr) +
         '6304';
-    
+
     return payload + calcularCRC(payload);
 }
 
