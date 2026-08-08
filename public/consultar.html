@@ -36,13 +36,24 @@
         .btn-whats { background: #25D366; color: white; }
         .oculto { display: none !important; }
         .loading { text-align: center; padding: 20px; color: #64748B; }
-        .texto-contrato { max-height: 200px; overflow-y: auto; padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 10px 0; font-size: 14px; }
+
+        /* ✅ BARRA DE PROGRESSO DAS ETAPAS */
+        .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 18px; position: relative; padding: 0 4px; }
+        .barra-etapas::before { content: ''; position: absolute; top: 12px; left: 8%; right: 8%; height: 3px; background: #E2E8F0; z-index: 0; }
+        .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 10px; font-weight: 500; color: #94A3B8; text-align: center; width: 18%; }
+        .etapa.ativo { color: #0A2463; font-weight: 700; }
+        .etapa.concluido { color: #10B981; }
+        .bolinha { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; }
+        .etapa.ativo .bolinha { background: #0A2463; color: white; }
+        .etapa.concluido .bolinha { background: #10B981; color: white; }
+
+        .texto-contrato { max-height: 180px; overflow-y: auto; padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 10px 0; font-size: 14px; }
         .chave-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 16px; text-align: center; font-weight: 600; margin: 16px 0; word-break: break-all; font-size: 13px; }
         .qrcode-pix { display: flex; justify-content: center; padding: 12px; background: white; border-radius: 8px; border: 1px solid #E2E8F0; min-height: 260px; margin: 10px 0; }
         .item-parcela { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-bottom: 1px solid #F1F5F9; border-radius: 8px; margin-bottom: 8px; background: #FAFBFC; }
-        .bolinha { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
-        .bolinha.pago { background: #10B981; }
-        .bolinha.pendente { background: #F59E0B; animation: piscar 1s infinite; }
+        .bolinha-parc { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+        .bolinha-parc.pago { background: #10B981; }
+        .bolinha-parc.pendente { background: #F59E0B; animation: piscar 1s infinite; }
         @keyframes piscar { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
     </style>
 </head>
@@ -63,7 +74,16 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let dadosProposta = null, codigoPixAtual = '', inscricao = null;
 
-// ✅ GERA PIX VÁLIDO - NÃO TEM ERRO AQUI
+// ✅ MANTER CPF NA SESSÃO - NÃO VOLTA PRA CONSULTA NO F5
+window.onload = () => {
+    const cpfSalvo = localStorage.getItem('cpf_atual');
+    if(cpfSalvo) {
+        document.getElementById('cpfConsulta').value = cpfSalvo;
+        buscarProposta();
+    }
+};
+
+// ✅ PIX VÁLIDO BACEN
 function gerarPixValido(valor, descricao) {
     const valorStr = Number(valor).toFixed(2).replace(',','.');
     const chave = 'suporte@flashcred.com.br';
@@ -89,13 +109,15 @@ async function buscarProposta() {
     const cpf = document.getElementById('cpfConsulta').value.replace(/\D/g,'');
     if(cpf.length!==11) { alert('Digite um CPF válido!'); return; }
     
+    localStorage.setItem('cpf_atual', cpf); // ✅ SALVA PARA NÃO PERDER NO F5
     document.getElementById('areaConsulta').classList.add('oculto');
     document.getElementById('conteudoProposta').classList.remove('oculto');
     document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando...</div>`;
 
     const {data, error} = await supabase.from('propostas').select('*').eq('cpf',cpf).single();
     if(error||!data){
-        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><p class="font-semibold">Proposta não encontrada.</p><button onclick="voltar()" class="btn btn-primary mt-3">Voltar</button></div>`;
+        localStorage.removeItem('cpf_atual');
+        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><p class="font-semibold">Proposta não encontrada.</p><button onclick="voltar()" class="btn btn-primary mt-3">Consultar Outro CPF</button></div>`;
         return;
     }
 
@@ -105,6 +127,7 @@ async function buscarProposta() {
 }
 
 function voltar(){
+    localStorage.removeItem('cpf_atual');
     document.getElementById('conteudoProposta').classList.add('oculto');
     document.getElementById('areaConsulta').classList.remove('oculto');
     document.getElementById('cpfConsulta').value='';
@@ -113,19 +136,36 @@ function voltar(){
 
 function montarTela(p){
     const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||1), total=v*(1+j/100), dias=p.dias_entrega||7, datas=p.datas_parcelas||[], pagas=Number(p.parcelas_pagas||0);
+    
+    // ✅ DEFINE QUAL ETAPA ESTÁ
+    let etapaAtual = 1;
+    if(p.status==='Aprovada') etapaAtual=2;
+    if(p.contrato_assinado) etapaAtual=3;
+    if(p.entrada_paga) etapaAtual=4;
+
     let html='';
+
+    // ✅ BARRA DE ETAPAS NO TOPO
+    html += `
+    <div class="barra-etapas">
+        <div class="etapa ${etapaAtual>=1?(etapaAtual>1?'concluido':'ativo'):''}"><div class="bolinha">${etapaAtual>1?'✓':'1'}</div><span>Analisar</span></div>
+        <div class="etapa ${etapaAtual>=2?(etapaAtual>2?'concluido':'ativo'):''}"><div class="bolinha">${etapaAtual>2?'✓':'2'}</div><span>Escolher Parcela</span></div>
+        <div class="etapa ${etapaAtual>=3?(etapaAtual>3?'concluido':'ativo'):''}"><div class="bolinha">${etapaAtual>3?'✓':'3'}</div><span>Assinar</span></div>
+        <div class="etapa ${etapaAtual>=4?'ativo':''}"><div class="bolinha">4</div><span>Pagar Entrada</span></div>
+        <div class="etapa ${etapaAtual>=5?'ativo':''}"><div class="bolinha">5</div><span>Parcelas</span></div>
+    </div>`;
 
     html += `<div class="card"><h2 class="text-xl font-bold text-center mb-2 text-primary">Olá, ${p.nome}!</h2>`;
     html += `<p class="text-center mb-3">Status: <strong class="${p.status==='Aprovada'?'text-sucesso':'text-alerta'}">${p.status}</strong></p>`;
 
     if(p.status==='Nova'||p.status==='Em Análise'){
-        html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-alerta text-2xl mb-2"></i><p>Aguardando aprovação...</p></div>`;
+        html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-alerta text-2xl mb-2"></i><p>Aguardando análise da proposta...</p></div>`;
     }
 
     if(p.status==='Aprovada' && !p.contrato_assinado){
         html += `
         <div class="card">
-            <h3 class="font-bold text-lg mb-3 text-center">Escolha as parcelas</h3>
+            <h3 class="font-bold text-lg mb-3 text-center">Escolha a quantidade de parcelas</h3>
             <select id="qtdEscolhida" class="w-full p-3 border border-gray-300 rounded-lg mb-4 text-lg">
                 ${Array.from({length:q}, (_,i)=>{
                     const n=i+1;
@@ -134,13 +174,13 @@ function montarTela(p){
                 }).join('')}
             </select>
             <div class="texto-contrato mt-4">
-                <strong>CONTRATO</strong><br>
+                <strong>CONTRATO DE CRÉDITO</strong><br>
                 Valor total: R$ ${total.toLocaleString('pt-BR',2)}<br>
                 Entrada: R$ ${e.toLocaleString('pt-BR',2)}<br>
-                Entrega em até ${dias} dias úteis após pagamento.<br><br>
-                Ao prosseguir você concorda com todos os termos.
+                Prazo de entrega: ${dias} dias úteis após confirmação do pagamento.<br><br>
+                Ao prosseguir você confirma que leu e concorda com todos os termos.
             </div>
-            <label class="flex items-center gap-2 mb-4 font-medium"><input type="checkbox" id="aceito"> Li e concordo</label>
+            <label class="flex items-center gap-2 mb-4 font-medium"><input type="checkbox" id="aceito"> Li e concordo com os termos</label>
             <button onclick="assinar()" class="btn btn-success">✍️ Assinar e Continuar</button>
         </div>`;
     }
@@ -148,13 +188,13 @@ function montarTela(p){
     if(p.contrato_assinado && !p.entrada_paga){
         html += `
         <div class="card text-center">
-            <div class="text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO!</div>
-            <p class="mb-3 text-lg">Pague a entrada de <strong>R$ ${e.toLocaleString('pt-BR',2)}</strong></p>
-            <button onclick="gerarPix(${e})" class="btn btn-pix mb-3" id="btnGerar"><i class="fas fa-qrcode"></i> Gerar Pix Agora</button>
+            <div class="text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO COM SUCESSO!</div>
+            <p class="mb-3 text-lg">Valor da entrada: <strong>R$ ${e.toLocaleString('pt-BR',2)}</strong></p>
+            <button onclick="gerarPix(${e})" class="btn btn-pix mb-3" id="btnGerar"><i class="fas fa-qrcode"></i> Gerar Pix da Entrada</button>
             <div id="areaPix" class="oculto">
                 <div class="qrcode-pix" id="qrcode"></div>
                 <div class="chave-pix"><strong>Código Pix Copia e Cola</strong><br><span id="codigo"></span></div>
-                <button onclick="copiar()" class="btn btn-success">📋 Copiar Código</button>
+                <button onclick="copiar()" class="btn btn-success">📋 Copiar Código Pix</button>
             </div>
         </div>`;
     }
@@ -169,17 +209,17 @@ function montarTela(p){
                 const dt=datas[i]?new Date(datas[i]).toLocaleDateString('pt-BR'):'A definir';
                 const ok=n<=pagas;
                 const val=((total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1));
-                return `<div class="item-parcela"><div class="bolinha ${ok?'pago':'pendente'}"></div><div><div class="font-semibold">${n}ª • R$ ${val.toLocaleString('pt-BR',2)}</div><div class="text-gray-600 text-sm">Venc: ${dt}</div></div>${ok?`<span class="text-sucesso font-bold">PAGA</span>`:`<button onclick="pagarParcela(${n},${val})" class="btn btn-pix btn-pequeno">Pagar</button>`}</div>`;
+                return `<div class="item-parcela"><div class="bolinha-parc ${ok?'pago':'pendente'}"></div><div><div class="font-semibold">${n}ª Parcela • R$ ${val.toLocaleString('pt-BR',2)}</div><div class="text-gray-600 text-sm">Vencimento: ${dt}</div></div>${ok?`<span class="text-sucesso font-bold">PAGA</span>`:`<button onclick="pagarParcela(${n},${val})" class="btn btn-pix btn-pequeno">Gerar Pix</button>`}</div>`;
             }).join('')}
         </div>`;
     }
 
-    html += `<div class="mt-4"><a href="https://wa.me/5511973294235" target="_blank" class="btn btn-whats"><i class="fab fa-whatsapp"></i> Suporte</a><button onclick="buscarProposta()" class="btn btn-alerta">🔄 Atualizar</button></div>`;
+    html += `<div class="mt-4"><a href="https://wa.me/5511973294235?text=Olá, preciso de suporte CPF:${p.cpf}" target="_blank" class="btn btn-whats"><i class="fab fa-whatsapp"></i> Falar com Suporte</a><button onclick="buscarProposta()" class="btn btn-alerta">🔄 Atualizar Dados</button></div>`;
     document.getElementById('conteudoProposta').innerHTML = html;
 }
 
 async function assinar(){
-    if(!document.getElementById('aceito').checked){ alert('Aceite os termos primeiro!'); return; }
+    if(!document.getElementById('aceito').checked){ alert('Aceite os termos do contrato primeiro!'); return; }
     const qtd = Number(document.getElementById('qtdEscolhida').value);
     await supabase.from('propostas').update({contrato_assinado:true, qtd_parcelas_escolhida:qtd}).eq('id',dadosProposta.id);
     buscarProposta();
@@ -196,23 +236,23 @@ function gerarPix(valor){
         new QRCode(document.getElementById('qrcode'), {text:codigoPixAtual, width:220, height:220});
         document.getElementById('codigo').innerText = codigoPixAtual;
         document.getElementById('areaPix').classList.remove('oculto');
-        btn.innerHTML = `<i class="fas fa-check"></i> Gerado`;
+        btn.innerHTML = `<i class="fas fa-check-circle"></i> Gerado com Sucesso`;
     }, 500);
 }
 
 function copiar(){
-    navigator.clipboard.writeText(codigoPixAtual).then(()=>alert('Copiado!'));
+    navigator.clipboard.writeText(codigoPixAtual).then(()=>alert('Código copiado! Basta colar no app do seu banco.'));
 }
 
 async function pagarParcela(n,valor){
-    codigoPixAtual = gerarPixValido(valor, `Parcela ${n}`);
+    codigoPixAtual = gerarPixValido(valor, `Parcela ${n} - ${dadosProposta.nome}`);
     await navigator.clipboard.writeText(codigoPixAtual);
-    alert('Pix copiado! Abra seu banco e cole.');
+    alert('Pix da parcela copiado! Abra seu banco e cole para pagar.');
 }
 
 function ativarRealtime(cpf){
     if(inscricao) supabase.removeChannel(inscricao);
-    inscricao = supabase.channel(`prop-${cpf}`)
+    inscricao = supabase.channel(`proposta-${cpf}`)
         .on('postgres_changes', {event:'*', schema:'public', table:'propostas', filter:`cpf=eq.${cpf}`}, ()=>buscarProposta())
         .subscribe();
 }
