@@ -112,9 +112,32 @@
             font-size: 13px;
         }
         .qrcode-pix { display: flex; justify-content: center; align-items: center; margin: 16px 0; width: 100%; padding: 12px; background: white; border-radius: 8px; border: 1px solid #E2E8F0; }
-        .item-parcela { display: flex; justify-content: space-between; align-items: center; padding: 10px 8px; border-bottom: 1px solid #F1F5F9; font-size: 14px; width: 100%; border-radius: 8px; margin-bottom: 6px; background: #FAFBFC; }
-        .item-parcela:last-child { border-bottom: none; margin-bottom: 0; }
-        .item-parcela .btn { width: auto; padding: 7px 12px; font-size: 13px; margin: 0; }
+
+        /* ✅ ITEM DE PARCELA NOVO: SEM TEXTO PENDENTE, COM BOLINHA */
+        .item-parcela { 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between;
+            gap: 10px;
+            padding: 12px 10px; 
+            border-bottom: 1px solid #F1F5F9; 
+            font-size: 15px; 
+            width: 100%; 
+            border-radius: 8px; 
+            margin-bottom: 8px; 
+            background: #FAFBFC; 
+        }
+        .info-parcela { flex: 1; }
+        .bolinha-status { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+
+        /* ✅ ANIMAÇÃO BOLINHA PISCANDO LARANJA/AMARELO */
+        @keyframes piscarStatus {
+            0% { background-color: #F59E0B; box-shadow: 0 0 4px #F59E0B; }
+            50% { background-color: #FF7A00; box-shadow: 0 0 8px #FF7A00; }
+            100% { background-color: #F59E0B; box-shadow: 0 0 4px #F59E0B; }
+        }
+        .piscar { animation: piscarStatus 1s infinite; }
+        .pago { background-color: #10B981; box-shadow: 0 0 4px #10B981; }
 
         .alerta-personalizado {
             position: fixed;
@@ -137,16 +160,6 @@
         .alerta-personalizado p { font-size: 14px; color: #64748B; margin-bottom: 16px; }
         .alerta-personalizado button { padding: 10px 24px; border-radius: 8px; border: none; background: #0A2463; color: white; font-weight: 600; cursor: pointer; }
         .fundo-escuro { position: fixed; inset:0; background:rgba(0,0,0,0.4); z-index:9998; }
-
-        @keyframes piscarLaranjaAmarelo {
-            0% { color: #F59E0B; }
-            50% { color: #FF5722; }
-            100% { color: #F59E0B; }
-        }
-        .piscar {
-            animation: piscarLaranjaAmarelo 1s infinite;
-            font-weight: bold;
-        }
     </style>
 </head>
 <body>
@@ -166,28 +179,16 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let inscricao = null, dadosProposta = null, qtdEscolhida = 0, streamCam = null;
 
-// ✅ GUARDA O CPF NO NAVEGADOR PARA NÃO VOLTAR PRO INÍCIO
-function salvarCpfSessao(cpf) {
-    localStorage.setItem('cpf_atual', cpf);
-}
-function pegarCpfSessao() {
-    return localStorage.getItem('cpf_atual') || null;
-}
-function limparSessao() {
-    localStorage.removeItem('cpf_atual');
-}
+function salvarCpfSessao(cpf) { localStorage.setItem('cpf_atual', cpf); }
+function pegarCpfSessao() { return localStorage.getItem('cpf_atual') || null; }
+function limparSessao() { localStorage.removeItem('cpf_atual'); }
 
 function mostrarMensagem(icone, titulo, texto, corIcone='primary') {
     const fundo = document.createElement('div');
     fundo.className = 'fundo-escuro';
     const alerta = document.createElement('div');
     alerta.className = 'alerta-personalizado';
-    alerta.innerHTML = `
-        <i class="${icone} text-${corIcone}"></i>
-        <h4>${titulo}</h4>
-        <p>${texto}</p>
-        <button onclick="this.closest('.fundo-escuro').remove()">OK</button>
-    `;
+    alerta.innerHTML = `<i class="${icone} text-${corIcone}"></i><h4>${titulo}</h4><p>${texto}</p><button onclick="this.closest('.fundo-escuro').remove()">OK</button>`;
     fundo.appendChild(alerta);
     document.body.appendChild(fundo);
 }
@@ -215,41 +216,24 @@ function gerarPixValido(valor, descricao) {
         return id + String(str.length).padStart(2,'0') + str;
     }
 
-    const payload = 
-        montarCampo('00','01') +
-        montarCampo('26', montarCampo('00','br.gov.bcb.pix') + montarCampo('01', chave)) +
-        montarCampo('52','0000') +
-        montarCampo('53','986') +
-        montarCampo('58','BR') +
-        montarCampo('59', nome) +
-        montarCampo('60', cidade) +
-        montarCampo('62', montarCampo('05','***')) +
-        montarCampo('54', valorStr) + '6304';
-
+    const payload = montarCampo('00','01') + montarCampo('26', montarCampo('00','br.gov.bcb.pix') + montarCampo('01', chave)) + montarCampo('52','0000') + montarCampo('53','986') + montarCampo('58','BR') + montarCampo('59', nome) + montarCampo('60', cidade) + montarCampo('62', montarCampo('05','***')) + montarCampo('54', valorStr) + '6304';
     return payload + calcularCRC(payload);
 }
 
 window.onload = async () => {
-    // ✅ SE JÁ TIVER CPF SALVO, CARREGA AUTOMÁTICO SEM VOLTAR PRA BUSCA
     const cpfUrl = new URLSearchParams(window.location.search).get('cpf');
     const cpfSalvo = pegarCpfSessao();
     const cpfUsar = cpfUrl || cpfSalvo;
-    
     if(cpfUsar) {
         document.getElementById('cpfConsulta').value = cpfUsar.replace(/\D/g,'');
-        await buscarProposta(true); // true = não limpa sessão
+        await buscarProposta(true);
     }
 };
 
 async function buscarProposta(carregamentoAutomatico=false) {
     const cpf = document.getElementById('cpfConsulta').value.replace(/\D/g,'');
-    if(cpf.length!==11) { 
-        mostrarMensagem('fas fa-exclamation-circle', 'CPF Inválido', 'Digite um CPF com 11 números!', 'perigo'); 
-        return; 
-    }
-
-    salvarCpfSessao(cpf); // ✅ GUARDA PARA NÃO PERDER AO ATUALIZAR
-
+    if(cpf.length!==11) { mostrarMensagem('fas fa-exclamation-circle', 'CPF Inválido', 'Digite um CPF com 11 números!', 'perigo'); return; }
+    salvarCpfSessao(cpf);
     document.getElementById('areaConsulta').classList.add('hidden');
     document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando sua proposta...</div>`;
     document.getElementById('conteudoProposta').classList.remove('hidden');
@@ -261,9 +245,7 @@ async function buscarProposta(carregamentoAutomatico=false) {
         return;
     }
 
-    dadosProposta=data; 
-    await montarTela(data); 
-    ativarTempoReal(cpf);
+    dadosProposta=data; await montarTela(data); ativarTempoReal(cpf);
 }
 
 function voltarBusca() {
@@ -344,20 +326,31 @@ async function montarTela(p) {
             <button onclick="gerarPixEntrada(${e})" class="btn btn-pix mb-3"><i class="fas fa-qrcode"></i> Gerar Pix da Entrada</button>
             <div id="pixGerado" class="oculto">
                 <div class="qrcode-pix" id="qrcode"></div>
-                <div class="chave-pix">
-                    <strong>Código Pix Copia e Cola</strong><br>
-                    <small>Válido para pagamento em qualquer banco</small>
-                </div>
+                <div class="chave-pix"><strong>Código Pix Copia e Cola</strong><br><small>Válido para pagamento em qualquer banco</small></div>
                 <button id="copiarPix" class="btn btn-success">📋 Copiar Código Pix</button>
             </div>
         </div>`;
 
     if(p.entrada_paga) html+=`
-        <div class="card text-center">
-            <div class="text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
+        <div class="card">
+            <div class="text-center text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
             <div class="barra-parcelas"><div class="texto-barra"><span>Progresso de Pagamento</span><span>${pagas} de ${qtd} parcelas pagas (${perc}%)</span></div><div class="fundo-barra"><div class="preenchimento-parcelas" style="width:${perc}%"></div></div></div>
-            <h3 class="font-bold text-lg mb-3 mt-4">📋 Suas Parcelas</h3>
-            ${Array.from({length:qtd},(_,i)=>{const n=i+1,dt=datas[i]?new Date(datas[i]).toLocaleDateString('pt-BR'):'A definir',ok=n<=pagas,val=((total-e)*(Math.pow(1+j/100,qtd)*(j/100))/(Math.pow(1+j/100,qtd)-1));return`<div class="item-parcela"><div><strong>${n}ª Parcela</strong> • R$ ${val.toLocaleString('pt-BR',2)} • Venc: ${dt}</div><span class="${ok?'text-sucesso':'piscar'}">${ok?'PAGA':'PENDENTE'}</span>${!ok?`<button onclick="pagarParcela(${n},${val})" class="btn btn-pix btn-pequeno">Gerar Pix</button>`:''}</div>`}).join('')}
+            <h3 class="text-center text-xl font-bold my-4">📋 Suas Parcelas</h3>
+            ${Array.from({length:qtd},(_,i)=>{
+                const n=i+1;
+                const dt=datas[i]?new Date(datas[i]).toLocaleDateString('pt-BR'):'A definir';
+                const ok=n<=pagas;
+                const val=((total-e)*(Math.pow(1+j/100,qtd)*(j/100))/(Math.pow(1+j/100,qtd)-1));
+                return `
+                <div class="item-parcela">
+                    <div class="bolinha-status ${ok?'pago':'piscar'}"></div>
+                    <div class="info-parcela">
+                        <div class="font-semibold">${n}ª Parcela • R$ ${val.toLocaleString('pt-BR',2)}</div>
+                        <div class="text-gray-600 text-sm">Venc: ${dt}</div>
+                    </div>
+                    ${!ok?`<button onclick="pagarParcela(${n},${val})" class="btn btn-pix btn-pequeno">Gerar Pix</button>`:`<span class="text-sucesso font-bold">PAGA</span>`}
+                </div>`;
+            }).join('')}
         </div>`;
 
     html+=`<div class="mt-4"><a href="https://wa.me/5511973294235?text=Olá, preciso de suporte sobre minha proposta CPF:${p.cpf}" target="_blank" class="btn btn-whats"><i class="fab fa-whatsapp"></i> Falar com o Suporte</a><button onclick="buscarProposta(true)" class="btn btn-alerta">🔄 Atualizar Dados</button></div></div>`;
@@ -366,16 +359,16 @@ async function montarTela(p) {
 
 async function gerarPixEntrada(v){
     const btn = event.target;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando seu Pix...`;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando...`;
     const codigo = gerarPixValido(v, 'Pagamento Entrada FlashCred');
     setTimeout(()=>{
-        mostrarMensagem('fas fa-check-circle', 'Pix Gerado com Sucesso!', 'Copie o código abaixo e pague no aplicativo do seu banco.', 'sucesso');
+        mostrarMensagem('fas fa-check-circle', 'Pix Gerado!', 'Copie e pague no app do seu banco.', 'sucesso');
         document.getElementById('pixGerado').classList.remove('oculto');
         document.getElementById('qrcode').innerHTML = '';
         new QRCode(document.getElementById('qrcode'), { text: codigo, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.H });
         document.getElementById('copiarPix').onclick = () => {
             navigator.clipboard.writeText(codigo);
-            mostrarMensagem('fas fa-copy', 'Código Copiado!', 'Agora é só colar no app do banco e finalizar o pagamento.', 'sucesso');
+            mostrarMensagem('fas fa-copy', 'Código Copiado!', 'Basta pagar e confirmaremos em instantes.', 'sucesso');
         };
         btn.classList.add('oculto');
     }, 800);
@@ -383,24 +376,21 @@ async function gerarPixEntrada(v){
 
 async function pagarParcela(n,v){
     const codigo = gerarPixValido(v, `${n}ª Parcela FlashCred`);
-    mostrarMensagem('fas fa-check-circle', 'Pix Gerado!', `Código da ${n}ª parcela copiado para pagamento.`, 'sucesso');
+    mostrarMensagem('fas fa-check-circle', 'Pix Gerado!', `Código da ${n}ª parcela copiado.`, 'sucesso');
     await navigator.clipboard.writeText(codigo);
 }
 
-function abrirContrato(){if(!document.getElementById('qtdParcelas').value){mostrarMensagem('fas fa-exclamation-circle','Atenção','Escolha a quantidade de parcelas primeiro!','alerta');return;}qtdEscolhida=Number(document.getElementById('qtdParcelas').value);document.getElementById('blocoContrato').classList.remove('oculto');}
-function mostrarOpcoes(){if(!document.getElementById('aceitoContrato').checked){mostrarMensagem('fas fa-exclamation-circle','Atenção','Você precisa aceitar os termos do contrato!','alerta');return;}document.getElementById('opcoesAssinatura').classList.remove('oculto');}
+function abrirContrato(){if(!document.getElementById('qtdParcelas').value){mostrarMensagem('fas fa-exclamation-circle','Atenção','Escolha a quantidade primeiro!','alerta');return;}qtdEscolhida=Number(document.getElementById('qtdParcelas').value);document.getElementById('blocoContrato').classList.remove('oculto');}
+function mostrarOpcoes(){if(!document.getElementById('aceitoContrato').checked){mostrarMensagem('fas fa-exclamation-circle','Atenção','Aceite os termos primeiro!','alerta');return;}document.getElementById('opcoesAssinatura').classList.remove('oculto');}
 function mostrarTexto(){document.getElementById('assinaturaTexto').classList.remove('oculto');document.getElementById('camArea').classList.add('oculto');}
-async function abrirCam(){document.getElementById('camArea').classList.remove('oculto');document.getElementById('assinaturaTexto').classList.add('oculto');try{streamCam=await navigator.mediaDevices.getUserMedia({video:true});document.getElementById('video').srcObject=streamCam;}catch{mostrarMensagem('fas fa-exclamation-triangle','Câmera Indisponível','Use a opção de assinatura por texto.','alerta');}}
-async function confirmarTexto(){const a=document.getElementById('txtAssinatura').value.trim();if(!a){mostrarMensagem('fas fa-exclamation-circle','Atenção','Digite sua assinatura!','alerta');return;}await supabase.from('propostas').update({contrato_assinado:true,assinatura_texto:a}).eq('id',dadosProposta.id);await buscarProposta(true);mostrarMensagem('fas fa-check-circle','Assinatura Salva!','Agora você já pode gerar o Pix para pagamento da entrada.','sucesso');}
-async function tirar(){if(!streamCam)return;const c=document.createElement('canvas');c.width=400;c.height=300;c.getContext('2d').drawImage(document.getElementById('video'),0,0);const f=c.toDataURL('image/png');streamCam.getTracks().forEach(t=>t.stop());await supabase.from('propostas').update({contrato_assinado:true,foto_assinatura:f}).eq('id',dadosProposta.id);await buscarProposta(true);mostrarMensagem('fas fa-check-circle','Assinatura Salva!','Agora você já pode gerar o Pix para pagamento da entrada.','sucesso');}
+async function abrirCam(){document.getElementById('camArea').classList.remove('oculto');document.getElementById('assinaturaTexto').classList.add('oculto');try{streamCam=await navigator.mediaDevices.getUserMedia({video:true});document.getElementById('video').srcObject=streamCam;}catch{mostrarMensagem('fas fa-exclamation-triangle','Câmera Indisponível','Use assinatura por texto.','alerta');}}
+async function confirmarTexto(){const a=document.getElementById('txtAssinatura').value.trim();if(!a){mostrarMensagem('fas fa-exclamation-circle','Atenção','Digite sua assinatura!','alerta');return;}await supabase.from('propostas').update({contrato_assinado:true,assinatura_texto:a}).eq('id',dadosProposta.id);await buscarProposta(true);mostrarMensagem('fas fa-check-circle','Assinatura Salva!','Agora gere o Pix da entrada.','sucesso');}
+async function tirar(){if(!streamCam)return;const c=document.createElement('canvas');c.width=400;c.height=300;c.getContext('2d').drawImage(document.getElementById('video'),0,0);const f=c.toDataURL('image/png');streamCam.getTracks().forEach(t=>t.stop());await supabase.from('propostas').update({contrato_assinado:true,foto_assinatura:f}).eq('id',dadosProposta.id);await buscarProposta(true);mostrarMensagem('fas fa-check-circle','Assinatura Salva!','Gere o Pix da entrada agora.','sucesso');}
 
-// ✅ ATUALIZA AUTOMÁTICO EM TEMPO REAL — SEM PRECISAR DE F5
 function ativarTempoReal(cpf){
     if(inscricao) supabase.removeChannel(inscricao);
     inscricao = supabase.channel(`prop-${cpf}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpf}` }, () => {
-            buscarProposta(true); // ✅ ATUALIZA FICANDO NA MESMA TELA
-        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpf}` }, () => buscarProposta(true))
         .subscribe();
 }
 </script>
