@@ -4,8 +4,6 @@ const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 app.use(express.json());
-
-// Servir arquivos estáticos da pasta public
 app.use(express.static(path.join(__dirname, 'public')));
 
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
@@ -14,10 +12,15 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const MERCADO_PAGO_TOKEN = process.env.MP_TOKEN || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 
-// Rota para gerar Pix real via API do Mercado Pago (usando fetch nativo do Node.js)
+// Rota oficial para gerar Pix real via API do Mercado Pago
 app.post('/gerar-pix', async (req, res) => {
     try {
         const { valor, propostaId, nome } = req.body;
+        const valorNumerico = Number(String(valor).replace(',', '.'));
+
+        if (!valorNumerico || isNaN(valorNumerico) || valorNumerico <= 0) {
+            return res.status(400).json({ sucesso: false, erro: "Valor de transação inválido." });
+        }
 
         const respostaMP = await fetch("https://api.mercadopago.com/v1/payments", {
             method: "POST",
@@ -27,7 +30,7 @@ app.post('/gerar-pix', async (req, res) => {
                 "X-Idempotency-Key": `proposta_${propostaId}_${Date.now()}`
             },
             body: JSON.stringify({
-                transaction_amount: Number(valor),
+                transaction_amount: valorNumerico,
                 description: `Proposta FlashCred #${propostaId} - ${nome || 'Cliente'}`,
                 payment_method_id: 'pix',
                 payer: {
