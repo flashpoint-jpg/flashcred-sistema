@@ -6,7 +6,6 @@
     <title>Acompanhar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
         tailwind.config = {
@@ -30,8 +29,6 @@
         .botao { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 16px; }
         .botao-pix { background: #32BCAD; color: white; }
         .botao-sucesso { background: #10B981; color: white; }
-        .botao-alerta { background: #F59E0B; color: white; }
-        .botao-wpp { background: #25D366; color: white; margin-top: 12px; }
         .botao-voltar { background: #94A3B8; color: white; margin-bottom: 12px; }
         .botao-pequeno { width: auto; padding: 8px 16px; font-size: 14px; }
         .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
@@ -86,7 +83,8 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-const URL_BACKEND = 'https://SEU-SERVIDOR-AQUI.onrender.com';
+// URL do seu backend no Render (atualize se necessário)
+const URL_BACKEND = 'https://flashcred-sistema.onrender.com';
 
 let propostaAtual = null;
 
@@ -127,6 +125,26 @@ function formatarValor(v) {
     return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
+// Cálculo automático de dias úteis restantes
+function calcularDiasUteisRestantes(dataInicio, prazoTotalDias) {
+    if (!dataInicio) return prazoTotalDias;
+    let inicio = new Date(dataInicio);
+    let hoje = new Date();
+    let diasUteisPassados = 0;
+    let atual = new Date(inicio);
+    
+    while (atual < hoje) {
+        let diaSemana = atual.getDay();
+        if (diaSemana !== 0 && diaSemana !== 6) { // Desconsidera Sábado (6) e Domingo (0)
+            diasUteisPassados++;
+        }
+        atual.setDate(atual.getDate() + 1);
+    }
+
+    let restante = prazoTotalDias - diasUteisPassados;
+    return restante > 0 ? restante : 0;
+}
+
 function mostrarProposta(p) {
     document.getElementById('telaConsulta').classList.remove('visivel');
     document.getElementById('telaProposta').classList.add('visivel');
@@ -147,7 +165,9 @@ function mostrarProposta(p) {
     const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
     const total = v*(1 + j/100);
     const valorParcela = q > 0 ? ((total - e) * (Math.pow(1 + j/100, q) * (j/100)) / (Math.pow(1 + j/100, q) - 1)) : 0;
-    const dias = p.dias_entrega || 7;
+    
+    const diasTotal = p.dias_entrega || 7;
+    const diasRestantes = p.entrada_paga ? calcularDiasUteisRestantes(p.data_aprovacao_entrada || p.updated_at, diasTotal) : diasTotal;
 
     let html = `<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
 
@@ -159,7 +179,7 @@ function mostrarProposta(p) {
         html += `
         <div class="bloco-entrega">
             <i class="fas fa-truck text-alerta text-xl mb-2"></i>
-            <p class="font-bold">ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO DA ENTRADA!</p>
+            <p class="font-bold">ENTREGA EM ATÉ ${diasTotal} DIAS ÚTEIS APÓS PAGAMENTO DA ENTRADA!</p>
         </div>
         <div class="resumo-contrato">
             <h4 class="font-bold text-lg mb-2">📋 Detalhes da Proposta</h4>
@@ -190,7 +210,7 @@ function mostrarProposta(p) {
             <p><strong>Entrada:</strong> R$ ${formatarValor(e)}</p>
             <p><strong>${qtdEsc}x de:</strong> R$ ${formatarValor(valParc)}</p>
             <p><strong>Juros:</strong> ${j}% ao mês</p>
-            <p><strong>Entrega:</strong> até ${dias} dias úteis</p>
+            <p><strong>Entrega:</strong> até ${diasTotal} dias úteis</p>
         </div>
 
         <h4 class="font-bold mt-4 mb-2">📄 CONTRATO</h4>
@@ -199,7 +219,7 @@ function mostrarProposta(p) {
             Entrada: R$ ${formatarValor(e)}<br>
             ${qtdEsc}x de R$ ${formatarValor(valParc)}<br>
             Juros: ${j}% a.m.<br>
-            Entrega: até ${dias} dias úteis após confirmação do pagamento.<br>
+            Entrega: até ${diasTotal} dias úteis após confirmação do pagamento.<br>
             Ao marcar abaixo, confirmo que li e aceito todos os termos.
         </div>
 
@@ -217,7 +237,7 @@ function mostrarProposta(p) {
         </div>
         <div class="bloco-entrega">
             <i class="fas fa-shipping-fast text-alerta text-xl mb-2"></i>
-            <p class="font-bold">Prazo de Envio: até ${dias} dias úteis após compensação da entrada.</p>
+            <p class="font-bold">Prazo de Envio: até ${diasTotal} dias úteis após compensação da entrada.</p>
         </div>
         <div class="resumo-contrato">
             <h4 class="font-bold mb-2">Resumo de Pagamento</h4>
@@ -239,7 +259,7 @@ function mostrarProposta(p) {
         <div class="bloco-entrega" style="background: #ECFDF5; border-color: #10B981;">
             <i class="fas fa-box-open text-sucesso text-2xl mb-2"></i>
             <p class="font-bold text-lg text-sucesso">PROCESSO DE ENTREGA EM ANDAMENTO</p>
-            <p class="text-sm mt-1">Seu pedido está sendo preparado. Prazo estimado de entrega: <strong>até ${dias} dias úteis</strong>.</p>
+            <p class="text-sm mt-1">Seu pedido está sendo preparado. Prazo estimado restante: <strong>${diasRestantes} dias úteis</strong>.</p>
         </div>
 
         <div class="resumo-contrato">
@@ -290,10 +310,10 @@ async function assinarContrato() {
 async function gerarPix(valor) {
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
-    area.innerHTML = `<div class="carregando"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Gerando Pix...</p></div>`;
+    area.innerHTML = `<div class="carregando"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Gerando Pix Real...</p></div>`;
 
     try {
-        const res = await fetch(`${URL_BACKEND}/api/criar-pix`, {
+        const res = await fetch(`${URL_BACKEND}/gerar-pix`, {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({valor, propostaId: propostaAtual.id, nome: propostaAtual.nome})
@@ -306,58 +326,8 @@ async function gerarPix(valor) {
         <div class="codigo-pix">${dados.copia_cola}</div>
         <button onclick="navigator.clipboard.writeText('${dados.copia_cola}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso">Copiar Código</button>
         `;
-    } catch {
-        // Fallback corrigido para o padrão EMV do Pix do Banco Central
-        function pixBC(v) {
-            const chave = 'suporte@flashcred.com.br';
-            const nomeRecebedor = 'FELIPE COSTA';
-            const cidadeRecebedor = 'MUZAMBINHO';
-
-            function campo(id, txt) {
-                const len = String(txt.length).padStart(2, '0');
-                return id + len + txt;
-            }
-
-            function crc16(payload) {
-                let polinomio = 0x1021;
-                let resultado = 0xFFFF;
-                for (let i = 0; i < payload.length; i++) {
-                    resultado ^= (payload.charCodeAt(i) << 8);
-                    for (let j = 0; j < 8; j++) {
-                        if ((resultado & 0x8000) !== 0) {
-                            resultado = ((resultado << 1) ^ polinomio);
-                        } else {
-                            resultado = (resultado << 1);
-                        }
-                        resultado &= 0xFFFF;
-                    }
-                }
-                return resultado.toString(16).toUpperCase().padStart(4, '0');
-            }
-
-            let payloadGui = campo('00', 'br.gov.bcb.pix') + campo('01', chave);
-            let payload = campo('00', '01') +
-                          campo('26', payloadGui) +
-                          campo('52', '0000') +
-                          campo('53', '986') +
-                          campo('54', v.toFixed(2)) +
-                          campo('58', 'BR') +
-                          campo('59', nomeRecebedor) +
-                          campo('60', cidadeRecebedor) +
-                          campo('62', campo('05', '***')) +
-                          '6304';
-
-            return payload + crc16(payload);
-        }
-
-        const cod = pixBC(valor);
-        area.innerHTML = `
-        <div class="qrcode-area"><div id="qrcode"></div></div>
-        <div class="codigo-pix">${cod}</div>
-        <button onclick="navigator.clipboard.writeText('${cod}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso">Copiar Código</button>
-        `;
-        document.getElementById('qrcode').innerHTML = '';
-        new QRCode(document.getElementById('qrcode'), {text: cod, width: 240, height: 240});
+    } catch (err) {
+        area.innerHTML = `<p class="text-perigo text-center font-bold">Erro ao gerar Pix real: ${err.message}</p>`;
     }
 }
 </script>
