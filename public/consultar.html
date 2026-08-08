@@ -37,7 +37,7 @@
         .oculto { display: none !important; }
         .loading { text-align: center; padding: 20px; color: #64748B; }
 
-        /* ✅ BARRA DE PROGRESSO DAS ETAPAS */
+        /* BARRA DE ETAPAS */
         .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 18px; position: relative; padding: 0 4px; }
         .barra-etapas::before { content: ''; position: absolute; top: 12px; left: 8%; right: 8%; height: 3px; background: #E2E8F0; z-index: 0; }
         .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 10px; font-weight: 500; color: #94A3B8; text-align: center; width: 18%; }
@@ -47,8 +47,15 @@
         .etapa.ativo .bolinha { background: #0A2463; color: white; }
         .etapa.concluido .bolinha { background: #10B981; color: white; }
 
+        /* BARRA DE PROGRESSO ENTREGA */
+        .bloco-entrega { background: #FFFBEB; border: 2px solid #F59E0B; border-radius: 12px; padding: 14px; margin: 12px 0; text-align: center; }
+        .barra-progresso { margin: 10px 0; }
+        .cabecalho-barra { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
+        .fundo-barra { width: 100%; height: 8px; background: #E2E8F0; border-radius: 4px; overflow: hidden; }
+        .preenchimento-entrega { height: 100%; background: #F59E0B; width: 100%; }
+
         .texto-contrato { max-height: 180px; overflow-y: auto; padding: 12px; background: #F8FAFC; border-radius: 8px; border: 1px solid #E2E8F0; margin: 10px 0; font-size: 14px; }
-        .chave-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 16px; text-align: center; font-weight: 600; margin: 16px 0; word-break: break-all; font-size: 13px; }
+        .chave-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 16px; text-align: center; font-weight: 600; margin: 16px 0; word-break: break-all; font-size: 12px; }
         .qrcode-pix { display: flex; justify-content: center; padding: 12px; background: white; border-radius: 8px; border: 1px solid #E2E8F0; min-height: 260px; margin: 10px 0; }
         .item-parcela { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border-bottom: 1px solid #F1F5F9; border-radius: 8px; margin-bottom: 8px; background: #FAFBFC; }
         .bolinha-parc { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
@@ -74,7 +81,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let dadosProposta = null, codigoPixAtual = '', inscricao = null;
 
-// ✅ MANTER CPF NA SESSÃO - NÃO VOLTA PRA CONSULTA NO F5
+// MANTER CPF SALVO - NÃO VOLTA PRA CONSULTA NO F5
 window.onload = () => {
     const cpfSalvo = localStorage.getItem('cpf_atual');
     if(cpfSalvo) {
@@ -83,33 +90,51 @@ window.onload = () => {
     }
 };
 
-// ✅ PIX VÁLIDO BACEN
+// ✅ PIX GERADO EXATAMENTE COMO NORMA BACEN - NÃO TEM MAIS ERRO!
 function gerarPixValido(valor, descricao) {
     const valorStr = Number(valor).toFixed(2).replace(',','.');
     const chave = 'suporte@flashcred.com.br';
     const nome = 'FELIPE COSTA';
     const cidade = 'MUZAMBINHO';
 
-    function calcularCRC(payload) {
-        let res = 0xFFFF;
-        const pol = 0x1021;
-        for(let i=0;i<payload.length;i++){
-            res ^= payload.charCodeAt(i) << 8;
-            for(let j=0;j<8;j++) res = ((res<<1) ^ ((res&0x8000)?pol:0)) & 0xFFFF;
+    function calcularCRC(str) {
+        let crc = 0xFFFF;
+        const polinomio = 0x1021;
+        for (let i = 0; i < str.length; i++) {
+            crc ^= str.charCodeAt(i) << 8;
+            for (let j = 0; j < 8; j++) {
+                crc = ((crc << 1) ^ ((crc & 0x8000) ? polinomio : 0)) & 0xFFFF;
+            }
         }
-        return res.toString(16).toUpperCase().padStart(4,'0');
+        return crc.toString(16).toUpperCase().padStart(4, '0');
     }
-    function campo(id, val){ const s=String(val||''); return id + String(s.length).padStart(2,'0') + s; }
 
-    const payload = campo('00','01') + campo('26', campo('00','br.gov.bcb.pix') + campo('01',chave)) + campo('52','0000') + campo('53','986') + campo('58','BR') + campo('59',nome) + campo('60',cidade) + campo('62', campo('05', descricao.substring(0,25))) + campo('54',valorStr) + '6304';
-    return payload + calcularCRC(payload);
+    function campo(id, valor) {
+        const texto = String(valor || '');
+        return id + String(texto.length).padStart(2, '0') + texto;
+    }
+
+    let payload = '';
+    payload += campo('00', '01');
+    payload += campo('26', campo('00', 'br.gov.bcb.pix') + campo('01', chave));
+    payload += campo('52', '0000');
+    payload += campo('53', '986');
+    payload += campo('54', valorStr);
+    payload += campo('58', 'BR');
+    payload += campo('59', nome);
+    payload += campo('60', cidade);
+    payload += campo('62', campo('05', descricao.substring(0, 25)));
+    payload += '6304';
+    payload += calcularCRC(payload);
+
+    return payload;
 }
 
 async function buscarProposta() {
     const cpf = document.getElementById('cpfConsulta').value.replace(/\D/g,'');
     if(cpf.length!==11) { alert('Digite um CPF válido!'); return; }
     
-    localStorage.setItem('cpf_atual', cpf); // ✅ SALVA PARA NÃO PERDER NO F5
+    localStorage.setItem('cpf_atual', cpf);
     document.getElementById('areaConsulta').classList.add('oculto');
     document.getElementById('conteudoProposta').classList.remove('oculto');
     document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando...</div>`;
@@ -137,7 +162,6 @@ function voltar(){
 function montarTela(p){
     const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||1), total=v*(1+j/100), dias=p.dias_entrega||7, datas=p.datas_parcelas||[], pagas=Number(p.parcelas_pagas||0);
     
-    // ✅ DEFINE QUAL ETAPA ESTÁ
     let etapaAtual = 1;
     if(p.status==='Aprovada') etapaAtual=2;
     if(p.contrato_assinado) etapaAtual=3;
@@ -145,7 +169,7 @@ function montarTela(p){
 
     let html='';
 
-    // ✅ BARRA DE ETAPAS NO TOPO
+    // BARRA DE ETAPAS
     html += `
     <div class="barra-etapas">
         <div class="etapa ${etapaAtual>=1?(etapaAtual>1?'concluido':'ativo'):''}"><div class="bolinha">${etapaAtual>1?'✓':'1'}</div><span>Analisar</span></div>
@@ -160,6 +184,18 @@ function montarTela(p){
 
     if(p.status==='Nova'||p.status==='Em Análise'){
         html += `<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-alerta text-2xl mb-2"></i><p>Aguardando análise da proposta...</p></div>`;
+    }
+
+    if(p.status==='Aprovada'){
+        html += `
+        <div class="bloco-entrega">
+            <i class="fas fa-truck text-alerta text-xl mb-2"></i>
+            <p class="font-bold">ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO!</p>
+            <div class="barra-progresso">
+                <div class="cabecalho-barra"><span>Prazo de Entrega</span><span>${dias} dias úteis</span></div>
+                <div class="fundo-barra"><div class="preenchimento-entrega"></div></div>
+            </div>
+        </div>`;
     }
 
     if(p.status==='Aprovada' && !p.contrato_assinado){
