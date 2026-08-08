@@ -86,7 +86,6 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-// ✅ COLOQUE A URL DO SEU SERVIDOR NO RENDER AQUI
 const URL_BACKEND = 'https://SEU-SERVIDOR-AQUI.onrender.com';
 
 let propostaAtual = null;
@@ -139,10 +138,10 @@ function mostrarProposta(p) {
 
     document.getElementById('barraEtapas').innerHTML = `
         <div class="etapa ${etapa>=1?(etapa>1?'concluida':'ativa'):''}"><div class="bolinha">${etapa>1?'✓':'1'}</div><span>Análise</span></div>
-        <div class="etapa ${etapa>=2?(etapa>2?'concluida':'ativa'):''}"><div class="bolinha">${etapa>2?'✓':'2'}</div><span>Escolher Parcelas</span></div>
-        <div class="etapa ${etapa>=3?'concluida':'ativa'}"><div class="bolinha">${etapa>=3?'✓':'3'}</div><span>Assinar Contrato</span></div>
-        <div class="etapa ${etapa>=4?'concluida':''}"><div class="bolinha">${etapa>=4?'✓':'4'}</div><span>Pagar Entrada</span></div>
-        <div class="etapa ${etapa>=5?'concluida':''}"><div class="bolinha">${etapa>=5?'✓':'5'}</div><span>Pagar Parcelas</span></div>
+        <div class="etapa ${etapa>=2?(etapa>2?'concluida':'ativa'):''}"><div class="bolinha">${etapa>2?'✓':'2'}</div><span>Parcelas</span></div>
+        <div class="etapa ${etapa>=3?'concluida':'ativa'}"><div class="bolinha">${etapa>=3?'✓':'3'}</div><span>Contrato</span></div>
+        <div class="etapa ${etapa>=4?'concluida':''}"><div class="bolinha">${etapa>=4?'✓':'4'}</div><span>Entrada</span></div>
+        <div class="etapa ${etapa>=5?'concluida':''}"><div class="bolinha">${etapa>=5?'✓':'5'}</div><span>Entrega</span></div>
     `;
 
     const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
@@ -160,7 +159,7 @@ function mostrarProposta(p) {
         html += `
         <div class="bloco-entrega">
             <i class="fas fa-truck text-alerta text-xl mb-2"></i>
-            <p class="font-bold">ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO!</p>
+            <p class="font-bold">ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO DA ENTRADA!</p>
         </div>
         <div class="resumo-contrato">
             <h4 class="font-bold text-lg mb-2">📋 Detalhes da Proposta</h4>
@@ -216,6 +215,10 @@ function mostrarProposta(p) {
             <i class="fas fa-check-circle"></i>
             <h3 class="text-xl font-bold">CONTRATO ASSINADO!</h3>
         </div>
+        <div class="bloco-entrega">
+            <i class="fas fa-shipping-fast text-alerta text-xl mb-2"></i>
+            <p class="font-bold">Prazo de Envio: até ${dias} dias úteis após compensação da entrada.</p>
+        </div>
         <div class="resumo-contrato">
             <h4 class="font-bold mb-2">Resumo de Pagamento</h4>
             <p><strong>Total do Contrato:</strong> R$ ${formatarValor(total)}</p>
@@ -226,12 +229,17 @@ function mostrarProposta(p) {
         <div id="areaPix" class="oculto"></div>`;
     }
 
-    // ✅ TELA DE PARCELAS COM TODOS OS DADOS
     if(p.entrada_paga) {
         html += `
         <div class="sucesso-box">
             <i class="fas fa-check-double"></i>
-            <h3 class="text-xl font-bold">PAGAMENTO CONFIRMADO!</h3>
+            <h3 class="text-xl font-bold">ENTRADA CONFIRMADA!</h3>
+        </div>
+
+        <div class="bloco-entrega" style="background: #ECFDF5; border-color: #10B981;">
+            <i class="fas fa-box-open text-sucesso text-2xl mb-2"></i>
+            <p class="font-bold text-lg text-sucesso">PROCESSO DE ENTREGA EM ANDAMENTO</p>
+            <p class="text-sm mt-1">Seu pedido está sendo preparado. Prazo estimado de entrega: <strong>até ${dias} dias úteis</strong>.</p>
         </div>
 
         <div class="resumo-contrato">
@@ -242,7 +250,6 @@ function mostrarProposta(p) {
             <p><strong>Quantidade de Parcelas:</strong> ${q}x</p>
             <p><strong>Valor de Cada Parcela:</strong> R$ ${formatarValor(valorParcela)}</p>
             <p><strong>Juros:</strong> ${j}% ao mês</p>
-            <p><strong>Prazo de Entrega:</strong> até ${dias} dias úteis</p>
         </div>
 
         <h3 class="font-bold text-lg mt-4 mb-2">📅 Suas Parcelas</h3>
@@ -280,7 +287,6 @@ async function assinarContrato() {
     mostrarProposta({...propostaAtual, contrato_assinado: true});
 }
 
-// ✅ GERA PIX REAL ATRAVÉS DO SEU SERVIDOR
 async function gerarPix(valor) {
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
@@ -301,21 +307,57 @@ async function gerarPix(valor) {
         <button onclick="navigator.clipboard.writeText('${dados.copia_cola}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso">Copiar Código</button>
         `;
     } catch {
-        // Fallback seguro se o backend estiver fora
+        // Fallback corrigido para o padrão EMV do Pix do Banco Central
         function pixBC(v) {
             const chave = 'suporte@flashcred.com.br';
-            function campo(id, txt) { return id + String(txt.length).padStart(2,'0') + txt; }
-            function crc(s) { let c=0xFFFF; for(let i=0;i<s.length;i++){c^=s.charCodeAt(i)<<8;for(let j=0;j<8;j++)c=((c<<1)^((c&0x8000)?0x1021:0))&0xFFFF;} return c.toString(16).toUpperCase().padStart(4,'0'); }
-            let p = campo('00','01') + campo('26',campo('00','br.gov.bcb.pix')+campo('01',chave)) + campo('52','0000') + campo('53','986') + campo('54',v.toFixed(2)) + campo('58','BR') + campo('59','FELIPE COSTA') + campo('60','MUZAMBINHO') + '6304';
-            return p + crc(p);
+            const nomeRecebedor = 'FELIPE COSTA';
+            const cidadeRecebedor = 'MUZAMBINHO';
+
+            function campo(id, txt) {
+                const len = String(txt.length).padStart(2, '0');
+                return id + len + txt;
+            }
+
+            function crc16(payload) {
+                let polinomio = 0x1021;
+                let resultado = 0xFFFF;
+                for (let i = 0; i < payload.length; i++) {
+                    resultado ^= (payload.charCodeAt(i) << 8);
+                    for (let j = 0; j < 8; j++) {
+                        if ((resultado & 0x8000) !== 0) {
+                            resultado = ((resultado << 1) ^ polinomio);
+                        } else {
+                            resultado = (resultado << 1);
+                        }
+                        resultado &= 0xFFFF;
+                    }
+                }
+                return resultado.toString(16).toUpperCase().padStart(4, '0');
+            }
+
+            let payloadGui = campo('00', 'br.gov.bcb.pix') + campo('01', chave);
+            let payload = campo('00', '01') +
+                          campo('26', payloadGui) +
+                          campo('52', '0000') +
+                          campo('53', '986') +
+                          campo('54', v.toFixed(2)) +
+                          campo('58', 'BR') +
+                          campo('59', nomeRecebedor) +
+                          campo('60', cidadeRecebedor) +
+                          campo('62', campo('05', '***')) +
+                          '6304';
+
+            return payload + crc16(payload);
         }
+
         const cod = pixBC(valor);
         area.innerHTML = `
         <div class="qrcode-area"><div id="qrcode"></div></div>
         <div class="codigo-pix">${cod}</div>
         <button onclick="navigator.clipboard.writeText('${cod}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso">Copiar Código</button>
         `;
-        new QRCode(document.getElementById('qrcode'), {text:cod, width:240, height:240});
+        document.getElementById('qrcode').innerHTML = '';
+        new QRCode(document.getElementById('qrcode'), {text: cod, width: 240, height: 240});
     }
 }
 </script>
