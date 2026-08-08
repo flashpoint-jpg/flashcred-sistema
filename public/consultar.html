@@ -83,9 +83,6 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-// URL do seu backend no Render (atualize se necessário)
-const URL_BACKEND = 'https://flashcred-sistema.onrender.com';
-
 let propostaAtual = null;
 
 window.onload = () => {
@@ -125,7 +122,6 @@ function formatarValor(v) {
     return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-// Cálculo automático de dias úteis restantes
 function calcularDiasUteisRestantes(dataInicio, prazoTotalDias) {
     if (!dataInicio) return prazoTotalDias;
     let inicio = new Date(dataInicio);
@@ -135,7 +131,7 @@ function calcularDiasUteisRestantes(dataInicio, prazoTotalDias) {
     
     while (atual < hoje) {
         let diaSemana = atual.getDay();
-        if (diaSemana !== 0 && diaSemana !== 6) { // Desconsidera Sábado (6) e Domingo (0)
+        if (diaSemana !== 0 && diaSemana !== 6) {
             diasUteisPassados++;
         }
         atual.setDate(atual.getDate() + 1);
@@ -312,11 +308,22 @@ async function gerarPix(valor) {
     area.classList.remove('oculto');
     area.innerHTML = `<div class="carregando"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Gerando Pix Real...</p></div>`;
 
+    const valorNumerico = Number(String(valor).replace(',', '.'));
+
+    if (!valorNumerico || isNaN(valorNumerico) || valorNumerico <= 0) {
+        area.innerHTML = `<p class="text-perigo text-center font-bold">Erro: Valor do Pix inválido (${valor}).</p>`;
+        return;
+    }
+
     try {
-        const res = await fetch(`${URL_BACKEND}/gerar-pix`, {
+        const res = await fetch('/gerar-pix', {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({valor, propostaId: propostaAtual.id, nome: propostaAtual.nome})
+            body: JSON.stringify({
+                valor: valorNumerico, 
+                propostaId: propostaAtual.id, 
+                nome: propostaAtual.nome
+            })
         });
         const dados = await res.json();
         if(!dados.sucesso) throw new Error(dados.erro || 'Erro ao gerar');
