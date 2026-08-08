@@ -33,6 +33,7 @@
         .botao-alerta { background: #F59E0B; color: white; }
         .botao-wpp { background: #25D366; color: white; margin-top: 12px; }
         .botao-voltar { background: #94A3B8; color: white; margin-bottom: 12px; }
+        .botao-pequeno { width: auto; padding: 8px 16px; font-size: 14px; }
         .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
         .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; padding: 0 4px; }
         .barra-etapas::before { content: ''; position: absolute; top: 12px; left: 8%; right: 8%; height: 3px; background: #E2E8F0; z-index: 0; }
@@ -43,9 +44,9 @@
         .etapa.ativa .bolinha { background: #0A2463; color: white; }
         .etapa.concluida .bolinha { background: #10B981; color: white; }
         .bloco-entrega { background: #FFFBEB; border: 2px solid #F59E0B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
-        .detalhes { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 16px; margin: 16px 0; }
-        .detalhes p { margin: 8px 0; font-size: 15px; }
-        .detalhes strong { color: #0A2463; }
+        .resumo-contrato { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 16px; margin: 16px 0; }
+        .resumo-contrato p { margin: 8px 0; font-size: 15px; }
+        .resumo-contrato strong { color: #0A2463; }
         .contrato { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; max-height: 220px; overflow-y: auto; margin: 16px 0; font-size: 14px; line-height: 1.7; }
         .qrcode-area { display: flex; justify-content: center; padding: 20px; background: white; border-radius: 10px; border: 1px solid #E2E8F0; margin: 16px 0; }
         .codigo-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 16px; text-align: center; font-weight: 600; margin: 16px 0; word-break: break-all; font-size: 12px; }
@@ -54,6 +55,7 @@
         .luz { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
         .luz-verde { background: #10B981; }
         .luz-amarela { background: #F59E0B; animation: piscar 1.2s infinite; }
+        .luz-vermelha { background: #EF4444; animation: piscar 1s infinite; }
         @keyframes piscar { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
         .tela { display: none; }
         .tela.visivel { display: block; }
@@ -86,7 +88,6 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let propostaAtual = null;
 
-// Pegar CPF direto da URL se vier do link do WhatsApp
 window.onload = () => {
     const params = new URLSearchParams(window.location.search);
     const cpfUrl = params.get('cpf');
@@ -113,12 +114,15 @@ async function consultar() {
     propostaAtual = data;
     mostrarProposta(data);
     
-    // Atualiza automaticamente quando mudar algo no banco
     supabase.channel(`proposta_${propostaAtual.id}`)
         .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, (res)=>{
             propostaAtual = res.new;
             mostrarProposta(res.new);
         }).subscribe();
+}
+
+function formatarValor(v) {
+    return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
 function mostrarProposta(p) {
@@ -138,7 +142,10 @@ function mostrarProposta(p) {
         <div class="etapa ${etapa>=5?'concluida':''}"><div class="bolinha">${etapa>=5?'✓':'5'}</div><span>Pagar Parcelas</span></div>
     `;
 
-    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||0), total=v*(1+j/100), dias=p.dias_entrega||7;
+    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
+    const total = v*(1 + j/100);
+    const valorParcela = q > 0 ? ((total - e) * (Math.pow(1 + j/100, q) * (j/100)) / (Math.pow(1 + j/100, q) - 1)) : 0;
+    const dias = p.dias_entrega || 7;
 
     let html = `<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
 
@@ -146,17 +153,17 @@ function mostrarProposta(p) {
         html += `<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação da proposta...</p></div>`;
     }
 
-    // ETAPA 1: APROVADA → ESCOLHE PARCELAS
     if(p.status === 'Aprovada' && !p.qtd_parcelas_escolhida) {
         html += `
         <div class="bloco-entrega">
             <i class="fas fa-truck text-alerta text-xl mb-2"></i>
             <p class="font-bold">ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO!</p>
         </div>
-        <div class="detalhes">
+        <div class="resumo-contrato">
             <h4 class="font-bold text-lg mb-2">📋 Detalhes da Proposta</h4>
-            <p><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR',2)}</p>
-            <p><strong>Valor da Entrada:</strong> R$ ${e.toLocaleString('pt-BR',2)}</p>
+            <p><strong>Valor do Produto/Serviço:</strong> R$ ${formatarValor(v)}</p>
+            <p><strong>Valor da Entrada:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>Valor Total do Contrato:</strong> R$ ${formatarValor(total)}</p>
             <p><strong>Quantidade Máxima:</strong> até ${q}x</p>
             <p><strong>Juros:</strong> ${j}% ao mês</p>
         </div>
@@ -165,59 +172,60 @@ function mostrarProposta(p) {
             ${Array.from({length:q}, (_,i)=>{
                 const n=i+1;
                 const val = ((total-e)*(Math.pow(1+j/100,n)*(j/100))/(Math.pow(1+j/100,n)-1));
-                return `<option value="${n}">${n}x de R$ ${val.toLocaleString('pt-BR',2)}</option>`;
+                return `<option value="${n}">${n}x de R$ ${formatarValor(val)}</option>`;
             }).join('')}
         </select>
         <button onclick="confirmarParcelas()" class="botao botao-sucesso mt-2">Continuar para o Contrato</button>`;
     }
 
-    // ETAPA 2: PARCELAS ESCOLHIDAS → ASSINAR CONTRATO
     if(p.status === 'Aprovada' && p.qtd_parcelas_escolhida && !p.contrato_assinado) {
         const qtdEsc = p.qtd_parcelas_escolhida;
         const valParc = ((total-e)*(Math.pow(1+j/100,qtdEsc)*(j/100))/(Math.pow(1+j/100,qtdEsc)-1));
         html += `
-        <div class="detalhes">
+        <div class="resumo-contrato">
             <h4 class="font-bold mb-2">📋 Resumo da sua escolha</h4>
-            <p><strong>${qtdEsc}x de R$ ${valParc.toLocaleString('pt-BR',2)}</strong></p>
-            <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR',2)}</p>
-            <p><strong>Total do Contrato:</strong> R$ ${total.toLocaleString('pt-BR',2)}</p>
+            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Entrada:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>${qtdEsc}x de:</strong> R$ ${formatarValor(valParc)}</p>
+            <p><strong>Juros:</strong> ${j}% ao mês</p>
+            <p><strong>Prazo de entrega:</strong> até ${dias} dias úteis</p>
         </div>
 
         <h4 class="font-bold mt-4 mb-2">📄 CONTRATO DE CRÉDITO</h4>
         <div class="contrato">
             <strong>CONTRATO DE FINANCIAMENTO E COMPRA</strong><br><br>
-            1. Valor total do contrato: R$ ${total.toLocaleString('pt-BR',2)}<br>
-            2. Valor da entrada: R$ ${e.toLocaleString('pt-BR',2)}<br>
-            3. Quantidade de parcelas: ${qtdEsc}x de R$ ${valParc.toLocaleString('pt-BR',2)}<br>
+            1. Valor total do contrato: R$ ${formatarValor(total)}<br>
+            2. Valor da entrada: R$ ${formatarValor(e)}<br>
+            3. Quantidade de parcelas: ${qtdEsc}x de R$ ${formatarValor(valParc)}<br>
             4. Juros mensais: ${j}% ao mês<br>
             5. Prazo de entrega: até ${dias} dias úteis após confirmação do pagamento da entrada.<br>
-            6. Ao assinar, declaro que li, entendi e aceito todos os termos e condições deste contrato.<br><br>
+            6. Ao assinar, declaro que li, entendi e aceito todos os termos.<br><br>
             Muzambinho, MG.
         </div>
 
         <div class="mt-4">
-            <label class="flex items-center gap-2 mb-4 font-medium"><input type="checkbox" id="aceitoContrato"> Li e concordo com todos os termos do contrato</label>
+            <label class="flex items-center gap-2 mb-4 font-medium"><input type="checkbox" id="aceitoContrato"> Li e concordo com os termos</label>
             <button onclick="assinarContrato()" class="botao botao-sucesso">✍️ Assinar e Finalizar</button>
         </div>`;
     }
 
-    // ETAPA 3: CONTRATO ASSINADO → GERA PIX (CORRIGIDO, NÃO TRAVA MAIS)
     if(p.contrato_assinado && !p.entrada_paga) {
         html += `
         <div class="sucesso-box">
             <i class="fas fa-check-circle"></i>
             <h3 class="text-xl font-bold">CONTRATO ASSINADO COM SUCESSO!</h3>
         </div>
-        <div class="detalhes">
+        <div class="resumo-contrato">
             <h4 class="font-bold mb-2">Resumo para Pagamento</h4>
-            <p><strong>Valor da Entrada:</strong> R$ ${e.toLocaleString('pt-BR',2)}</p>
-            <p><strong>Total do Contrato:</strong> R$ ${total.toLocaleString('pt-BR',2)}</p>
+            <p><strong>Valor Total do Contrato:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Valor da Entrada:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>Restante em ${q}x:</strong> R$ ${formatarValor(valorParcela)} cada</p>
         </div>
         <button onclick="gerarPix(${e})" class="botao botao-pix mt-4">Gerar Pix da Entrada</button>
         <div id="areaPix" class="oculto"></div>`;
     }
 
-    // ETAPA 4: ENTRADA PAGA → MOSTRA PARCELAS
+    // ✅ TELA DE PARCELAS COM TODOS OS DADOS E PIX FUNCIONANDO
     if(p.entrada_paga) {
         html += `
         <div class="sucesso-box">
@@ -225,15 +233,36 @@ function mostrarProposta(p) {
             <h3 class="text-xl font-bold">PAGAMENTO CONFIRMADO!</h3>
             <p>Agora você já pode conferir e pagar suas parcelas.</p>
         </div>
+
+        <!-- 📋 RESUMO COMPLETO DO CONTRATO -->
+        <div class="resumo-contrato">
+            <h4 class="font-bold text-lg mb-2">📝 DADOS DO CONTRATO</h4>
+            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Entrada Paga:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>Total Restante:</strong> R$ ${formatarValor(total - e)}</p>
+            <p><strong>Quantidade de Parcelas:</strong> ${q}x</p>
+            <p><strong>Valor de Cada Parcela:</strong> R$ ${formatarValor(valorParcela)}</p>
+            <p><strong>Juros:</strong> ${j}% ao mês</p>
+            <p><strong>Prazo de Entrega:</strong> até ${dias} dias úteis</p>
+        </div>
+
         <h3 class="font-bold text-lg mt-4 mb-2">📅 Suas Parcelas</h3>
         ${(p.datas_parcelas||[]).map((dt,idx)=>{
-            const valorParc = ((total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1));
+            const valor = valorParcela;
             const pg = idx+1 <= (p.parcelas_pagas||0);
+            const hoje = new Date();
+            const vencto = new Date(dt);
+            let cor = 'luz-amarela';
+            if(pg) cor='luz-verde';
+            else if(vencto < hoje) cor='luz-vermelha';
+
             return `<div class="item-parcela">
-                <div><span class="luz ${pg?'luz-verde':'luz-amarela'}"></span>${idx+1}ª Parcela: R$ ${valorParc.toLocaleString('pt-BR',2)} - Venc: ${new Date(dt).toLocaleDateString('pt-BR')}</div>
-                ${pg?'<span class="text-sucesso font-bold">PAGA</span>':'<button onclick="gerarPix(${valorParc})" class="botao botao-pix botao-pequeno">Pagar</button>'}
+                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${new Date(dt).toLocaleDateString('pt-BR')}</div>
+                ${pg?'<span class="text-sucesso font-bold">PAGA</span>':`<button onclick="gerarPix(${valor})" class="botao botao-pix botao-pequeno">Pagar</button>`}
             </div>`;
-        }).join('')}`;
+        }).join('')}
+
+        <div id="areaPix" class="oculto mt-4"></div>`;
     }
 
     html += `<a href="https://wa.me/5511973294235" target="_blank" class="botao botao-wpp mt-4">💬 Falar com o Suporte</a>`;
@@ -252,13 +281,12 @@ async function assinarContrato() {
     mostrarProposta({...propostaAtual, contrato_assinado: true});
 }
 
-// ✅ GERAÇÃO DO PIX CORRIGIDA - NÃO TRAVA MAIS
+// ✅ GERA PIX CORRETO EM TODAS AS ETAPAS
 function gerarPix(valor) {
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
     area.innerHTML = `<div class="carregando"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Gerando código Pix...</p></div>`;
     
-    // Função padrão Pix BC (funciona 100% sem travar)
     function criarPix(valor, desc) {
         const chave = 'suporte@flashcred.com.br';
         const nome = 'FELIPE COSTA';
@@ -279,9 +307,8 @@ function gerarPix(valor) {
         return pix;
     }
 
-    // Pequeno delay só para dar tempo de carregar o QRCode
     setTimeout(()=>{
-        const codigo = criarPix(valor, `Entrada ${propostaAtual.nome}`);
+        const codigo = criarPix(valor, `Pagamento ${propostaAtual.nome}`);
         area.innerHTML = `
         <div class="qrcode-area"><div id="qrcode"></div></div>
         <div class="codigo-pix">${codigo}</div>
