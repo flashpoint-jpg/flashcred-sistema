@@ -137,6 +137,16 @@
         .alerta-personalizado p { font-size: 14px; color: #64748B; margin-bottom: 16px; }
         .alerta-personalizado button { padding: 10px 24px; border-radius: 8px; border: none; background: #0A2463; color: white; font-weight: 600; cursor: pointer; }
         .fundo-escuro { position: fixed; inset:0; background:rgba(0,0,0,0.4); z-index:9998; }
+
+        @keyframes piscarLaranjaAmarelo {
+            0% { color: #F59E0B; }
+            50% { color: #FF5722; }
+            100% { color: #F59E0B; }
+        }
+        .piscar {
+            animation: piscarLaranjaAmarelo 1s infinite;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -156,6 +166,17 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let inscricao = null, dadosProposta = null, qtdEscolhida = 0, streamCam = null;
 
+// ✅ GUARDA O CPF NO NAVEGADOR PARA NÃO VOLTAR PRO INÍCIO
+function salvarCpfSessao(cpf) {
+    localStorage.setItem('cpf_atual', cpf);
+}
+function pegarCpfSessao() {
+    return localStorage.getItem('cpf_atual') || null;
+}
+function limparSessao() {
+    localStorage.removeItem('cpf_atual');
+}
+
 function mostrarMensagem(icone, titulo, texto, corIcone='primary') {
     const fundo = document.createElement('div');
     fundo.className = 'fundo-escuro';
@@ -171,10 +192,9 @@ function mostrarMensagem(icone, titulo, texto, corIcone='primary') {
     document.body.appendChild(fundo);
 }
 
-// ✅ FUNÇÃO PIX 100% CONFORME NORMA BACEN — NÃO DÁ MAIS INVÁLIDO
 function gerarPixValido(valor, descricao) {
     const valorStr = Number(valor).toFixed(2).replace(',','.');
-    const chave = '33552949852'; // Sua chave Pix válida
+    const chave = '33552949852';
     const nome = 'FELIPE COSTA';
     const cidade = 'MUZAMBINHO';
 
@@ -197,33 +217,38 @@ function gerarPixValido(valor, descricao) {
 
     const payload = 
         montarCampo('00','01') +
-        montarCampo('26', 
-            montarCampo('00','br.gov.bcb.pix') + 
-            montarCampo('01', chave)
-        ) +
+        montarCampo('26', montarCampo('00','br.gov.bcb.pix') + montarCampo('01', chave)) +
         montarCampo('52','0000') +
         montarCampo('53','986') +
         montarCampo('58','BR') +
         montarCampo('59', nome) +
         montarCampo('60', cidade) +
         montarCampo('62', montarCampo('05','***')) +
-        montarCampo('54', valorStr) +
-        '6304';
+        montarCampo('54', valorStr) + '6304';
 
     return payload + calcularCRC(payload);
 }
 
-window.onload = () => {
+window.onload = async () => {
+    // ✅ SE JÁ TIVER CPF SALVO, CARREGA AUTOMÁTICO SEM VOLTAR PRA BUSCA
     const cpfUrl = new URLSearchParams(window.location.search).get('cpf');
-    if(cpfUrl) {
-        document.getElementById('cpfConsulta').value = cpfUrl.replace(/\D/g,'');
-        buscarProposta();
+    const cpfSalvo = pegarCpfSessao();
+    const cpfUsar = cpfUrl || cpfSalvo;
+    
+    if(cpfUsar) {
+        document.getElementById('cpfConsulta').value = cpfUsar.replace(/\D/g,'');
+        await buscarProposta(true); // true = não limpa sessão
     }
 };
 
-async function buscarProposta() {
+async function buscarProposta(carregamentoAutomatico=false) {
     const cpf = document.getElementById('cpfConsulta').value.replace(/\D/g,'');
-    if(cpf.length!==11) { mostrarMensagem('fas fa-exclamation-circle', 'CPF Inválido', 'Digite um CPF com 11 números!', 'perigo'); return; }
+    if(cpf.length!==11) { 
+        mostrarMensagem('fas fa-exclamation-circle', 'CPF Inválido', 'Digite um CPF com 11 números!', 'perigo'); 
+        return; 
+    }
+
+    salvarCpfSessao(cpf); // ✅ GUARDA PARA NÃO PERDER AO ATUALIZAR
 
     document.getElementById('areaConsulta').classList.add('hidden');
     document.getElementById('conteudoProposta').innerHTML = `<div class="loading"><i class="fas fa-spinner fa-spin text-2xl"></i><br>Carregando sua proposta...</div>`;
@@ -231,11 +256,22 @@ async function buscarProposta() {
 
     const {data, error} = await supabase.from('propostas').select('*').eq('cpf',cpf).single();
     if(error||!data){
-        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-search text-gray-400 text-3xl mb-3"></i><p class="font-semibold">Proposta não encontrada.</p></div>`;
+        if(!carregamentoAutomatico) limparSessao();
+        document.getElementById('conteudoProposta').innerHTML = `<div class="card text-center"><i class="fas fa-search text-gray-400 text-3xl mb-3"></i><p class="font-semibold">Proposta não encontrada.</p><button onclick="voltarBusca()" class="btn btn-primary mt-3">Consultar Outro CPF</button></div>`;
         return;
     }
 
-    dadosProposta=data; await montarTela(data); ativarTempoReal(cpf);
+    dadosProposta=data; 
+    await montarTela(data); 
+    ativarTempoReal(cpf);
+}
+
+function voltarBusca() {
+    limparSessao();
+    document.getElementById('conteudoProposta').classList.add('hidden');
+    document.getElementById('areaConsulta').classList.remove('hidden');
+    document.getElementById('cpfConsulta').value = '';
+    if(inscricao) supabase.removeChannel(inscricao);
 }
 
 async function montarTela(p) {
@@ -244,7 +280,10 @@ async function montarTela(p) {
 
     let html=`
     <div class="card">
-        <h2 class="text-xl font-bold text-primary mb-2 text-center">Olá, ${p.nome}!</h2>
+        <div class="flex justify-between items-center mb-2">
+            <h2 class="text-xl font-bold text-primary">Olá, ${p.nome}!</h2>
+            <button onclick="voltarBusca()" class="text-gray-500 hover:text-primary"><i class="fas fa-times-circle text-xl"></i></button>
+        </div>
         <p class="mb-3 text-center">Status: <strong class="${p.status==='Aprovada'?'text-sucesso':'text-alerta'}">${p.status}</strong></p>
 
         <div class="progresso-etapas">
@@ -318,10 +357,10 @@ async function montarTela(p) {
             <div class="text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
             <div class="barra-parcelas"><div class="texto-barra"><span>Progresso de Pagamento</span><span>${pagas} de ${qtd} parcelas pagas (${perc}%)</span></div><div class="fundo-barra"><div class="preenchimento-parcelas" style="width:${perc}%"></div></div></div>
             <h3 class="font-bold text-lg mb-3 mt-4">📋 Suas Parcelas</h3>
-            ${Array.from({length:qtd},(_,i)=>{const n=i+1,dt=datas[i]?new Date(datas[i]).toLocaleDateString('pt-BR'):'A definir',ok=n<=pagas,val=((total-e)*(Math.pow(1+j/100,qtd)*(j/100))/(Math.pow(1+j/100,qtd)-1));return`<div class="item-parcela"><div><strong>${n}ª Parcela</strong> • R$ ${val.toLocaleString('pt-BR',2)} • Venc: ${dt}</div><span class="font-bold ${ok?'text-sucesso':'text-alerta'}">${ok?'PAGA':'PENDENTE'}</span>${!ok?`<button onclick="pagarParcela(${n},${val})" class="btn btn-pix btn-pequeno">Gerar Pix</button>`:''}</div>`}).join('')}
+            ${Array.from({length:qtd},(_,i)=>{const n=i+1,dt=datas[i]?new Date(datas[i]).toLocaleDateString('pt-BR'):'A definir',ok=n<=pagas,val=((total-e)*(Math.pow(1+j/100,qtd)*(j/100))/(Math.pow(1+j/100,qtd)-1));return`<div class="item-parcela"><div><strong>${n}ª Parcela</strong> • R$ ${val.toLocaleString('pt-BR',2)} • Venc: ${dt}</div><span class="${ok?'text-sucesso':'piscar'}">${ok?'PAGA':'PENDENTE'}</span>${!ok?`<button onclick="pagarParcela(${n},${val})" class="btn btn-pix btn-pequeno">Gerar Pix</button>`:''}</div>`}).join('')}
         </div>`;
 
-    html+=`<div class="mt-4"><a href="https://wa.me/5511973294235?text=Olá, preciso de suporte sobre minha proposta CPF:${p.cpf}" target="_blank" class="btn btn-whats"><i class="fab fa-whatsapp"></i> Falar com o Suporte</a><button onclick="buscarProposta()" class="btn btn-alerta">🔄 Atualizar Dados</button></div></div>`;
+    html+=`<div class="mt-4"><a href="https://wa.me/5511973294235?text=Olá, preciso de suporte sobre minha proposta CPF:${p.cpf}" target="_blank" class="btn btn-whats"><i class="fab fa-whatsapp"></i> Falar com o Suporte</a><button onclick="buscarProposta(true)" class="btn btn-alerta">🔄 Atualizar Dados</button></div></div>`;
     document.getElementById('conteudoProposta').innerHTML=html;
 }
 
@@ -352,9 +391,18 @@ function abrirContrato(){if(!document.getElementById('qtdParcelas').value){mostr
 function mostrarOpcoes(){if(!document.getElementById('aceitoContrato').checked){mostrarMensagem('fas fa-exclamation-circle','Atenção','Você precisa aceitar os termos do contrato!','alerta');return;}document.getElementById('opcoesAssinatura').classList.remove('oculto');}
 function mostrarTexto(){document.getElementById('assinaturaTexto').classList.remove('oculto');document.getElementById('camArea').classList.add('oculto');}
 async function abrirCam(){document.getElementById('camArea').classList.remove('oculto');document.getElementById('assinaturaTexto').classList.add('oculto');try{streamCam=await navigator.mediaDevices.getUserMedia({video:true});document.getElementById('video').srcObject=streamCam;}catch{mostrarMensagem('fas fa-exclamation-triangle','Câmera Indisponível','Use a opção de assinatura por texto.','alerta');}}
-async function confirmarTexto(){const a=document.getElementById('txtAssinatura').value.trim();if(!a){mostrarMensagem('fas fa-exclamation-circle','Atenção','Digite sua assinatura!','alerta');return;}await supabase.from('propostas').update({contrato_assinado:true,assinatura_texto:a}).eq('id',dadosProposta.id);await buscarProposta();mostrarMensagem('fas fa-check-circle','Assinatura Salva!','Agora você já pode gerar o Pix para pagamento da entrada.','sucesso');}
-async function tirar(){if(!streamCam)return;const c=document.createElement('canvas');c.width=400;c.height=300;c.getContext('2d').drawImage(document.getElementById('video'),0,0);const f=c.toDataURL('image/png');streamCam.getTracks().forEach(t=>t.stop());await supabase.from('propostas').update({contrato_assinado:true,foto_assinatura:f}).eq('id',dadosProposta.id);await buscarProposta();mostrarMensagem('fas fa-check-circle','Assinatura Salva!','Agora você já pode gerar o Pix para pagamento da entrada.','sucesso');}
-function ativarTempoReal(cpf){if(inscricao)supabase.removeChannel(inscricao);inscricao=supabase.channel(`prop-${cpf}`).on('postgres_changes',{event:'*',schema:'public',table:'propostas',filter:`cpf=eq.${cpf}`},()=>buscarProposta()).subscribe();}
+async function confirmarTexto(){const a=document.getElementById('txtAssinatura').value.trim();if(!a){mostrarMensagem('fas fa-exclamation-circle','Atenção','Digite sua assinatura!','alerta');return;}await supabase.from('propostas').update({contrato_assinado:true,assinatura_texto:a}).eq('id',dadosProposta.id);await buscarProposta(true);mostrarMensagem('fas fa-check-circle','Assinatura Salva!','Agora você já pode gerar o Pix para pagamento da entrada.','sucesso');}
+async function tirar(){if(!streamCam)return;const c=document.createElement('canvas');c.width=400;c.height=300;c.getContext('2d').drawImage(document.getElementById('video'),0,0);const f=c.toDataURL('image/png');streamCam.getTracks().forEach(t=>t.stop());await supabase.from('propostas').update({contrato_assinado:true,foto_assinatura:f}).eq('id',dadosProposta.id);await buscarProposta(true);mostrarMensagem('fas fa-check-circle','Assinatura Salva!','Agora você já pode gerar o Pix para pagamento da entrada.','sucesso');}
+
+// ✅ ATUALIZA AUTOMÁTICO EM TEMPO REAL — SEM PRECISAR DE F5
+function ativarTempoReal(cpf){
+    if(inscricao) supabase.removeChannel(inscricao);
+    inscricao = supabase.channel(`prop-${cpf}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpf}` }, () => {
+            buscarProposta(true); // ✅ ATUALIZA FICANDO NA MESMA TELA
+        })
+        .subscribe();
+}
 </script>
 </body>
 </html>
