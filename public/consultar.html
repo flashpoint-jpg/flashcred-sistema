@@ -6,7 +6,6 @@
     <title>Acompanhar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
         tailwind.config = {
@@ -192,46 +191,6 @@ function mostrarMensagem(icone, titulo, texto, corIcone='primary', acaoAoFechar=
     document.body.appendChild(fundo);
 }
 
-function gerarPixValido(valor, descricao) {
-    const valorStr = Number(valor).toFixed(2);
-    const chave = '33552949852';
-    const nome = 'FELIPE COSTA';
-    const cidade = 'MUZAMBINHO';
-
-    function calcularCRC(payload) {
-        let resultado = 0xFFFF;
-        const polinomio = 0x1021;
-        for (let i = 0; i < payload.length; i++) {
-            resultado ^= payload.charCodeAt(i) << 8;
-            for (let j = 0; j < 8; j++) {
-                resultado = ((resultado << 1) ^ ((resultado & 0x8000) ? polinomio : 0)) & 0xFFFF;
-            }
-        }
-        return resultado.toString(16).toUpperCase().padStart(4, '0');
-    }
-
-    function montarCampo(id, valor) {
-        const str = String(valor || '');
-        return id + String(str.length).padStart(2, '0') + str;
-    }
-
-    const payloadGui = montarCampo('00', 'br.gov.bcb.pix') + montarCampo('01', chave);
-    
-    let payload = '';
-    payload += montarCampo('00', '01');
-    payload += montarCampo('26', payloadGui);
-    payload += montarCampo('52', '0000');
-    payload += montarCampo('53', '986');
-    payload += montarCampo('54', valorStr);
-    payload += montarCampo('58', 'BR');
-    payload += montarCampo('59', nome);
-    payload += montarCampo('60', cidade);
-    payload += montarCampo('62', montarCampo('05', '***'));
-    payload += '6304';
-
-    return payload + calcularCRC(payload);
-}
-
 window.onload = async () => {
     const cpfUrl = new URLSearchParams(window.location.search).get('cpf');
     const cpfSalvo = pegarCpfSessao();
@@ -344,12 +303,12 @@ async function montarTela(p) {
         <div class="card text-center">
             <div class="text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO COM SUCESSO!</div>
             <p class="mb-3 text-lg">Valor da entrada: <strong>R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></p>
-            <button onclick="gerarPixEntrada(${e})" class="btn btn-pix mb-3" id="btnGerarPix"><i class="fas fa-qrcode"></i> Gerar Pix da Entrada</button>
+            <button onclick="gerarPixEntrada(${e})" class="btn btn-pix mb-3" id="btnGerarPix"><i class="fas fa-qrcode"></i> Gerar Pix da Entrada (Automático)</button>
             <div id="pixGerado" class="oculto">
                 <div class="qrcode-pix" id="qrcode"></div>
                 <div class="chave-pix" id="textoPixCopiaCola">
                     <strong>Código Pix Copia e Cola</strong><br>
-                    <small>Válido para pagamento em qualquer banco</small>
+                    <small>Aguardando geração...</small>
                 </div>
                 <button id="copiarPix" class="btn btn-success">📋 Copiar Código Pix</button>
             </div>
@@ -377,7 +336,7 @@ async function montarTela(p) {
                         <div class="font-semibold">${n}ª Parcela • R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
                         <div class="text-gray-600 text-sm">Venc: ${dt}</div>
                     </div>
-                    ${!ok?`<button onclick="pagarParcela(${n},${val})" class="btn btn-pix btn-pequeno">Gerar Pix</button>`:`<span class="text-sucesso font-bold">PAGA</span>`}
+                    ${!ok?`<span class="text-alerta font-medium text-sm">Aguardando Vencimento</span>`:`<span class="text-sucesso font-bold">PAGA</span>`}
                 </div>`;
             }).join('')}
         </div>`;
@@ -389,51 +348,48 @@ async function montarTela(p) {
 
 async function gerarPixEntrada(v){
     const btn = document.getElementById('btnGerarPix');
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix no Gateway...`;
     btn.disabled = true;
     
-    const codigo = gerarPixValido(v, 'Pagamento Entrada FlashCred');
-    
-    setTimeout(()=>{
+    try {
+        // Chamada segura para a Edge Function do Supabase que integra com Mercado Pago/Asaas
+        const { data, error } = await supabase.functions.invoke('gerar-pix-mp', {
+            body: { 
+                valor: v, 
+                cpf: dadosProposta.cpf, 
+                nome: dadosProposta.nome, 
+                proposal_id: dadosProposta.id 
+            }
+        });
+
+        if (error) throw error;
+
+        const codigoPix = data.qr_code;
+        
         const divPixGerado = document.getElementById('pixGerado');
         divPixGerado.classList.remove('oculto');
         
         const qrcodeContainer = document.getElementById('qrcode');
-        qrcodeContainer.innerHTML = '';
-        
-        new QRCode(qrcodeContainer, { 
-            text: codigo, 
-            width: 220, 
-            height: 220, 
-            correctLevel: QRCode.CorrectLevel.M 
-        });
+        qrcodeContainer.innerHTML = `<img src="data:image/png;base64,${data.qr_code_base64}" alt="QR Code Pix" style="max-width:220px;" />`;
 
         document.getElementById('textoPixCopiaCola').innerHTML = `
             <strong>Código Pix Copia e Cola:</strong><br>
-            <span style="font-size: 11px; word-break: break-all; color: #555;">${codigo}</span>
+            <span style="font-size: 11px; word-break: break-all; color: #555;">${codigoPix}</span>
         `;
         
         const btnCopiar = document.getElementById('copiarPix');
         btnCopiar.onclick = async () => {
-            try {
-                await navigator.clipboard.writeText(codigo);
-                mostrarMensagem('fas fa-check-circle', 'Código Copiado!', 'Agora é só colar no app do seu banco e efetuar o pagamento.', 'sucesso');
-            } catch (err) {
-                mostrarMensagem('fas fa-exclamation-triangle', 'Aviso', 'Copie o código manualmente se necessário.', 'alerta');
-            }
+            await navigator.clipboard.writeText(codigoPix);
+            mostrarMensagem('fas fa-check-circle', 'Código Copiado!', 'Cole no app do seu banco e efetue o pagamento.', 'sucesso');
         };
         
         btn.innerHTML = `<i class="fas fa-check-circle"></i> Pix Gerado com Sucesso`;
-    }, 600);
-}
 
-async function pagarParcela(n,v){
-    const codigo = gerarPixValido(v, `${n}ª Parcela FlashCred`);
-    try {
-        await navigator.clipboard.writeText(codigo);
-        mostrarMensagem('fas fa-check-circle', 'Pix Gerado!', `Código da ${n}ª parcela já copiado para pagamento.`, 'sucesso');
-    } catch {
-        mostrarMensagem('fas fa-check-circle', 'Pix Gerado!', `Código gerado com sucesso.`, 'sucesso');
+    } catch (err) {
+        console.error(err);
+        mostrarMensagem('fas fa-exclamation-triangle', 'Erro', 'Não foi possível gerar o Pix automático pelo gateway. Verifique a configuração da Edge Function.', 'perigo');
+        btn.innerHTML = `<i class="fas fa-qrcode"></i> Tentar Novamente`;
+        btn.disabled = false;
     }
 }
 
@@ -445,6 +401,7 @@ function abrirContrato(){
     qtdEscolhida=Number(document.getElementById('qtdParcelas').value);
     document.getElementById('blocoContrato').classList.remove('oculto');
 }
+
 function mostrarOpcoes(){
     if(!document.getElementById('aceitoContrato').checked){
         mostrarMensagem('fas fa-exclamation-circle','Atenção','Você precisa marcar que leu e aceita os termos!','alerta');
@@ -452,7 +409,12 @@ function mostrarOpcoes(){
     }
     document.getElementById('opcoesAssinatura').classList.remove('oculto');
 }
-function mostrarTexto(){document.getElementById('assinaturaTexto').classList.remove('oculto');document.getElementById('camArea').classList.add('oculto');}
+
+function mostrarTexto(){
+    document.getElementById('assinaturaTexto').classList.remove('oculto');
+    document.getElementById('camArea').classList.add('oculto');
+}
+
 async function abrirCam(){
     document.getElementById('camArea').classList.remove('oculto');
     document.getElementById('assinaturaTexto').classList.add('oculto');
@@ -507,7 +469,11 @@ async function tirar(){
 function ativarTempoReal(cpf){
     if(inscricao) supabase.removeChannel(inscricao);
     inscricao = supabase.channel(`prop-${cpf}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpf}` }, () => buscarProposta(true))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpf}` }, (payload) => {
+            // Atualiza o objeto global e renderiza a tela automaticamente assim que o Webhook do banco alterar o status de pagamento
+            dadosProposta = payload.new;
+            montarTela(dadosProposta);
+        })
         .subscribe();
 }
 </script>
