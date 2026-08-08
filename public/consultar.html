@@ -352,7 +352,6 @@ async function gerarPixEntrada(v){
     btn.disabled = true;
     
     try {
-        // Chamada segura para a Edge Function do Supabase que integra com Mercado Pago/Asaas
         const { data, error } = await supabase.functions.invoke('gerar-pix-mp', {
             body: { 
                 valor: v, 
@@ -366,114 +365,40 @@ async function gerarPixEntrada(v){
 
         const codigoPix = data.qr_code;
         
-        const divPixGerado = document.getElementById('pixGerado');
-        divPixGerado.classList.remove('oculto');
+        document.getElementById('pixGerado').classList.remove('oculto');
+        document.getElementById('qrcode').innerHTML = `<img src="data:image/png;base64,${data.qr_code_base64}" alt="QR Code Pix" style="max-width:220px;" />`;
+        document.getElementById('textoPixCopiaCola').innerHTML = `<strong>Código Pix Copia e Cola</strong><br><span style="user-select: all; font-size: 12px; word-break: break-all;">${codigoPix}</span>`;
         
-        const qrcodeContainer = document.getElementById('qrcode');
-        qrcodeContainer.innerHTML = `<img src="data:image/png;base64,${data.qr_code_base64}" alt="QR Code Pix" style="max-width:220px;" />`;
-
-        document.getElementById('textoPixCopiaCola').innerHTML = `
-            <strong>Código Pix Copia e Cola:</strong><br>
-            <span style="font-size: 11px; word-break: break-all; color: #555;">${codigoPix}</span>
-        `;
-        
-        const btnCopiar = document.getElementById('copiarPix');
-        btnCopiar.onclick = async () => {
-            await navigator.clipboard.writeText(codigoPix);
-            mostrarMensagem('fas fa-check-circle', 'Código Copiado!', 'Cole no app do seu banco e efetue o pagamento.', 'sucesso');
+        document.getElementById('copiarPix').onclick = () => {
+            navigator.clipboard.writeText(codigoPix);
+            mostrarMensagem('fas fa-check-circle', 'Copiado!', 'Código Pix copiado com sucesso!', 'sucesso');
         };
-        
-        btn.innerHTML = `<i class="fas fa-check-circle"></i> Pix Gerado com Sucesso`;
 
+        btn.innerHTML = `<i class="fas fa-qrcode"></i> Pix Gerado com Sucesso!`;
     } catch (err) {
         console.error(err);
-        mostrarMensagem('fas fa-exclamation-triangle', 'Erro', 'Não foi possível gerar o Pix automático pelo gateway. Verifique a configuração da Edge Function.', 'perigo');
-        btn.innerHTML = `<i class="fas fa-qrcode"></i> Tentar Novamente`;
+        mostrarMensagem('fas fa-exclamation-triangle', 'Erro', 'Não foi possível gerar o Pix. Tente novamente.', 'perigo');
+        btn.innerHTML = `<i class="fas fa-qrcode"></i> Gerar Pix da Entrada (Automático)`;
         btn.disabled = false;
     }
 }
 
-function abrirContrato(){
-    if(!document.getElementById('qtdParcelas').value){
-        mostrarMensagem('fas fa-exclamation-circle','Atenção','Escolha a quantidade de parcelas primeiro!','alerta');
-        return;
-    }
-    qtdEscolhida=Number(document.getElementById('qtdParcelas').value);
-    document.getElementById('blocoContrato').classList.remove('oculto');
-}
-
-function mostrarOpcoes(){
-    if(!document.getElementById('aceitoContrato').checked){
-        mostrarMensagem('fas fa-exclamation-circle','Atenção','Você precisa marcar que leu e aceita os termos!','alerta');
-        return;
-    }
-    document.getElementById('opcoesAssinatura').classList.remove('oculto');
-}
-
-function mostrarTexto(){
-    document.getElementById('assinaturaTexto').classList.remove('oculto');
-    document.getElementById('camArea').classList.add('oculto');
-}
-
-async function abrirCam(){
-    document.getElementById('camArea').classList.remove('oculto');
-    document.getElementById('assinaturaTexto').classList.add('oculto');
-    try{
-        streamCam=await navigator.mediaDevices.getUserMedia({video:true});
-        document.getElementById('video').srcObject=streamCam;
-    }catch{
-        mostrarMensagem('fas fa-exclamation-triangle','Câmera Indisponível','Use a opção de assinatura por texto.','alerta');
-    }
-}
-
-async function confirmarTexto(){
-    const a=document.getElementById('txtAssinatura').value.trim();
-    if(!a){
-        mostrarMensagem('fas fa-exclamation-circle','Atenção','Digite sua assinatura!','alerta');
-        return;
-    }
-    await supabase.from('propostas').update({
-        contrato_assinado:true,
-        assinatura_texto:a,
-        qtd_parcelas_escolhida: qtdEscolhida
-    }).eq('id',dadosProposta.id);
-
-    dadosProposta.contrato_assinado = true;
-    dadosProposta.qtd_parcelas_escolhida = qtdEscolhida;
-
-    document.querySelector('.fundo-escuro')?.remove();
-    montarTela(dadosProposta);
-}
-
-async function tirar(){
-    if(!streamCam) return;
-    const c=document.createElement('canvas');
-    c.width=400;c.height=300;
-    c.getContext('2d').drawImage(document.getElementById('video'),0,0);
-    const f=c.toDataURL('image/png');
-    streamCam.getTracks().forEach(t=>t.stop());
+function ativarTempoReal(cpf) {
+    if (inscricao) supabase.removeChannel(inscricao);
     
-    await supabase.from('propostas').update({
-        contrato_assinado:true,
-        foto_assinatura:f,
-        qtd_parcelas_escolhida: qtdEscolhida
-    }).eq('id',dadosProposta.id);
-
-    dadosProposta.contrato_assinado = true;
-    dadosProposta.qtd_parcelas_escolhida = qtdEscolhida;
-
-    document.querySelector('.fundo-escuro')?.remove();
-    montarTela(dadosProposta);
-}
-
-function ativarTempoReal(cpf){
-    if(inscricao) supabase.removeChannel(inscricao);
-    inscricao = supabase.channel(`prop-${cpf}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpf}` }, (payload) => {
-            // Atualiza o objeto global e renderiza a tela automaticamente assim que o Webhook do banco alterar o status de pagamento
-            dadosProposta = payload.new;
-            montarTela(dadosProposta);
-        })
+    inscricao = supabase
+        .channel('escutar-pagamento-entrada')
+        .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `cpf=eq.${cpf}` },
+            async (payload) => {
+                dadosProposta = payload.new;
+                await montarTela(payload.new);
+                if(payload.new.entrada_paga) {
+                    mostrarMensagem('fas fa-check-double', 'Pagamento Confirmado!', 'Sua entrada foi aprovada com sucesso!', 'sucesso');
+                }
+            }
+        )
         .subscribe();
 }
 </script>
