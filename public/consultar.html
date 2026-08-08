@@ -87,7 +87,6 @@
             width: 100%;
         }
 
-        /* ✅ BARRAS DE PROGRESSO VOLTARAM */
         .barra-progresso { margin: 12px 0; }
         .cabecalho-barra { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 5px; font-size: 14px; }
         .fundo-barra { width: 100%; height: 8px; background: #E2E8F0; border-radius: 4px; overflow: hidden; }
@@ -194,7 +193,7 @@ function mostrarMensagem(icone, titulo, texto, corIcone='primary', acaoAoFechar=
 }
 
 function gerarPixValido(valor, descricao) {
-    const valorStr = Number(valor).toFixed(2).replace(',','.');
+    const valorStr = Number(valor).toFixed(2);
     const chave = '33552949852';
     const nome = 'FELIPE COSTA';
     const cidade = 'MUZAMBINHO';
@@ -213,10 +212,24 @@ function gerarPixValido(valor, descricao) {
 
     function montarCampo(id, valor) {
         const str = String(valor || '');
-        return id + String(str.length).padStart(2,'0') + str;
+        return id + String(str.length).padStart(2, '0') + str;
     }
 
-    const payload = montarCampo('00','01') + montarCampo('26', montarCampo('00','br.gov.bcb.pix') + montarCampo('01', chave)) + montarCampo('52','0000') + montarCampo('53','986') + montarCampo('58','BR') + montarCampo('59', nome) + montarCampo('60', cidade) + montarCampo('62', montarCampo('05','***')) + montarCampo('54', valorStr) + '6304';
+    const payloadGui = montarCampo('00', 'br.gov.bcb.pix') + montarCampo('01', chave);
+    const payloadAdicional = montarCampo('05', '***');
+    
+    let payload = '';
+    payload += montarCampo('00', '01');
+    payload += montarCampo('26', payloadGui);
+    payload += montarCampo('52', '0000');
+    payload += montarCampo('53', '986');
+    payload += montarCampo('54', valorStr);
+    payload += montarCampo('58', 'BR');
+    payload += montarCampo('59', nome);
+    payload += montarCampo('60', cidade);
+    payload += montarCampo('62', montarCampo('05', '***'));
+    payload += '6304';
+
     return payload + calcularCRC(payload);
 }
 
@@ -277,7 +290,6 @@ async function montarTela(p) {
 
         ${p.status==='Aprovada'?`
         <div class="aviso-entrega"><i class="fas fa-truck"></i> ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS CONFIRMAÇÃO DO PAGAMENTO!</div>
-        <!-- ✅ BARRA DE PROGRESSO DA ENTREGA VOLTOU -->
         <div class="barra-progresso">
             <div class="cabecalho-barra"><span>Prazo de Entrega</span><span>${dias} dias úteis</span></div>
             <div class="fundo-barra"><div class="preenchimento-entrega" style="width:${p.entrada_paga?'0%':'100%'}"></div></div>
@@ -288,9 +300,9 @@ async function montarTela(p) {
             <p><strong>📄 CPF:</strong> ${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}</p>
             <p><strong>📱 WhatsApp:</strong> ${p.whatsapp||'Não informado'}</p>
             <hr class="my-2">
-            <p><strong>Valor do Pedido:</strong> R$ ${v.toLocaleString('pt-BR',2)}</p>
-            <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR',2)}</p>
-            <p><strong>Total com Juros:</strong> R$ ${total.toLocaleString('pt-BR',2)}</p>
+            <p><strong>Valor do Pedido:</strong> R$ ${v.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+            <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
+            <p><strong>Total com Juros:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</p>
         </div>`;
 
     if(p.status==='Nova'||p.status==='Em Análise') html+=`<div class="text-center p-4 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-alerta text-2xl mb-2"></i><p class="font-semibold">Aguardando análise da proposta...</p></div>`;
@@ -303,7 +315,7 @@ async function montarTela(p) {
                 ${Array.from({length:q},(_,i)=>{
                     const n=i+1;
                     const val=((total-e)*(Math.pow(1+j/100,n)*(j/100))/(Math.pow(1+j/100,n)-1));
-                    return `<option value="${n}">${n}x de R$ ${val.toLocaleString('pt-BR',2)}</option>`;
+                    return `<option value="${n}">${n}x de R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</option>`;
                 }).join('')}
             </select>
             <button onclick="abrirContrato()" class="btn btn-success">✅ Continuar para o Contrato</button>
@@ -312,8 +324,8 @@ async function montarTela(p) {
             <h3 class="font-bold text-lg mb-3 text-center">📄 Termos do Contrato</h3>
             <div class="texto-contrato">
                 <strong>CONTRATO DE CRÉDITO</strong><br><br>
-                Valor total: R$ ${total.toLocaleString('pt-BR',2)}<br>
-                Entrada: R$ ${e.toLocaleString('pt-BR',2)}<br>
+                Valor total: R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>
+                Entrada: R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>
                 Prazo de entrega: ${dias} dias úteis.<br><br>
                 Ao assinar, você confirma que leu e concorda com todas as condições.
             </div>
@@ -332,11 +344,11 @@ async function montarTela(p) {
         html+=`
         <div class="card text-center">
             <div class="text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-circle"></i> CONTRATO ASSINADO COM SUCESSO!</div>
-            <p class="mb-3 text-lg">Valor da entrada: <strong>R$ ${e.toLocaleString('pt-BR',2)}</strong></p>
+            <p class="mb-3 text-lg">Valor da entrada: <strong>R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong></p>
             <button onclick="gerarPixEntrada(${e})" class="btn btn-pix mb-3" id="btnGerarPix"><i class="fas fa-qrcode"></i> Gerar Pix da Entrada</button>
             <div id="pixGerado" class="oculto">
                 <div class="qrcode-pix" id="qrcode"></div>
-                <div class="chave-pix">
+                <div class="chave-pix" id="textoPixCopiaCola">
                     <strong>Código Pix Copia e Cola</strong><br>
                     <small>Válido para pagamento em qualquer banco</small>
                 </div>
@@ -349,7 +361,6 @@ async function montarTela(p) {
         html+=`
         <div class="card">
             <div class="text-center text-sucesso text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
-            <!-- ✅ BARRA DE PROGRESSO DO PAGAMENTO VOLTOU -->
             <div class="barra-progresso">
                 <div class="cabecalho-barra"><span>Progresso de Pagamento</span><span>${pagas} de ${qtd} parcelas pagas (${perc}%)</span></div>
                 <div class="fundo-barra"><div class="preenchimento-pagamento" style="width:${perc}%"></div></div>
@@ -364,7 +375,7 @@ async function montarTela(p) {
                 <div class="item-parcela">
                     <div class="bolinha-status ${ok?'pago':'piscar'}"></div>
                     <div class="info-parcela">
-                        <div class="font-semibold">${n}ª Parcela • R$ ${val.toLocaleString('pt-BR',2)}</div>
+                        <div class="font-semibold">${n}ª Parcela • R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
                         <div class="text-gray-600 text-sm">Venc: ${dt}</div>
                     </div>
                     ${!ok?`<button onclick="pagarParcela(${n},${val})" class="btn btn-pix btn-pequeno">Gerar Pix</button>`:`<span class="text-sucesso font-bold">PAGA</span>`}
@@ -381,31 +392,52 @@ async function gerarPixEntrada(v){
     const btn = document.getElementById('btnGerarPix');
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
     btn.disabled = true;
+    
     const codigo = gerarPixValido(v, 'Pagamento Entrada FlashCred');
     
     setTimeout(()=>{
-        document.getElementById('pixGerado').classList.remove('oculto');
-        document.getElementById('qrcode').innerHTML = '';
-        new QRCode(document.getElementById('qrcode'), { 
-            text: codigo, 
-            width: 240, 
-            height: 240, 
-            correctLevel: QRCode.CorrectLevel.H 
-        });
+        const divPixGerado = document.getElementById('pixGerado');
+        divPixGerado.classList.remove('oculto');
         
-        document.getElementById('copiarPix').onclick = async () => {
-            await navigator.clipboard.writeText(codigo);
-            mostrarMensagem('fas fa-check-circle', 'Código Copiado!', 'Agora é só colar no app do seu banco e efetuar o pagamento.', 'sucesso');
+        const qrcodeContainer = document.getElementById('qrcode');
+        qrcodeContainer.innerHTML = '';
+        
+        // Gera o QR Code visualmente
+        new QRCode(qrcodeContainer, { 
+            text: codigo, 
+            width: 220, 
+            height: 220, 
+            correctLevel: QRCode.CorrectLevel.M 
+        });
+
+        // Mostra o código copia e cola para conferência opcional
+        document.getElementById('textoPixCopiaCola').innerHTML = `
+            <strong>Código Pix Copia e Cola:</strong><br>
+            <span style="font-size: 11px; word-break: break-all; color: #555;">${codigo}</span>
+        `;
+        
+        const btnCopiar = document.getElementById('copiarPix');
+        btnCopiar.onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(codigo);
+                mostrarMensagem('fas fa-check-circle', 'Código Copiado!', 'Agora é só colar no app do seu banco e efetuar o pagamento.', 'sucesso');
+            } catch (err) {
+                mostrarMensagem('fas fa-exclamation-triangle', 'Aviso', 'Copie o código manualmente se necessário.', 'alerta');
+            }
         };
         
-        btn.innerHTML = `<i class="fas fa-check-circle"></i> Pix Gerado`;
-    }, 800);
+        btn.innerHTML = `<i class="fas fa-check-circle"></i> Pix Gerado com Sucesso`;
+    }, 600);
 }
 
 async function pagarParcela(n,v){
     const codigo = gerarPixValido(v, `${n}ª Parcela FlashCred`);
-    await navigator.clipboard.writeText(codigo);
-    mostrarMensagem('fas fa-check-circle', 'Pix Gerado!', `Código da ${n}ª parcela já copiado para pagamento.`, 'sucesso');
+    try {
+        await navigator.clipboard.writeText(codigo);
+        mostrarMensagem('fas fa-check-circle', 'Pix Gerado!', `Código da ${n}ª parcela já copiado para pagamento.`, 'sucesso');
+    } catch {
+        mostrarMensagem('fas fa-check-circle', 'Pix Gerado!', `Código gerado com sucesso.`, 'sucesso');
+    }
 }
 
 function abrirContrato(){
