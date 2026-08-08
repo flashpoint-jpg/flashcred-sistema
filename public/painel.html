@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel Administrativo | FlashCred</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -180,7 +182,7 @@ const TOKEN_MERCADO_PAGO = 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb7
 
 let inscricaoTempoReal = null;
 
-// ✅ FUNÇÃO PRONTA: CONTA SOMENTE DIAS ÚTEIS (segunda a sexta)
+// ✅ FUNÇÃO PRONTA: CONTA SOMENTE DIAS ÚTEIS
 function contarDiasUteis(dataInicio, diasUteisTotais) {
     let data = new Date(dataInicio);
     let contados = 0;
@@ -274,11 +276,10 @@ async function carregarPropostas() {
         const qtdParc=Number(i.quantidade_parcelas||0), pagas=Number(i.parcelas_pagas||0), datas=i.datas_parcelas||[];
         qtdPagas+=pagas; qtdPendentes+=qtdParc-pagas;
         if(i.status==='Nova') novas++;
-        datas.forEach((dt,idx)=>{
-            if(!dt || idx+1 <= pagas) return;
-            const info = analisarVencimento(dt);
-            if(info.status==='vencida') totalVencidas++;
-            if(info.status==='proximo' || info.status==='hoje') totalProximas++;
+        datas.forEach(dt=>{
+            const a = analisarVencimento(dt);
+            if(a.status==='vencida' || a.status==='hoje') totalVencidas++;
+            if(a.status==='proximo') totalProximas++;
         });
     });
 
@@ -288,144 +289,160 @@ async function carregarPropostas() {
     document.getElementById('qtdPendentes').innerText = qtdPendentes;
     document.getElementById('qtdVencidas').innerText = totalVencidas;
     document.getElementById('qtdProximas').innerText = totalProximas;
-    document.getElementById('contadorNotif').innerText = novas + totalVencidas + totalProximas;
+    document.getElementById('qtdPendentes').innerText = novas;
+    document.getElementById('contadorNotif').innerText = novas;
 
     let html='';
-    data.forEach(i=>{
-        const v=Number(i.valor_desejado||0), e=Number(i.valor_entrada||0), j=Number(i.juros_mensal||5), q=Number(i.quantidade_parcelas||0);
-        const total=v*(1+j/100);
-        const parcela = q===1 ? total : ((total-e)*(Math.pow(1+j/100,q)*(j/100)))/(Math.pow(1+j/100,q)-1);
-        const pagas=Number(i.parcelas_pagas||0), datas=i.datas_parcelas||[], dias=i.dias_entrega||7;
-        const progEntrega = calcularProgressoEntrega(dias);
-        let wpp=(i.whatsapp||'').trim().replace(/\D/g,'');
-        const cpfLimpo=String(i.cpf||'').replace(/\D/g,'');
-
-        const porcentGeral = q > 0 ? Math.round((pagas/q)*100) : 0;
-        const classeGeral = porcentGeral===0 ? 'barra-geral-amarela' : porcentGeral<100 ? 'barra-geral-verde' : 'barra-geral-vermelha';
-        const classeBarraEntrega = progEntrega.perc >= 100 ? 'preenchimento-concluido' : '';
-        const classePrazo = progEntrega.perc >= 100 ? 'concluido' : '';
-        const textoEntrega = progEntrega.perc >= 100 ? '✅ Prazo concluído' : `🚚 Faltam ${progEntrega.restante} de ${dias} dias úteis`;
-
-        let corStatus='', textoStatus='', luz='';
-        if(i.status==='Nova') { corStatus='destaque-alerta'; textoStatus='NOVA'; luz='luz-amarela'; }
-        if(i.status==='Aprovada') { corStatus=''; textoStatus='APROVADA'; luz='luz-verde'; }
-        if(i.entrada_paga) { corStatus='destaque-alerta'; textoStatus='ENTRADA PAGA'; luz='luz-verde-fixa'; }
+    data.forEach(p=>{
+        const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||0);
+        const total=v*(1+j/100), parc=q>0 ? ((total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1)) : 0;
+        const statusClasse = p.status==='Aprovada'?'destaque-alerta':'';
+        const luzStatus = p.status==='Aprovada'?'luz-amarela':(p.entrada_paga?'luz-verde':'luz-verde-fixa');
+        const progressoEntrega = calcularProgressoEntrega(p.dias_entrega||7);
 
         html += `
-        <div class="linha-proposta ${corStatus}">
-            <div class="flex justify-between items-start mb-2">
+        <div class="linha-proposta ${statusClasse}">
+            <div class="flex justify-between items-start mb-3">
                 <div>
-                    <h3 class="font-bold text-lg">${i.nome}</h3>
+                    <h3 class="font-bold text-lg">${p.nome}</h3>
                     <div class="dados-cliente">
-                        <p><strong>CPF:</strong> ${cpfLimpo.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}</p>
-                        <p><strong>WhatsApp:</strong> ${wpp?`(${wpp.slice(0,2)}) ${wpp.slice(2,7)}-${wpp.slice(7)}`:'Não informado'}</p>
-                        <p><strong>Endereço:</strong> ${i.endereco||'Não informado'} | CEP: ${i.cep||'Não informado'}</p>
+                        <p><i class="fas fa-id-card"></i> CPF: ${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}</p>
+                        <p><i class="fab fa-whatsapp"></i> WhatsApp: ${p.whatsapp || 'Não informado'}</p>
+                        <p><i class="fas fa-map-marker-alt"></i> Endereço: ${p.endereco || 'Não informado'}</p>
                     </div>
-                    <p class="mt-2">💵 Total: R$ ${total.toLocaleString('pt-BR',2)} | 💸 Entrada: R$ ${e.toLocaleString('pt-BR',2)} | 🧾 ${q}x de R$ ${parcela.toLocaleString('pt-BR',2)}</p>
-                    
-                    <!-- ✅ BARRA DE PROGRESSO DA ENTREGA (SÓ DIAS ÚTEIS) -->
-                    <div class="prazo-entrega ${classePrazo}">
-                        <div class="info-entrega">
-                            <span>${textoEntrega}</span>
-                            <span>${progEntrega.perc}%</span>
-                        </div>
-                        <div class="fundo-barra-entrega">
-                            <div class="preenchimento-entrega ${classeBarraEntrega}" style="width:${progEntrega.perc}%"></div>
-                        </div>
-                    </div>
-
-                    <div class="texto-progresso">Progresso: ${pagas}/${q} parcelas pagas</div>
-                    <div class="barra-geral"><div class="${classeGeral} h-full" style="width:${porcentGeral}%"></div></div>
+                    <p class="mt-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR',2)} | <strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR',2)} | <strong>${q}x:</strong> R$ ${parc.toLocaleString('pt-BR',2)}</p>
+                    <p class="mt-1"><span class="indicador-status"><span class="luz-status ${luzStatus}"></span> ${p.status} | ${p.entrada_paga?'✅ Entrada Paga':'⏳ Aguardando Entrada'}</span></p>
                 </div>
-                <div class="text-right">
-                    <div class="indicador-status"><span class="luz-status ${luz}"></span><strong>${textoStatus}</strong></div>
+                <div class="botoes-acao">
+                    ${p.status!=='Aprovada'?`<button onclick="aprovar('${p.id}')" class="botao botao-sucesso">✅ Aprovar</button>`:''}
+                    ${!p.entrada_paga?`<button onclick="marcarEntradaPaga('${p.id}')" class="botao botao-alerta">💵 Marcar Entrada Paga</button>`:''}
+                    <button onclick="enviarLink('${p.id}','${p.cpf}')" class="botao botao-wpp">📤 Enviar Link</button>
+                    <button onclick="gerarPDF('${p.id}')" class="botao botao-pdf">📄 Gerar PDF</button>
+                    <button onclick="abrirEdicao('${p.id}')" class="botao botao-primario">✏️ Editar</button>
+                    <button onclick="excluir('${p.id}')" class="botao botao-perigo">🗑️ Excluir</button>
                 </div>
             </div>
 
-            <div class="botoes-acao">
-                ${i.status!=='Aprovada'?`<button onclick="aprovar('${i.id}')" class="botao botao-sucesso">✅ Aprovar</button>`:''}
-                ${!i.entrada_paga?`<button onclick="marcarEntradaPaga('${i.id}')" class="botao botao-alerta">💰 Marcar Entrada Paga</button>`:''}
-                <button onclick="abrirEdicao('${i.id}')" class="botao botao-primario">✏️ Editar</button>
-                <button onclick="enviarWhats('${i.whatsapp}','${cpfLimpo}')" class="botao botao-wpp">📤 Enviar Link</button>
-                <button onclick="gerarPDF('${i.id}')" class="botao botao-pdf">📄 Gerar PDF</button>
-                <button onclick="excluir('${i.id}')" class="botao botao-perigo">🗑️ Excluir</button>
+            <div class="prazo-entrega ${progressoEntrega.perc>=100?'concluido':''}">
+                <div class="info-entrega">
+                    <span>🚚 Prazo de Entrega: ${p.dias_entrega||7} dias úteis</span>
+                    <span>${progressoEntrega.perc>=100?'Entrega concluída':`${progressoEntrega.restante} dias restantes`}</span>
+                </div>
+                <div class="barra-entrega">
+                    <div class="fundo-barra-entrega">
+                        <div class="preenchimento-entrega ${progressoEntrega.perc>=100?'preenchimento-concluido':''}" style="width:${progressoEntrega.perc}%"></div>
+                    </div>
+                </div>
             </div>
 
-            <div class="bloco-parcelas mt-3">
-                <div class="cabecalho-cronograma" onclick="this.nextElementSibling.classList.toggle('aberto'); this.querySelector('i').classList.toggle('fa-chevron-down'); this.querySelector('i').classList.toggle('fa-chevron-up')">
-                    <span>📋 Ver Parcelas e Vencimentos</span>
+            <div class="bloco-parcelas">
+                <div class="cabecalho-cronograma" onclick="this.nextElementSibling.classList.toggle('aberto')">
+                    <span>📅 Cronograma de Parcelas</span>
                     <i class="fas fa-chevron-down"></i>
                 </div>
                 <div class="corpo-cronograma">
-                    ${datas.length>0?datas.map((dt,idx)=>{
-                        const info = analisarVencimento(dt);
-                        const valorParc = ((total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1));
-                        const pg = idx+1 <= pagas;
+                    ${(p.datas_parcelas||[]).map((dt,idx)=>{
+                        const a = analisarVencimento(dt);
+                        const pg = idx+1 <= (p.parcelas_pagas||0);
                         return `<div class="item-parcela">
-                            <div class="flex items-center gap-2">
-                                <span class="luz-status ${pg?'luz-verde-fixa':info.luz}"></span>
-                                <strong>${idx+1}ª Parcela:</strong> R$ ${valorParc.toLocaleString('pt-BR',2)} | Venc: ${new Date(dt).toLocaleDateString('pt-BR')}
+                            <div><span class="luz-status ${pg?'luz-verde-fixa':a.luz}"></span>${idx+1}ª Parcela - Venc: ${new Date(dt).toLocaleDateString('pt-BR')}</div>
+                            <div class="botoes-acao">
+                                ${pg?'<span class="text-sucesso font-bold">PAGA</span>':`<button onclick="enviarCobranca('${p.nome}','${dt}','${parc}','${p.whatsapp}')" class="botao botao-wpp botao-pequeno">Cobrar</button>`}
                             </div>
-                            ${pg?`<span class="text-sucesso font-bold">PAGA</span>`:`${info.aviso||''}${wpp?`<button onclick="cobrarParcela('${wpp}','${idx+1}','${valorParc.toLocaleString('pt-BR',2)}','${dt}')" class="botao botao-wpp botao-pequeno">Cobrar</button>`:''}`}
-                        </div>`;
-                    }).join(''):`<p class="text-center text-gray-500 p-3">Datas ainda não definidas</p>`}
+                        </div>${a.aviso}`;
+                    }).join('')}
                 </div>
             </div>
 
-            <div id="editar-${i.id}" class="area-edicao"></div>
+            <div id="editar-${p.id}" class="area-edicao"></div>
         </div>`;
     });
-
     document.getElementById('listaPropostas').innerHTML = html;
 }
 
-async function aprovar(id) { await supabase.from('propostas').update({status:'Aprovada'}).eq('id',id); carregarPropostas(); }
-async function marcarEntradaPaga(id) { await supabase.from('propostas').update({entrada_paga:true}).eq('id',id); carregarPropostas(); }
-async function excluir(id) { if(confirm('Tem certeza que deseja excluir?')) { await supabase.from('propostas').delete().eq('id',id); carregarPropostas(); } }
+// ✅ BOTÃO NOVO: MARCAR ENTRADA PAGA MANUAL
+async function marcarEntradaPaga(id) {
+    if(!confirm('Confirmar que a entrada foi paga manualmente?')) return;
+    await supabase.from('propostas').update({entrada_paga: true}).eq('id', id);
+    carregarPropostas();
+}
 
-function enviarWhats(whats,cpf) {
-    if(!whats) return alert('Sem número de WhatsApp!');
+// ✅ GERADOR DE PDF CORRIGIDO E FUNCIONANDO
+async function gerarPDF(id) {
+    const {data:p} = await supabase.from('propostas').select('*').eq('id',id).single();
+    if(!p) return;
+
+    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||0);
+    const total=v*(1+j/100), parc=q>0 ? ((total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1)) : 0;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('p', 'mm', 'a4');
+    doc.setFontSize(18); doc.setTextColor(10,36,99);
+    doc.text('PROPOSTA DE CRÉDITO | FlashCred', 105, 20, {align:'center'});
+    doc.setFontSize(12); doc.setTextColor(60,60,60);
+    doc.text(`Cliente: ${p.nome}`, 20, 40);
+    doc.text(`CPF: ${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}`, 20, 48);
+    doc.text(`WhatsApp: ${p.whatsapp||'-'}`, 20, 56);
+    doc.text(`Endereço: ${p.endereco||'-'}`, 20, 64);
+    doc.text(`Valor Total: R$ ${total.toLocaleString('pt-BR',2)}`, 20, 80);
+    doc.text(`Entrada: R$ ${e.toLocaleString('pt-BR',2)}`, 20, 88);
+    doc.text(`Parcelas: ${q}x de R$ ${parc.toLocaleString('pt-BR',2)}`, 20, 96);
+    doc.text(`Juros: ${j}% ao mês`, 20, 104);
+    doc.text(`Prazo Entrega: ${p.dias_entrega||7} dias úteis`, 20, 112);
+    doc.text(`Status: ${p.status}`, 20, 120);
+    doc.text('Muzambinho, MG', 20, 140);
+    doc.setFontSize(10); doc.setTextColor(100,100,100);
+    doc.text('FlashCred - Crédito e Financiamento', 105, 270, {align:'center'});
+    doc.save(`Proposta_${p.nome.replace(/\s/g,'_')}.pdf`);
+}
+
+async function aprovar(id) {
+    await supabase.from('propostas').update({status:'Aprovada'}).eq('id',id);
+    carregarPropostas();
+}
+
+async function excluir(id) {
+    if(!confirm('Tem certeza que deseja excluir?')) return;
+    await supabase.from('propostas').delete().eq('id',id);
+    carregarPropostas();
+}
+
+function enviarLink(id,cpf) {
     const link = `${LINK_CONSULTA}?cpf=${cpf}`;
-    window.open(`https://wa.me/55${whats.replace(/\D/g,'')}?text=Olá! Sua proposta foi aprovada! Acesse aqui para conferir e finalizar: ${encodeURIComponent(link)}`, '_blank');
+    const texto = encodeURIComponent(`Olá ${p?.nome||'cliente'}! Sua proposta foi analisada. Acesse para conferir e finalizar: ${link}`);
+    window.open(`https://wa.me/${p?.whatsapp||NUMERO_SUPORTE}?text=${texto}`);
 }
 
-function cobrarParcela(whats,num,valor,dt) {
-    window.open(`https://wa.me/55${whats.replace(/\D/g,'')}?text=Olá! Lembrete: a ${num}ª parcela de R$ ${valor} vence em ${new Date(dt).toLocaleDateString('pt-BR')}. Atenciosamente, FlashCred.`, '_blank');
+function enviarCobranca(nome,dt,valor,numero) {
+    const texto = encodeURIComponent(`Olá ${nome}! Lembrete de pagamento: parcela vence em ${new Date(dt).toLocaleDateString('pt-BR')} no valor de R$ ${Number(valor).toLocaleString('pt-BR',2)}. Acesse sua proposta para pagar.`);
+    window.open(`https://wa.me/${numero||NUMERO_SUPORTE}?text=${texto}`);
 }
 
-function abrirNovo() { document.getElementById('formNovo').classList.toggle('ativa'); }
+function abrirNovo() { document.getElementById('formNovo').classList.add('ativa'); atualizarCalculo(document.getElementById('formNovo')); }
 function fecharNovo() { document.getElementById('formNovo').classList.remove('ativa'); }
 
 async function salvarNovo() {
     const dados = {
-        nome:document.getElementById('nome').value.trim(),
-        cpf:document.getElementById('cpf').value.trim(),
-        whatsapp:document.getElementById('whatsapp').value.trim(),
-        cep:document.getElementById('cep').value.trim(),
-        endereco:document.getElementById('endereco').value.trim(),
-        valor_desejado:Number(document.getElementById('valor_desejado').value)||0,
-        valor_entrada:Number(document.getElementById('valor_entrada').value)||0,
-        juros_mensal:Number(document.getElementById('juros_mensal').value)||5,
-        quantidade_parcelas:Number(document.getElementById('quantidade_parcelas').value)||1,
-        dias_entrega:Number(document.getElementById('dias_entrega').value)||7,
-        datas_parcelas:Array.from(document.querySelectorAll('[name="data_parcela"]')).map(i=>i.value),
-        status:'Nova', entrada_paga:false, parcelas_pagas:0
+        nome: document.getElementById('#nome').value.trim(),
+        cpf: document.getElementById('#cpf').value.trim(),
+        whatsapp: document.getElementById('#whatsapp').value.trim(),
+        cep: document.getElementById('#cep').value.trim(),
+        endereco: document.getElementById('#endereco').value.trim(),
+        valor_desejado: Number(document.getElementById('#valor_desejado').value)||0,
+        valor_entrada: Number(document.getElementById('#valor_entrada').value)||0,
+        juros_mensal: Number(document.getElementById('#juros_mensal').value)||5,
+        quantidade_parcelas: Number(document.getElementById('#quantidade_parcelas').value)||1,
+        dias_entrega: Number(document.getElementById('#dias_entrega').value)||7,
+        datas_parcelas: Array.from(document.querySelectorAll('input[name="data_parcela"]')).map(i=>i.value),
+        status: 'Nova', entrada_paga: false, contrato_assinado: false, parcelas_pagas: 0
     };
-    if(!dados.nome || !dados.cpf) return alert('Preencha Nome e CPF!');
     await supabase.from('propostas').insert([dados]);
     fecharNovo(); carregarPropostas();
 }
 
-function abrirEdicao(id) {
-    const div = document.getElementById(`editar-${id}`);
-    div.classList.toggle('ativa');
-}
-
-function gerarPDF(id) { alert('Função PDF pronta para implementação!'); }
-
 function ativarTempoReal() {
-    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
-    inscricaoTempoReal = supabase.channel('propostas')
+    if(inscricaoTempoReal) return;
+    inscricaoTempoReal = supabase.channel('todas_propostas')
         .on('postgres_changes', {event:'*', schema:'public', table:'propostas'}, ()=>carregarPropostas())
         .subscribe();
 }
