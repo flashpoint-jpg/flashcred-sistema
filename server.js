@@ -12,7 +12,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const MERCADO_PAGO_TOKEN = process.env.MP_TOKEN || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
 
-// Rota oficial para gerar Pix real via API do Mercado Pago
 app.post('/gerar-pix', async (req, res) => {
     try {
         const { valor, propostaId, nome } = req.body;
@@ -27,10 +26,10 @@ app.post('/gerar-pix', async (req, res) => {
             headers: {
                 "Authorization": `Bearer ${MERCADO_PAGO_TOKEN.trim()}`,
                 "Content-Type": "application/json",
-                "X-Idempotency-Key": `proposta_${propostaId}_${Date.now()}`
+                "X-Idempotency-Key": `proposta_${propostaId}_${Date.now()}_${Math.random()}`
             },
             body: JSON.stringify({
-                transaction_amount: valorNumerico,
+                transaction_amount: Number(valorNumerico.toFixed(2)),
                 description: `Proposta FlashCred #${propostaId} - ${nome || 'Cliente'}`,
                 payment_method_id: 'pix',
                 payer: {
@@ -58,23 +57,18 @@ app.post('/gerar-pix', async (req, res) => {
     }
 });
 
-// Webhook para baixa automática
 app.post('/api/webhook-pix', async (req, res) => {
     try {
         const evento = req.body;
-
         if (evento.type === 'payment' || (evento.action && evento.action.includes('payment'))) {
             const paymentId = evento.data?.id;
-
             if (paymentId) {
                 const respPagamento = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
                     headers: { 'Authorization': `Bearer ${MERCADO_PAGO_TOKEN.trim()}` }
                 });
                 const pagamento = await respPagamento.json();
-
                 if (pagamento.status === 'approved') {
                     const propostaId = pagamento.external_reference;
-
                     if (propostaId) {
                         await supabase.from('propostas')
                             .update({ 
@@ -83,16 +77,12 @@ app.post('/api/webhook-pix', async (req, res) => {
                                 data_aprovacao_entrada: new Date().toISOString()
                             })
                             .eq('id', propostaId);
-                        
-                        console.log(`✅ Proposta ${propostaId} paga e atualizada automaticamente!`);
                     }
                 }
             }
         }
-
         return res.status(200).send('OK');
     } catch (erro) {
-        console.error('Erro no Webhook:', erro);
         return res.status(500).send('Erro interno');
     }
 });
