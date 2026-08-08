@@ -58,16 +58,28 @@
         .btn-pix { background: #32BCAD; color: white; }
         .btn-cam { background: #8B5CF6; color: white; }
         .loading { text-align: center; padding: 20px; color: #64748B; width: 100%; }
+        .oculto { display: none !important; }
 
-        /* ✅ APENAS A BARRA DE PROGRESSO — NADA MAIS FOI ALTERADO */
-        .progresso { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; width: 100%; }
-        .progresso::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 3px; background: #E2E8F0; z-index: 0; }
-        .passo { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 12px; font-weight: 500; color: #94A3B8; }
-        .passo.ativo { color: #0A2463; font-weight: 700; }
-        .passo.concluido { color: #10B981; }
-        .bolinha { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; }
-        .passo.ativo .bolinha { background: #0A2463; color: white; }
-        .passo.concluido .bolinha { background: #10B981; color: white; }
+        /* ✅ BARRA DE ETAPAS DA PROPOSTA */
+        .progresso-etapas { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; width: 100%; }
+        .progresso-etapas::before { content: ''; position: absolute; top: 12px; left: 10%; right: 10%; height: 3px; background: #E2E8F0; z-index: 0; }
+        .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 12px; font-weight: 500; color: #94A3B8; }
+        .etapa.ativo { color: #0A2463; font-weight: 700; }
+        .etapa.concluido { color: #10B981; }
+        .bolinha-etapa { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; }
+        .etapa.ativo .bolinha-etapa { background: #0A2463; color: white; }
+        .etapa.concluido .bolinha-etapa { background: #10B981; color: white; }
+
+        /* ✅ BARRA DE PROGRESSO DIAS DE ENTREGA */
+        .barra-entrega { margin: 16px 0; }
+        .texto-entrega { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+        .fundo-barra { width: 100%; height: 10px; background: #E2E8F0; border-radius: 5px; overflow: hidden; }
+        .preenchimento-entrega { height: 100%; background: #F59E0B; width: 100%; transition: 0.3s; }
+
+        /* ✅ BARRA DE PROGRESSO DAS PARCELAS */
+        .barra-parcelas { margin: 16px 0; }
+        .texto-parcelas { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+        .preenchimento-parcelas { height: 100%; background: #10B981; width: 0%; transition: 0.3s; }
 
         .aviso-entrega {
             background: #FFFBEB;
@@ -99,7 +111,6 @@
         .qrcode-pix { display: flex; justify-content: center; align-items: center; margin: 20px 0; width: 100%; }
         .item-parcela { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #E2E8F0; font-size: 14px; width: 100%; }
         .item-parcela:last-child { border-bottom: none; }
-        .oculto { display: none !important; }
     </style>
 </head>
 <body>
@@ -134,25 +145,14 @@ async function gerarPixViaAPI(valor, descricao) {
     try {
         const response = await fetch(`${SUPABASE_URL}/functions/v1/gerar-pix`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_KEY}`
-            },
-            body: JSON.stringify({
-                cpf: dadosProposta.cpf,
-                nome: dadosProposta.nome,
-                whatsapp: dadosProposta.whatsapp,
-                valor: Number(valor),
-                descricao: descricao
-            })
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_KEY}` },
+            body: JSON.stringify({ cpf: dadosProposta.cpf, nome: dadosProposta.nome, whatsapp: dadosProposta.whatsapp, valor: Number(valor), descricao })
         });
         const resultado = await response.json();
-        if(resultado && (resultado.copia_e_cola || resultado.pix_copia_e_cola)) {
-            return resultado.copia_e_cola || resultado.pix_copia_e_cola;
-        }
-        throw new Error(resultado.erro || 'Erro ao gerar Pix via API');
+        if(resultado && (resultado.copia_e_cola || resultado.pix_copia_e_cola)) return resultado.copia_e_cola || resultado.pix_copia_e_cola;
+        throw new Error(resultado.erro || 'Erro ao gerar Pix');
     } catch (err) {
-        console.error('Erro na API Pix:', err);
+        console.error('Erro Pix:', err);
         const valorStr = Number(valor).toFixed(2);
         const chave = '33552949852';
         const nome = 'FELIPE COSTA';
@@ -163,20 +163,9 @@ async function gerarPixViaAPI(valor, descricao) {
         const payloadSemCrc = '000201' + campo26 + '5204000053039865802BR59' + String(nome.length).padStart(2, '0') + nome + '60' + String(cidade.length).padStart(2, '0') + cidade + '62070503***54' + String(valorStr.length).padStart(2, '0') + valorStr + '6304';
         
         function calculaCRC16(payload) {
-            let polinomio = 0x1021;
-            let resultado = 0xFFFF;
-            let dados = new TextEncoder().encode(payload);
-            for (let i = 0; i < dados.length; i++) {
-                resultado ^= (dados[i] << 8);
-                for (let j = 0; j < 8; j++) {
-                    if ((resultado & 0x8000) !== 0) {
-                        resultado = ((resultado << 1) ^ polinomio) & 0xFFFF;
-                    } else {
-                        resultado = (resultado << 1) & 0xFFFF;
-                    }
-                }
-            }
-            return resultado.toString(16).toUpperCase().padStart(4, '0');
+            let polinomio = 0x1021; let res = 0xFFFF; let dados = new TextEncoder().encode(payload);
+            for (let i = 0; i < dados.length; i++) { res ^= (dados[i] << 8); for (let j = 0; j < 8; j++) res = ((res << 1) ^ polinomio) & 0xFFFF; else res = (res << 1) & 0xFFFF; }
+            return res.toString(16).toUpperCase().padStart(4, '0');
         }
         return payloadSemCrc + calculaCRC16(payloadSemCrc);
     }
@@ -211,6 +200,7 @@ async function montarTela(p) {
     const dias = p.dias_entrega || 7;
     const datas = p.datas_parcelas || [];
     const pagas = Number(p.parcelas_pagas || 0);
+    const percParcelas = Math.round((pagas / qtdEscolhidaFinal) * 100);
 
     let passo = 1;
     if(p.status === 'Aprovada') passo = 2;
@@ -222,18 +212,28 @@ async function montarTela(p) {
         <h2 class="text-xl font-bold text-primary mb-2 text-center">Olá, ${p.nome || 'Cliente'}!</h2>
         <p class="mb-3 text-center">Sua proposta está: <strong class="${p.status==='Aprovada'?'text-green-600':'text-orange-500'}">${p.status}</strong></p>
 
-        <!-- ✅ A BARRA DE PROGRESSO ADICIONADA AQUI — SEM ALTERAR O RESTO -->
-        <div class="progresso">
-            <div class="passo ${passo>=1?'concluido':''}"><div class="bolinha">${passo>1?'✓':'1'}</div><span>Proposta</span></div>
-            <div class="passo ${passo>=2?(passo>2?'concluido':'ativo'):''}"><div class="bolinha">${passo>2?'✓':'2'}</div><span>Aprovada</span></div>
-            <div class="passo ${passo>=3?(passo>3?'concluido':'ativo'):''}"><div class="bolinha">${passo>3?'✓':'3'}</div><span>Contrato</span></div>
-            <div class="passo ${passo>=4?'ativo':''}"><div class="bolinha">4</div><span>Pagamento</span></div>
+        <!-- ✅ BARRA DE ETAPAS -->
+        <div class="progresso-etapas">
+            <div class="etapa ${passo>=1?'concluido':''}"><div class="bolinha-etapa">${passo>1?'✓':'1'}</div><span>Proposta</span></div>
+            <div class="etapa ${passo>=2?(passo>2?'concluido':'ativo'):''}"><div class="bolinha-etapa">${passo>2?'✓':'2'}</div><span>Aprovada</span></div>
+            <div class="etapa ${passo>=3?(passo>3?'concluido':'ativo'):''}"><div class="bolinha-etapa">${passo>3?'✓':'3'}</div><span>Contrato</span></div>
+            <div class="etapa ${passo>=4?'ativo':''}"><div class="bolinha-etapa">4</div><span>Pagamento</span></div>
         </div>
 
         ${p.status === 'Aprovada' ? `
         <div class="aviso-entrega">
-            <i class="fas fa-truck"></i> 🚚 AVISO IMPORTANTE:<br>
-            A ENTREGA SERÁ FEITA EM ATÉ <span class="text-2xl">${dias}</span> DIAS ÚTEIS APÓS CONFIRMAÇÃO DO PAGAMENTO!
+            <i class="fas fa-truck"></i> 🚚 ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO!
+        </div>
+
+        <!-- ✅ BARRA DE PROGRESSO ENTREGA -->
+        <div class="barra-entrega">
+            <div class="texto-entrega">
+                <span>Progresso da Entrega</span>
+                <span>Aguardando pagamento — ${dias} dias úteis</span>
+            </div>
+            <div class="fundo-barra">
+                <div class="preenchimento-entrega" style="width: ${p.entrada_paga ? '0%' : '100%'}"></div>
+            </div>
         </div>` : ''}
 
         <div class="bg-gray-50 p-3 rounded-lg mb-3">
@@ -322,8 +322,18 @@ async function montarTela(p) {
         html += `
         <div class="card text-center">
             <div class="text-green-600 text-xl font-bold mb-3"><i class="fas fa-check-double"></i> PAGAMENTO CONFIRMADO!</div>
-            <p class="mb-4">Sua entrada foi paga com sucesso! Abaixo todos os detalhes do seu contrato e parcelas:</p>
-            
+
+            <!-- ✅ BARRA DE PROGRESSO PARCELAS -->
+            <div class="barra-parcelas">
+                <div class="texto-parcelas">
+                    <span>Progresso de Pagamento</span>
+                    <span>${pagas} de ${qtdEscolhidaFinal} parcelas pagas (${percParcelas}%)</span>
+                </div>
+                <div class="fundo-barra">
+                    <div class="preenchimento-parcelas" style="width: ${percParcelas}%"></div>
+                </div>
+            </div>
+
             <h3 class="font-bold text-lg mb-2 text-primary">📋 CRONOGRAMA DE PAGAMENTO</h3>
             ${Array.from({length: qtdEscolhidaFinal}, (_, i) => {
                 const n = i + 1;
@@ -333,20 +343,11 @@ async function montarTela(p) {
                 return `<div class="item-parcela" style="flex-direction: column; align-items: stretch; gap: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span><strong>${n}ª Parcela</strong> • R$ ${valorParcelaCalculado.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} • Venc: ${dt}</span>
-                        <span class="font-bold ${ok?'text-green-600':'text-orange-500'}">${ok?'PAGA':'PENDENTE'}</span>
+                        <span class="font-bold ${ok?'text-sucesso':'text-alerta'}">${ok?'PAGA':'PENDENTE'}</span>
                     </div>
-                    ${!ok ? `<button onclick="pagarParcela(${n}, ${valorParcelaCalculado})" class="btn btn-pix" style="padding: 8px; font-size: 14px; margin: 0;"><i class="fas fa-qrcode"></i> Gerar Pix / Pagar ${n}ª Parcela</button>` : ''}
+                    ${!ok ? `<button onclick="pagarParcela(${n}, ${valorParcelaCalculado})" class="btn btn-pix" style="padding: 8px; font-size: 14px; margin: 0;"><i class="fas fa-qrcode"></i> Gerar Pix / Pagar</button>` : ''}
                 </div>`;
             }).join('')}
-
-            <div id="areaPixParcelaGerado" class="oculto mt-4">
-                <div class="qrcode-pix" id="qrcode-pix-parcela"></div>
-                <div class="chave-pix">
-                    <strong>Pix da Parcela Gerado</strong><br>
-                    <small>Sistema Seguro FlashCred</small>
-                </div>
-                <button id="btnCopiarPixParcela" class="btn btn-pix">📋 Copiar Código Pix da Parcela</button>
-            </div>
         </div>`;
     }
 
@@ -365,23 +366,11 @@ async function montarTela(p) {
 async function carregarPixEntrada(valor) {
     const btn = event.currentTarget;
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
-    
-    const codigoPixValido = await gerarPixViaAPI(valor, 'Pagamento Entrada FlashCred');
-    
+    const codigo = await gerarPixViaAPI(valor, 'Pagamento Entrada FlashCred');
     document.getElementById('areaPixGerado').classList.remove('oculto');
     document.getElementById('qrcode-pix').innerHTML = '';
-    new QRCode(document.getElementById("qrcode-pix"), {
-        text: codigoPixValido,
-        width: 220,
-        height: 220,
-        correctLevel: QRCode.CorrectLevel.H
-    });
-    
-    document.getElementById('btnCopiarPix').onclick = () => {
-        navigator.clipboard.writeText(codigoPixValido);
-        alert('Código Pix copiado! ✅ Cole no app do banco para pagar.');
-    };
-    
+    new QRCode(document.getElementById("qrcode-pix"), { text: codigo, width: 220, height: 220 });
+    document.getElementById('btnCopiarPix').onclick = () => { navigator.clipboard.writeText(codigo); alert('Código copiado! ✅'); };
     btn.classList.add('oculto');
 }
 
@@ -389,7 +378,7 @@ async function pagarParcela(numParcela, valor) {
     const btn = event.currentTarget;
     btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Gerando Pix...`;
     const codigo = await gerarPixViaAPI(valor, `${numParcela}ª Parcela FlashCred`);
-    alert(`Pix gerado com sucesso!\nCódigo: ${codigo}\nCopie e cole no aplicativo do seu banco.`);
+    alert(`Pix gerado com sucesso!\nCódigo: ${codigo}\nCopie e cole no app do banco.`);
 }
 
 function abrirContrato() {
@@ -400,8 +389,8 @@ function abrirContrato() {
 }
 function mostrarOpcoesAssinatura() { if(!document.getElementById('aceitoContrato').checked) { alert('Aceite os termos do contrato!'); return; } document.getElementById('opcoesAssinatura').classList.remove('oculto'); }
 function mostrarAssinaturaTexto() { document.getElementById('areaAssinaturaTexto').classList.remove('oculto'); document.getElementById('areaCamera').classList.add('oculto'); }
-async function abrirCamera() { document.getElementById('areaCamera').classList.remove('oculto'); document.getElementById('areaAssinaturaTexto').classList.add('oculto'); try { streamCam = await navigator.mediaDevices.getUserMedia({video:true}); document.getElementById('videoCam').srcObject = streamCam; } catch { alert('Não foi possível acessar a câmera, use a assinatura por texto.'); } }
-async function tirarFoto() { if(!streamCam) return; const c = document.createElement('canvas'); c.width=400; c.height=300; c.getContext('2d').drawImage(document.getElementById('videoCam'),0,0); const foto = c.toDataURL('image/png'); streamCam.getTracks().forEach(t=>t.stop()); await supabase.from('propostas').update({contrato_assinado:true, foto_assinatura:foto}).eq('id',dadosProposta.id); await buscarProposta(); }
+async function abrirCamera() { document.getElementById('areaCamera').classList.remove('oculto'); document.getElementById('areaAssinaturaTexto').classList.add('oculto'); try { streamCam = await navigator.mediaDevices.getUserMedia({video:true}); document.getElementById('videoCam').srcObject = streamCam; } catch { alert('Câmera indisponível, use assinatura por texto.'); } }
+async function tirarFoto() { if(!streamCam) return; const c = document.createElement('canvas'); c.width=400; c.height=300; c.getContext('2d').drawImage(document.getElementById('videoCam'),0,0); const f = c.toDataURL('image/png'); streamCam.getTracks().forEach(t=>t.stop()); await supabase.from('propostas').update({contrato_assinado:true, foto_assinatura:f}).eq('id',dadosProposta.id); await buscarProposta(); }
 async function confirmarAssinatura() { const a = document.getElementById('assinaturaTexto').value.trim(); if(!a) { alert('Digite sua assinatura!'); return; } await supabase.from('propostas').update({contrato_assinado:true, assinatura_texto:a}).eq('id',dadosProposta.id); await buscarProposta(); }
 
 function ativarTempoReal(cpf) {
