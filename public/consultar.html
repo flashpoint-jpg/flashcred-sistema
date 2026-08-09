@@ -30,6 +30,7 @@
         .botao-pix { background: #32BCAD; color: white; }
         .botao-sucesso { background: #10B981; color: white; }
         .botao-voltar { background: #94A3B8; color: white; margin-bottom: 12px; }
+        .botao-wpp { background: #25D366; color: white; margin-top: 12px; }
         .botao-pequeno { width: auto; padding: 8px 16px; font-size: 14px; }
         .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
         .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; padding: 0 4px; }
@@ -84,6 +85,7 @@ const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
 let propostaAtual = null;
+let inscricaoTempoReal = null;
 
 window.onload = () => {
     const params = new URLSearchParams(window.location.search);
@@ -95,6 +97,7 @@ window.onload = () => {
 };
 
 function voltarInicio() {
+    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
     propostaAtual = null;
     document.getElementById('cpfConsulta').value = '';
     document.getElementById('telaProposta').classList.remove('visivel');
@@ -111,7 +114,9 @@ async function consultar() {
     propostaAtual = data;
     mostrarProposta(data);
     
-    supabase.channel(`proposta_${propostaAtual.id}`)
+    // ✅ TEMPO REAL GARANTIDO: atualiza TUDO quando mudar status
+    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+    inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
         .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, (res)=>{
             propostaAtual = res.new;
             mostrarProposta(res.new);
@@ -245,11 +250,12 @@ function mostrarProposta(p) {
         <div id="areaPix" class="oculto"></div>`;
     }
 
+    // ✅ AGORA FUNCIONA: ASSIM QUE ENTRADA FOR PAGA, ABRE AS PARCELAS NA HORA
     if(p.entrada_paga) {
         html += `
         <div class="sucesso-box">
             <i class="fas fa-check-double"></i>
-            <h3 class="text-xl font-bold">ENTRADA CONFIRMADA!</h3>
+            <h3 class="text-xl font-bold">✅ ENTRADA CONFIRMADA! AGORA VOCÊ PODE PAGAR AS PARCELAS</h3>
         </div>
 
         <div class="bloco-entrega" style="background: #ECFDF5; border-color: #10B981;">
@@ -268,7 +274,7 @@ function mostrarProposta(p) {
             <p><strong>Juros:</strong> ${j}% ao mês</p>
         </div>
 
-        <h3 class="font-bold text-lg mt-4 mb-2">📅 Suas Parcelas</h3>
+        <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS A PAGAR</h3>
         ${(p.datas_parcelas||[]).map((dt,idx)=>{
             const valor = Number(valorParcela);
             const pg = idx+1 <= (p.parcelas_pagas||0);
@@ -331,10 +337,10 @@ async function gerarPix(valor) {
         area.innerHTML = `
         <div class="qrcode-area"><img src="data:image/png;base64,${dados.qrcode}" width="240" height="240"></div>
         <div class="codigo-pix">${dados.copia_cola}</div>
-        <button onclick="navigator.clipboard.writeText('${dados.copia_cola}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso">Copiar Código</button>
+        <button onclick="navigator.clipboard.writeText('${dados.copia_cola}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso">Copiar Código Pix</button>
         `;
     } catch (err) {
-        area.innerHTML = `<p class="text-perigo text-center font-bold">Erro ao gerar Pix real: ${err.message}</p>`;
+        area.innerHTML = `<p class="text-perigo text-center font-bold">Erro ao gerar Pix: ${err.message}</p>`;
     }
 }
 </script>
