@@ -45,7 +45,7 @@
         .resumo-contrato { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 16px; margin: 16px 0; }
         .resumo-contrato p { margin: 8px 0; font-size: 15px; }
         .resumo-contrato strong { color: #0A2463; }
-        .contrato { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; max-height: 220px; overflow-y: auto; margin: 16px 0; font-size: 14px; line-height: 1.7; }
+        .contrato { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; max-height: 220px; overflow-y: auto; margin: 16px 0; font-size: 13px; line-height: 1.6; text-align: justify; }
         .qrcode-area { display: flex; justify-content: center; padding: 20px; background: white; border-radius: 10px; border: 1px solid #E2E8F0; margin: 16px 0; }
         .codigo-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 16px; text-align: center; font-weight: 600; margin: 16px 0; word-break: break-all; font-size: 12px; }
         .item-parcela { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
@@ -61,6 +61,7 @@
         .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
         .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
         .carregando { text-align: center; padding: 20px; color: #64748B; }
+        canvas.assinatura-pad { border: 2px dashed #CBD5E1; border-radius: 8px; background: white; width: 100%; cursor: crosshair; }
     </style>
 </head>
 <body>
@@ -86,6 +87,10 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 
 let propostaAtual = null;
 let inscricaoTempoReal = null;
+let webcamStream = null;
+let modoAssinatura = 'selfie'; // 'selfie' ou 'manual'
+let canvasContext = null;
+let desenhando = false;
 
 window.onload = () => {
     const params = new URLSearchParams(window.location.search);
@@ -97,6 +102,7 @@ window.onload = () => {
 };
 
 function voltarInicio() {
+    pararCamera();
     if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
     propostaAtual = null;
     document.getElementById('cpfConsulta').value = '';
@@ -114,7 +120,6 @@ async function consultar() {
     propostaAtual = data;
     mostrarProposta(data);
     
-    // ✅ TEMPO REAL GARANTIDO: atualiza TUDO quando mudar status
     if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
     inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
         .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, (res)=>{
@@ -214,27 +219,58 @@ function mostrarProposta(p) {
             <p><strong>Entrega:</strong> até ${diasTotal} dias úteis</p>
         </div>
 
-        <h4 class="font-bold mt-4 mb-2">📄 CONTRATO</h4>
+        <h4 class="font-bold mt-4 mb-2">📄 CONTRATO PARTICULAR DE FINANCIAMENTO E COMPRA</h4>
         <div class="contrato">
-            Valor total: R$ ${formatarValor(total)}<br>
-            Entrada: R$ ${formatarValor(e)}<br>
-            ${qtdEsc}x de R$ ${formatarValor(valParc)}<br>
-            Juros: ${j}% a.m.<br>
-            Entrega: até ${diasTotal} dias úteis após confirmação do pagamento.<br>
-            Ao marcar abaixo, confirmo que li e aceito todos os termos.
+            <strong>CLÁUSULA 1ª - DO OBJETO E VALORES:</strong> O presente instrumento tem por objeto o financiamento para aquisição de produtos/serviços no valor total de <strong>R$ ${formatarValor(total)}</strong>, mediante o pagamento de uma entrada no valor de <strong>R$ ${formatarValor(e)}</strong> e o saldo remanescente parcelado em <strong>${qtdEsc}x de R$ ${formatarValor(valParc)}</strong>, incidindo juros remuneratórios de <strong>${j}% ao mês</strong>.<br><br>
+            <strong>CLÁUSULA 2ª - DA ENTREGA E PRAZO:</strong> A entrega do produto/serviço fica estipulada em até <strong>${diasTotal} dias úteis</strong>, contados estritamente após a compensação bancária e confirmação do pagamento da taxa de entrada.<br><br>
+            <strong>CLÁUSULA 3ª - DO INADIMPLEMENTO E ENCARGOS:</strong> O atraso no pagamento de qualquer das parcelas acarretará a incidência de multa moratória de 2% (dois por cento) sobre o valor devido, juros de mora de 1% ao mês, além de correção monetária, sujeitando o devedor à inclusão de seu CPF nos órgãos de proteção ao crédito (SPC/SERASA) e protesto em cartório.<br><br>
+            <strong>CLÁUSULA 4ª - DA ANTECIPAÇÃO DA DÍVIDA:</strong> Ocorrendo o atraso superior a 15 dias em qualquer parcela ou quebra de qualquer cláusula, vencerão antecipadamente todas as demais obrigações vincendas, tornando a dívida integralmente exigível de uma só vez.<br><br>
+            <strong>CLÁUSULA 5ª - DA VALIDADE JURÍDICA:</strong> O Contratante expressamente aceita a assinatura eletrônica e/ou biométrica (selfie/desenho em tela) como válida, reconhecendo-a como prova documental legítima, íntegra e irrevogável para todos os efeitos de direito, nos termos da legislação vigente.
         </div>
 
-        <div class="mt-4">
-            <label class="flex items-center gap-2 mb-4 font-medium"><input type="checkbox" id="aceitoContrato"> Li e concordo</label>
-            <button onclick="assinarContrato()" class="botao botao-sucesso">✍️ Assinar</button>
+        <div class="mt-4 bg-white p-4 border border-slate-200 rounded-lg">
+            <label class="flex items-center gap-2 mb-4 font-bold text-sm text-primary"><input type="checkbox" id="aceitoContrato"> Li e concordo integralmente com os termos e leis acima descritos.</label>
+            
+            <div class="mb-3">
+                <span class="font-bold text-sm block mb-2">✍️ Validação da Assinatura (Escolha uma opção):</span>
+                <div class="flex gap-2 mb-3">
+                    <button type="button" onclick="alternarModoAssinatura('selfie')" id="btnModoSelfie" class="botao botao-pequeno bg-primary text-white">📸 Assinar com Selfie</button>
+                    <button type="button" onclick="alternarModoAssinatura('manual')" id="btnModoManual" class="botao botao-pequeno bg-slate-200 text-slate-700">✏️ Assinar Desenhando</button>
+                </div>
+            </div>
+
+            <div id="blocoSelfie">
+                <div id="areaCamera" class="text-center mb-3">
+                    <video id="videoCamera" autoplay playsinline class="w-full rounded-lg bg-black mb-2" style="max-height:220px; object-fit:cover;"></video>
+                    <button type="button" onclick="tirarSelfie()" class="botao botao-pix py-2">📸 Capturar Selfie</button>
+                </div>
+                <div id="areaPreviewSelfie" class="text-center mb-3 oculto">
+                    <p class="text-sucesso font-bold mb-2">✅ Selfie capturada com sucesso!</p>
+                    <img id="imgSelfie" class="mx-auto rounded-lg border" style="max-height:160px;">
+                    <button type="button" onclick="refazerSelfie()" class="botao botao-pequeno bg-slate-400 text-white mt-2">Refazer Selfie</button>
+                </div>
+            </div>
+
+            <div id="blocoManual" class="oculto text-center mb-3">
+                <p class="text-xs text-slate-500 mb-1">Desenhe sua assinatura abaixo com o dedo ou mouse:</p>
+                <canvas id="canvasAssinatura" class="assinatura-pad" height="150"></canvas>
+                <button type="button" onclick="limparCanvas()" class="botao botao-pequeno bg-slate-400 text-white mt-2">Limpar Assinatura</button>
+            </div>
+
+            <button onclick="assinarContrato()" class="botao botao-sucesso mt-3">✍️ Confirmar Assinatura e Enviar Proposta</button>
         </div>`;
+        
+        setTimeout(() => {
+            if(modoAssinatura === 'selfie') iniciarCamera();
+            inicializarCanvas();
+        }, 300);
     }
 
     if(p.contrato_assinado && !p.entrada_paga) {
         html += `
         <div class="sucesso-box">
             <i class="fas fa-check-circle"></i>
-            <h3 class="text-xl font-bold">CONTRATO ASSINADO!</h3>
+            <h3 class="text-xl font-bold">CONTRATO ASSINADO COM SUCESSO!</h3>
         </div>
         <div class="bloco-entrega">
             <i class="fas fa-shipping-fast text-alerta text-xl mb-2"></i>
@@ -250,12 +286,11 @@ function mostrarProposta(p) {
         <div id="areaPix" class="oculto"></div>`;
     }
 
-    // ✅ AGORA FUNCIONA: ASSIM QUE ENTRADA FOR PAGA, ABRE AS PARCELAS NA HORA
     if(p.entrada_paga) {
         html += `
         <div class="sucesso-box">
             <i class="fas fa-check-double"></i>
-            <h3 class="text-xl font-bold">✅ ENTRADA CONFIRMADA! AGORA VOCÊ PODE PAGAR AS PARCELAS</h3>
+            <h3 class="text-xl font-bold">✅ ENTRADA CONFIRMADA! PARCELAS LIBERADAS</h3>
         </div>
 
         <div class="bloco-entrega" style="background: #ECFDF5; border-color: #10B981;">
@@ -297,6 +332,102 @@ function mostrarProposta(p) {
     document.getElementById('conteudoProposta').innerHTML = html;
 }
 
+function alternarModoAssinatura(modo) {
+    modoAssinatura = modo;
+    const btnSelfie = document.getElementById('btnModoSelfie');
+    const btnManual = document.getElementById('btnModoManual');
+    const blocoSelfie = document.getElementById('blocoSelfie');
+    const blocoManual = document.getElementById('blocoManual');
+
+    if(modo === 'selfie') {
+        btnSelfie.className = 'botao botao-pequeno bg-primary text-white';
+        btnManual.className = 'botao botao-pequeno bg-slate-200 text-slate-700';
+        blocoSelfie.classList.remove('oculto');
+        blocoManual.classList.add('oculto');
+        iniciarCamera();
+    } else {
+        btnManual.className = 'botao botao-pequeno bg-primary text-white';
+        btnSelfie.className = 'botao botao-pequeno bg-slate-200 text-slate-700';
+        blocoManual.classList.remove('oculto');
+        blocoSelfie.classList.add('oculto');
+        pararCamera();
+        inicializarCanvas();
+    }
+}
+
+async function iniciarCamera() {
+    try {
+        const video = document.getElementById('videoCamera');
+        if(!video) return;
+        webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        video.srcObject = webcamStream;
+    } catch(err) {
+        // Se falhar ou não tiver câmera, muda automaticamente para o modo manual
+        alternarModoAssinatura('manual');
+    }
+}
+
+function pararCamera() {
+    if(webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+        webcamStream = null;
+    }
+}
+
+let imagemSelfieBase64 = null;
+function tirarSelfie() {
+    const video = document.getElementById('videoCamera');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    imagemSelfieBase64 = canvas.toDataURL('image/png');
+
+    document.getElementById('areaCamera').classList.add('oculto');
+    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
+    document.getElementById('imgSelfie').src = imagemSelfieBase64;
+    pararCamera();
+}
+
+function refazerSelfie() {
+    imagemSelfieBase64 = null;
+    document.getElementById('areaPreviewSelfie').classList.add('oculto');
+    document.getElementById('areaCamera').classList.remove('oculto');
+    iniciarCamera();
+}
+
+function inicializarCanvas() {
+    const canvas = document.getElementById('canvasAssinatura');
+    if(!canvas) return;
+    canvasContext = canvas.getContext('2d');
+    canvasContext.strokeStyle = '#0A2463';
+    canvasContext.lineWidth = 2;
+
+    const getPos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: clientX - rect.left, y: clientY - rect.top };
+    };
+
+    canvas.onmousedown = (e) => { desenhando = true; const pos = getPos(e); canvasContext.beginPath(); canvasContext.moveTo(pos.x, pos.y); };
+    canvas.onmousemove = (e) => { if(!desenhando) return; const pos = getPos(e); canvasContext.lineTo(pos.x, pos.y); canvasContext.stroke(); };
+    canvas.onmouseup = () => { desenhando = false; };
+    canvas.onmouseleave = () => { desenhando = false; };
+
+    canvas.ontouchstart = (e) => { desenhando = true; const pos = getPos(e); canvasContext.beginPath(); canvasContext.moveTo(pos.x, pos.y); e.preventDefault(); };
+    canvas.ontouchmove = (e) => { if(!desenhando) return; const pos = getPos(e); canvasContext.lineTo(pos.x, pos.y); canvasContext.stroke(); e.preventDefault(); };
+    canvas.ontouchend = () => { desenhando = false; };
+}
+
+function limparCanvas() {
+    const canvas = document.getElementById('canvasAssinatura');
+    if(canvas && canvasContext) {
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
 async function confirmarParcelas() {
     const qtd = Number(document.getElementById('qtdEscolhida').value);
     await supabase.from('propostas').update({qtd_parcelas_escolhida: qtd}).eq('id', propostaAtual.id);
@@ -304,7 +435,13 @@ async function confirmarParcelas() {
 }
 
 async function assinarContrato() {
-    if(!document.getElementById('aceitoContrato').checked) return alert('Você precisa concordar com os termos!');
+    if(!document.getElementById('aceitoContrato').checked) return alert('Você precisa concordar com os termos do contrato!');
+
+    if(modoAssinatura === 'selfie' && !imagemSelfieBase64) {
+        return alert('Por favor, tire a selfie para validar sua assinatura.');
+    }
+
+    pararCamera();
     await supabase.from('propostas').update({contrato_assinado: true}).eq('id', propostaAtual.id);
     mostrarProposta({...propostaAtual, contrato_assinado: true});
 }
