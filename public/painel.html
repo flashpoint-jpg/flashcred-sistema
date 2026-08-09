@@ -61,6 +61,10 @@
         .item-parcela { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border-bottom:1px solid var(--borda); font-size:13px; }
         .item-parcela:last-child { border-bottom:none; }
 
+        .bloco-produtos-admin { background: #F8FAFC; border: 1px solid var(--borda); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        .item-produto-linha { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+        @media(max-width: 768px) { .item-produto-linha { grid-template-columns: 1fr; } }
+
         .prazo-entrega { background:#FFFBEB; border:2px solid var(--alerta); border-radius:8px; padding:12px 16px; margin:10px 0; font-size:16px; font-weight:700; color:#92400E; }
         .prazo-entrega.concluido { background:#ECFDF5; border-color:var(--sucesso); color:#065F46; }
         .barra-entrega { margin-top:8px; }
@@ -125,6 +129,15 @@
             <div><span class="label-campo">📱 WhatsApp com DDD</span><input type="text" id="whatsapp" maxlength="11" class="campo" placeholder="Ex: 11999998888"></div>
             <div><span class="label-campo">🏠 CEP</span><input type="text" id="cep" maxlength="8" class="campo"></div>
             <div class="md:col-span-2"><span class="label-campo">📍 Endereço Completo</span><input type="text" id="endereco" class="campo"></div>
+            
+            <div class="md:col-span-2">
+                <span class="label-campo">🛍️ Produtos / Mercadorias Adquiridas</span>
+                <div id="containerProdutosNovo" class="bloco-produtos-admin">
+                    <div id="listaProdutosNovo"></div>
+                    <button type="button" onclick="adicionarLinhaProduto('Novo')" class="botao botao-primario mt-2"><i class="fas fa-plus"></i> Adicionar Produto</button>
+                </div>
+            </div>
+
             <div><span class="label-campo">💵 Valor Total da Compra</span><input type="number" id="valor_desejado" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">💸 Valor da Entrada</span><input type="number" id="valor_entrada" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">📊 Juros Mensal (%)</span><input type="number" id="juros_mensal" value="5" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
@@ -167,7 +180,6 @@ const NUMERO_SUPORTE = '5511973294235';
 
 let inscricaoTempoReal = null;
 
-// Sincronizado: Conta estritamente dias úteis (exclui sábado=6 e domingo=0)
 function contarDiasUteis(dataInicio, diasUteisTotais) {
     let data = new Date(dataInicio);
     let contados = 0;
@@ -203,6 +215,39 @@ window.onload = () => { if(localStorage.getItem('logado_flashcred') === 'SIM') m
 function entrar() { const s = document.getElementById('senha').value.trim(); if(s === SENHA) { localStorage.setItem('logado_flashcred', 'SIM'); mostrarPainel(); } else alert('Senha incorreta!'); }
 function sair() { localStorage.removeItem('logado_flashcred'); document.getElementById('telaLogin').style.display = 'block'; document.getElementById('telaPrincipal').style.display = 'none'; if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal); }
 function mostrarPainel() { document.getElementById('telaLogin').style.display = 'none'; document.getElementById('telaPrincipal').style.display = 'block'; carregarPropostas(); ativarTempoReal(); }
+
+function adicionarLinhaProduto(sufixo, produto = {}) {
+    const lista = document.getElementById(`listaProdutos${sufixo}`);
+    if(!lista) return;
+    const div = document.createElement('div');
+    div.className = 'item-produto-linha';
+    div.innerHTML = `
+        <input type="text" placeholder="Nome/Descrição do Produto" value="${produto.nome || ''}" class="campo !mb-0 prod-nome">
+        <input type="number" placeholder="Qtd" value="${produto.qtd || 1}" min="1" class="campo !mb-0 prod-qtd">
+        <input type="number" placeholder="Valor Unit. (R$)" value="${produto.valor || ''}" step="0.01" class="campo !mb-0 prod-valor">
+        <input type="text" placeholder="Cor" value="${produto.cor || ''}" class="campo !mb-0 prod-cor">
+        <input type="text" placeholder="Detalhes/Inserção" value="${produto.detalhes || ''}" class="campo !mb-0 prod-detalhes">
+        <button type="button" onclick="this.closest('.item-produto-linha').remove()" class="botao botao-perigo !p-2"><i class="fas fa-trash"></i></button>
+    `;
+    lista.appendChild(div);
+}
+
+function coletarProdutos(containerId) {
+    const container = document.getElementById(containerId);
+    if(!container) return [];
+    const linhas = container.querySelectorAll('.item-produto-linha');
+    const produtos = [];
+    linhas.forEach(l => {
+        produtos.push({
+            nome: l.querySelector('.prod-nome').value.trim(),
+            qtd: Number(l.querySelector('.prod-qtd').value) || 1,
+            valor: Number(l.querySelector('.prod-valor').value) || 0,
+            cor: l.querySelector('.prod-cor').value.trim(),
+            detalhes: l.querySelector('.prod-detalhes').value.trim()
+        });
+    });
+    return produtos;
+}
 
 function atualizarCalculo(bloco) {
     const v = Number(bloco.querySelector('#valor_desejado').value)||0;
@@ -299,6 +344,15 @@ async function carregarPropostas() {
         const luzStatus = p.status==='Aprovada'?'luz-amarela':(p.entrada_paga?'luz-verde':'luz-verde-fixa');
         const progressoEntrega = calcularProgressoEntrega(p.dias_entrega||7);
 
+        let produtosHtml = '';
+        if(p.produtos && p.produtos.length > 0) {
+            produtosHtml = `<div class="mt-2 text-sm bg-slate-50 p-2 rounded border border-slate-200"><strong>🛒 Produtos/Mercadorias:</strong><ul class="list-disc pl-5 mt-1">`;
+            p.produtos.forEach(prod => {
+                produtosHtml += `<li>${prod.nome || 'Produto'} | Qtd: ${prod.qtd || 1} | R$ ${Number(prod.valor||0).toFixed(2)} | Cor: ${prod.cor || '-'} | Detalhes: ${prod.detalhes || '-'}</li>`;
+            });
+            produtosHtml += `</ul></div>`;
+        }
+
         html += `
         <div class="linha-proposta ${statusClasse}">
             <div class="flex justify-between items-start mb-3">
@@ -309,6 +363,7 @@ async function carregarPropostas() {
                         <p><i class="fab fa-whatsapp"></i> WhatsApp: ${p.whatsapp || 'Não informado'}</p>
                         <p><i class="fas fa-map-marker-alt"></i> Endereço: ${p.endereco || 'Não informado'}</p>
                     </div>
+                    ${produtosHtml}
                     <p class="mt-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>${q}x:</strong> R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
                     <p class="mt-1"><span class="indicador-status"><span class="luz-status ${luzStatus}"></span> ${p.status} | ${p.entrada_paga?'✅ Entrada Paga':'⏳ Aguardando Entrada'}</span></p>
                 </div>
@@ -422,6 +477,8 @@ function enviarCobranca(nome,dt,valor,numero) {
 function abrirNovo() { 
     const form = document.getElementById('formNovo');
     form.classList.add('ativa'); 
+    document.getElementById('listaProdutosNovo').innerHTML = '';
+    adicionarLinhaProduto('Novo');
     atualizarCalculo(form); 
 }
 function fecharNovo() { document.getElementById('formNovo').classList.remove('ativa'); }
@@ -434,6 +491,7 @@ async function salvarNovo() {
         whatsapp: form.querySelector('#whatsapp').value.trim(),
         cep: form.querySelector('#cep').value.trim(),
         endereco: form.querySelector('#endereco').value.trim(),
+        produtos: coletarProdutos('listaProdutosNovo'),
         valor_desejado: Number(form.querySelector('#valor_desejado').value)||0,
         valor_entrada: Number(form.querySelector('#valor_entrada').value)||0,
         juros_mensal: Number(form.querySelector('#juros_mensal').value)||5,
@@ -472,6 +530,15 @@ async function abrirEdicao(id) {
             <div><span class="label-campo">📱 WhatsApp</span><input type="text" id="edit_whatsapp_${p.id}" value="${p.whatsapp || ''}" class="campo"></div>
             <div><span class="label-campo">🏠 CEP</span><input type="text" id="edit_cep_${p.id}" value="${p.cep || ''}" class="campo"></div>
             <div class="md:col-span-2"><span class="label-campo">📍 Endereço</span><input type="text" id="edit_endereco_${p.id}" value="${p.endereco || ''}" class="campo"></div>
+            
+            <div class="md:col-span-2">
+                <span class="label-campo">🛍️ Produtos / Mercadorias</span>
+                <div class="bloco-produtos-admin">
+                    <div id="listaProdutosEdit_${p.id}"></div>
+                    <button type="button" onclick="adicionarLinhaProduto('Edit_${p.id}')" class="botao botao-primario mt-2"><i class="fas fa-plus"></i> Adicionar Produto</button>
+                </div>
+            </div>
+
             <div><span class="label-campo">💵 Valor Total da Compra</span><input type="number" id="edit_valor_${p.id}" value="${p.valor_desejado || 0}" class="campo"></div>
             <div><span class="label-campo">💸 Valor da Entrada</span><input type="number" id="edit_entrada_${p.id}" value="${p.valor_entrada || 0}" class="campo"></div>
             <div><span class="label-campo">📊 Juros Mensal (%)</span><input type="number" id="edit_juros_${p.id}" value="${p.juros_mensal || 5}" class="campo"></div>
@@ -488,6 +555,13 @@ async function abrirEdicao(id) {
         </div>
     `;
     containerEdicao.classList.add('ativa');
+
+    // Preenche os produtos existentes na edição
+    if(p.produtos && p.produtos.length > 0) {
+        p.produtos.forEach(prod => adicionarLinhaProduto(`Edit_${p.id}`, prod));
+    } else {
+        adicionarLinhaProduto(`Edit_${p.id}`);
+    }
 }
 
 async function salvarEdicao(id) {
@@ -498,6 +572,7 @@ async function salvarEdicao(id) {
         whatsapp: container.querySelector(`#edit_whatsapp_${id}`).value.trim(),
         cep: container.querySelector(`#edit_cep_${id}`).value.trim(),
         endereco: container.querySelector(`#edit_endereco_${id}`).value.trim(),
+        produtos: coletarProdutos(`listaProdutosEdit_${id}`),
         valor_desejado: Number(container.querySelector(`#edit_valor_${id}`).value) || 0,
         valor_entrada: Number(container.querySelector(`#edit_entrada_${id}`).value) || 0,
         juros_mensal: Number(container.querySelector(`#edit_juros_${id}`).value) || 0,
