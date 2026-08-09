@@ -60,12 +60,10 @@
         .item-parcela { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border-bottom:1px solid var(--borda); font-size:13px; }
         .item-parcela:last-child { border-bottom:none; }
 
-        /* MELHORIA DO VISUAL DOS PRODUTOS (Espaçoso e Limpo) */
-        .bloco-produtos-admin { background: #FFFFFF; border: 1px solid var(--borda); border-radius: 10px; padding: 16px; margin-bottom: 12px; }
-        .item-produto-box { background: #F8FAFC; border: 1px solid var(--borda); border-radius: 10px; padding: 16px; margin-bottom: 14px; position: relative; box-shadow: 0 2px 5px rgba(0,0,0,0.02); }
-        .grid-produto { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 2fr auto; gap: 12px; align-items: end; }
-        @media(max-width: 1024px) { .grid-produto { grid-template-columns: 1fr 1fr; } }
-        @media(max-width: 600px) { .grid-produto { grid-template-columns: 1fr; } }
+        /* NOVO DESIGN LINHA DE PRODUTOS COMPACTA */
+        .bloco-produtos-admin { background: #FFFFFF; border: 1px solid var(--borda); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+        .item-produto-linha { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; background: #F8FAFC; padding: 8px; border-radius: 8px; border: 1px solid var(--borda); }
+        .item-produto-linha input { margin-bottom: 0 !important; }
 
         .prazo-entrega { background:#FFFBEB; border:2px solid var(--alerta); border-radius:8px; padding:12px 16px; margin:10px 0; font-size:15px; font-weight:700; color:#92400E; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
         .prazo-entrega.concluido { background:#ECFDF5; border-color:var(--sucesso); color:#065F46; }
@@ -141,7 +139,7 @@
                 </div>
             </div>
 
-            <div><span class="label-campo">💵 Valor Total da Compra</span><input type="number" id="valor_desejado" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+            <div><span class="label-campo">💵 Valor Total da Compra (Soma automática)</span><input type="number" id="valor_desejado" class="campo" readonly style="background:#E2E8F0; font-weight:bold;" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">💸 Valor da Entrada</span><input type="number" id="valor_entrada" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">📊 Juros Mensal (%)</span><input type="number" id="juros_mensal" value="5" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">🧾 Quantidade de Parcelas</span><input type="number" id="quantidade_parcelas" min="1" max="48" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
@@ -224,59 +222,58 @@ function adicionarLinhaProduto(sufixo, produto = {}) {
     const lista = document.getElementById(`listaProdutos${sufixo}`);
     if(!lista) return;
     const div = document.createElement('div');
-    div.className = 'item-produto-box';
+    div.className = 'item-produto-linha';
     div.innerHTML = `
-        <div class="grid-produto">
-            <div>
-                <span class="label-campo">📦 Nome do Produto</span>
-                <input type="text" placeholder="Ex: Sofá 3 Lugares" value="${produto.nome || ''}" class="campo !mb-0 prod-nome">
-            </div>
-            <div>
-                <span class="label-campo">🔢 Qtd</span>
-                <input type="number" placeholder="1" value="${produto.qtd || 1}" min="1" class="campo !mb-0 prod-qtd">
-            </div>
-            <div>
-                <span class="label-campo">💵 Valor Unit.</span>
-                <input type="number" placeholder="0.00" value="${produto.valor || ''}" step="0.01" class="campo !mb-0 prod-valor">
-            </div>
-            <div>
-                <span class="label-campo">🎨 Cor</span>
-                <input type="text" placeholder="Ex: Marrom" value="${produto.cor || ''}" class="campo !mb-0 prod-cor">
-            </div>
-            <div>
-                <span class="label-campo">📝 Detalhes</span>
-                <input type="text" placeholder="Ex: Suede" value="${produto.detalhes || ''}" class="campo !mb-0 prod-detalhes">
-            </div>
-            <div>
-                <button type="button" onclick="this.closest('.item-produto-box').remove()" class="botao botao-perigo" style="height: 42px; width: 100%; display: flex; align-items: center; justify-content: center;"><i class="fas fa-trash"></i></button>
-            </div>
-        </div>
+        <input type="text" placeholder="Nome do Produto" value="${produto.nome || ''}" class="campo prod-nome" style="flex: 2;">
+        <input type="number" placeholder="Qtd" value="${produto.qtd || 1}" min="1" class="campo prod-qtd" style="width: 70px;" oninput="recalcularValorTotal(this)">
+        <input type="number" placeholder="Valor Unit. R$" value="${produto.valor || ''}" step="0.01" class="campo prod-valor" style="width: 120px;" oninput="recalcularValorTotal(this)">
+        <input type="text" placeholder="Cor" value="${produto.cor || ''}" class="campo prod-cor" style="width: 100px;">
+        <input type="text" placeholder="Detalhes" value="${produto.detalhes || ''}" class="campo prod-detalhes" style="flex: 1.5;">
+        <button type="button" onclick="this.closest('.item-produto-linha').remove(); recalcularValorTotal(this);" class="botao botao-perigo" style="height: 38px; width: 42px; display: flex; align-items: center; justify-content: center;"><i class="fas fa-trash"></i></button>
     `;
     lista.appendChild(div);
+    recalcularValorTotal(div);
+}
+
+function recalcularValorTotal(elemento) {
+    const bloco = elemento.closest('.area-edicao');
+    if(!bloco) return;
+    const linhas = bloco.querySelectorAll('.item-produto-linha');
+    let somaTotal = 0;
+    linhas.forEach(l => {
+        const qtd = Number(l.querySelector('.prod-qtd').value) || 0;
+        const valor = Number(l.querySelector('.prod-valor').value) || 0;
+        somaTotal += (qtd * valor);
+    });
+    const inputValorDesejado = bloco.querySelector('input[id^="valor_desejado"], input[id^="edit_valor_"]');
+    if(inputValorDesejado) {
+        inputValorDesejado.value = somaTotal.toFixed(2);
+    }
+    atualizarCalculo(bloco);
 }
 
 function coletarProdutos(containerId) {
     const container = document.getElementById(containerId);
     if(!container) return [];
-    const caixas = container.querySelectorAll('.item-produto-box');
+    const linhas = container.querySelectorAll('.item-produto-linha');
     const produtos = [];
-    caixas.forEach(c => {
+    linhas.forEach(l => {
         produtos.push({
-            nome: c.querySelector('.prod-nome').value.trim(),
-            qtd: Number(c.querySelector('.prod-qtd').value) || 1,
-            valor: c.querySelector('.prod-valor').value ? Number(c.querySelector('.prod-valor').value) : null,
-            cor: c.querySelector('.prod-cor').value.trim(),
-            detalhes: c.querySelector('.prod-detalhes').value.trim()
+            nome: l.querySelector('.prod-nome').value.trim(),
+            qtd: Number(l.querySelector('.prod-qtd').value) || 1,
+            valor: l.querySelector('.prod-valor').value ? Number(l.querySelector('.prod-valor').value) : null,
+            cor: l.querySelector('.prod-cor').value.trim(),
+            detalhes: l.querySelector('.prod-detalhes').value.trim()
         });
     });
     return produtos;
 }
 
 function atualizarCalculo(bloco) {
-    const v = Number(bloco.querySelector('#valor_desejado').value)||0;
-    const e = Number(bloco.querySelector('#valor_entrada').value)||0;
-    const j = Number(bloco.querySelector('#juros_mensal').value)||0;
-    const q = Number(bloco.querySelector('#quantidade_parcelas').value)||1;
+    const v = Number(bloco.querySelector('input[id^="valor_desejado"], input[id^="edit_valor_"]').value)||0;
+    const e = Number(bloco.querySelector('input[id^="valor_entrada"], input[id^="edit_entrada_"]').value)||0;
+    const j = Number(bloco.querySelector('input[id^="juros_mensal"], input[id^="edit_juros_"]').value)||0;
+    const q = Number(bloco.querySelector('input[id^="quantidade_parcelas"], input[id^="edit_qtd_"]').value)||1;
     const total = v*(1+j/100);
     const saldo = total-e;
     const taxa = j / 100;
@@ -301,9 +298,9 @@ function mostrarOpcoesData(bloco) {
 }
 
 function gerarDatasAutomaticas(bloco) {
-    const qtd = Number(bloco.querySelector('#quantidade_parcelas').value)||1;
+    const qtd = Number(bloco.querySelector('input[id^="quantidade_parcelas"], input[id^="edit_qtd_"]').value)||1;
     const dias = Number(bloco.querySelector('#intervalo_auto')?.value || 30);
-    const lista = bloco.querySelector('#listaDatas');
+    const lista = bloco.querySelector('div[id^="listaDatas"], div[id^="edit_lista_datas_"]');
     if(!lista) return;
     const base = new Date(); base.setDate(base.getDate()+dias);
     let html=''; for(let i=0;i<qtd;i++){ const d = new Date(base); d.setDate(d.getDate()+(i*dias)); html += `<input type="date" name="data_parcela" value="${d.toISOString().split('T')[0]}" class="campo !p-2 text-sm">`; }
@@ -311,8 +308,8 @@ function gerarDatasAutomaticas(bloco) {
 }
 
 function criarCamposDatas(bloco) {
-    const qtd = Number(bloco.querySelector('#quantidade_parcelas').value)||1;
-    const lista = bloco.querySelector('#listaDatas');
+    const qtd = Number(bloco.querySelector('input[id^="quantidade_parcelas"], input[id^="edit_qtd_"]').value)||1;
+    const lista = bloco.querySelector('div[id^="listaDatas"], div[id^="edit_lista_datas_"]');
     if(!lista) return;
     let html=''; for(let i=0;i<qtd;i++) html += `<input type="date" name="data_parcela" class="campo !p-2 text-sm">`;
     lista.innerHTML = html;
@@ -579,10 +576,10 @@ async function abrirEdicao(id) {
                 </div>
             </div>
 
-            <div><span class="label-campo">💵 Valor Total da Compra</span><input type="number" id="edit_valor_${p.id}" value="${p.valor_desejado || 0}" class="campo"></div>
-            <div><span class="label-campo">💸 Valor da Entrada</span><input type="number" id="edit_entrada_${p.id}" value="${p.valor_entrada || 0}" class="campo"></div>
-            <div><span class="label-campo">📊 Juros Mensal (%)</span><input type="number" id="edit_juros_${p.id}" value="${p.juros_mensal || 5}" class="campo"></div>
-            <div><span class="label-campo">🧾 Quantidade de Parcelas</span><input type="number" id="edit_qtd_${p.id}" value="${p.quantidade_parcelas || 1}" class="campo"></div>
+            <div><span class="label-campo">💵 Valor Total da Compra (Soma automática)</span><input type="number" id="edit_valor_${p.id}" value="${p.valor_desejado || 0}" class="campo" readonly style="background:#E2E8F0; font-weight:bold;"></div>
+            <div><span class="label-campo">💸 Valor da Entrada</span><input type="number" id="edit_entrada_${p.id}" value="${p.valor_entrada || 0}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+            <div><span class="label-campo">📊 Juros Mensal (%)</span><input type="number" id="edit_juros_${p.id}" value="${p.juros_mensal || 5}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+            <div><span class="label-campo">🧾 Quantidade de Parcelas</span><input type="number" id="edit_qtd_${p.id}" value="${p.quantidade_parcelas || 1}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">🚚 Prazo de Entrega (dias úteis)</span><input type="number" id="edit_dias_${p.id}" value="${p.dias_entrega || 7}" class="campo"></div>
             <div class="md:col-span-2">
                 <span class="label-campo">📅 Datas das Parcelas</span>
