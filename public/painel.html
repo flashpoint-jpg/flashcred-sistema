@@ -133,18 +133,14 @@
             <div><span class="label-campo">🚚 Prazo de Entrega (dias úteis)</span><input type="number" id="dias_entrega" value="7" class="campo"></div>
             <div class="md:col-span-2">
                 <div class="titulo-bloco">📅 Datas de Vencimento</div>
-                <div class="tipo-data">
-                    <label class="item-tipo"><input type="radio" name="tipo_data" value="automatico" checked onchange="mostrarOpcoesData(this.closest('.area-edicao'))"> ✅ Automático</label>
-                    <label class="item-tipo"><input type="radio" name="tipo_data" value="manual" onchange="mostrarOpcoesData(this.closest('.area-edicao'))"> ✏️ Manual</label>
-                </div>
-                <div id="opcoesData" class="pl-4">
+                <div class="mb-3">
                     <select id="intervalo_auto" class="campo !w-auto" onchange="gerarDatasAutomaticas(this.closest('.area-edicao'))">
-                        <option value="30">📅 A cada 30 dias</option>
-                        <option value="15">📅 A cada 15 dias</option>
-                        <option value="7">📅 A cada 7 dias</option>
+                        <option value="30">📅 Vencimentos a cada 30 dias</option>
+                        <option value="15">📅 Vencimentos a cada 15 dias</option>
+                        <option value="7">📅 Vencimentos a cada 7 dias</option>
                     </select>
-                    <div id="listaDatas" class="lista-datas"></div>
                 </div>
+                <div id="listaDatas" class="lista-datas"></div>
             </div>
         </div>
         <div class="resumo-valores" id="resumoNovo"></div>
@@ -218,36 +214,16 @@ function atualizarCalculo(bloco) {
     const res = bloco.querySelector('.resumo-valores');
     if(res) res.innerHTML = `💵 Total: R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | 📉 Saldo: R$ ${saldo.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | 🧾 ${q}x de R$ ${parcela.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
     
-    const radioAuto = bloco.querySelector('input[name="tipo_data"]:checked');
-    if(radioAuto && radioAuto.value === 'automatico') {
-        gerarDatasAutomaticas(bloco);
-    } else {
-        criarCamposDatas(bloco);
-    }
-}
-
-function mostrarOpcoesData(bloco) {
-    const tipo = bloco.querySelector('input[name="tipo_data"]:checked').value;
-    const selectIntervalo = bloco.querySelector('#intervalo_auto');
-    if(selectIntervalo) selectIntervalo.style.display = tipo==='automatico'?'block':'none';
-    tipo==='automatico' ? gerarDatasAutomaticas(bloco) : criarCamposDatas(bloco);
+    gerarDatasAutomaticas(bloco);
 }
 
 function gerarDatasAutomaticas(bloco) {
     const qtd = Number(bloco.querySelector('input[id^="quantidade_parcelas"], input[id^="edit_qtd_"]').value)||1;
-    const dias = Number(bloco.querySelector('#intervalo_auto')?.value || 30);
+    const dias = Number(bloco.querySelector('#intervalo_auto, select[id^="edit_intervalo_"]')?.value || 30);
     const lista = bloco.querySelector('div[id^="listaDatas"], div[id^="edit_lista_datas_"]');
     if(!lista) return;
     const base = new Date(); base.setDate(base.getDate()+dias);
     let html=''; for(let i=0;i<qtd;i++){ const d = new Date(base); d.setDate(d.getDate()+(i*dias)); html += `<input type="date" name="data_parcela" value="${d.toISOString().split('T')[0]}" class="campo !p-2 text-sm">`; }
-    lista.innerHTML = html;
-}
-
-function criarCamposDatas(bloco) {
-    const qtd = Number(bloco.querySelector('input[id^="quantidade_parcelas"], input[id^="edit_qtd_"]').value)||1;
-    const lista = bloco.querySelector('div[id^="listaDatas"], div[id^="edit_lista_datas_"]');
-    if(!lista) return;
-    let html=''; for(let i=0;i<qtd;i++) html += `<input type="date" name="data_parcela" class="campo !p-2 text-sm">`;
     lista.innerHTML = html;
 }
 
@@ -281,260 +257,278 @@ async function carregarPropostas() {
         });
     });
 
-    document.getElementById('totalRecebido').innerText = `R$ ${totalRecebido.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
-    document.getElementById('totalReceber').innerText = `R$ ${totalReceber.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    document.getElementById('totalRecebido').innerText = `R$ ${totalRecebido.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    document.getElementById('totalReceber').innerText = `R$ ${totalReceber.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
     document.getElementById('qtdPagas').innerText = qtdPagas;
-    document.getElementById('qtdPendentes').innerText = qtdPendentes;
     document.getElementById('qtdVencidas').innerText = totalVencidas;
     document.getElementById('qtdProximas').innerText = totalProximas;
+    document.getElementById('qtdPendentes').innerText = qtdPendentes;
     document.getElementById('contadorNotif').innerText = novas;
 
-    let html='';
-    data.forEach(p=>{
-        const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||0);
-        const total=v*(1+j/100);
-        const saldo = total - e;
-        const taxa = j / 100;
-        const parc = q>0 ? (taxa > 0 ? saldo * (Math.pow(1 + taxa, q) * taxa) / (Math.pow(1 + taxa, q) - 1) : saldo / q) : 0;
-        const statusClasse = p.status==='Aprovada'?'destaque-alerta':'';
-        const luzStatus = p.status==='Aprovada'?'luz-amarela':(p.entrada_paga?'luz-verde':'luz-verde-fixa');
-        
-        const progressoEntrega = calcularProgressoEntrega(p.dias_entrega||7, p.entrega_concluida);
+    let html = '';
+    data.forEach(i => {
+        const v = Number(i.valor_desejado||0), e = Number(i.valor_entrada||0), j = Number(i.juros_mensal||5), q = Number(i.quantidade_parcelas||0);
+        const total = v*(1+j/100);
+        const saldo = total-e;
+        const taxa = j/100;
+        const valorParcela = q===1 ? total : (q>0 && taxa>0 ? saldo * (Math.pow(1+taxa, q)*taxa)/(Math.pow(1+taxa, q)-1) : saldo/q);
+        const datas = i.datas_parcelas || [];
+        const pagas = Number(i.parcelas_pagas||0);
+
+        let statusGeralClasse = '';
+        datas.forEach((dt, idx) => {
+            if(idx >= pagas) {
+                const a = analisarVencimento(dt);
+                if(a.status === 'vencida' || a.status === 'hoje') statusGeralClasse = 'destaque-perigo';
+                else if(a.status === 'proximo' && statusGeralClasse !== 'destaque-perigo') statusGeralClasse = 'destaque-alerta';
+            }
+        });
+
+        const infoEntrega = calcularProgressoEntrega(i.dias_entrega || 7, i.entrega_concluida);
 
         html += `
-        <div class="linha-proposta ${statusClasse}">
-            <div class="flex justify-between items-start mb-3">
+        <div class="linha-proposta ${statusGeralClasse}" id="proposta_${i.id}">
+            <div class="flex justify-between items-start flex-wrap gap-4">
                 <div>
-                    <h3 class="font-bold text-lg">${p.nome}</h3>
+                    <h3 class="text-lg font-bold text-primary">${i.nome}</h3>
                     <div class="dados-cliente">
-                        <p><i class="fas fa-id-card"></i> CPF: ${p.cpf ? p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4') : ''}</p>
-                        <p><i class="fab fa-whatsapp"></i> WhatsApp: ${p.whatsapp || 'Não informado'}</p>
-                        <p><i class="fas fa-map-marker-alt"></i> Endereço: ${p.endereco || 'Não informado'}</p>
+                        <p><strong>CPF:</strong> ${i.cpf} | <strong>WhatsApp:</strong> ${i.whatsapp||'Não informado'}</p>
+                        <p><strong>Endereço:</strong> ${i.endereco||'Não informado'} (CEP: ${i.cep||'-'})</p>
+                        <p><strong>Desejado:</strong> R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2})} | <strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR',{minimumFractionDigits:2})} | <strong>Total:</strong> R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                        <p><strong>Status:</strong> <span style="font-weight:bold; color:${i.status==='Aprovada'?'var(--sucesso)':'var(--alerta)'}">${i.status}</span> | <strong>Entrada Paga:</strong> ${i.entrada_paga?'✅ Sim':'❌ Não'} | <strong>Contrato Assinado:</strong> ${i.contrato_assinado?'✅ Sim':'❌ Não'}</p>
                     </div>
-                    <p class="mt-3"><strong>Valor Base:</strong> R$ ${v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>Total c/ Juros:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>${q}x:</strong> R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
-                    <p class="mt-1"><span class="indicador-status"><span class="luz-status ${luzStatus}"></span> ${p.status} | ${p.entrada_paga?'✅ Entrada Paga':'⏳ Aguardando Entrada'}</span></p>
                 </div>
                 <div class="botoes-acao">
-                    ${p.status!=='Aprovada'?`<button onclick="aprovar('${p.id}')" class="botao botao-sucesso">✅ Aprovar</button>`:''}
-                    ${!p.entrada_paga?`<button onclick="marcarEntradaPaga('${p.id}')" class="botao botao-alerta">💵 Marcar Entrada Paga</button>`:''}
-                    <button onclick="enviarLink('${p.id}','${p.cpf}')" class="botao botao-wpp">📤 Enviar Link</button>
-                    <button onclick="gerarPDF('${p.id}')" class="botao botao-pdf">📄 Gerar PDF</button>
-                    <button onclick="abrirEdicao('${p.id}')" class="botao botao-primario">✏️ Editar</button>
-                    <button onclick="excluir('${p.id}')" class="botao botao-perigo">🗑️ Excluir</button>
+                    ${i.status==='Nova'?`<button onclick="aprovarProposta('${i.id}')" class="botao botao-sucesso"><i class="fas fa-check"></i> Aprovar</button>`:''}
+                    <button onclick="toggleEditar('${i.id}')" class="botao botao-primario"><i class="fas fa-edit"></i> Editar</button>
+                    <button onclick="excluirProposta('${i.id}')" class="botao botao-perigo"><i class="fas fa-trash"></i> Excluir</button>
+                    <button onclick="copiarLink('${i.cpf}')" class="botao botao-cinza"><i class="fas fa-link"></i> Link</button>
+                    <button onclick="enviarWpp('${i.whatsapp}','${i.nome}', '${i.cpf}')" class="botao botao-wpp"><i class="fab fa-whatsapp"></i> Wpp</button>
                 </div>
             </div>
 
-            <div class="prazo-entrega ${progressoEntrega.perc>=100?'concluido':''}">
+            <div class="prazo-entrega ${infoEntrega.concluido?'concluido':''}">
                 <div class="conteudo-prazo">
-                    <div class="info-entrega">
-                        <span>🚚 Prazo de Entrega: ${p.dias_entrega||7} dias úteis</span>
-                        <span>${progressoEntrega.perc>=100?'Entrega concluída':`${progressoEntrega.restante} dias úteis restantes`}</span>
+                    <div class="flex justify-between items-center">
+                        <span>🚚 Prazo de Entrega: <strong>${i.dias_entrega||7} dias úteis</strong></span>
+                        <span>${infoEntrega.concluido ? '✅ PROCESSO DE ENTREGA CONCLUÍDO' : `Restam aprox. ${infoEntrega.restante} dias úteis`}</span>
                     </div>
                     <div class="barra-entrega">
+                        <div class="info-entrega"><span>Progresso</span><span>${infoEntrega.perc}%</span></div>
                         <div class="fundo-barra-entrega">
-                            <div class="preenchimento-entrega ${progressoEntrega.perc>=100?'preenchimento-concluido':''}" style="width:${progressoEntrega.perc}%"></div>
+                            <div class="preenchimento-entrega ${infoEntrega.concluido?'preenchimento-concluido':''}" style="width: ${infoEntrega.perc}%"></div>
                         </div>
                     </div>
                 </div>
-                <div>
-                    ${p.entrega_concluida 
-                        ? `<button onclick="alternarEntregaConcluida('${p.id}', false)" class="botao botao-cinza" style="white-space:nowrap;"><i class="fas fa-undo"></i> Reabrir</button>`
-                        : `<button onclick="alternarEntregaConcluida('${p.id}', true)" class="botao botao-sucesso" style="white-space:nowrap;"><i class="fas fa-check-circle"></i> Concluir Entrega</button>`
-                    }
-                </div>
+                <button onclick="alternarEntregaConcluida('${i.id}', ${!i.entrega_concluida})" class="botao ${infoEntrega.concluido?'botao-alerta':'botao-sucesso'} !text-xs !py-1">
+                    ${infoEntrega.concluido?'↩️ Reabrir Entrega':'🏁 Concluir Entrega'}
+                </button>
             </div>
 
             <div class="bloco-parcelas">
-                <div class="cabecalho-cronograma" onclick="this.nextElementSibling.classList.toggle('aberto')">
-                    <span>📅 Cronograma de Parcelas</span>
-                    <i class="fas fa-chevron-down"></i>
+                <div class="cabecalho-cronograma" onclick="toggleCronograma('${i.id}')">
+                    <span>📅 Cronograma de Parcelas (${pagas}/${q} pagas)</span>
+                    <i class="fas fa-chevron-down" id="seta_cron_${i.id}"></i>
                 </div>
-                <div class="corpo-cronograma">
-                    ${(p.datas_parcelas||[]).map((dt,idx)=>{
-                        const a = analisarVencimento(dt);
-                        const pg = idx+1 <= (p.parcelas_pagas||0);
-                        return `<div class="item-parcela">
-                            <div><span class="luz-status ${pg?'luz-verde-fixa':a.luz}"></span>${idx+1}ª Parcela - Venc: ${dt ? new Date(dt + 'T00:00:00').toLocaleDateString('pt-BR') : ''} - R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
-                            <div class="botoes-acao">
-                                ${pg?'<span class="text-sucesso font-bold">PAGA</span>':`<button onclick="enviarCobranca('${p.nome}','${dt}','${parc}','${p.whatsapp}')" class="botao botao-wpp botao-pequeno">Cobrar</button>`}
+                <div class="corpo-cronograma" id="cron_${i.id}">
+                    ${datas.map((dt, idx) => {
+                        const num = idx + 1;
+                        const pago = num <= pagas;
+                        const analise = analisarVencimento(dt);
+                        return `
+                        <div class="item-parcela">
+                            <div class="indicador-status">
+                                <span class="luz-status ${pago?'luz-verde-fixa':analise.luz}"></span>
+                                <strong>${num}ª Parcela:</strong> R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})} 
+                                <span class="text-slate-500 ml-2">Venc: ${new Date(dt+'T00:00:00').toLocaleDateString('pt-BR')} (${analise.texto})</span>
+                                ${analise.aviso}
                             </div>
-                        </div>${a.aviso}`;
+                            <div>
+                                <button onclick="marcarParcela('${i.id}', ${num}, ${!pago})" class="botao ${pago?'botao-alerta':'botao-sucesso'} !py-1 !px-3 !text-xs">
+                                    ${pago?'↩️ Marcar Aberta':'✅ Marcar Paga'}
+                                </button>
+                            </div>
+                        </div>`;
                     }).join('')}
                 </div>
             </div>
 
-            <div id="editar-${p.id}" class="area-edicao"></div>
+            <div id="edicao_${i.id}" class="area-edicao">
+                <h3 class="titulo-bloco">✏️ Editar Proposta</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div><span class="label-campo">👤 Nome</span><input type="text" id="edit_nome_${i.id}" value="${i.nome||''}" class="campo"></div>
+                    <div><span class="label-campo">📄 CPF</span><input type="text" id="edit_cpf_${i.id}" value="${i.cpf||''}" class="campo"></div>
+                    <div><span class="label-campo">📱 WhatsApp</span><input type="text" id="edit_whatsapp_${i.id}" value="${i.whatsapp||''}" class="campo"></div>
+                    <div><span class="label-campo">🏠 CEP</span><input type="text" id="edit_cep_${i.id}" value="${i.cep||''}" class="campo"></div>
+                    <div class="md:col-span-2"><span class="label-campo">📍 Endereço</span><input type="text" id="edit_endereco_${i.id}" value="${i.endereco||''}" class="campo"></div>
+                    
+                    <div><span class="label-campo">💵 Valor Desejado</span><input type="number" id="edit_valor_${i.id}" value="${v}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+                    <div><span class="label-campo">💸 Valor Entrada</span><input type="number" id="edit_entrada_${i.id}" value="${e}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+                    <div><span class="label-campo">📊 Juros (%)</span><input type="number" id="edit_juros_${i.id}" value="${j}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+                    <div><span class="label-campo">🧾 Qtd Parcelas</span><input type="number" id="edit_qtd_${i.id}" value="${q}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+                    <div><span class="label-campo">🚚 Dias Entrega</span><input type="number" id="edit_dias_${i.id}" value="${i.dias_entrega||7}" class="campo"></div>
+                    <div><span class="label-campo">🧾 Parcelas Pagas</span><input type="number" id="edit_pagas_${i.id}" value="${pagas}" class="campo" min="0" max="${q}"></div>
+                    <div class="flex items-center gap-2"><input type="checkbox" id="edit_entrada_paga_${i.id}" ${i.entrada_paga?'checked':''}><span class="label-campo !mb-0">Entrada Paga?</span></div>
+                    <div class="flex items-center gap-2"><input type="checkbox" id="edit_contrato_assinado_${i.id}" ${i.contrato_assinado?'checked':''}><span class="label-campo !mb-0">Contrato Assinado?</span></div>
+                    <div class="md:col-span-2">
+                        <div class="titulo-bloco">📅 Datas de Vencimento</div>
+                        <div class="mb-3">
+                            <select id="edit_intervalo_${i.id}" class="campo !w-auto" onchange="gerarDatasAutomaticas(this.closest('.area-edicao'))">
+                                <option value="30">📅 Vencimentos a cada 30 dias</option>
+                                <option value="15">📅 Vencimentos a cada 15 dias</option>
+                                <option value="7">📅 Vencimentos a cada 7 dias</option>
+                            </select>
+                        </div>
+                        <div id="edit_lista_datas_${i.id}" class="lista-datas">
+                            ${datas.map(dt => `<input type="date" name="data_parcela" value="${dt}" class="campo !p-2 text-sm">`).join('')}
+                        </div>
+                    </div>
+                </div>
+                <div class="resumo-valores" id="edit_resumo_${i.id}"></div>
+                <div class="flex gap-3 mt-4">
+                    <button onclick="salvarEdicao('${i.id}')" class="botao botao-sucesso">💾 Salvar Alterações</button>
+                    <button onclick="toggleEditar('${i.id}')" class="botao botao-cinza">❌ Cancelar</button>
+                </div>
+            </div>
         </div>`;
     });
+
     document.getElementById('listaPropostas').innerHTML = html;
 }
 
-async function alternarEntregaConcluida(id, status) {
-    await supabase.from('propostas').update({ entrega_concluida: status }).eq('id', id);
-    carregarPropostas();
+function abrirNovo() {
+    const f = document.getElementById('formNovo');
+    f.classList.add('ativa');
+    document.getElementById('quantidade_parcelas').value = 12;
+    document.getElementById('valor_desejado').value = 1500;
+    document.getElementById('valor_entrada').value = 150;
+    document.getElementById('intervalo_auto').value = 30;
+    atualizarCalculo(f);
 }
 
-async function marcarEntradaPaga(id) {
-    if(!confirm('Confirmar que a entrada foi paga manualmente?')) return;
-    await supabase.from('propostas').update({entrada_paga: true}).eq('id', id);
-    carregarPropostas();
-}
-
-async function gerarPDF(id) {
-    const {data:p} = await supabase.from('propostas').select('*').eq('id',id).single();
-    if(!p) return;
-
-    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||0);
-    const total=v*(1+j/100);
-    const saldo = total - e;
-    const taxa = j / 100;
-    const parc = q>0 ? (taxa > 0 ? saldo * (Math.pow(1 + taxa, q) * taxa) / (Math.pow(1 + taxa, q) - 1) : saldo / q) : 0;
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('p', 'mm', 'a4');
-    doc.setFontSize(18); doc.setTextColor(10,36,99);
-    doc.text('PROPOSTA DE CRÉDITO | FlashCred', 105, 20, {align:'center'});
-    doc.setFontSize(12); doc.setTextColor(60,60,60);
-    doc.text(`Cliente: ${p.nome}`, 20, 40);
-    doc.text(`CPF: ${p.cpf ? p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4') : ''}`, 20, 48);
-    doc.text(`WhatsApp: ${p.whatsapp||'-'}`, 20, 56);
-    doc.text(`Endereço: ${p.endereco||'-'}`, 20, 64);
-    doc.text(`Valor Base: R$ ${v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 80);
-    doc.text(`Valor Total c/ Juros: R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 88);
-    doc.text(`Entrada: R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 96);
-    doc.text(`Parcelas: ${q}x de R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 104);
-    doc.text(`Juros: ${j}% ao mês`, 20, 112);
-    doc.text(`Prazo Entrega: ${p.dias_entrega||7} dias úteis`, 20, 120);
-    doc.text(`Status: ${p.status}`, 20, 128);
-    doc.text('Muzambinho, MG', 20, 145);
-    doc.setFontSize(10); doc.setTextColor(100,100,100);
-    doc.text('FlashCred - Crédito e Financiamento', 105, 270, {align:'center'});
-    doc.save(`Proposta_${p.nome.replace(/\s/g,'_')}.pdf`);
-}
-
-async function aprovar(id) {
-    await supabase.from('propostas').update({status:'Aprovada'}).eq('id',id);
-    carregarPropostas();
-}
-
-async function excluir(id) {
-    if(!confirm('Tem certeza que deseja excluir?')) return;
-    await supabase.from('propostas').delete().eq('id',id);
-    carregarPropostas();
-}
-
-async function enviarLink(id,cpf) {
-    const {data:p} = await supabase.from('propostas').select('*').eq('id',id).single();
-    const link = `${LINK_CONSULTA}?cpf=${cpf}`;
-    const texto = encodeURIComponent(`Olá ${p?.nome||'cliente'}! Sua proposta foi analisada. Acesse para conferir e finalizar: ${link}`);
-    window.open(`https://wa.me/${p?.whatsapp||NUMERO_SUPORTE}?text=${texto}`);
-}
-
-function enviarCobranca(nome,dt,valor,numero) {
-    const texto = encodeURIComponent(`Olá ${nome}! Lembrete de pagamento: parcela vence em ${dt ? new Date(dt + 'T00:00:00').toLocaleDateString('pt-BR') : ''} no valor de R$ ${Number(valor).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}. Acesse sua proposta para pagar.`);
-    window.open(`https://wa.me/${numero||NUMERO_SUPORTE}?text=${texto}`);
-}
-
-function abrirNovo() { 
-    const form = document.getElementById('formNovo');
-    form.classList.add('ativa'); 
-    atualizarCalculo(form); 
-}
 function fecharNovo() { document.getElementById('formNovo').classList.remove('ativa'); }
 
 async function salvarNovo() {
-    const form = document.getElementById('formNovo');
-    const dados = {
-        nome: form.querySelector('#nome').value.trim(),
-        cpf: form.querySelector('#cpf').value.trim(),
-        whatsapp: form.querySelector('#whatsapp').value.trim(),
-        cep: form.querySelector('#cep').value.trim(),
-        endereco: form.querySelector('#endereco').value.trim(),
-        valor_desejado: Number(form.querySelector('#valor_desejado').value)||0,
-        valor_entrada: Number(form.querySelector('#valor_entrada').value)||0,
-        juros_mensal: Number(form.querySelector('#juros_mensal').value)||5,
-        quantidade_parcelas: Number(form.querySelector('#quantidade_parcelas').value)||1,
-        dias_entrega: Number(form.querySelector('#dias_entrega').value)||7,
-        datas_parcelas: Array.from(form.querySelectorAll('input[name="data_parcela"]')).map(i=>i.value),
-        status: 'Nova', entrada_paga: false, contrato_assinado: false, parcelas_pagas: 0, entrega_concluida: false
-    };
-    await supabase.from('propostas').insert([dados]);
-    fecharNovo(); 
+    const nome = document.getElementById('nome').value.trim();
+    const cpf = document.getElementById('cpf').value.trim();
+    const whatsapp = document.getElementById('whatsapp').value.trim();
+    const cep = document.getElementById('cep').value.trim();
+    const endereco = document.getElementById('endereco').value.trim();
+    const valor_desejado = Number(document.getElementById('valor_desejado').value)||0;
+    const valor_entrada = Number(document.getElementById('valor_entrada').value)||0;
+    const juros_mensal = Number(document.getElementById('juros_mensal').value)||5;
+    const quantidade_parcelas = Number(document.getElementById('quantidade_parcelas').value)||1;
+    const dias_entrega = Number(document.getElementById('dias_entrega').value)||7;
+
+    const inputsDatas = document.querySelectorAll('#listaDatas input[name="data_parcela"]');
+    const datas_parcelas = Array.from(inputsDatas).map(inp => inp.value).filter(Boolean);
+
+    if(!nome || !cpf) return alert('Preencha pelo menos Nome e CPF!');
+
+    const {error} = await supabase.from('propostas').insert([{
+        nome, cpf, whatsapp, cep, endereco, valor_desejado, valor_entrada, juros_mensal,
+        quantidade_parcelas, dias_entrega, datas_parcelas, status:'Nova', entrada_paga:false, contrato_assinado:false, parcelas_pagas:0
+    }]);
+
+    if(error) return alert('Erro ao salvar: '+error.message);
+    fecharNovo();
+    carregarPropostas();
+    alert('Proposta cadastrada com sucesso!');
+}
+
+async function aprovarProposta(id) {
+    const {error} = await supabase.from('propostas').update({status:'Aprovada'}).eq('id', id);
+    if(error) return alert('Erro ao aprovar: '+error.message);
     carregarPropostas();
 }
 
-async function abrirEdicao(id) {
-    const containerEdicao = document.getElementById(`editar-${id}`);
-    if(containerEdicao.classList.contains('ativa')) {
-        containerEdicao.classList.remove('ativa');
-        containerEdicao.innerHTML = '';
-        return;
-    }
+async function excluirProposta(id) {
+    if(!confirm('Tem certeza que deseja excluir esta proposta?')) return;
+    const {error} = await supabase.from('propostas').delete().eq('id', id);
+    if(error) return alert('Erro ao excluir: '+error.message);
+    carregarPropostas();
+}
 
-    const {data:p} = await supabase.from('propostas').select('*').eq('id',id).single();
-    if(!p) return;
+async function marcarParcela(id, numParcela, pagar) {
+    const {data} = await supabase.from('propostas').select('parcelas_pagas, quantidade_parcelas').eq('id', id).single();
+    if(!data) return;
+    let pagas = pagar ? numParcela : numParcela - 1;
+    if(pagas < 0) pagas = 0;
+    if(pagas > data.quantidade_parcelas) pagas = data.quantidade_parcelas;
 
-    let datasHtml = '';
-    const datas = p.datas_parcelas || [];
-    datas.forEach(dt => {
-        datasHtml += `<input type="date" name="data_parcela_edit" value="${dt}" class="campo !p-2 text-sm">`;
-    });
+    const {error} = await supabase.from('propostas').update({parcelas_pagas: pagas}).eq('id', id);
+    if(error) return alert('Erro ao atualizar parcela: '+error.message);
+    carregarPropostas();
+}
 
-    containerEdicao.innerHTML = `
-        <h3 class="titulo-bloco">✏️ Editar Proposta de ${p.nome}</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><span class="label-campo">👤 Nome Completo</span><input type="text" id="edit_nome_${p.id}" value="${p.nome || ''}" class="campo"></div>
-            <div><span class="label-campo">📄 CPF</span><input type="text" id="edit_cpf_${p.id}" value="${p.cpf || ''}" class="campo"></div>
-            <div><span class="label-campo">📱 WhatsApp</span><input type="text" id="edit_whatsapp_${p.id}" value="${p.whatsapp || ''}" class="campo"></div>
-            <div><span class="label-campo">🏠 CEP</span><input type="text" id="edit_cep_${p.id}" value="${p.cep || ''}" class="campo"></div>
-            <div class="md:col-span-2"><span class="label-campo">📍 Endereço</span><input type="text" id="edit_endereco_${p.id}" value="${p.endereco || ''}" class="campo"></div>
-            
-            <div><span class="label-campo">💵 Valor Base / Desejado</span><input type="number" id="edit_valor_${p.id}" value="${p.valor_desejado || 0}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-            <div><span class="label-campo">💸 Valor da Entrada</span><input type="number" id="edit_entrada_${p.id}" value="${p.valor_entrada || 0}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-            <div><span class="label-campo">📊 Juros Mensal (%)</span><input type="number" id="edit_juros_${p.id}" value="${p.juros_mensal || 5}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-            <div><span class="label-campo">🧾 Quantidade de Parcelas</span><input type="number" id="edit_qtd_${p.id}" value="${p.quantidade_parcelas || 1}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-            <div><span class="label-campo">🚚 Prazo de Entrega (dias úteis)</span><input type="number" id="edit_dias_${p.id}" value="${p.dias_entrega || 7}" class="campo"></div>
-            <div class="md:col-span-2">
-                <span class="label-campo">📅 Datas das Parcelas</span>
-                <div class="lista-datas" id="edit_lista_datas_${p.id}">${datasHtml}</div>
-            </div>
-        </div>
-        <div class="resumo-valores" id="resumoEdit_${p.id}"></div>
-        <div class="flex gap-3 mt-4">
-            <button onclick="salvarEdicao('${p.id}')" class="botao botao-sucesso">💾 Salvar Alterações</button>
-            <button onclick="abrirEdicao('${p.id}')" class="botao botao-cinza">❌ Cancelar</button>
-        </div>
-    `;
-    containerEdicao.classList.add('ativa');
-    atualizarCalculo(containerEdicao);
+async function alternarEntregaConcluida(id, status) {
+    const {error} = await supabase.from('propostas').update({entrega_concluida: status}).eq('id', id);
+    if(error) return alert('Erro ao atualizar entrega: '+error.message);
+    carregarPropostas();
+}
+
+function toggleEditar(id) {
+    const e = document.getElementById(`edicao_${id}`);
+    e.classList.toggle('ativa');
+    if(e.classList.contains('ativa')) atualizarCalculo(e);
+}
+
+function toggleCronograma(id) {
+    const c = document.getElementById(`cron_${id}`);
+    const s = document.getElementById(`seta_cron_${id}`);
+    c.classList.toggle('aberto');
+    s.className = c.classList.contains('aberto') ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
 }
 
 async function salvarEdicao(id) {
-    const container = document.getElementById(`editar-${id}`);
-    const novosDados = {
-        nome: container.querySelector(`#edit_nome_${id}`).value.trim(),
-        cpf: container.querySelector(`#edit_cpf_${id}`).value.trim(),
-        whatsapp: container.querySelector(`#edit_whatsapp_${id}`).value.trim(),
-        cep: container.querySelector(`#edit_cep_${id}`).value.trim(),
-        endereco: container.querySelector(`#edit_endereco_${id}`).value.trim(),
-        valor_desejado: Number(container.querySelector(`#edit_valor_${id}`).value) || 0,
-        valor_entrada: Number(container.querySelector(`#edit_entrada_${id}`).value) || 0,
-        juros_mensal: Number(container.querySelector(`#edit_juros_${id}`).value) || 0,
-        quantidade_parcelas: Number(container.querySelector(`#edit_qtd_${id}`).value) || 1,
-        dias_entrega: Number(container.querySelector(`#edit_dias_${id}`).value) || 7,
-        datas_parcelas: Array.from(container.querySelectorAll('input[name="data_parcela_edit"]')).map(i => i.value)
-    };
+    const nome = document.getElementById(`edit_nome_${id}`).value.trim();
+    const cpf = document.getElementById(`edit_cpf_${id}`).value.trim();
+    const whatsapp = document.getElementById(`edit_whatsapp_${id}`).value.trim();
+    const cep = document.getElementById(`edit_cep_${id}`).value.trim();
+    const endereco = document.getElementById(`edit_endereco_${id}`).value.trim();
+    const valor_desejado = Number(document.getElementById(`edit_valor_${id}`).value)||0;
+    const valor_entrada = Number(document.getElementById(`edit_entrada_${id}`).value)||0;
+    const juros_mensal = Number(document.getElementById(`edit_juros_${id}`).value)||5;
+    const quantidade_parcelas = Number(document.getElementById(`edit_qtd_${id}`).value)||1;
+    const dias_entrega = Number(document.getElementById(`edit_dias_${id}`).value)||7;
+    const parcelas_pagas = Number(document.getElementById(`edit_pagas_${id}`).value)||0;
+    const entrada_paga = document.getElementById(`edit_entrada_paga_${id}`).checked;
+    const contrato_assinado = document.getElementById(`edit_contrato_assinado_${id}`).checked;
 
-    await supabase.from('propostas').update(novosDados).eq('id', id);
-    container.classList.remove('ativa');
+    const inputsDatas = document.querySelectorAll(`#edit_lista_datas_${id} input[name="data_parcela"]`);
+    const datas_parcelas = Array.from(inputsDatas).map(inp => inp.value).filter(Boolean);
+
+    const {error} = await supabase.from('propostas').update({
+        nome, cpf, whatsapp, cep, endereco, valor_desejado, valor_entrada, juros_mensal,
+        quantidade_parcelas, dias_entrega, parcelas_pagas, entrada_paga, contrato_assinado, datas_parcelas
+    }).eq('id', id);
+
+    if(error) return alert('Erro ao atualizar: '+error.message);
     carregarPropostas();
+    alert('Alterações salvas com sucesso!');
+}
+
+function copiarLink(cpf) {
+    const url = new URL(LINK_CONSULTA);
+    url.searchParams.set('cpf', cpf);
+    navigator.clipboard.writeText(url.href);
+    alert('Link de consulta copiado para a área de transferência!');
+}
+
+function enviarWpp(tel, nome, cpf) {
+    if(!tel) return alert('Cliente sem número de WhatsApp cadastrado!');
+    const url = new URL(LINK_CONSULTA);
+    url.searchParams.set('cpf', cpf);
+    const texto = encodeURIComponent(`Olá ${nome}, aqui está o link para acompanhar sua proposta e acessar os boletos/Pix na FlashCred: ${url.href}`);
+    window.open(`https://wa.me/55${tel.replace(/\D/g,'')}?text=${texto}`, '_blank');
 }
 
 function ativarTempoReal() {
-    if(inscricaoTempoReal) return;
-    inscricaoTempoReal = supabase.channel('todas_propostas')
-        .on('postgres_changes', {event:'*', schema:'public', table:'propostas'}, ()=>carregarPropostas())
-        .subscribe();
+    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+    inscricaoTempoReal = supabase.channel('mudancas_admin')
+        .on('postgres_changes', {event:'*', schema:'public', table:'propostas'}, () => {
+            carregarPropostas();
+        }).subscribe();
 }
 </script>
 </body>
