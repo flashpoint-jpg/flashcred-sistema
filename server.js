@@ -11,22 +11,21 @@ app.use(express.static('public'));
 
 const MP_TOKEN = process.env.MERCADO_PAGO_TOKEN;
 
-// ✅ ROTA DE TESTE ABSOLUTO
 app.post('/api/gerar-pix', async (req, res) => {
   try {
     const { valor, descricao, referencia } = req.body;
-
-    console.log('====================================');
-    console.log('🔹 TOKEN EXISTE?', !!MP_TOKEN);
     console.log('🔹 VALOR:', valor);
-    console.log('🔹 DESCRICAO:', descricao);
-    console.log('====================================');
+    console.log('🔹 DESCRICAO:', descricao || 'Sem descrição');
+    console.log('🔹 REF:', referencia);
+
+    // ✅ CORRIGIDO: SE DESCRICAO FOR VAZIA, USA TEXTO PADRÃO
+    const textoDescricao = (descricao || 'Pagamento FlashCred').substring(0,40);
 
     const corpo = JSON.stringify({
       transaction_amount: Number(valor),
-      description: descricao.substring(0,40),
+      description: textoDescricao,
       payment_method_id: 'pix',
-      external_reference: referencia,
+      external_reference: referencia || `pag_${Date.now()}`,
       notification_url: 'https://flashcred-sistema.onrender.com/api/webhook-mercadopago',
       payer: { email: 'pagamento@flashcred.com.br' }
     });
@@ -46,35 +45,28 @@ app.post('/api/gerar-pix', async (req, res) => {
       let respostaCrua = '';
       resp.on('data', p => respostaCrua += p);
       resp.on('end', () => {
-        console.log('🔹 RESPOSTA COMPLETA DA MP:', respostaCrua);
+        console.log('🔹 RESPOSTA MP:', respostaCrua);
         const dados = JSON.parse(respostaCrua);
 
-        if(dados.error) {
-          console.error('❌ ERRO DA MP:', dados.error, dados.message);
-          return res.json({ sucesso: false, mensagem: `MP: ${dados.message || dados.error}` });
-        }
+        if(dados.error) return res.json({ sucesso: false, mensagem: dados.message || dados.error });
 
         const qr = dados?.point_of_interaction?.transaction_data?.qr_code;
-        if(!qr) return res.json({ sucesso: false, mensagem: 'Sem QR na resposta' });
+        if(!qr) return res.json({ sucesso: false, mensagem: 'QR Code não encontrado' });
 
         res.json({ sucesso: true, qr_code: qr });
       });
     });
 
-    requisicao.on('error', e => {
-      console.error('❌ ERRO DE CONEXÃO:', e);
-      res.json({ sucesso: false, mensagem: `Rede: ${e.message}` });
-    });
-
+    requisicao.on('error', e => res.json({ sucesso: false, mensagem: e.message }));
     requisicao.write(corpo);
     requisicao.end();
 
   } catch(e) {
-    console.error('❌ ERRO GERAL:', e);
+    console.error('❌ ERRO:', e);
     res.json({ sucesso: false, mensagem: e.message });
   }
 });
 
 app.post('/api/webhook-mercadopago', (req,res)=>res.sendStatus(200));
 
-app.listen(PORTA, ()=>console.log('✅ AGORA VAI MOSTRAR O ERRO REAL!'));
+app.listen(PORTA, ()=>console.log('✅ AGORA VAI DAR CERTO!'));
