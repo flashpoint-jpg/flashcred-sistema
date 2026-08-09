@@ -151,6 +151,53 @@ function calcularDiasUteisRestantes(dataInicio, prazoTotalDias) {
     return restante > 0 ? restante : 0;
 }
 
+// Função para gerar o payload Pix com CRC16 válido pelo padrão BACEN
+function criarPayloadPix(valor, identificador) {
+    const chavePix = "suporte@flashcred.com.br"; // Substitua pela sua chave Pix real se necessário
+    const nomeRecebedor = "FLASHCRED SOLUCOES";
+    const cidadeRecebedor = "SAO PAULO";
+    const txId = identificador || "***";
+
+    function formatField(id, value) {
+        const len = String(value.length).padStart(2, '0');
+        return `${id}${len}${value}`;
+    }
+
+    let merchantAccountInfo = formatField('00', 'br.gov.bcb.pix') + formatField('01', chavePix);
+    let additionalDataField = formatField('05', txId);
+
+    let payload = 
+        formatField('00', '01') +
+        formatField('26', merchantAccountInfo) +
+        formatField('52', '0000') +
+        formatField('53', '986') +
+        formatField('54', valor.toFixed(2)) +
+        formatField('58', 'BR') +
+        formatField('59', nomeRecebedor) +
+        formatField('60', cidadeRecebedor) +
+        formatField('62', additionalDataField) +
+        '6304';
+
+    // Cálculo do CRC16 CCITT-FALSE
+    function calcularCRC16(str) {
+        let crc = 0xFFFF;
+        for (let c = 0; c < str.length; c++) {
+            crc ^= str.charCodeAt(c) << 8;
+            for (let i = 0; i < 8; i++) {
+                if (crc & 0x8000) {
+                    crc = (crc << 1) ^ 0x1021;
+                } else {
+                    crc = crc << 1;
+                }
+            }
+        }
+        let hex = (crc & 0xFFFF).toString(16).toUpperCase();
+        return hex.padStart(4, '0');
+    }
+
+    return payload + calcularCRC16(payload);
+}
+
 function mostrarProposta(p) {
     document.getElementById('telaConsulta').classList.remove('visivel');
     document.getElementById('telaProposta').classList.add('visivel');
@@ -361,7 +408,7 @@ function mostrarProposta(p) {
 function gerarPixParcela(numParcela, valorParcela) {
     const area = document.getElementById('areaPixParcela');
     area.classList.remove('oculto');
-    const codigoChavePix = "00020126580014br.gov.bcb.pix013612345678-1234-5678-9012-345678901234520400005303986540" + valorParcela.toFixed(2) + "5802BR5925FLASHCRED SOLUCOES LTDA6009SAO PAULO62070503***63041D3D";
+    const codigoChavePix = criarPayloadPix(valorParcela, `PARC${numParcela}`);
     
     area.innerHTML = `
         <div class="cartao" style="border: 2px solid #32BCAD;">
@@ -549,7 +596,7 @@ async function assinarContrato() {
 function gerarPix(valorEntrada) {
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
-    const codigoChavePix = "00020126580014br.gov.bcb.pix013612345678-1234-5678-9012-345678901234520400005303986540" + valorEntrada.toFixed(2) + "5802BR5925FLASHCRED SOLUCOES LTDA6009SAO POULO62070503***63041D3D";
+    const codigoChavePix = criarPayloadPix(valorEntrada, "ENTRADA");
     
     area.innerHTML = `
         <h4 class="font-bold text-center mb-2 text-primary">Pagamento via Pix</h4>
