@@ -1,3 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Administrativo | FlashCred</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #0A2463;
+            --sucesso: #10B981;
+            --alerta: #F59E0B;
+            --perigo: #EF4444;
+            --bg-body: #F0F4F8;
+            --borda: #D1D9E6;
+            --texto: #1E293B;
+            --texto-claro: #64748B;
+            --sombra: 0 4px 12px rgba(0,0,0,0.06);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
+        body { background: var(--bg-body); color: var(--texto); line-height: 1.5; }
+        .cartao { background: white; border-radius: 12px; padding: 24px; box-shadow: var(--sombra); }
+        .botao { padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: all 0.2s; font-size:14px; }
+        .botao:hover { transform: translateY(-1px); box-shadow: 0 3px 8px rgba(0,0,0,0.1); }
+        .botao-primario { background: var(--primary); color: white; }
+        .botao-sucesso { background: var(--sucesso); color: white; }
+        .botao-alerta { background: var(--alerta); color: white; }
+        .botao-perigo { background: var(--perigo); color: white; }
+        .botao-cinza { background: var(--borda); color: var(--texto); }
+        .botao-wpp { background: #25D366; color: white; }
+        .botao-pdf { background: #3B82F6; color: white; }
+        .barra-resumo { background: white; border-radius: 12px; padding: 16px; margin-bottom:20px; display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between; box-shadow:var(--sombra); }
+        .item-resumo { display:flex; flex-direction:column; font-size:13px; padding:8px 12px; border-radius:8px; background:#F8FAFC; }
+        .item-resumo span:first-child { color:var(--texto-claro); font-weight:500; }
+        .item-resumo span:last-child { font-weight:700; font-size:18px; margin-top:2px; }
+        .sininho { position:relative; cursor:pointer; padding:8px; border-radius:50%; background:#F8FAFC; }
+        .contador-notif { position:absolute; top:-4px; right:-4px; background:var(--perigo); color:white; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; border:2px solid white; }
+        .linha-proposta { background:white; border-radius:12px; padding:20px; margin-bottom:16px; box-shadow:var(--sombra); transition:0.2s; border-left:4px solid var(--borda); }
+        .linha-proposta:hover { transform:translateY(-2px); }
+        .linha-proposta.destaque-alerta { border-left-color:var(--alerta); background:#FFFEF5; }
+        .linha-proposta.destaque-perigo { border-left-color:var(--perigo); background:#FFF5F5; }
+        .area-edicao { display:none; margin-top:16px; padding:20px; background:#F8FAFC; border-radius:10px; border:1px solid var(--borda); }
+        .area-edicao.ativa { display:block; animation:aparece 0.2s ease-out; }
+        @keyframes aparece { from {opacity:0; transform:translateY(-5px);} to {opacity:1; transform:translateY(0);} }
+        @keyframes piscar { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+        @keyframes piscarForte { 0%,100%{opacity:1; box-shadow:0 0 0 rgba(239,68,68,0);} 50%{opacity:0.7; box-shadow:0 0 8px rgba(239,68,68,0.4);} }
+        .label-campo { font-size:13px; color:var(--texto-claro); margin-bottom:4px; display:block; font-weight:600; }
+        .resumo-valores { font-weight:700; margin-top:12px; padding:12px; background:#ECFDF5; border-radius:8px; font-size:14px; color:#065F46; }
+        .container { max-width:1200px; margin:0 auto; padding:20px; }
+        .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:16px; }
+        .campo { width:100%; padding:10px 12px; border:1px solid var(--borda); border-radius:8px; margin-bottom:10px; font-size:14px; transition:0.2s; background: white; }
+        .campo:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(10,36,99,0.1); }
+        
+        .bloco-parcelas { margin-top:12px; border:1px solid var(--borda); border-radius:8px; overflow:hidden; }
+        .cabecalho-cronograma { background:#F8FAFC; padding:10px 14px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; font-weight:600; color:var(--primary); }
+        .corpo-cronograma { display:none; padding:12px; background:white; }
+        .corpo-cronograma.aberto { display:block; }
+        .item-parcela { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border-bottom:1px solid var(--borda); font-size:13px; }
+        .item-parcela:last-child { border-bottom:none; }
+
+        .prazo-entrega { background:#FFFBEB; border:2px solid var(--alerta); border-radius:8px; padding:12px 16px; margin:10px 0; font-size:15px; font-weight:700; color:#92400E; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
+        .prazo-entrega.concluido { background:#ECFDF5; border-color:var(--sucesso); color:#065F46; }
+        .conteudo-prazo { flex-grow: 1; }
+        .barra-entrega { margin-top:8px; }
+        .info-entrega { display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:4px; }
+        .fundo-barra-entrega { width:100%; height:10px; border-radius:5px; background:#FDE68A; overflow:hidden; }
+        .preenchimento-entrega { height:100%; background:var(--alerta); transition:width 0.5s ease; }
+        .preenchimento-concluido { background:var(--sucesso); }
+
+        .indicador-status { display:inline-flex; align-items:center; gap:6px; margin-right:8px; }
+        .luz-status { width:12px; height:12px; border-radius:50%; display:inline-block; }
+        .luz-amarela { background:var(--alerta); animation:piscar 1.2s infinite; }
+        .luz-verde { background:var(--sucesso); animation:piscar 1.2s infinite; }
+        .luz-verde-fixa { background:var(--sucesso); }
+        .luz-vermelha { background:var(--perigo); }
+        .luz-vermelha-piscando { background:var(--perigo); animation:piscarForte 1s infinite; }
+        .aviso-vencimento { font-weight:700; padding:6px 10px; border-radius:6px; display:inline-block; margin-top:4px; font-size:12px; }
+        .aviso-avencer { background:#FFFBEB; color:#92400E; border:1px solid var(--alerta); animation:piscar 1.5s infinite; }
+        .avencer-hoje { background:#FEE2E2; color:#991B1B; border:1px solid var(--perigo); animation:piscarForte 1s infinite; }
+        .aviso-vencida { background:#FEE2E2; color:#991B1B; border:1px solid var(--perigo); animation:piscarForte 1s infinite; }
+
+        .lista-datas { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:10px; margin-top:12px; }
+        .titulo-bloco { font-size:15px; font-weight:700; color:var(--primary); margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--borda); }
+        .botoes-acao { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+        .dados-cliente { margin:8px 0; font-size:14px; color:var(--texto); }
+        .dados-cliente p { margin:4px 0; }
+    </style>
+</head>
+<body>
+<div id="telaLogin" class="container" style="max-width:420px; margin-top:120px;">
+    <div class="cartao" style="text-align: center;">
+        <h2 style="font-size: 1.25rem; font-weight: bold; margin-bottom: 1.5rem;">🔐 Acesso Painel FlashCred</h2>
+        <input type="password" id="senha" placeholder="Digite sua senha" class="campo" style="text-align: center; font-size: 1.125rem;">
+        <button onclick="entrar()" class="botao botao-primario" style="width: 100%; margin-top: 0.5rem;">Entrar no Sistema</button>
+    </div>
+</div>
+
+<div id="telaPrincipal" class="container" style="display:none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h1 style="font-size: 1.25rem; font-weight: bold; color: var(--primary);">⚙️ Painel Administrativo | FlashCred</h1>
+        <button onclick="sair()" class="botao botao-cinza">Sair <i class="fas fa-sign-out-alt" style="margin-left: 4px;"></i></button>
+    </div>
+
+    <div class="barra-resumo" id="barraResumo">
+        <div class="item-resumo"><span>💰 Total Recebido</span><span id="totalRecebido" style="color: var(--sucesso);">R$ 0,00</span></div>
+        <div class="item-resumo"><span>⏳ A Receber</span><span id="totalReceber" style="color: var(--alerta);">R$ 0,00</span></div>
+        <div class="item-resumo"><span>🧾 Parcelas Pagas</span><span id="qtdPagas">0</span></div>
+        <div class="item-resumo"><span>⚠️ Vencidas</span><span id="qtdVencidas" style="color: var(--perigo);">0</span></div>
+        <div class="item-resumo"><span>🔔 A Vencer em até 5 dias</span><span id="qtdProximas" style="color: var(--alerta);">0</span></div>
+        <div class="item-resumo"><span>📋 Aguardando</span><span id="qtdPendentes">0</span></div>
+        <div class="sininho"><i class="fas fa-bell" style="font-size: 1.25rem; color: var(--primary);"></i><div class="contador-notif" id="contadorNotif">0</div></div>
+    </div>
+
+    <button onclick="abrirNovo()" class="botao botao-sucesso" style="margin-bottom: 1rem;">➕ Cadastrar Nova Proposta</button>
+
+    <div id="formNovo" class="area-edicao" style="margin-bottom: 1.25rem;">
+        <h3 class="titulo-bloco">📝 Dados da Proposta</h3>
+        <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem;">
+            <div><span class="label-campo">👤 Nome Completo</span><input type="text" id="nome" class="campo"></div>
+            <div><span class="label-campo">📄 CPF (apenas números)</span><input type="text" id="cpf" maxlength="11" class="campo"></div>
+            <div><span class="label-campo">📱 WhatsApp com DDD</span><input type="text" id="whatsapp" maxlength="11" class="campo" placeholder="Ex: 11999998888"></div>
+            <div><span class="label-campo">🏠 CEP</span><input type="text" id="cep" maxlength="8" class="campo"></div>
+            <div style="grid-column: 1 / -1;"><span class="label-campo">📍 Endereço Completo</span><input type="text" id="endereco" class="campo"></div>
+            
+            <div><span class="label-campo">💵 Valor Base / Desejado</span><input type="number" id="valor_desejado" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+            <div><span class="label-campo">💸 Valor da Entrada</span><input type="number" id="valor_entrada" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+            <div><span class="label-campo">📊 Juros Mensal (%)</span><input type="number" id="juros_mensal" value="5" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+            <div><span class="label-campo">🧾 Quantidade de Parcelas</span><input type="number" id="quantidade_parcelas" min="1" max="48" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+            <div><span class="label-campo">🚚 Prazo de Entrega (dias úteis)</span><input type="number" id="dias_entrega" value="7" class="campo"></div>
+            <div style="grid-column: 1 / -1;">
+                <div class="titulo-bloco">📅 Datas de Vencimento</div>
+                <div style="margin-bottom: 0.75rem;">
+                    <select id="intervalo_auto" class="campo" style="width: auto;" onchange="gerarDatasAutomaticas(this.closest('.area-edicao'))">
+                        <option value="30">📅 Vencimentos a cada 30 dias</option>
+                        <option value="15">📅 Vencimentos a cada 15 dias</option>
+                        <option value="7">📅 Vencimentos a cada 7 dias</option>
+                    </select>
+                </div>
+                <div id="listaDatas" class="lista-datas"></div>
+            </div>
+        </div>
+        <div class="resumo-valores" id="resumoNovo"></div>
+        <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+            <button onclick="salvarNovo()" class="botao botao-sucesso">💾 Salvar Proposta</button>
+            <button onclick="fecharNovo()" class="botao botao-cinza">❌ Cancelar</button>
+        </div>
+    </div>
+
+    <div id="listaPropostas"></div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+
+const SENHA = 'flash2026';
+const LINK_CONSULTA = new URL('consultar.html', window.location.href).href;
+
+let inscricaoTempoReal = null;
+
+function contarDiasUteis(dataInicio, diasUteisTotais) {
+    let data = new Date(dataInicio);
+    let contados = 0;
+    while(contados < diasUteisTotais) {
+        const diaSemana = data.getDay();
+        if(diaSemana !== 0 && diaSemana !== 6) contados++;
+        if(contados < diasUteisTotais) data.setDate(data.getDate() + 1);
+    }
+    return data;
+}
+
+function calcularProgressoEntrega(diasUteisTotais, entregaForcadaConcluida) {
+    if(entregaForcadaConcluida) return { perc:100, restante:0, concluido:true };
+    if(!diasUteisTotais || diasUteisTotais <= 0) return { perc:0, restante:0, concluido:false };
+    const inicio = new Date();
+    inicio.setHours(0,0,0,0);
+    const fim = contarDiasUteis(inicio, diasUteisTotais);
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    if(hoje >= fim) return { perc:100, restante:0, concluido:false };
+
+    let passados = 0;
+    let temp = new Date(inicio);
+    while(temp < hoje) {
+        const d = temp.getDay();
+        if(d !== 0 && d !== 6) passados++;
+        temp.setDate(temp.getDate() + 1);
+    }
+    const perc = Math.min(100, Math.round((passados / diasUteisTotais) * 100));
+    const restante = Math.max(0, diasUteisTotais - passados);
+    return { perc, restante, concluido:false };
+}
+
+window.onload = () => { if(localStorage.getItem('logado_flashcred') === 'SIM') mostrarPainel(); };
+function entrar() { const s = document.getElementById('senha').value.trim(); if(s === SENHA) { localStorage.setItem('logado_flashcred', 'SIM'); mostrarPainel(); } else alert('Senha incorreta!'); }
+function sair() { localStorage.removeItem('logado_flashcred'); document.getElementById('telaLogin').style.display = 'block'; document.getElementById('telaPrincipal').style.display = 'none'; if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal); }
+function mostrarPainel() { document.getElementById('telaLogin').style.display = 'none'; document.getElementById('telaPrincipal').style.display = 'block'; carregarPropostas(); ativarTempoReal(); }
+
+function atualizarCalculo(bloco) {
+    const v = Number(bloco.querySelector('input[id^="valor_desejado"], input[id^="edit_valor_"]').value)||0;
+    const e = Number(bloco.querySelector('input[id^="valor_entrada"], input[id^="edit_entrada_"]').value)||0;
+    const j = Number(bloco.querySelector('input[id^="juros_mensal"], input[id^="edit_juros_"]').value)||0;
+    const q = Number(bloco.querySelector('input[id^="quantidade_parcelas"], input[id^="edit_qtd_"]').value)||1;
+    const total = v*(1+j/100);
+    const saldo = total-e;
+    const taxa = j / 100;
+    const parcela = q===1 ? total : (q > 0 && taxa > 0 ? saldo * (Math.pow(1 + taxa, q) * taxa) / (Math.pow(1 + taxa, q) - 1) : saldo / q);
+    
+    const res = bloco.querySelector('.resumo-valores');
+    if(res) res.innerHTML = `💵 Total: R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | 📉 Saldo: R$ ${saldo.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | 🧾 ${q}x de R$ ${parcela.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    
+    gerarDatasAutomaticas(bloco);
+}
+
+function gerarDatasAutomaticas(bloco) {
+    const qtd = Number(bloco.querySelector('input[id^="quantidade_parcelas"], input[id^="edit_qtd_"]').value)||1;
+    const dias = Number(bloco.querySelector('#intervalo_auto, select[id^="edit_intervalo_"]')?.value || 30);
+    const lista = bloco.querySelector('div[id^="listaDatas"], div[id^="edit_lista_datas_"]');
+    if(!lista) return;
+    const base = new Date(); base.setDate(base.getDate()+dias);
+    let html=''; for(let i=0;i<qtd;i++){ const d = new Date(base); d.setDate(d.getDate()+(i*dias)); html += `<input type="date" name="data_parcela" value="${d.toISOString().split('T')[0]}" class="campo" style="padding: 8px; font-size: 14px;">`; }
+    lista.innerHTML = html;
+}
+
+function analisarVencimento(dtStr) {
+    if(!dtStr) return { status:'semdata', texto:'Sem data', classe:'', luz:'luz-verde', aviso:'', perc:0 };
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const dt = new Date(dtStr); dt.setHours(0,0,0,0);
+    const dias = Math.ceil((dt - hoje) / (1000*60*60*24));
+
+    if(dias < 0) return { status:'vencida', texto:`Vencida há ${Math.abs(dias)} dias`, classe:'destaque-perigo', luz:'luz-vermelha-piscando', aviso:'<div class="aviso-vencimento aviso-vencida">🔴 PARCELA VENCIDA!</div>', perc:100 };
+    if(dias === 0) return { status:'hoje', texto:'Vence HOJE!', classe:'destaque-perigo', luz:'luz-vermelha-piscando', aviso:'<div class="aviso-vencimento avencer-hoje">🔴 VENCE HOJE!</div>', perc:100 };
+    if(dias <= 5) return { status:'proximo', texto:`Faltam ${dias} dias`, classe:'destaque-alerta', luz:'luz-amarela', aviso:`<div class="aviso-vencimento aviso-avencer">🟡 Atenção: faltam ${dias} dias</div>`, perc:Math.round((1 - dias/5)*100) };
+    return { status:'ok', texto:`Faltam ${dias} dias`, classe:'', luz:'luz-verde-fixa', aviso:'', perc:Math.round((1 - dias/30)*100) };
+}
+
+async function carregarPropostas() {
+    const {data} = await supabase.from('propostas').select('*').order('created_at',{ascending:false});
+    if(!data) return;
+
+    let totalRecebido=0, totalReceber=0, qtdPagas=0, qtdPendentes=0, novas=0, totalVencidas=0, totalProximas=0;
+    data.forEach(i=>{
+        const v=Number(i.valor_desejado||0), e=Number(i.valor_entrada||0), j=Number(i.juros_mensal||5), total=v*(1+j/100);
+        i.entrada_paga ? totalRecebido+=e : totalReceber+=total;
+        const qtdParc=Number(i.quantidade_parcelas||0), pagas=Number(i.parcelas_pagas||0), datas=i.datas_parcelas||[];
+        qtdPagas+=pagas; qtdPendentes+=qtdParc-pagas;
+        if(i.status==='Nova') novas++;
+        datas.forEach(dt=>{
+            const a = analisarVencimento(dt);
+            if(a.status==='vencida' || a.status==='hoje') totalVencidas++;
+            if(a.status==='proximo') totalProximas++;
+        });
+    });
+
+    document.getElementById('totalRecebido').innerText = `R$ ${totalRecebido.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    document.getElementById('totalReceber').innerText = `R$ ${totalReceber.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+    document.getElementById('qtdPagas').innerText = qtdPagas;
+    document.getElementById('qtdVencidas').innerText = totalVencidas;
+    document.getElementById('qtdProximas').innerText = totalProximas;
+    document.getElementById('qtdPendentes').innerText = qtdPendentes;
+    document.getElementById('contadorNotif').innerText = novas;
+
+    let html = '';
+    data.forEach(i => {
+        const v = Number(i.valor_desejado||0), e = Number(i.valor_entrada||0), j = Number(i.juros_mensal||5), q = Number(i.quantidade_parcelas||0);
+        const total = v*(1+j/100);
+        const saldo = total-e;
+        const taxa = j/100;
+        const valorParcela = q===1 ? total : (q>0 && taxa>0 ? saldo * (Math.pow(1+taxa, q)*taxa)/(Math.pow(1+taxa, q)-1) : saldo/q);
+        const datas = i.datas_parcelas || [];
+        const pagas = Number(i.parcelas_pagas||0);
+
         let temAlerta = false;
         let temPerigo = false;
         datas.forEach((dt, idx) => {
@@ -17,26 +291,26 @@
 
         html += `
         <div class="linha-proposta ${classeLinha}">
-            <div class="flex flex-wrap justify-between items-start gap-4 mb-3">
+            <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.75rem;">
                 <div>
                     <span class="indicador-status"><span class="luz-status ${i.status === 'Aprovada' ? 'luz-verde-fixa' : 'luz-amarela'}"></span><strong>Status:</strong> ${i.status}</span>
-                    <h3 class="text-lg font-bold text-primary mt-1">${i.nome}</h3>
+                    <h3 style="font-size: 1.125rem; font-weight: bold; color: var(--primary); margin-top: 4px;">${i.nome}</h3>
                     <div class="dados-cliente">
                         <p><strong>CPF:</strong> ${i.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")} | <strong>WhatsApp:</strong> ${i.whatsapp || 'Não informado'}</p>
                         <p><strong>Endereço:</strong> ${i.endereco || 'Não informado'} (CEP: ${i.cep || '-'})</p>
                     </div>
                 </div>
                 <div class="botoes-acao">
-                    <button onclick="copiarLink('${linkCliente}')" class="botao botao-primario"><i class="fas fa-link mr-1"></i> Copiar Link do Cliente</button>
-                    ${i.whatsapp ? `<a href="https://wa.me/55${i.whatsapp}?text=${encodeURIComponent('Olá ' + i.nome + ', sua proposta na FlashCred está disponível para consulta e acompanhamento: ' + linkCliente)}" target="_blank" class="botao botao-wpp"><i class="fab fa-whatsapp mr-1"></i> WhatsApp</a>` : ''}
-                    <button onclick="gerarNotaPromissoriaPorId(${i.id})" class="botao botao-cinza"><i class="fas fa-file-invoice mr-1"></i> Promissória</button>
-                    <button onclick="gerarPdfContrato(${i.id})" class="botao botao-pdf"><i class="fas fa-file-pdf mr-1"></i> PDF Contrato</button>
-                    <button onclick="toggleEdicao(${i.id})" class="botao botao-cinza"><i class="fas fa-edit mr-1"></i> Editar</button>
-                    <button onclick="excluirProposta(${i.id})" class="botao botao-perigo"><i class="fas fa-trash mr-1"></i> Excluir</button>
+                    <button onclick="copiarLink('${linkCliente}')" class="botao botao-primario"><i class="fas fa-link" style="margin-right: 4px;"></i> Copiar Link do Cliente</button>
+                    ${i.whatsapp ? `<a href="https://wa.me/55${i.whatsapp}?text=${encodeURIComponent('Olá ' + i.nome + ', sua proposta na FlashCred está disponível para consulta e acompanhamento: ' + linkCliente)}" target="_blank" class="botao botao-wpp"><i class="fab fa-whatsapp" style="margin-right: 4px;"></i> WhatsApp</a>` : ''}
+                    <button onclick="gerarNotaPromissoriaPorId(${i.id})" class="botao botao-cinza"><i class="fas fa-file-invoice" style="margin-right: 4px;"></i> Promissória</button>
+                    <button onclick="gerarPdfContrato(${i.id})" class="botao botao-pdf"><i class="fas fa-file-pdf" style="margin-right: 4px;"></i> PDF Contrato</button>
+                    <button onclick="toggleEdicao(${i.id})" class="botao botao-cinza"><i class="fas fa-edit" style="margin-right: 4px;"></i> Editar</button>
+                    <button onclick="excluirProposta(${i.id})" class="botao botao-perigo"><i class="fas fa-trash" style="margin-right: 4px;"></i> Excluir</button>
                 </div>
             </div>
 
-            <div class="resumo-valores mb-3">
+            <div class="resumo-valores" style="margin-bottom: 0.75rem;">
                 💵 Valor Base: R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 💸 Entrada: R$ ${e.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 🧾 Total: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})} | 📊 ${q}x de R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})} (${j}% a.m.)
             </div>
 
@@ -52,7 +326,7 @@
                         </div>
                     </div>
                 </div>
-                <button onclick="alternarEntregaConcluida(${i.id}, ${!i.entrada_paga})" class="botao ${progEntrega.concluido ? 'botao-cinza' : 'botao-sucesso'} !py-1 !px-3 !text-xs">
+                <button onclick="alternarEntregaConcluida(${i.id}, ${!i.entrada_paga})" class="botao ${progEntrega.concluido ? 'botao-cinza' : 'botao-sucesso'}" style="padding: 4px 12px; font-size: 12px;">
                     ${progEntrega.concluido ? 'Reabrir Entrega' : 'Concluir Entrega'}
                 </button>
             </div>
@@ -68,16 +342,16 @@
                         const isPaga = idx < pagas;
                         return `
                         <div class="item-parcela">
-                            <div class="flex items-center gap-2">
+                            <div style="display: flex; align-items: center; gap: 8px;">
                                 <span class="luz-status ${isPaga ? 'luz-verde-fixa' : a.luz}"></span>
                                 <div>
                                     <strong>${idx+1}ª Parcela:</strong> R$ ${valorParcela.toLocaleString('pt-BR',{minimumFractionDigits:2})} 
-                                    <span class="text-xs text-slate-500">(Venc: ${new Date(dt + 'T00:00:00').toLocaleDateString('pt-BR')})</span>
-                                    <div>${isPaga ? '<span class="text-sucesso font-bold text-xs">✅ Parcela Paga</span>' : a.aviso}</div>
+                                    <span style="font-size: 12px; color: var(--texto-claro);">(Venc: ${new Date(dt + 'T00:00:00').toLocaleDateString('pt-BR')})</span>
+                                    <div>${isPaga ? '<span style="color: var(--sucesso); font-weight: bold; font-size: 12px;">✅ Parcela Paga</span>' : a.aviso}</div>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-2">
-                                <button onclick="mudarStatusParcela(${i.id}, ${idx}, ${isPaga ? pagas-1 : pagas+1})" class="botao ${isPaga ? 'botao-cinza' : 'botao-sucesso'} !py-1 !px-2 !text-xs">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <button onclick="mudarStatusParcela(${i.id}, ${idx}, ${isPaga ? pagas-1 : pagas+1})" class="botao ${isPaga ? 'botao-cinza' : 'botao-sucesso'}" style="padding: 4px 8px; font-size: 12px;">
                                     ${isPaga ? 'Desfazer Baixa' : 'Dar Baixa'}
                                 </button>
                             </div>
@@ -88,11 +362,11 @@
 
             <div id="edicao_${i.id}" class="area-edicao">
                 <h4 class="titulo-bloco">✏️ Editar Proposta #${i.id}</h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem;">
                     <div><span class="label-campo">Nome</span><input type="text" id="edit_nome_${i.id}" value="${i.nome}" class="campo"></div>
                     <div><span class="label-campo">WhatsApp</span><input type="text" id="edit_whats_${i.id}" value="${i.whatsapp || ''}" class="campo"></div>
                     <div><span class="label-campo">CEP</span><input type="text" id="edit_cep_${i.id}" value="${i.cep || ''}" class="campo"></div>
-                    <div class="md:col-span-2"><span class="label-campo">Endereço</span><input type="text" id="edit_end_${i.id}" value="${i.endereco || ''}" class="campo"></div>
+                    <div style="grid-column: 1 / -1;"><span class="label-campo">Endereço</span><input type="text" id="edit_end_${i.id}" value="${i.endereco || ''}" class="campo"></div>
                     <div><span class="label-campo">Valor Desejado</span><input type="number" id="edit_valor_${i.id}" value="${i.valor_desejado}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
                     <div><span class="label-campo">Valor Entrada</span><input type="number" id="edit_entrada_${i.id}" value="${i.valor_entrada}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
                     <div><span class="label-campo">Juros Mensal (%)</span><input type="number" id="edit_juros_${i.id}" value="${i.juros_mensal || 5}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
@@ -105,20 +379,20 @@
                             <option value="Aprovada" ${i.status === 'Aprovada' ? 'selected' : ''}>Aprovada</option>
                         </select>
                     </div>
-                    <div class="md:col-span-2">
+                    <div style="grid-column: 1 / -1;">
                         <span class="label-campo">Intervalo de Vencimentos</span>
-                        <select id="edit_intervalo_${i.id}" class="campo !w-auto" onchange="gerarDatasAutomaticas(this.closest('.area-edicao'))">
+                        <select id="edit_intervalo_${i.id}" class="campo" style="width: auto;" onchange="gerarDatasAutomaticas(this.closest('.area-edicao'))">
                             <option value="30">30 dias</option>
                             <option value="15">15 dias</option>
                             <option value="7">7 dias</option>
                         </select>
                         <div id="edit_lista_datas_${i.id}" class="lista-datas">
-                            ${datas.map(dt => `<input type="date" name="data_parcela" value="${dt}" class="campo !p-2 text-sm">`).join('')}
+                            ${datas.map(dt => `<input type="date" name="data_parcela" value="${dt}" class="campo" style="padding: 8px; font-size: 14px;">`).join('')}
                         </div>
                     </div>
                 </div>
                 <div class="resumo-valores" id="edit_resumo_${i.id}"></div>
-                <div class="flex gap-2 mt-3">
+                <div style="display: flex; gap: 0.5rem; margin-top: 0.75rem;">
                     <button onclick="salvarEdicao(${i.id})" class="botao botao-sucesso">Salvar Alterações</button>
                     <button onclick="toggleEdicao(${i.id})" class="botao botao-cinza">Cancelar</button>
                 </div>
