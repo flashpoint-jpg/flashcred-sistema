@@ -30,7 +30,6 @@
         .botao-pix { background: #32BCAD; color: white; }
         .botao-sucesso { background: #10B981; color: white; }
         .botao-voltar { background: #94A3B8; color: white; margin-bottom: 12px; }
-        .botao-wpp { background: #25D366; color: white; margin-top: 12px; }
         .botao-pequeno { width: auto; padding: 8px 16px; font-size: 14px; }
         .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
         .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; padding: 0 4px; }
@@ -46,8 +45,6 @@
         .resumo-contrato p { margin: 8px 0; font-size: 15px; }
         .resumo-contrato strong { color: #0A2463; }
         .contrato { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; max-height: 220px; overflow-y: auto; margin: 16px 0; font-size: 13px; line-height: 1.6; text-align: justify; }
-        .qrcode-area { display: flex; justify-content: center; padding: 20px; background: white; border-radius: 10px; border: 1px solid #E2E8F0; margin: 16px 0; }
-        .codigo-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 16px; text-align: center; font-weight: 600; margin: 16px 0; word-break: break-all; font-size: 12px; }
         .item-parcela { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
         .item-parcela:last-child { border-bottom: none; }
         .luz { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
@@ -60,7 +57,6 @@
         .oculto { display: none !important; }
         .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
         .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
-        .carregando { text-align: center; padding: 20px; color: #64748B; }
         canvas.assinatura-pad { border: 2px dashed #CBD5E1; border-radius: 8px; background: white; width: 100%; cursor: crosshair; }
     </style>
 </head>
@@ -91,6 +87,7 @@ let webcamStream = null;
 let modoAssinatura = 'selfie';
 let canvasContext = null;
 let desenhando = false;
+let imagemSelfieBase64 = null;
 
 window.onload = () => {
     const params = new URLSearchParams(window.location.search);
@@ -262,11 +259,6 @@ function mostrarProposta(p) {
 
             <button onclick="assinarContrato()" class="botao botao-sucesso mt-3">✍️ Confirmar Assinatura e Enviar Proposta</button>
         </div>`;
-        
-        setTimeout(() => {
-            if(modoAssinatura === 'selfie') iniciarCamera();
-            inicializarCanvas();
-        }, 300);
     }
 
     if(contratoAssinado && !entradaPaga) {
@@ -290,7 +282,6 @@ function mostrarProposta(p) {
     }
 
     if(entradaPaga) {
-        // Garante a geração automática das datas se o banco de dados não enviou a lista preenchida
         let datasParcelas = p.datas_parcelas;
         if (!datasParcelas || !Array.isArray(datasParcelas) || datasParcelas.length === 0) {
             datasParcelas = [];
@@ -335,15 +326,29 @@ function mostrarProposta(p) {
 
             return `<div class="item-parcela">
                 <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
-                ${pg?'<span class="text-sucesso font-bold">PAGA</span>':`<button onclick="gerarPix(${valor.toFixed(2)})" class="botao botao-pix botao-pequeno">Pagar</button>`}
+                ${pg ? '<span class="text-sucesso font-bold">✅ Paga</span>' : '<span class="text-alerta font-bold">Pendente</span>'}
             </div>`;
-        }).join('')}
-
-        <div id="areaPix" class="oculto mt-4"></div>`;
+        }).join('')}`;
     }
 
-    html += `<a href="https://wa.me/5511973294235" target="_blank" class="botao botao-wpp mt-4">💬 Falar com o Suporte</a>`;
     document.getElementById('conteudoProposta').innerHTML = html;
+
+    if(p.status === 'Aprovada' && p.qtd_parcelas_escolhida && !contratoAssinado) {
+        setTimeout(() => {
+            if(modoAssinatura === 'selfie') iniciarCamera();
+            inicializarCanvas();
+        }, 300);
+    }
+}
+
+async function confirmarParcelas() {
+    const qtd = document.getElementById('qtdEscolhida').value;
+    const {error} = await supabase.from('propostas').update({qtd_parcelas_escolhida: parseInt(qtd)}).eq('id', propostaAtual.id);
+    if(error) alert('Erro ao salvar parcelas: ' + error.message);
+    else {
+        propostaAtual.qtd_parcelas_escolhida = parseInt(qtd);
+        mostrarProposta(propostaAtual);
+    }
 }
 
 function alternarModoAssinatura(modo) {
@@ -365,18 +370,19 @@ function alternarModoAssinatura(modo) {
         blocoManual.classList.remove('oculto');
         blocoSelfie.classList.add('oculto');
         pararCamera();
-        inicializarCanvas();
+        setTimeout(inicializarCanvas, 100);
     }
 }
 
 async function iniciarCamera() {
     try {
+        pararCamera();
         const video = document.getElementById('videoCamera');
         if(!video) return;
-        webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        webcamStream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user'}, audio: false});
         video.srcObject = webcamStream;
-    } catch(err) {
-        alternarModoAssinatura('manual');
+    } catch(e) {
+        console.error('Erro ao acessar câmera:', e);
     }
 }
 
@@ -387,7 +393,6 @@ function pararCamera() {
     }
 }
 
-let imagemSelfieBase64 = null;
 function tirarSelfie() {
     const video = document.getElementById('videoCamera');
     const canvas = document.createElement('canvas');
@@ -395,12 +400,13 @@ function tirarSelfie() {
     canvas.height = video.videoHeight || 240;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    imagemSelfieBase64 = canvas.toDataURL('image/png');
+    imagemSelfieBase64 = canvas.toDataURL('image/jpeg', 0.8);
 
-    document.getElementById('areaCamera').classList.add('oculto');
-    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
-    document.getElementById('imgSelfie').src = imagemSelfieBase64;
     pararCamera();
+    document.getElementById('areaCamera').classList.add('oculto');
+    const preview = document.getElementById('areaPreviewSelfie');
+    preview.classList.remove('oculto');
+    document.getElementById('imgSelfie').src = imagemSelfieBase64;
 }
 
 function refazerSelfie() {
@@ -414,84 +420,91 @@ function inicializarCanvas() {
     const canvas = document.getElementById('canvasAssinatura');
     if(!canvas) return;
     canvasContext = canvas.getContext('2d');
-    canvasContext.strokeStyle = '#0A2463';
+    canvasContext.strokeStyle = '#000';
     canvasContext.lineWidth = 2;
 
-    const getPos = (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        return { x: clientX - rect.left, y: clientY - rect.top };
-    };
-
-    canvas.onmousedown = (e) => { desenhando = true; const pos = getPos(e); canvasContext.beginPath(); canvasContext.moveTo(pos.x, pos.y); };
-    canvas.onmousemove = (e) => { if(!desenhando) return; const pos = getPos(e); canvasContext.lineTo(pos.x, pos.y); canvasContext.stroke(); };
+    canvas.onmousedown = (e) => { desenhando = true; const r = canvas.getBoundingClientRect(); canvasContext.beginPath(); canvasContext.moveTo(e.clientX - r.left, e.clientY - r.top); };
+    canvas.onmousemove = (e) => { if(!desenhando) return; const r = canvas.getBoundingClientRect(); canvasContext.lineTo(e.clientX - r.left, e.clientY - r.top); canvasContext.stroke(); };
     canvas.onmouseup = () => { desenhando = false; };
     canvas.onmouseleave = () => { desenhando = false; };
 
-    canvas.ontouchstart = (e) => { desenhando = true; const pos = getPos(e); canvasContext.beginPath(); canvasContext.moveTo(pos.x, pos.y); e.preventDefault(); };
-    canvas.ontouchmove = (e) => { if(!desenhando) return; const pos = getPos(e); canvasContext.lineTo(pos.x, pos.y); canvasContext.stroke(); e.preventDefault(); };
+    canvas.ontouchstart = (e) => { e.preventDefault(); desenhando = true; const r = canvas.getBoundingClientRect(); const t = e.touches[0]; canvasContext.beginPath(); canvasContext.moveTo(t.clientX - r.left, t.clientY - r.top); };
+    canvas.ontouchmove = (e) => { e.preventDefault(); if(!desenhando) return; const r = canvas.getBoundingClientRect(); const t = e.touches[0]; canvasContext.lineTo(t.clientX - r.left, t.clientY - r.top); canvasContext.stroke(); };
     canvas.ontouchend = () => { desenhando = false; };
 }
 
 function limparCanvas() {
-    const canvas = document.getElementById('canvasAssinatura');
-    if(canvas && canvasContext) {
+    if(canvasContext) {
+        const canvas = document.getElementById('canvasAssinatura');
         canvasContext.clearRect(0, 0, canvas.width, canvas.height);
     }
 }
 
-async function confirmarParcelas() {
-    const qtd = Number(document.getElementById('qtdEscolhida').value);
-    await supabase.from('propostas').update({qtd_parcelas_escolhida: qtd}).eq('id', propostaAtual.id);
-    mostrarProposta({...propostaAtual, qtd_parcelas_escolhida: qtd});
-}
-
 async function assinarContrato() {
-    if(!document.getElementById('aceitoContrato').checked) return alert('Você precisa concordar com os termos do contrato!');
+    const aceito = document.getElementById('aceitoContrato').checked;
+    if(!aceito) return alert('Você deve concordar com os termos do contrato!');
 
-    if(modoAssinatura === 'selfie' && !imagemSelfieBase64) {
-        return alert('Por favor, tire a selfie para validar sua assinatura.');
+    let comprovanteAssinatura = null;
+    if(modoAssinatura === 'selfie') {
+        if(!imagemSelfieBase64) return alert('Por favor, tire a sua selfie para validar a assinatura!');
+        comprovanteAssinatura = imagemSelfieBase64;
+    } else {
+        const canvas = document.getElementById('canvasAssinatura');
+        comprovanteAssinatura = canvas.toDataURL('image/png');
     }
 
-    pararCamera();
-    await supabase.from('propostas').update({contrato_assinado: true}).eq('id', propostaAtual.id);
-    mostrarProposta({...propostaAtual, contrato_assinado: true});
+    const {error} = await supabase.from('propostas').update({
+        contrato_assinado: true,
+        assinatura_digital: comprovanteAssinatura,
+        data_assinatura: new Date().toISOString()
+    }).eq('id', propostaAtual.id);
+
+    if(error) alert('Erro ao assinar contrato: ' + error.message);
+    else {
+        pararCamera();
+        propostaAtual.contrato_assinado = true;
+        mostrarProposta(propostaAtual);
+    }
 }
 
-async function gerarPix(valor) {
+async function gerarPix(valorEntrada) {
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
-    area.innerHTML = `<div class="carregando"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Gerando Pix Real...</p></div>`;
-
-    const valorNumerico = Number(String(valor).replace(',', '.'));
-
-    if (!valorNumerico || isNaN(valorNumerico) || valorNumerico <= 0) {
-        area.innerHTML = `<p class="text-perigo text-center font-bold">Erro: Valor do Pix inválido (${valor}).</p>`;
-        return;
-    }
+    area.innerHTML = `<div class="text-center p-4">Gerando QR Code Pix...</div>`;
 
     try {
-        const res = await fetch('/gerar-pix', {
+        const resposta = await fetch('/api/criar-pix', {
             method: 'POST',
-            headers: {'Content-Type':'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                valor: valorNumerico, 
-                propostaId: propostaAtual.id, 
-                nome: propostaAtual.nome
+                proposta_id: propostaAtual.id,
+                valor: valorEntrada,
+                nome: propostaAtual.nome,
+                email: propostaAtual.email || 'cliente@flashcred.com.br'
             })
         });
-        const dados = await res.json();
-        if(!dados.sucesso) throw new Error(dados.erro || 'Erro ao gerar');
 
-        area.innerHTML = `
-        <div class="qrcode-area"><img src="data:image/png;base64,${dados.qrcode}" width="240" height="240"></div>
-        <div class="codigo-pix">${dados.copia_cola}</div>
-        <button onclick="navigator.clipboard.writeText('${dados.copia_cola}').then(()=>alert('✅ Copiado!'))" class="botao botao-sucesso">Copiar Código Pix</button>
-        `;
-    } catch (err) {
-        area.innerHTML = `<p class="text-perigo text-center font-bold">Erro ao gerar Pix: ${err.message}</p>`;
+        const resultado = await resposta.json();
+        if(resultado.sucesso) {
+            area.innerHTML = `
+                <div class="qrcode-area">
+                    <img src="data:image/png;base64,${resultado.qr_code_base64}" alt="QR Code Pix" style="max-width:200px;">
+                </div>
+                <div class="codigo-pix" id="copiaColaPix">${resultado.qr_code}</div>
+                <button onclick="copiarPix()" class="botao botao-sucesso">📋 Copiar Pix Copia e Cola</button>
+            `;
+        } else {
+            area.innerHTML = `<p class="text-perigo text-center font-bold">Erro ao gerar Pix: ${resultado.erro}</p>`;
+        }
+    } catch(e) {
+        area.innerHTML = `<p class="text-perigo text-center font-bold">Erro de conexão ao servidor de pagamento.</p>`;
     }
+}
+
+function copiarPix() {
+    const texto = document.getElementById('copiaColaPix').innerText;
+    navigator.clipboard.writeText(texto);
+    alert('Código Pix copiado com sucesso!');
 }
 </script>
 </body>
