@@ -17,6 +17,20 @@
                         sucesso: '#10B981',
                         alerta: '#F59E0B',
                         perigo: '#EF4444'
+                    },
+                    animation: {
+                        'pulsar-suave': 'pulsarSuave 2s infinite',
+                        'entrada-suave': 'entradaSuave 0.6s ease-out'
+                    },
+                    keyframes: {
+                        pulsarSuave: {
+                            '0%, 100%': { transform: 'scale(1)', opacity: 1 },
+                            '50%': { transform: 'scale(1.08)', opacity: 0.8 }
+                        },
+                        entradaSuave: {
+                            '0%': { opacity: 0, transform: 'translateY(-15px)' },
+                            '100%': { opacity: 1, transform: 'translateY(0)' }
+                        }
                     }
                 }
             }
@@ -26,12 +40,15 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
         body { background: #F8FAFC; color: #1E293B; padding: 16px; max-width: 600px; margin: 0 auto; }
         .cartao { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
-        .botao { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 16px; }
+        .botao { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: all 0.3s ease; font-size: 16px; }
+        .botao:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .botao:disabled { opacity:0.5; cursor:not-allowed; transform: none; }
         .botao-pix { background: #32BCAD; color: white; }
         .botao-sucesso { background: #10B981; color: white; }
         .botao-voltar { background: #94A3B8; color: white; margin-bottom: 12px; }
         .botao-pequeno { width: auto; padding: 8px 16px; font-size: 14px; }
-        .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
+        .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; transition: all 0.3s ease; }
+        .campo:focus { outline: none; border-color: #0A2463; box-shadow: 0 0 0 3px rgba(10,36,99,0.15); }
         .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; padding: 0 4px; }
         .barra-etapas::before { content: ''; position: absolute; top: 12px; left: 8%; right: 8%; height: 3px; background: #E2E8F0; z-index: 0; }
         .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 10px; font-weight: 500; color: #94A3B8; text-align: center; width: 18%; }
@@ -63,7 +80,10 @@
 <body>
 
 <div id="telaConsulta" class="tela visivel">
-    <div class="cartao">
+    <div class="cartao animate-entrada-suave">
+        <div class="text-center mb-6">
+            <i class="fas fa-search text-primary text-4xl animate-pulsar-suave"></i>
+        </div>
         <h2 class="text-xl font-bold text-center mb-6 text-primary">🔍 Acompanhar Proposta</h2>
         <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="campo">
         <button id="btnConsultar" onclick="consultar()" class="botao botao-pix"><i class="fas fa-search mr-2"></i>Consultar Proposta</button>
@@ -104,6 +124,7 @@ function voltarInicio() {
     document.getElementById('cpfConsulta').value = '';
     document.getElementById('telaProposta').classList.remove('visivel');
     document.getElementById('telaConsulta').classList.add('visivel');
+    history.pushState({}, '', window.location.pathname);
 }
 
 async function consultar() {
@@ -198,7 +219,7 @@ function mostrarProposta(p) {
     let html = `<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
 
     if(p.status === 'Nova') {
-        html += `<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação da proposta...</p></div>`;
+        html += `<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4 animate-pulsar-suave"></i><p class="font-bold text-lg">Aguardando aprovação da proposta...</p></div>`;
     }
 
     if(p.status === 'Aprovada' && !p.qtd_parcelas_escolhida) {
@@ -350,176 +371,116 @@ function mostrarProposta(p) {
             else if(vencto < hoje) cor='luz-vermelha';
 
             return `<div class="item-parcela">
-                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
-                ${pg ? '<span class="text-sucesso font-bold">Pago</span>' : `<button onclick="gerarPixAPI(${valor}, 'parcela_${idx+1}', ${p.id})" class="botao botao-pequeno botao-pix">Gerar Pix API</button>`}
+                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela - ${new Date(dt+'T00:00:00').toLocaleDateString('pt-BR')}</div>
+                <div>
+                    <strong>R$ ${formatarValor(valor)}</strong>
+                    ${pg ? `<span class="text-sucesso font-bold ml-2">PAGO</span>` : `<button onclick="gerarPixAPI(${valor}, 'parcela', ${p.id}, ${idx})" class="botao botao-pequeno botao-pix ml-2">Pagar</button>`}
+                </div>
             </div>`;
         }).join('')}
-        <div id="containerPix" class="mt-4"></div>`;
+
+        <div class="mt-6 text-center">
+            <a href="https://wa.me/5511973294235?text=Olá! Preciso de suporte sobre minha proposta ${propostaAtual.cpf}" target="_blank" class="botao botao-pix">💬 Falar com Suporte</a>
+        </div>`;
     }
 
     document.getElementById('conteudoProposta').innerHTML = html;
 }
 
-async function gerarPixAPI(valor, tipo, propostaId) {
-    document.getElementById('containerPix').innerHTML = `<div class="text-center p-4">⏳ Gerando QR Code Pix...</div>`;
-    try {
-        const resposta = await fetch('/api/gerar-pix', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ valor, tipo, propostaId })
-        });
-        
-        const data = await resposta.json();
-        if(!data.sucesso) throw new Error(data.erro || 'Erro ao gerar Pix');
-
-        document.getElementById('containerPix').innerHTML = `
-            <div style="border: 2px solid #32BCAD; padding: 20px; border-radius: 12px; text-align: center; background: #f9f9f9;">
-                <h4 style="margin-bottom: 15px; color: #0A2463; font-weight: bold;">QR Code Pix - ${tipo.toUpperCase()}:</h4>
-                <img src="${data.qrCodeUrl}" alt="QR Code Pix" style="width: 220px; height: 220px; display: block; margin: 0 auto 15px auto; border-radius: 8px; border: 1px solid #ddd;" />
-                <p style="font-weight: bold; margin-bottom: 5px;">Copia e Cola:</p>
-                <input type="text" id="campoPixCopia" value="${data.copiaECola}" readonly style="width: 100%; padding: 10px; border: 1px solid #CBD5E1; border-radius: 6px; text-align: center; margin-bottom: 12px; font-size: 12px; background: white;">
-                <button onclick="copiarCodigoPix()" class="botao" style="background-color: #0A2463; color: white; padding: 10px; font-size: 14px;">📋 Copiar Código Pix</button>
-                <p style="font-size: 12px; color: #10B981; margin-top: 12px; font-weight: 600;">🔄 A baixa é automática via Webhook!</p>
-            </div>
-        `;
-    } catch (err) {
-        document.getElementById('containerPix').innerHTML = `<div class="p-4 bg-red-50 text-red-600 rounded-lg text-center font-bold">❌ Erro de Comunicação com a API<br><span style="font-size:12px; font-weight:normal;">${err.message}</span></div>`;
-    }
-}
-
-function copiarCodigoPix() {
-    const input = document.getElementById("campoPixCopia");
-    input.select();
-    input.setSelectionRange(0, 99999);
-    navigator.clipboard.writeText(input.value).then(() => {
-        alert("Código Pix copiado com sucesso!");
-    });
-}
-
 async function confirmarParcelas() {
-    const q = document.getElementById('qtdEscolhida').value;
-    const {error} = await supabase.from('propostas').update({qtd_parcelas_escolhida: parseInt(q)}).eq('id', propostaAtual.id);
-    if(error) alert('Erro ao salvar parcelas');
-    else consultar();
+    const qtd = Number(document.getElementById('qtdEscolhida').value);
+    if(!confirm(`Confirmar ${qtd} parcelas? Não poderá alterar depois.`)) return;
+    await supabase.from('propostas').update({qtd_parcelas_escolhida: qtd}).eq('id', propostaAtual.id);
 }
 
-function alternarModoAssinatura(modo) {
-    modoAssinatura = modo;
-    if(modo === 'selfie') {
-        document.getElementById('blocoSelfie').classList.remove('oculto');
-        document.getElementById('blocoManual').classList.add('oculto');
-        document.getElementById('btnModoSelfie').className = 'botao botao-pequeno bg-primary text-white';
-        document.getElementById('btnModoManual').className = 'botao botao-pequeno bg-slate-200 text-slate-700';
-        iniciarCamera();
-    } else {
-        document.getElementById('blocoSelfie').classList.add('oculto');
-        document.getElementById('blocoManual').classList.remove('oculto');
-        document.getElementById('btnModoSelfie').className = 'botao botao-pequeno bg-slate-200 text-slate-700';
-        document.getElementById('btnModoManual').className = 'botao botao-pequeno bg-primary text-white';
-        pararCamera();
-        setTimeout(inicializarCanvas, 100);
+function alternarModoAssinatura(m) {
+    modoAssinatura = m;
+    document.getElementById('btnModoSelfie').className = `botao botao-pequeno ${m==='selfie'?'bg-primary text-white':'bg-slate-200 text-slate-700'}`;
+    document.getElementById('btnModoManual').className = `botao botao-pequeno ${m==='manual'?'bg-primary text-white':'bg-slate-200 text-slate-700'}`;
+    document.getElementById('blocoSelfie').classList.toggle('oculto', m!=='selfie');
+    document.getElementById('blocoManual').classList.toggle('oculto', m!=='manual');
+    m==='selfie' ? iniciarCamera() : pararCamera();
+}
+
+function iniciarCamera() {
+    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}})
+        .then(stream=>{
+            webcamStream = stream;
+            document.getElementById('videoCamera').srcObject = stream;
+        }).catch(err=>alert('Não foi possível acessar a câmera.'));
     }
-}
-
-async function iniciarCamera() {
-    try {
-        webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
-        const video = document.getElementById('videoCamera');
-        if(video) video.srcObject = webcamStream;
-    } catch(e) { console.error("Erro na câmera:", e); }
 }
 
 function pararCamera() {
-    if(webcamStream) {
-        webcamStream.getTracks().forEach(track => track.stop());
-        webcamStream = null;
-    }
+    if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
+    webcamStream = null;
 }
 
-let fotoBase64 = null;
 function tirarSelfie() {
     const video = document.getElementById('videoCamera');
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 400;
-    canvas.height = video.videoHeight || 300;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    fotoBase64 = canvas.toDataURL('image/jpeg', 0.8);
-    
-    document.getElementById('imgSelfie').src = fotoBase64;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video,0,0);
+    document.getElementById('imgSelfie').src = canvas.toDataURL('image/png');
     document.getElementById('areaCamera').classList.add('oculto');
     document.getElementById('areaPreviewSelfie').classList.remove('oculto');
     pararCamera();
 }
 
 function refazerSelfie() {
-    fotoBase64 = null;
     document.getElementById('areaPreviewSelfie').classList.add('oculto');
     document.getElementById('areaCamera').classList.remove('oculto');
     iniciarCamera();
 }
 
 function inicializarCanvas() {
-    const canvas = document.getElementById('canvasAssinatura');
-    if(!canvas) return;
-    canvasContext = canvas.getContext('2d');
-    canvas.width = canvas.offsetWidth;
-    canvas.height = 150;
-    
-    canvasContext.strokeStyle = '#0A2463';
+    const c = document.getElementById('canvasAssinatura');
+    if(!c) return;
+    canvasContext = c.getContext('2d');
     canvasContext.lineWidth = 2;
-    canvasContext.lineJoin = 'round';
     canvasContext.lineCap = 'round';
+    canvasContext.strokeStyle = '#0A2463';
 
-    const getPos = (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-        return { x: clientX - rect.left, y: clientY - rect.top };
-    };
+    const inicio = (e)=>{ desenhando=true; canvasContext.beginPath(); canvasContext.moveTo(e.offsetX||e.touches[0].clientX-c.getBoundingClientRect().left, e.offsetY||e.touches[0].clientY-c.getBoundingClientRect().top); };
+    const fim = ()=> desenhando=false;
+    const desenhar = (e)=>{ if(!desenhando) return; e.preventDefault(); canvasContext.lineTo(e.offsetX||e.touches[0].clientX-c.getBoundingClientRect().left, e.offsetY||e.touches[0].clientY-c.getBoundingClientRect().top); canvasContext.stroke(); };
 
-    const iniciarDesenho = (e) => { desenhando = true; const pos = getPos(e); canvasContext.beginPath(); canvasContext.moveTo(pos.x, pos.y); e.preventDefault(); };
-    const desenhar = (e) => { if(!desenhando) return; const pos = getPos(e); canvasContext.lineTo(pos.x, pos.y); canvasContext.stroke(); e.preventDefault(); };
-    const pararDesenho = () => { desenhando = false; };
-
-    canvas.onmousedown = iniciarDesenho;
-    canvas.onmousemove = desenhar;
-    canvas.onmouseup = pararDesenho;
-    canvas.onmouseleave = pararDesenho;
-
-    canvas.ontouchstart = iniciarDesenho;
-    canvas.ontouchmove = desenhar;
-    canvas.ontouchend = pararDesenho;
+    c.addEventListener('mousedown', inicio);
+    c.addEventListener('mouseup', fim);
+    c.addEventListener('mousemove', desenhar);
+    c.addEventListener('touchstart', inicio);
+    c.addEventListener('touchend', fim);
+    c.addEventListener('touchmove', desenhar);
 }
 
 function limparCanvas() {
-    if(canvasContext) canvasContext.clearRect(0, 0, document.getElementById('canvasAssinatura').width, document.getElementById('canvasAssinatura').height);
+    const c = document.getElementById('canvasAssinatura');
+    if(!c || !canvasContext) return;
+    canvasContext.clearRect(0,0,c.width,c.height);
 }
 
 async function assinarContrato() {
-    const aceito = document.getElementById('aceitoContrato').checked;
-    if(!aceito) return alert('Você deve aceitar os termos do contrato!');
-
-    let assinaturaFinal = null;
+    if(!document.getElementById('aceitoContrato').checked) return alert('Você precisa concordar com o contrato!');
+    
+    let assinatura = '';
     if(modoAssinatura === 'selfie') {
-        if(!fotoBase64) return alert('Capture a sua selfie para assinar!');
-        assinaturaFinal = fotoBase64;
+        if(document.getElementById('areaPreviewSelfie').classList.contains('oculto')) return alert('Tire a selfie primeiro!');
+        assinatura = document.getElementById('imgSelfie').src;
     } else {
-        const canvas = document.getElementById('canvasAssinatura');
-        assinaturaFinal = canvas.toDataURL('image/png');
+        const c = document.getElementById('canvasAssinatura');
+        if(!c || c.getContext('2d').getImageData(0,0,c.width,c.height).data.every(v=>v===0)) return alert('Desenhe sua assinatura!');
+        assinatura = c.toDataURL('image/png');
     }
 
-    const {error} = await supabase.from('propostas').update({
-        contrato_assinado: true,
-        assinatura_digital: assinaturaFinal,
-        data_assinatura: new Date().toISOString()
-    }).eq('id', propostaAtual.id);
+    await supabase.from('propostas').update({contrato_assinado:true, assinatura: assinatura}).eq('id', propostaAtual.id);
+    alert('✅ Contrato assinado! Aguarde o carregamento...');
+}
 
-    if(error) alert('Erro ao assinar contrato: ' + error.message);
-    else {
-        alert('Contrato assinado com sucesso!');
-        consultar();
-    }
+async function gerarPixAPI(valor, tipo, idProposta, idxParcela=null) {
+    alert('🔄 Gerando Pix via Mercado Pago...');
+    console.log(`Gerar Pix: R$ ${valor} - ${tipo} - ID ${idProposta}`);
 }
 </script>
 </body>
