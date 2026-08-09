@@ -6,54 +6,59 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORTA = process.env.PORT || 3000;
 
-// ✅ HABILITA TUDO ANTES DE TUDO
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// ✅ SUPABASE
+// SUPABASE
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ✅ MERCADO PAGO — VERIFIQUE A VARIAVEL NO RENDER!
+// MERCADO PAGO — VERIFIQUE COM MUITA ATENÇÃO!
 const MP_TOKEN = process.env.MERCADO_PAGO_TOKEN;
-if (!MP_TOKEN) {
-  console.error('❌ ERRO: COLOQUE O TOKEN DE PRODUÇÃO NAS VARIAVEIS DO RENDER!');
+console.log('🔹 Token carregado?', !!MP_TOKEN);
+
+if(!MP_TOKEN) {
+  console.error('❌ NENHUM TOKEN ENCONTRADO NAS VARIÁVEIS!');
 } else {
   mercadopago.configure({ access_token: MP_TOKEN });
 }
 
-// ✅ ROTA GERAR PIX
+// ROTA GERAR PIX COM LOG COMPLETO
 app.post('/api/gerar-pix', async (req, res) => {
   try {
-    if (!MP_TOKEN) return res.json({ sucesso: false, mensagem: 'Token do Mercado Pago não configurado' });
+    if(!MP_TOKEN) throw new Error('Token do Mercado Pago não foi configurado no Render');
 
     const { valor, descricao, referencia } = req.body;
-    console.log('🔹 Requisição Pix:', { valor, descricao, referencia });
+    console.log('🔹 Dados recebidos:', { valor, descricao, referencia });
 
     const pagamento = await mercadopago.payment.create({
       transaction_amount: Number(valor),
-      description: descricao.substring(0, 50),
+      description: descricao.substring(0,45),
       payment_method_id: 'pix',
       external_reference: referencia,
       notification_url: 'https://flashcred-sistema.onrender.com/api/webhook-mercadopago',
-      payer: { email: 'pagamento@flashcred.com.br' }
+      payer: { email: 'vendas@flashcred.com.br' }
     });
 
-    const qrDados = pagamento?.response?.point_of_interaction?.transaction_data;
-    if (!qrDados?.qr_code) throw new Error('QR Code não retornado pela API');
+    console.log('🔹 Resposta MP:', JSON.stringify(pagamento.response, null, 2));
 
-    console.log('✅ PIX GERADO COM SUCESSO');
+    const qrDados = pagamento?.response?.point_of_interaction?.transaction_data;
+    if(!qrDados?.qr_code) throw new Error('Mercado Pago não retornou o QR Code');
+
     res.json({ sucesso: true, qr_code: qrDados.qr_code });
 
   } catch (erro) {
-    console.error('❌ ERRO:', erro);
-    res.json({ sucesso: false, mensagem: erro.message || 'Falha ao gerar Pix' });
+    console.error('❌ ERRO COMPLETO:', erro);
+    res.json({ 
+      sucesso: false, 
+      mensagem: erro.cause?.message || erro.message || 'Falha na API do Mercado Pago' 
+    });
   }
 });
 
-// ✅ WEBHOOK
+// WEBHOOK
 app.post('/api/webhook-mercadopago', async (req, res) => {
   try {
     if (req.body.type === 'payment') {
@@ -69,5 +74,4 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
   }
 });
 
-// ✅ INICIA SERVIDOR
-app.listen(PORTA, () => console.log(`✅ SERVIDOR FLASHCRED ONLINE NA PORTA ${PORTA}`));
+app.listen(PORTA, () => console.log(`✅ SERVIDOR ONLINE`));
