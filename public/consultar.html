@@ -60,7 +60,6 @@
         .oculto { display: none !important; }
         .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
         .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
-        .carregando { text-align: center; padding: 20px; color: #64748B; }
         canvas.assinatura-pad { border: 2px dashed #CBD5E1; border-radius: 8px; background: white; width: 100%; cursor: crosshair; }
     </style>
 </head>
@@ -226,7 +225,7 @@ function mostrarProposta(p) {
 
         <h4 class="font-bold mt-4 mb-2">📄 CONTRATO PARTICULAR DE FINANCIAMENTO E COMPRA</h4>
         <div class="contrato">
-            <strong>CLÁUSULA 1ª - DO OBJETO E VALORES:</strong> O presente instrumento tiene por objeto o financiamento para aquisição de produtos/serviços no valor total de <strong>R$ ${formatarValor(total)}</strong>, mediante o pagamento de uma entrada no valor de <strong>R$ ${formatarValor(e)}</strong> e o saldo remanescente parcelado em <strong>${qtdEsc}x de R$ ${formatarValor(valParc)}</strong>, incidindo juros remuneratórios de <strong>${j}% ao mês</strong>.<br><br>
+            <strong>CLÁUSULA 1ª - DO OBJETO E VALORES:</strong> O presente instrumento tem por objeto o financiamento para aquisição de produtos/serviços no valor total de <strong>R$ ${formatarValor(total)}</strong>, mediante o pagamento de uma entrada no valor de <strong>R$ ${formatarValor(e)}</strong> e o saldo remanescente parcelado em <strong>${qtdEsc}x de R$ ${formatarValor(valParc)}</strong>, incidindo juros remuneratórios de <strong>${j}% ao mês</strong>.<br><br>
             <strong>CLÁUSULA 2ª - DA ENTREGA E PRAZO:</strong> A entrega do produto/serviço fica estipulada em até <strong>${diasTotal} dias úteis</strong>, contados estritamente após a compensação bancária e confirmação do pagamento da taxa de entrada.<br><br>
             <strong>CLÁUSULA 3ª - DO INADIMPLEMENTO E ENCARGOS:</strong> O atraso no pagamento de qualquer das parcelas acarretará a incidência de multa moratória de 2% (dois por cento) sobre o valor devido, juros de mora de 1% ao mês, além de correção monetária, sujeitando o devedor à inclusão de seu CPF nos órgãos de proteção ao crédito (SPC/SERASA) e protesto em cartório.<br><br>
             <strong>CLÁUSULA 4ª - DA ANTECIPAÇÃO DA DÍVIDA:</strong> Ocorrendo o atraso superior a 15 dias em qualquer parcela ou quebra de qualquer cláusula, vencerão antecipadamente todas as demais obrigações vincendas, tornando a dívida integralmente exigível de uma só vez.<br><br>
@@ -338,7 +337,9 @@ function mostrarProposta(p) {
         <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS A PAGAR</h3>
         ${datasParcelas.map((dt,idx)=>{
             const valor = Number(valorParcela);
-            const pg = idx+1 <= (p.parcelas_pagas||0);
+            const numeroParcela = idx + 1;
+            const parcelasPagas = p.parcelas_pagas || 0;
+            const pg = numeroParcela <= parcelasPagas;
             const hoje = new Date();
             const vencto = new Date(dt + 'T00:00:00');
             let cor = 'luz-amarela';
@@ -346,16 +347,19 @@ function mostrarProposta(p) {
             else if(vencto < hoje) cor='luz-vermelha';
 
             return `<div class="item-parcela">
-                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
-                <div>${pg ? '<span class="text-sucesso font-bold">Pago</span>' : '<span class="text-alerta font-bold">Em aberto</span>'}</div>
+                <div><span class="luz ${cor}"></span>${numeroParcela}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
+                <div>
+                    ${pg ? '<span class="text-sucesso font-bold">Pago</span>' : `<button onclick="gerarPixParcela(${numeroParcela}, ${valor})" class="botao botao-pequeno bg-pix text-white">Pagar Pix</button>`}
+                </div>
             </div>`;
-        }).join('')}`;
+        }).join('')}
+        <div id="areaPixParcela" class="oculto mt-4"></div>`;
     }
 
     document.getElementById('conteudoProposta').innerHTML = html;
 }
 
-// Funções auxiliares mantidas para o funcionamento do sistema
+// Funções auxiliares
 async function confirmarParcelas() {
     const qtd = document.getElementById('qtdEscolhida').value;
     const {error} = await supabase.from('propostas').update({ qtd_parcelas_escolhida: parseInt(qtd) }).eq('id', propostaAtual.id);
@@ -456,13 +460,25 @@ async function assinarContrato() {
     pararCamera();
 }
 
-async function gerarPix(valor) {
-    document.getElementById('areaPix').classList.remove('oculto');
-    document.getElementById('areaPix').innerHTML = `
+function gerarPix(valor) {
+    const areaPix = document.getElementById('areaPix');
+    areaPix.classList.remove('oculto');
+    areaPix.innerHTML = `
         <div class="codigo-pix">
-            <p class="mb-2 text-primary font-bold">Chave Pix Copia e Cola:</p>
-            <p style="font-size: 10px; word-break: break-all;">00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-4266554400005204000053039865802BR5925FlashCred Instituicao6009Sao Paulo62070503***63041D3D</p>
-            <p class="mt-2 text-xs text-sucesso">Assim que pagar, o sistema atualizará sozinho!</p>
+            <p class="mb-2 text-primary font-bold">Chave Pix Copia e Cola (Entrada: R$ ${formatarValor(valor)}):</p>
+            <p style="font-size: 10px; word-break: break-all; user-select: all; background: #fff; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;">00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-4266554400005204000053039865802BR5925FlashCred Instituicao6009Sao Paulo62070503***63041D3D</p>
+            <p class="mt-2 text-xs text-sucesso font-bold">⚠️ Realize o pagamento da entrada. Assim que o admin confirmar no painel, suas parcelas aparecerão aqui automaticamente!</p>
+        </div>`;
+}
+
+function gerarPixParcela(numero, valor) {
+    const areaPix = document.getElementById('areaPixParcela');
+    areaPix.classList.remove('oculto');
+    areaPix.innerHTML = `
+        <div class="codigo-pix">
+            <p class="mb-2 text-primary font-bold">Pix Copia e Cola - ${numero}ª Parcela (R$ ${formatarValor(valor)}):</p>
+            <p style="font-size: 10px; word-break: break-all; user-select: all; background: #fff; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;">00020126580014br.gov.bcb.pix0136123e4567-e12b-12d1-a456-4266554400005204000053039865802BR5925FlashCred Instituicao6009Sao Paulo62070503***63041D3D</p>
+            <p class="mt-2 text-xs text-sucesso font-bold">⚠️ Após o pagamento, o administrador atualizará a baixa da parcela no sistema.</p>
         </div>`;
 }
 </script>
