@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Consulta de Proposta | FlashCred</title>
-    <!-- Biblioteca QRCode.js para desenhar o QR Code perfeitamente -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
@@ -20,142 +19,114 @@
         body { background: var(--bg-body); color: var(--texto); line-height: 1.5; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; }
         .cartao { background: white; border-radius: 12px; padding: 24px; box-shadow: var(--sombra); margin-bottom: 20px; text-align: center; }
-        .botao { padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: all 0.2s; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; justify-content: center; }
+        .botao { padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: all 0.2s; font-size: 14px; }
         .botao-sucesso { background: var(--sucesso); color: white; }
-        .botao-primario { background: var(--primary); color: white; }
         .campo { width: 100%; padding: 10px 12px; border: 1px solid var(--borda); border-radius: 8px; margin-bottom: 10px; font-size: 14px; background: white; }
-        #qrcode { display: flex; justify-content: center; margin: 20px 0; }
-        #qrcode img { border: 8px solid white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .copia-cola { background: #F8FAFC; border: 1px dashed var(--borda); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; margin: 15px 0; cursor: pointer; text-align: left; }
+        #qrcode-img { max-width: 200px; border: 8px solid white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 15px auto; display: block; }
+        .copia-cola { background: #F8FAFC; border: 1px dashed var(--borda); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; word-break: break-all; margin: 15px 0; text-align: left; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="cartao">
-        <h2 class="text-xl font-bold mb-4" style="color: var(--primary);">💳 Pagamento Pix | FlashCred</h2>
-        <p class="text-sm text-slate-600 mb-4">Escaneie o QR Code abaixo ou clique no código Copia e Cola para pagar:</p>
+    <div class="cartao" id="painelBusca">
+        <h2 class="text-xl font-bold mb-4" style="color: var(--primary);">🔍 Consultar Proposta</h2>
+        <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" class="campo text-center" maxlength="11">
+        <button onclick="buscarProposta()" class="botao botao-sucesso w-full">Consultar</button>
+    </div>
 
-        <!-- Elemento onde o QR Code será renderizado perfeitamente -->
-        <div id="qrcode"></div>
-
-        <div class="label-campo text-left font-semibold text-xs text-slate-500 mb-1">Pix Copia e Cola:</div>
-        <div id="pixCopiaCola" class="copia-cola" onclick="copiarPixTexto()" title="Clique para copiar">
-            Gerando código Pix...
+    <div class="cartao" id="painelDetalhes" style="display:none;">
+        <h2 id="clienteNome" class="text-xl font-bold text-primary mb-2"></h2>
+        <p id="clienteStatus" class="font-semibold mb-4"></p>
+        
+        <div id="areaPagamento" style="display:none;">
+            <div class="border-t pt-4 mt-4">
+                <h3 class="font-bold text-primary mb-2">💳 Pagamento Pix Dinâmico</h3>
+                <p class="text-sm text-slate-600 mb-2">Escaneie o QR Code abaixo para efetuar o pagamento com baixa automática:</p>
+                <img id="qrcode-img" src="" alt="QR Code Pix">
+                
+                <div id="pixCopiaCola" class="copia-cola"></div>
+                <button onclick="copiarPix()" class="botao botao-sucesso w-full"><i class="fas fa-copy"></i> Copiar Pix Copia e Cola</button>
+            </div>
         </div>
-
-        <button onclick="copiarPixTexto()" class="botao botao-sucesso w-full mt-2">
-            <i class="fas fa-copy"></i> Copiar Código Pix
-        </button>
+        
+        <div id="mensagemPago" style="display:none;" class="p-4 bg-emerald-50 text-emerald-800 rounded-lg font-bold mt-4">
+            ✅ Proposta e pagamento confirmados com sucesso!
+        </div>
     </div>
 </div>
 
 <script>
-// Função padrão para calcular o CRC16 (Obrigatório para o Pix ser válido no banco)
-function calcularCRC16(payload) {
-    let polinomio = 0x1021;
-    let resultado = 0xFFFF;
-    
-    for (let i = 0; i < payload.length; i++) {
-        let c = payload.charCodeAt(i);
-        resultado ^= (c << 8);
-        for (let j = 0; j < 8; j++) {
-            if ((resultado & 0x8000) !== 0) {
-                resultado = ((resultado << 1) ^ polinomio) & 0xFFFF;
-            } else {
-                resultado = (resultado << 1) & 0xFFFF;
+const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+
+let propostaAtual = null;
+
+async function buscarProposta() {
+    const cpf = document.getElementById('cpfConsulta').value.trim();
+    if(!cpf) return alert('Digite o CPF!');
+
+    const { data, error } = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
+    if(error || !data) return alert('Proposta não encontrada!');
+
+    propostaAtual = data;
+    document.getElementById('painelBusca').style.display = 'none';
+    document.getElementById('painelDetalhes').style.display = 'block';
+
+    document.getElementById('clienteNome').innerText = `Olá, ${data.nome}`;
+    document.getElementById('clienteStatus').innerText = `Status: ${data.status} | Entrada Paga: ${data.entrada_paga ? 'Sim' : 'Não'}`;
+
+    if(data.entrada_paga) {
+        document.getElementById('mensagemPago').style.display = 'block';
+    } else {
+        document.getElementById('areaPagamento').style.display = 'block';
+        gerarPixMercadoPago(data);
+    }
+
+    // Ouvir alterações em tempo real no Supabase para atualizar a tela sozinho assim que o webhook agir
+    supabase.channel('public:propostas')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `id=eq.${data.id}` }, payload => {
+            if(payload.new.entrada_paga) {
+                document.getElementById('areaPagamento').style.display = 'none';
+                document.getElementById('mensagemPago').style.display = 'block';
+                document.getElementById('clienteStatus').innerText = `Status: ${payload.new.status} | Entrada Paga: Sim`;
             }
+        })
+        .subscribe();
+}
+
+async function gerarPixMercadoPago(proposta) {
+    try {
+        const valorEntrada = proposta.valor_entrada || 150.00;
+        
+        // Chamada ao seu servidor backend que se conecta com o Mercado Pago
+        const resposta = await fetch('https://SEU-SERVIDOR-NO-RENDER.onrender.com/api/criar-pix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                proposta_id: proposta.id,
+                valor: valorEntrada,
+                nome: proposta.nome
+            })
+        });
+
+        const resultado = await resposta.json();
+        if(resultado.sucesso) {
+            document.getElementById('qrcode-img').src = `data:image/png;base64,${resultado.qr_code_base64}`;
+            document.getElementById('pixCopiaCola').innerText = resultado.qr_code;
+        } else {
+            alert('Erro ao gerar Pix no gateway: ' + resultado.erro);
         }
+    } catch(e) {
+        console.error('Erro de conexão com o servidor de pagamento:', e);
     }
-    
-    let resultadoHex = resultado.toString(16).toUpperCase();
-    while (resultadoHex.length < 4) {
-        resultadoHex = '0' + resultadoHex;
-    }
-    return resultadoHex;
 }
 
-// Função para formatar campos EMV do Pix
-function formatarCampo(id, valor) {
-    let tamanho = valor.length.toString().padStart(2, '0');
-    return id + tamanho + valor;
-}
-
-// Gerador Oficial do Payload Pix Copia e Cola
-function gerarPayloadPix(chavePix, nomeRecebedor, cidadeRecebedor, valorStr, txid = '***') {
-    let payload = '';
-    
-    // 00: Payload Format Indicator
-    payload += formatarCampo('00', '01');
-    
-    // 26: Merchant Account Information (Chave Pix)
-    let infoConta = formatarCampo('00', 'br.gov.bcb.pix') + formatarCampo('01', chavePix);
-    payload += formatarCampo('26', infoConta);
-    
-    // 52: Merchant Category Code
-    payload += formatarCampo('52', '0000');
-    
-    // 53: Transaction Currency (986 = BRL)
-    payload += formatarCampo('53', '986');
-    
-    // 54: Transaction Amount (Valor opcional ou fixo, ex: "150.00")
-    if (valorStr && Number(valorStr) > 0) {
-        payload += formatarCampo('54', Number(valorStr).toFixed(2));
-    }
-    
-    // 58: Country Code
-    payload += formatarCampo('58', 'BR');
-    
-    // 59: Merchant Name
-    let nomeLimpo = nomeRecebedor.substring(0, 25).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    payload += formatarCampo('59', nomeLimpo);
-    
-    // 60: Merchant City
-    let cidadeLimpa = cidadeRecebedor.substring(0, 15).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    payload += formatarCampo('60', cidadeLimpa);
-    
-    // 62: Additional Data Field Template (TXID)
-    let addData = formatarCampo('05', txid);
-    payload += formatarCampo('62', addData);
-    
-    // 63: CRC16 (Identificador 63 + tamanho 04 + valor calculado)
-    payload += '6304';
-    payload += calcularCRC16(payload);
-    
-    return payload;
-}
-
-// Inicializar e gerar o Pix na tela com os dados corretos da FlashCred
-window.onload = function() {
-    // Insira aqui os dados reais da chave Pix e da proposta
-    const chavePix = "suporte@flashcred.com.br"; // Chave Pix cadastrada
-    const nomeRecebedor = "FLASHCRED SOLUCOES";
-    const cidadeRecebedor = "SAO PAULO";
-    const valorProposta = "150.00"; // Exemplo de valor da entrada ou parcela
-    const identificador = "FLASHCRED01";
-
-    // Gera o payload válido com CRC16 matemático
-    const payloadPix = gerarPayloadPix(chavePix, nomeRecebedor, cidadeRecebedor, valorProposta, identificador);
-
-    // Exibe o texto do Copia e Cola na tela
-    document.getElementById('pixCopiaCola').innerText = payloadPix;
-
-    // Renderiza o QR Code visual limpo e sem erros
-    document.getElementById('qrcode').innerHTML = "";
-    new QRCode(document.getElementById("qrcode"), {
-        text: payloadPix,
-        width: 200,
-        height: 200,
-        colorDark: "#0A2463",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.M
-    });
-};
-
-function copiarPixTexto() {
+function copiarPix() {
     const texto = document.getElementById('pixCopiaCola').innerText;
     navigator.clipboard.writeText(texto);
-    alert('Código Pix Copia e Cola copiado com sucesso!');
+    alert('Código Pix copiado!');
 }
 </script>
 </body>
