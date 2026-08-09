@@ -128,38 +128,48 @@ function voltarInicio() {
     history.pushState({}, '', window.location.pathname);
 }
 
+// ✅ FUNÇÃO DE CONSULTA CORRIGIDA E MAIS SEGURA
 async function consultar() {
     const cpf = document.getElementById('cpfConsulta').value.trim().replace(/\D/g,'');
-    if(cpf.length !== 11) return alert('Digite o CPF completo!');
+    if(cpf.length !== 11) return alert('Digite o CPF completo com 11 números!');
 
     const btn = document.getElementById('btnConsultar');
     const textoOriginal = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Buscando proposta...`;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Buscando...`;
 
     try {
-        const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
+        const {data, error} = await supabase
+            .from('propostas')
+            .select('*')
+            .eq('cpf', cpf)
+            .limit(1);
         
-        if(error || !data) {
-            alert('Proposta não encontrada! Verifique o CPF.');
-            btn.disabled = false;
-            btn.innerHTML = textoOriginal;
+        if(error) throw error;
+        if(!data || data.length === 0) {
+            alert('Proposta não encontrada! Verifique o CPF digitado.');
             return;
         }
 
-        propostaAtual = data;
-        mostrarProposta(data);
+        propostaAtual = data[0];
+        mostrarProposta(propostaAtual);
         
+        // Inicia atualização em tempo real
         if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
         inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
-            .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, (res)=>{
+            .on('postgres_changes', {
+                event:'UPDATE', 
+                schema:'public', 
+                table:'propostas', 
+                filter:`id=eq.${propostaAtual.id}`
+            }, (res)=>{
                 propostaAtual = res.new;
                 mostrarProposta(res.new);
             }).subscribe();
 
     } catch (err) {
         console.error("Erro na consulta:", err);
-        alert("Ocorreu um erro ao consultar. Tente novamente.");
+        alert("Erro ao buscar proposta. Tente novamente em instantes.");
     } finally {
         btn.disabled = false;
         btn.innerHTML = textoOriginal;
@@ -346,4 +356,181 @@ function mostrarProposta(p) {
         </div>
 
         <div class="bloco-entrega" style="background: #ECFDF5; border-color: #10B981;">
-            <i 
+            <i class="fas fa-truck text-sucesso text-xl mb-2"></i>
+            <p class="font-bold">Entrega em até ${diasTotal} dias úteis já em andamento!</p>
+            <p class="text-sm mt-1">Faltam aproximadamente ${diasRestantes} dias úteis para receber seu móvel.</p>
+        </div>
+
+        <div class="resumo-contrato">
+            <h4 class="font-bold mb-2">📋 Dados do Contrato</h4>
+            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Entrada Paga:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>Restante em:</strong> ${q}x de R$ ${formatarValor(valorParcela)}</p>
+            <p><strong>Juros:</strong> ${j}% ao mês</p>
+        </div>
+
+        <h4 class="font-bold mt-4 mb-2">📅 Suas Parcelas</h4>
+        ${datasParcelas.map((data, i)=>{
+            const dataVenc = new Date(data);
+            const hoje = new Date();
+            const atrasado = dataVenc < hoje;
+            return `
+            <div class="item-parcela">
+                <div>
+                    <span class="luz ${atrasado?'luz-vermelha':'luz-verde'}"></span>
+                    Parcela ${i+1}/${q} - ${dataVenc.toLocaleDateString('pt-BR')}
+                </div>
+                <strong>R$ ${formatarValor(valorParcela)}</strong>
+            </div>`;
+        }).join('')}
+
+        <div class="mt-6 text-center">
+            <a href="https://wa.me/5511973294235?text=Olá! Preciso de suporte sobre minha proposta CPF ${p.cpf}" target="_blank" class="botao botao-sucesso">
+                <i class="fab fa-whatsapp mr-2"></i> Falar com Suporte
+            </a>
+        </div>`;
+    }
+
+    document.getElementById('conteudoProposta').innerHTML = html;
+}
+
+// DEMAIS FUNÇÕES AUXILIARES (assinatura, pix, etc) permanecem iguais, só corrigida a consulta!
+async function confirmarParcelas(){
+    const qtd = parseInt(document.getElementById('qtdEscolhida').value);
+    if(!qtd) return alert('Escolha a quantidade de parcelas!');
+    
+    const {error} = await supabase.from('propostas').update({qtd_parcelas_escolhida: qtd}).eq('id', propostaAtual.id);
+    if(error) return alert('Erro ao confirmar parcelas!');
+    propostaAtual.qtd_parcelas_escolhida = qtd;
+    mostrarProposta(propostaAtual);
+}
+
+async function assinarContrato(){
+    const aceito = document.getElementById('aceitoContrato').checked;
+    if(!aceito) return alert('Você precisa aceitar os termos do contrato!');
+    
+    let dadosAssinatura = null;
+    if(modoAssinatura === 'selfie'){
+        if(!document.getElementById('imgSelfie').src) return alert('Capture sua selfie primeiro!');
+        dadosAssinatura = document.getElementById('imgSelfie').src;
+    } else {
+        const dados = document.getElementById('canvasAssinatura').toDataURL();
+        if(dados.length < 500) return alert('Desenhe sua assinatura!');
+        dadosAssinatura = dados;
+    }
+
+    const {error} = await supabase.from('propostas').update({
+        contrato_assinado: true,
+        dados_assinatura: dadosAssinatura,
+        data_assinatura: new Date().toISOString()
+    }).eq('id', propostaAtual.id);
+
+    if(error) return alert('Erro ao assinar contrato!');
+    propostaAtual.contrato_assinado = true;
+    mostrarProposta(propostaAtual);
+}
+
+async function gerarPixAPI(valor, tipo, idProposta){
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Gerando Pix...`;
+
+    try {
+        const res = await fetch('/api/gerar-pix', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({valor, descricao:`Entrada proposta ${idProposta}`, referencia:`prop_${idProposta}_${tipo}`})
+        });
+
+        const ret = await res.json();
+        if(!ret.sucesso) throw new Error('Falha ao gerar Pix');
+
+        document.getElementById('containerPix').innerHTML = `
+        <div class="cartao text-center">
+            <h4 class="font-bold text-pix mb-3">💳 PIX GERADO COM SUCESSO</h4>
+            <div id="qrcode" class="flex justify-center mb-3"></div>
+            <p class="text-sm mb-2">Escaneie ou copie o código abaixo:</p>
+            <input type="text" value="${ret.qr_code}" readonly class="campo text-center text-xs" onclick="this.select()">
+            <button onclick="navigator.clipboard.writeText('${ret.qr_code}').then(()=>alert('Copiado!'))" class="botao botao-pix mt-2">Copiar Código Pix</button>
+        </div>`;
+
+        new QRCode(document.getElementById('qrcode'), {text: ret.qr_code, width:200, height:200});
+
+    } catch (e) {
+        alert('Erro ao gerar Pix: '+e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Gerar Pix da Entrada';
+    }
+}
+
+// Funções auxiliares de assinatura e câmera
+function alternarModoAssinatura(m){
+    modoAssinatura = m;
+    document.getElementById('blocoSelfie').classList.toggle('oculto', m!=='selfie');
+    document.getElementById('blocoManual').classList.toggle('oculto', m!=='manual');
+    document.getElementById('btnModoSelfie').classList.toggle('bg-primary', m==='selfie');
+    document.getElementById('btnModoSelfie').classList.toggle('bg-slate-200', m!=='selfie');
+    document.getElementById('btnModoManual').classList.toggle('bg-primary', m==='manual');
+    document.getElementById('btnModoManual').classList.toggle('bg-slate-200', m!=='manual');
+    if(m==='selfie') iniciarCamera(); else pararCamera();
+}
+
+async function iniciarCamera(){
+    try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+        document.getElementById('videoCamera').srcObject = webcamStream;
+    } catch { alert('Permita acesso à câmera para assinar com selfie!'); }
+}
+
+function pararCamera(){
+    if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
+}
+
+function tirarSelfie(){
+    const vid = document.getElementById('videoCamera');
+    const img = document.getElementById('imgSelfie');
+    const canvas = document.createElement('canvas');
+    canvas.width = vid.videoWidth;
+    canvas.height = vid.videoHeight;
+    canvas.getContext('2d').drawImage(vid,0,0);
+    img.src = canvas.toDataURL('image/png');
+    document.getElementById('areaCamera').classList.add('oculto');
+    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
+    pararCamera();
+}
+
+function refazerSelfie(){
+    document.getElementById('areaPreviewSelfie').classList.add('oculto');
+    document.getElementById('areaCamera').classList.remove('oculto');
+    iniciarCamera();
+}
+
+function inicializarCanvas(){
+    const c = document.getElementById('canvasAssinatura');
+    canvasContext = c.getContext('2d');
+    canvasContext.lineWidth = 2;
+    canvasContext.lineCap = 'round';
+    canvasContext.strokeStyle = '#000';
+
+    const desenhar = (e)=>{
+        if(!desenhando) return;
+        const rect = c.getBoundingClientRect();
+        const x = (e.clientX||e.touches[0].clientX) - rect.left;
+        const y = (e.clientY||e.touches[0].clientY) - rect.top;
+        canvasContext.lineTo(x,y);
+        canvasContext.stroke();
+    };
+
+    c.onmousedown = c.ontouchstart = ()=>{desenhando=true; canvasContext.beginPath()};
+    c.onmousemove = c.ontouchmove = desenhar;
+    c.onmouseup = c.ontouchend = c.onmouseout = ()=>desenhando=false;
+}
+
+function limparCanvas(){
+    const c = document.getElementById('canvasAssinatura');
+    canvasContext.clearRect(0,0,c.width,c.height);
+}
+</script>
+</body>
+</html>
