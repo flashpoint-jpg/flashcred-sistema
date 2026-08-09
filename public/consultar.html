@@ -109,18 +109,38 @@ async function consultar() {
     const cpf = document.getElementById('cpfConsulta').value.trim().replace(/\D/g,'');
     if(cpf.length !== 11) return alert('Digite o CPF completo!');
 
-    const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
-    if(error || !data) return alert('Proposta não encontrada! Verifique o CPF.');
+    // Mostra o feedback de animação de carregamento no botão
+    const botaoConsultar = document.querySelector('#telaConsulta button');
+    const textoOriginal = botaoConsultar.innerHTML;
+    botaoConsultar.disabled = true;
+    botaoConsultar.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Consultando...`;
 
-    propostaAtual = data;
-    mostrarProposta(data);
-    
-    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
-    inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
-        .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, (res)=>{
-            propostaAtual = res.new;
-            mostrarProposta(res.new);
-        }).subscribe();
+    try {
+        const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
+        
+        if(error || !data) {
+            alert('Proposta não encontrada! Verifique o CPF.');
+            return;
+        }
+
+        propostaAtual = data;
+        mostrarProposta(data);
+        
+        if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+        inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
+            .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, (res)=>{
+                propostaAtual = res.new;
+                mostrarProposta(res.new);
+            }).subscribe();
+
+    } catch (err) {
+        console.error("Erro na consulta:", err);
+        alert("Ocorreu um erro ao consultar. Tente novamente.");
+    } finally {
+        // Restaura o botão original após a busca
+        botaoConsultar.disabled = false;
+        botaoConsultar.innerHTML = textoOriginal;
+    }
 }
 
 function formatarValor(v) {
@@ -220,7 +240,7 @@ function mostrarProposta(p) {
 
         <h4 class="font-bold mt-4 mb-2">📄 CONTRATO PARTICULAR DE FINANCIAMENTO E COMPRA</h4>
         <div class="contrato">
-            <strong>CLÁUSULA 1ª - DO OBJETO E VALORES:</strong> O presente instrumento tem por objeto o financiamento para aquisição de produtos/serviços no valor total de <strong>R$ ${formatarValor(total)}</strong>, mediante o pagamento de uma entrada no valor de <strong>R$ ${formatarValor(e)}</strong> e o saldo remanescente parcelado em <strong>${qtdEsc}x de R$ ${formatarValor(valParc)}</strong>, incidindo juros remuneratórios de <strong>${j}% ao mês</strong>.<br><br>
+            <strong>CLÁUSULA 1ª - DO OBJETO E VALORES:</strong> O presente instrumento tiene por objeto o financiamento para aquisição de produtos/serviços no valor total de <strong>R$ ${formatarValor(total)}</strong>, mediante o pagamento de uma entrada no valor de <strong>R$ ${formatarValor(e)}</strong> e o saldo remanescente parcelado em <strong>${qtdEsc}x de R$ ${formatarValor(valParc)}</strong>, incidindo juros remuneratórios de <strong>${j}% ao mês</strong>.<br><br>
             <strong>CLÁUSULA 2ª - DA ENTREGA E PRAZO:</strong> A entrega do produto/serviço fica estipulada em até <strong>${diasTotal} dias úteis</strong>, contados estritamente após a compensação bancária e confirmação do pagamento da taxa de entrada.<br><br>
             <strong>CLÁUSULA 3ª - DO INADIMPLEMENTO E ENCARGOS:</strong> O atraso no pagamento de qualquer das parcelas acarretará a incidência de multa moratória de 2% (dois por cento) sobre o valor devido, juros de mora de 1% ao mês, além de correção monetária, sujeitando o devedor à inclusão de seu CPF nos órgãos de proteção ao crédito (SPC/SERASA) e protesto em cartório.<br><br>
             <strong>CLÁUSULA 4ª - DA ANTECIPAÇÃO DA DÍVIDA:</strong> Ocorrendo o atraso superior a 15 dias em qualquer parcela ou quebra de qualquer cláusula, vencerão antecipadamente todas as demais obrigações vincendas, tornando a dívida integralmente exigível de uma só vez.<br><br>
@@ -339,6 +359,167 @@ function mostrarProposta(p) {
     document.getElementById('conteudoProposta').innerHTML = html;
 }
 
-// Função universal para requisitar o Pix ao backend Node.js no Render
 async function gerarPixAPI(valor, tipo, propostaId) {
-    document.getElementById('c
+    document.getElementById('containerPix').innerHTML = `<div class="text-center p-4">⏳ Gerando QR Code Pix...</div>`;
+    try {
+        const resposta = await fetch('/api/gerar-pix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ valor, tipo, propostaId })
+        });
+        
+        const data = await resposta.json();
+        if(!data.sucesso) throw new Error(data.erro || 'Erro ao gerar Pix');
+
+        document.getElementById('containerPix').innerHTML = `
+            <div style="border: 2px solid #32BCAD; padding: 20px; border-radius: 12px; text-align: center; background: #f9f9f9;">
+                <h4 style="margin-bottom: 15px; color: #0A2463; font-weight: bold;">QR Code Pix - ${tipo.toUpperCase()}:</h4>
+                <img src="${data.qrCodeUrl}" alt="QR Code Pix" style="width: 220px; height: 220px; display: block; margin: 0 auto 15px auto; border-radius: 8px; border: 1px solid #ddd;" />
+                <p style="font-weight: bold; margin-bottom: 5px;">Copia e Cola:</p>
+                <input type="text" id="campoPixCopia" value="${data.copiaECola}" readonly style="width: 100%; padding: 10px; border: 1px solid #CBD5E1; border-radius: 6px; text-align: center; margin-bottom: 12px; font-size: 12px; background: white;">
+                <button onclick="copiarCodigoPix()" class="botao" style="background-color: #0A2463; color: white; padding: 10px; font-size: 14px;">📋 Copiar Código Pix</button>
+                <p style="font-size: 12px; color: #10B981; margin-top: 12px; font-weight: 600;">🔄 A baixa é automática via Webhook!</p>
+            </div>
+        `;
+    } catch (err) {
+        document.getElementById('containerPix').innerHTML = `<div class="p-4 bg-red-50 text-red-600 rounded-lg text-center font-bold">❌ Erro de Comunicação com a API<br><span style="font-size:12px; font-weight:normal;">${err.message}</span></div>`;
+    }
+}
+
+function copiarCodigoPix() {
+    const input = document.getElementById("campoPixCopia");
+    input.select();
+    input.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(input.value).then(() => {
+        alert("Código Pix copiado com sucesso!");
+    });
+}
+
+async function confirmarParcelas() {
+    const q = document.getElementById('qtdEscolhida').value;
+    const {error} = await supabase.from('propostas').update({qtd_parcelas_escolhida: parseInt(q)}).eq('id', propostaAtual.id);
+    if(error) alert('Erro ao salvar parcelas');
+    else consultar();
+}
+
+function alternarModoAssinatura(modo) {
+    modoAssinatura = modo;
+    if(modo === 'selfie') {
+        document.getElementById('blocoSelfie').classList.remove('oculto');
+        document.getElementById('blocoManual').classList.add('oculto');
+        document.getElementById('btnModoSelfie').className = 'botao botao-pequeno bg-primary text-white';
+        document.getElementById('btnModoManual').className = 'botao botao-pequeno bg-slate-200 text-slate-700';
+        iniciarCamera();
+    } else {
+        document.getElementById('blocoSelfie').classList.add('oculto');
+        document.getElementById('blocoManual').classList.remove('oculto');
+        document.getElementById('btnModoSelfie').className = 'botao botao-pequeno bg-slate-200 text-slate-700';
+        document.getElementById('btnModoManual').className = 'botao botao-pequeno bg-primary text-white';
+        pararCamera();
+        setTimeout(inicializarCanvas, 100);
+    }
+}
+
+async function iniciarCamera() {
+    try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+        const video = document.getElementById('videoCamera');
+        if(video) video.srcObject = webcamStream;
+    } catch(e) { console.error("Erro na câmera:", e); }
+}
+
+function pararCamera() {
+    if(webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+        webcamStream = null;
+    }
+}
+
+let fotoBase64 = null;
+function tirarSelfie() {
+    const video = document.getElementById('videoCamera');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 400;
+    canvas.height = video.videoHeight || 300;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    fotoBase64 = canvas.toDataURL('image/jpeg', 0.8);
+    
+    document.getElementById('imgSelfie').src = fotoBase64;
+    document.getElementById('areaCamera').classList.add('oculto');
+    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
+    pararCamera();
+}
+
+function refazerSelfie() {
+    fotoBase64 = null;
+    document.getElementById('areaPreviewSelfie').classList.add('oculto');
+    document.getElementById('areaCamera').classList.remove('oculto');
+    iniciarCamera();
+}
+
+function inicializarCanvas() {
+    const canvas = document.getElementById('canvasAssinatura');
+    if(!canvas) return;
+    canvasContext = canvas.getContext('2d');
+    canvas.width = canvas.offsetWidth;
+    canvas.height = 150;
+    
+    canvasContext.strokeStyle = '#0A2463';
+    canvasContext.lineWidth = 2;
+    canvasContext.lineJoin = 'round';
+    canvasContext.lineCap = 'round';
+
+    const getPos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: clientX - rect.left, y: clientY - rect.top };
+    };
+
+    const iniciarDesenho = (e) => { desenhando = true; const pos = getPos(e); canvasContext.beginPath(); canvasContext.moveTo(pos.x, pos.y); e.preventDefault(); };
+    const desenhar = (e) => { if(!desenhando) return; const pos = getPos(e); canvasContext.lineTo(pos.x, pos.y); canvasContext.stroke(); e.preventDefault(); };
+    const pararDesenho = () => { desenhando = false; };
+
+    canvas.onmousedown = iniciarDesenho;
+    canvas.onmousemove = desenhar;
+    canvas.onmouseup = pararDesenho;
+    canvas.onmouseleave = pararDesenho;
+
+    canvas.ontouchstart = iniciarDesenho;
+    canvas.ontouchmove = desenhar;
+    canvas.ontouchend = pararDesenho;
+}
+
+function limparCanvas() {
+    if(canvasContext) canvasContext.clearRect(0, 0, document.getElementById('canvasAssinatura').width, document.getElementById('canvasAssinatura').height);
+}
+
+async function assinarContrato() {
+    const aceito = document.getElementById('aceitoContrato').checked;
+    if(!aceito) return alert('Você deve aceitar os termos do contrato!');
+
+    let assinaturaFinal = null;
+    if(modoAssinatura === 'selfie') {
+        if(!fotoBase64) return alert('Capture a sua selfie para assinar!');
+        assinaturaFinal = fotoBase64;
+    } else {
+        const canvas = document.getElementById('canvasAssinatura');
+        assinaturaFinal = canvas.toDataURL('image/png');
+    }
+
+    const {error} = await supabase.from('propostas').update({
+        contrato_assinado: true,
+        assinatura_digital: assinaturaFinal,
+        data_assinatura: new Date().toISOString()
+    }).eq('id', propostaAtual.id);
+
+    if(error) alert('Erro ao assinar contrato: ' + error.message);
+    else {
+        alert('Contrato assinado com sucesso!');
+        consultar();
+    }
+}
+</script>
+</body>
+</html>
