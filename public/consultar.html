@@ -88,7 +88,7 @@ const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { real
 let propostaAtual = null;
 let inscricaoTempoReal = null;
 let webcamStream = null;
-let modoAssinatura = 'selfie'; // 'selfie' ou 'manual'
+let modoAssinatura = 'selfie';
 let canvasContext = null;
 let desenhando = false;
 
@@ -155,10 +155,14 @@ function mostrarProposta(p) {
     document.getElementById('telaConsulta').classList.remove('visivel');
     document.getElementById('telaProposta').classList.add('visivel');
 
+    // Validação robusta para verificar se a entrada está paga (aceita boolean true, string "true" ou número 1)
+    const entradaPaga = p.entrada_paga === true || p.entrada_paga === 'true' || p.entrada_paga === 1;
+    const contratoAssinado = p.contrato_assinado === true || p.contrato_assinado === 'true' || p.contrato_assinado === 1;
+
     let etapa = 1;
     if(p.status === 'Aprovada') etapa = 2;
-    if(p.contrato_assinado) etapa = 3;
-    if(p.entrada_paga) etapa = 4;
+    if(contratoAssinado) etapa = 3;
+    if(entradaPaga) etapa = 4;
 
     document.getElementById('barraEtapas').innerHTML = `
         <div class="etapa ${etapa>=1?(etapa>1?'concluida':'ativa'):''}"><div class="bolinha">${etapa>1?'✓':'1'}</div><span>Análise</span></div>
@@ -173,7 +177,7 @@ function mostrarProposta(p) {
     const valorParcela = q > 0 ? ((total - e) * (Math.pow(1 + j/100, q) * (j/100)) / (Math.pow(1 + j/100, q) - 1)) : 0;
     
     const diasTotal = p.dias_entrega || 7;
-    const diasRestantes = p.entrada_paga ? calcularDiasUteisRestantes(p.data_aprovacao_entrada || p.updated_at, diasTotal) : diasTotal;
+    const diasRestantes = entradaPaga ? calcularDiasUteisRestantes(p.data_aprovacao_entrada || p.updated_at, diasTotal) : diasTotal;
 
     let html = `<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
 
@@ -206,7 +210,7 @@ function mostrarProposta(p) {
         <button onclick="confirmarParcelas()" class="botao botao-sucesso mt-2">Continuar para o Contrato</button>`;
     }
 
-    if(p.status === 'Aprovada' && p.qtd_parcelas_escolhida && !p.contrato_assinado) {
+    if(p.status === 'Aprovada' && p.qtd_parcelas_escolhida && !contratoAssinado) {
         const qtdEsc = p.qtd_parcelas_escolhida;
         const valParc = ((total-e)*(Math.pow(1+j/100,qtdEsc)*(j/100))/(Math.pow(1+j/100,qtdEsc)-1));
         html += `
@@ -266,7 +270,7 @@ function mostrarProposta(p) {
         }, 300);
     }
 
-    if(p.contrato_assinado && !p.entrada_paga) {
+    if(contratoAssinado && !entradaPaga) {
         html += `
         <div class="sucesso-box">
             <i class="fas fa-check-circle"></i>
@@ -286,7 +290,7 @@ function mostrarProposta(p) {
         <div id="areaPix" class="oculto"></div>`;
     }
 
-    if(p.entrada_paga) {
+    if(entradaPaga) {
         html += `
         <div class="sucesso-box">
             <i class="fas fa-check-double"></i>
@@ -362,7 +366,6 @@ async function iniciarCamera() {
         webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
         video.srcObject = webcamStream;
     } catch(err) {
-        // Se falhar ou não tiver câmera, muda automaticamente para o modo manual
         alternarModoAssinatura('manual');
     }
 }
