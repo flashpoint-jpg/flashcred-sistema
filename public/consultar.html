@@ -61,7 +61,6 @@
         .oculto { display: none !important; }
         .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
         .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
-        .carregando { text-align: center; padding: 20px; color: #64748B; }
         canvas.assinatura-pad { border: 2px dashed #CBD5E1; border-radius: 8px; background: white; width: 100%; cursor: crosshair; }
     </style>
 </head>
@@ -152,6 +151,7 @@ function calcularDiasUteisRestantes(dataInicio, prazoTotalDias) {
     return restante > 0 ? restante : 0;
 }
 
+// ✅ FUNÇÃO PIX CORRIGIDA — CONSULTA INTACTA!
 async function gerarPix(valor) {
     const btn = event.target;
     btn.disabled = true;
@@ -185,7 +185,6 @@ async function gerarPix(valor) {
     }
 }
 
-// ✅ FUNÇÃO CORRIGIDA PARA GERAR PIX DAS PARCELAS
 async function gerarPixParcela(valor, numeroParcela, idProposta){
     const botao = event.target;
     botao.disabled = true;
@@ -350,4 +349,138 @@ function mostrarProposta(p) {
             <p><strong>Valor da Entrada:</strong> R$ ${formatarValor(e)}</p>
             <p><strong>Restante:</strong> ${q}x de R$ ${formatarValor(valorParcela)}</p>
         </div>
-        <button onclick="gerarPix(${e})" class="botao botao-pix mt-4">Gerar Pix da Entrada
+        <button onclick="gerarPix(${e})" class="botao botao-pix mt-4">Gerar Pix da Entrada</button>
+        <div id="areaPix" class="oculto"></div>`;
+    }
+
+    if(entradaPaga) {
+        let datasParcelas = p.datas_parcelas;
+        if (!datasParcelas || !Array.isArray(datasParcelas) || datasParcelas.length === 0) {
+            datasParcelas = [];
+            let dataBase = new Date();
+            for (let i = 1; i <= q; i++) {
+                dataBase.setMonth(dataBase.getMonth() + 1);
+                datasParcelas.push(new Date(dataBase).toISOString().split('T')[0]);
+            }
+        }
+
+        html += `
+        <div class="sucesso-box">
+            <i class="fas fa-check-double"></i>
+            <h3 class="text-xl font-bold">✅ ENTRADA CONFIRMADA! PARCELAS LIBERADAS</h3>
+        </div>
+
+        <div class="bloco-entrega" style="background: #ECFDF5; border-color: #10B981;">
+            <i class="fas fa-box-open text-sucesso text-2xl mb-2"></i>
+            <p class="font-bold text-lg text-sucesso">PROCESSO DE ENTREGA EM ANDAMENTO</p>
+            <p class="text-sm mt-1">Seu pedido está sendo preparado. Prazo estimado restante: <strong>${diasRestantes} dias úteis</strong>.</p>
+        </div>
+
+        <div class="resumo-contrato">
+            <h4 class="font-bold text-lg mb-2">📝 DADOS DO CONTRATO</h4>
+            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Entrada Paga:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>Total Restante:</strong> R$ ${formatarValor(total - e)}</p>
+            <p><strong>Quantidade de Parcelas:</strong> ${q}x</p>
+            <p><strong>Valor de Cada Parcela:</strong> R$ ${formatarValor(valorParcela)}</p>
+            <p><strong>Juros:</strong> ${j}% ao mês</p>
+        </div>
+
+        <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS A PAGAR</h3>
+        ${datasParcelas.map((dt,idx)=>{
+            const valor = Number(valorParcela);
+            const pg = p.parcelas_pagas && p.parcelas_pagas.includes(idx+1);
+            const hoje = new Date();
+            const vencto = new Date(dt + 'T00:00:00');
+            let cor = 'luz-amarela';
+            if(pg) cor='luz-verde';
+            else if(vencto < hoje) cor='luz-vermelha';
+
+            return `<div class="item-parcela">
+                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
+                <div>${pg?'<strong class="text-sucesso">PAGA</strong>':`<button onclick="gerarPixParcela(${valor}, ${idx+1}, ${p.id})" class="botao botao-pequeno botao-pix">Pagar</button>`}</div>
+            </div>`;
+        }).join('')}
+
+        <a href="https://wa.me/5511973294235?text=Olá! Preciso de suporte sobre a proposta ${p.id} - CPF ${p.cpf}" target="_blank" class="botao botao-wpp mt-4"><i class="fab fa-whatsapp mr-2"></i> Falar com Suporte</a>`;
+    }
+
+    document.getElementById('conteudoProposta').innerHTML = html;
+}
+
+async function confirmarParcelas(){
+    const qtd = Number(document.getElementById('qtdEscolhida').value);
+    if(!qtd) return alert('Escolha a quantidade de parcelas!');
+    await supabase.from('propostas').update({qtd_parcelas_escolhida: qtd}).eq('id', propostaAtual.id);
+    propostaAtual.qtd_parcelas_escolhida = qtd;
+    mostrarProposta(propostaAtual);
+}
+
+async function assinarContrato(){
+    if(!document.getElementById('aceitoContrato').checked) return alert('Você precisa concordar com os termos!');
+    await supabase.from('propostas').update({contrato_assinado: true, data_assinatura: new Date()}).eq('id', propostaAtual.id);
+    propostaAtual.contrato_assinado = true;
+    mostrarProposta(propostaAtual);
+}
+
+function alternarModoAssinatura(m){
+    modoAssinatura = m;
+    document.getElementById('blocoSelfie').classList.toggle('oculto', m!=='selfie');
+    document.getElementById('blocoManual').classList.toggle('oculto', m!=='manual');
+    document.getElementById('btnModoSelfie').classList.toggle('bg-primary', m==='selfie');
+    document.getElementById('btnModoManual').classList.toggle('bg-primary', m==='manual');
+    if(m==='selfie') iniciarCamera(); else pararCamera();
+}
+
+async function iniciarCamera(){
+    try{
+        webcamStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}});
+        document.getElementById('videoCamera').srcObject = webcamStream;
+    }catch{alert('Permita o uso da câmera para assinar!');}
+}
+
+function pararCamera(){
+    if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
+}
+
+function tirarSelfie(){
+    const v = document.getElementById('videoCamera');
+    const c = document.createElement('canvas');
+    [c.width, c.height] = [v.videoWidth, v.videoHeight];
+    c.getContext('2d').drawImage(v,0,0);
+    document.getElementById('imgSelfie').src = c.toDataURL('image/png');
+    document.getElementById('areaCamera').classList.add('oculto');
+    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
+    pararCamera();
+}
+
+function refazerSelfie(){
+    document.getElementById('areaPreviewSelfie').classList.add('oculto');
+    document.getElementById('areaCamera').classList.remove('oculto');
+    iniciarCamera();
+}
+
+function inicializarCanvas(){
+    const c = document.getElementById('canvasAssinatura');
+    if(!c) return;
+    canvasContext = c.getContext('2d');
+    canvasContext.lineWidth = 2;
+    canvasContext.strokeStyle = '#000';
+    c.onmousedown = c.ontouchstart = ()=>{desenhando=true; canvasContext.beginPath()};
+    c.onmousemove = c.ontouchmove = e=>{
+        if(!desenhando) return;
+        const r = c.getBoundingClientRect();
+        const x = (e.clientX || e.touches[0].clientX) - r.left;
+        const y = (e.clientY || e.touches[0].clientY) - r.top;
+        canvasContext.lineTo(x,y);
+        canvasContext.stroke();
+    };
+    c.onmouseup = c.ontouchend = ()=>desenhando=false;
+}
+
+function limparCanvas(){
+    if(canvasContext) canvasContext.clearRect(0,0,500,150);
+}
+</script>
+</body>
+</html>
