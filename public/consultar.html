@@ -48,7 +48,8 @@
         .contrato { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; max-height: 220px; overflow-y: auto; margin: 16px 0; font-size: 13px; line-height: 1.6; text-align: justify; }
         .qrcode-area { display: flex; justify-content: center; padding: 20px; background: white; border-radius: 10px; border: 1px solid #E2E8F0; margin: 16px 0; }
         .codigo-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 16px; text-align: center; font-weight: 600; margin: 16px 0; word-break: break-all; font-size: 12px; }
-        .item-parcela { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
+        .item-parcela { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-bottom: 1px solid #E2E8F0; font-size: 14px; }
+        .item-parcela-topo { display: flex; justify-content: space-between; align-items: center; width: 100%; }
         .item-parcela:last-child { border-bottom: none; }
         .luz { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
         .luz-verde { background: #10B981; }
@@ -321,28 +322,61 @@ function mostrarProposta(p) {
             <p><strong>Juros:</strong> ${j}% ao mês</p>
         </div>
 
-        <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS A PAGAR</h3>
-        ${datasParcelas.map((dt,idx)=>{
+        <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS A PAGAR</h3>`;
+
+        datasParcelas.forEach((dt, idx) => {
             const valor = Number(valorParcela);
-            const pg = idx+1 <= (p.parcelas_pagas||0);
+            const pg = idx + 1 <= (p.parcelas_pagas || 0);
             const hoje = new Date();
             const vencto = new Date(dt + 'T00:00:00');
             let cor = 'luz-amarela';
-            if(pg) cor='luz-verde';
-            else if(vencto < hoje) cor='luz-vermelha';
+            if(pg) cor = 'luz-verde';
+            else if(vencto < hoje) cor = 'luz-vermelha';
 
-            return `<div class="item-parcela">
-                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
-                <div class="text-right">
-                    <span class="font-bold ${pg ? 'text-sucesso' : 'text-slate-600'}">${pg ? 'PAGO' : 'EM ABERTO'}</span>
-                </div>
-            </div>`;
-        }).join('')}
+            const numParcela = idx + 1;
 
-        <button onclick="window.open('https://wa.me/?text=Olá, gostaria de falar sobre minha proposta na FlashCred.', '_blank')" class="botao botao-wpp"><i class="fab fa-whatsapp"></i> Falar com Atendente via WhatsApp</button>`;
+            html += `<div class="item-parcela">
+                <div class="item-parcela-topo">
+                    <div><span class="luz ${cor}"></span><strong>${numParcela}ª Parcela:</strong> R$ ${formatarValor(valor)} <br><span class="text-xs text-slate-500 ml-5">Venc: ${vencto.toLocaleDateString('pt-BR')}</span></div>
+                    <div class="text-right">
+                        <span class="font-bold ${pg ? 'text-sucesso' : 'text-slate-600'}">${pg ? 'PAGO' : 'EM ABERTO'}</span>
+                    </div>
+                </div>`;
+            
+            if (!pg) {
+                html += `<button onclick="gerarPixParcela(${numParcela}, ${valor})" class="botao botao-pix py-2 text-xs mt-1"><i class="fas fa-qrcode"></i> Pagar ${numParcela}ª Parcela via Pix</button>`;
+            }
+
+            html += `</div>`;
+        });
+
+        html += `
+        <div id="areaPixParcela" class="oculto mt-4"></div>
+        <button onclick="window.open('https://wa.me/?text=Olá, gostaria de falar sobre minha proposta na FlashCred.', '_blank')" class="botao botao-wpp mt-4"><i class="fab fa-whatsapp"></i> Falar com Atendente via WhatsApp</button>`;
     }
 
     document.getElementById('conteudoProposta').innerHTML = html;
+}
+
+function gerarPixParcela(numParcela, valorParcela) {
+    const area = document.getElementById('areaPixParcela');
+    area.classList.remove('oculto');
+    const codigoChavePix = "00020126580014br.gov.bcb.pix013612345678-1234-5678-9012-345678901234520400005303986540" + valorParcela.toFixed(2) + "5802BR5925FLASHCRED SOLUCOES LTDA6009SAO PAULO62070503***63041D3D";
+    
+    area.innerHTML = `
+        <div class="cartao" style="border: 2px solid #32BCAD;">
+            <h4 class="font-bold text-center mb-2 text-primary">Pagamento da ${numParcela}ª Parcela</h4>
+            <p class="text-xs text-center text-slate-600 mb-3">Escaneie o QR Code abaixo ou copie o código Pix Copia e Cola para pagar esta parcela.</p>
+            <div class="qrcode-area">
+                <img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(codigoChavePix)}" alt="QR Code Pix">
+            </div>
+            <div class="codigo-pix" onclick="copiarPix(this)">
+                ${codigoChavePix}
+            </div>
+            <p class="text-xs text-center text-sucesso font-bold mt-2"><i class="fas fa-copy"></i> Clique no código acima para copiar</p>
+        </div>
+    `;
+    area.scrollIntoView({ behavior: 'smooth' });
 }
 
 async function confirmarParcelas() {
@@ -515,7 +549,7 @@ async function assinarContrato() {
 function gerarPix(valorEntrada) {
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
-    const codigoChavePix = "00020126580014br.gov.bcb.pix013612345678-1234-5678-9012-345678901234520400005303986540" + valorEntrada.toFixed(2) + "5802BR5925FLASHCRED SOLUCOES LTDA6009SAO PAULO62070503***63041D3D";
+    const codigoChavePix = "00020126580014br.gov.bcb.pix013612345678-1234-5678-9012-345678901234520400005303986540" + valorEntrada.toFixed(2) + "5802BR5925FLASHCRED SOLUCOES LTDA6009SAO POULO62070503***63041D3D";
     
     area.innerHTML = `
         <h4 class="font-bold text-center mb-2 text-primary">Pagamento via Pix</h4>
