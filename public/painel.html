@@ -51,7 +51,7 @@
         .resumo-valores { font-weight:700; margin-top:12px; padding:12px; background:#ECFDF5; border-radius:8px; font-size:14px; color:#065F46; }
         .container { max-width:1200px; margin:0 auto; padding:20px; }
         .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:16px; }
-        .campo { width:100%; padding:10px 12px; border:1px solid var(--borda); border-radius:8px; margin-bottom:10px; font-size:14px; transition:0.2s; }
+        .campo { width:100%; padding:10px 12px; border:1px solid var(--borda); border-radius:8px; margin-bottom:10px; font-size:14px; transition:0.2s; background: white; }
         .campo:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(10,36,99,0.1); }
         
         .bloco-parcelas { margin-top:12px; border:1px solid var(--borda); border-radius:8px; overflow:hidden; }
@@ -61,12 +61,14 @@
         .item-parcela { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border-bottom:1px solid var(--borda); font-size:13px; }
         .item-parcela:last-child { border-bottom:none; }
 
-        .bloco-produtos-admin { background: #F8FAFC; border: 1px solid var(--borda); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
-        .item-produto-linha { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap: 8px; align-items: center; margin-bottom: 8px; }
-        @media(max-width: 768px) { .item-produto-linha { grid-template-columns: 1fr; } }
+        .bloco-produtos-admin { background: #FFFFFF; border: 1px solid var(--borda); border-radius: 8px; padding: 14px; margin-bottom: 12px; }
+        .item-produto-box { background: #F8FAFC; border: 1px solid var(--borda); border-radius: 8px; padding: 12px; margin-bottom: 10px; position: relative; }
+        .grid-produto { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 2fr auto; gap: 8px; align-items: end; }
+        @media(max-width: 900px) { .grid-produto { grid-template-columns: 1fr; } }
 
-        .prazo-entrega { background:#FFFBEB; border:2px solid var(--alerta); border-radius:8px; padding:12px 16px; margin:10px 0; font-size:16px; font-weight:700; color:#92400E; }
+        .prazo-entrega { background:#FFFBEB; border:2px solid var(--alerta); border-radius:8px; padding:12px 16px; margin:10px 0; font-size:15px; font-weight:700; color:#92400E; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
         .prazo-entrega.concluido { background:#ECFDF5; border-color:var(--sucesso); color:#065F46; }
+        .conteudo-prazo { flex-grow: 1; }
         .barra-entrega { margin-top:8px; }
         .info-entrega { display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:4px; }
         .fundo-barra-entrega { width:100%; height:10px; border-radius:5px; background:#FDE68A; overflow:hidden; }
@@ -132,7 +134,7 @@
             
             <div class="md:col-span-2">
                 <span class="label-campo">🛍️ Produtos / Mercadorias Adquiridas</span>
-                <div id="containerProdutosNovo" class="bloco-produtos-admin">
+                <div class="bloco-produtos-admin">
                     <div id="listaProdutosNovo"></div>
                     <button type="button" onclick="adicionarLinhaProduto('Novo')" class="botao botao-primario mt-2"><i class="fas fa-plus"></i> Adicionar Produto</button>
                 </div>
@@ -191,13 +193,14 @@ function contarDiasUteis(dataInicio, diasUteisTotais) {
     return data;
 }
 
-function calcularProgressoEntrega(diasUteisTotais) {
-    if(!diasUteisTotais || diasUteisTotais <= 0) return { perc:0, restante:0 };
+function calcularProgressoEntrega(diasUteisTotais, entregaForcadaConcluida) {
+    if(entregaForcadaConcluida) return { perc:100, restante:0, concluido:true };
+    if(!diasUteisTotais || diasUteisTotais <= 0) return { perc:0, restante:0, concluido:false };
     const inicio = new Date();
     inicio.setHours(0,0,0,0);
     const fim = contarDiasUteis(inicio, diasUteisTotais);
     const hoje = new Date(); hoje.setHours(0,0,0,0);
-    if(hoje >= fim) return { perc:100, restante:0 };
+    if(hoje >= fim) return { perc:100, restante:0, concluido:false };
 
     let passados = 0;
     let temp = new Date(inicio);
@@ -208,7 +211,7 @@ function calcularProgressoEntrega(diasUteisTotais) {
     }
     const perc = Math.min(100, Math.round((passados / diasUteisTotais) * 100));
     const restante = Math.max(0, diasUteisTotais - passados);
-    return { perc, restante };
+    return { perc, restante, concluido:false };
 }
 
 window.onload = () => { if(localStorage.getItem('logado_flashcred') === 'SIM') mostrarPainel(); };
@@ -220,14 +223,33 @@ function adicionarLinhaProduto(sufixo, produto = {}) {
     const lista = document.getElementById(`listaProdutos${sufixo}`);
     if(!lista) return;
     const div = document.createElement('div');
-    div.className = 'item-produto-linha';
+    div.className = 'item-produto-box';
     div.innerHTML = `
-        <input type="text" placeholder="Nome/Descrição do Produto" value="${produto.nome || ''}" class="campo !mb-0 prod-nome">
-        <input type="number" placeholder="Qtd" value="${produto.qtd || 1}" min="1" class="campo !mb-0 prod-qtd">
-        <input type="number" placeholder="Valor Unit. (R$)" value="${produto.valor || ''}" step="0.01" class="campo !mb-0 prod-valor">
-        <input type="text" placeholder="Cor" value="${produto.cor || ''}" class="campo !mb-0 prod-cor">
-        <input type="text" placeholder="Detalhes/Inserção" value="${produto.detalhes || ''}" class="campo !mb-0 prod-detalhes">
-        <button type="button" onclick="this.closest('.item-produto-linha').remove()" class="botao botao-perigo !p-2"><i class="fas fa-trash"></i></button>
+        <div class="grid-produto">
+            <div>
+                <span class="label-campo">📦 Nome do Produto</span>
+                <input type="text" placeholder="Ex: Sofá 3 Lugares" value="${produto.nome || ''}" class="campo !mb-0 prod-nome">
+            </div>
+            <div>
+                <span class="label-campo">🔢 Quantidade</span>
+                <input type="number" placeholder="1" value="${produto.qtd || 1}" min="1" class="campo !mb-0 prod-qtd">
+            </div>
+            <div>
+                <span class="label-campo">💵 Valor Unit. (Opcional)</span>
+                <input type="number" placeholder="0.00" value="${produto.valor || ''}" step="0.01" class="campo !mb-0 prod-valor">
+            </div>
+            <div>
+                <span class="label-campo">🎨 Cor</span>
+                <input type="text" placeholder="Ex: Marrom" value="${produto.cor || ''}" class="campo !mb-0 prod-cor">
+            </div>
+            <div>
+                <span class="label-campo">📝 Detalhes / Inserção</span>
+                <input type="text" placeholder="Ex: Tecido Suede" value="${produto.detalhes || ''}" class="campo !mb-0 prod-detalhes">
+            </div>
+            <div>
+                <button type="button" onclick="this.closest('.item-produto-box').remove()" class="botao botao-perigo" style="height: 41px; width: 100%; display: flex; align-items: center; justify-content: center;"><i class="fas fa-trash"></i></button>
+            </div>
+        </div>
     `;
     lista.appendChild(div);
 }
@@ -235,15 +257,15 @@ function adicionarLinhaProduto(sufixo, produto = {}) {
 function coletarProdutos(containerId) {
     const container = document.getElementById(containerId);
     if(!container) return [];
-    const linhas = container.querySelectorAll('.item-produto-linha');
+    const caixas = container.querySelectorAll('.item-produto-box');
     const produtos = [];
-    linhas.forEach(l => {
+    caixas.forEach(c => {
         produtos.push({
-            nome: l.querySelector('.prod-nome').value.trim(),
-            qtd: Number(l.querySelector('.prod-qtd').value) || 1,
-            valor: Number(l.querySelector('.prod-valor').value) || 0,
-            cor: l.querySelector('.prod-cor').value.trim(),
-            detalhes: l.querySelector('.prod-detalhes').value.trim()
+            nome: c.querySelector('.prod-nome').value.trim(),
+            qtd: Number(c.querySelector('.prod-qtd').value) || 1,
+            valor: c.querySelector('.prod-valor').value ? Number(c.querySelector('.prod-valor').value) : null,
+            cor: c.querySelector('.prod-cor').value.trim(),
+            detalhes: c.querySelector('.prod-detalhes').value.trim()
         });
     });
     return produtos;
@@ -342,13 +364,17 @@ async function carregarPropostas() {
         const parc = q>0 ? (taxa > 0 ? saldo * (Math.pow(1 + taxa, q) * taxa) / (Math.pow(1 + taxa, q) - 1) : saldo / q) : 0;
         const statusClasse = p.status==='Aprovada'?'destaque-alerta':'';
         const luzStatus = p.status==='Aprovada'?'luz-amarela':(p.entrada_paga?'luz-verde':'luz-verde-fixa');
-        const progressoEntrega = calcularProgressoEntrega(p.dias_entrega||7);
+        
+        const progressoEntrega = calcularProgressoEntrega(p.dias_entrega||7, p.entrega_concluida);
 
         let produtosHtml = '';
         if(p.produtos && p.produtos.length > 0) {
-            produtosHtml = `<div class="mt-2 text-sm bg-slate-50 p-2 rounded border border-slate-200"><strong>🛒 Produtos/Mercadorias:</strong><ul class="list-disc pl-5 mt-1">`;
+            produtosHtml = `<div class="mt-3 text-sm bg-slate-50 p-3 rounded border border-slate-200"><strong>🛒 Produtos/Mercadorias Adquiridas:</strong><ul class="list-disc pl-5 mt-1 space-y-1">`;
             p.produtos.forEach(prod => {
-                produtosHtml += `<li>${prod.nome || 'Produto'} | Qtd: ${prod.qtd || 1} | R$ ${Number(prod.valor||0).toFixed(2)} | Cor: ${prod.cor || '-'} | Detalhes: ${prod.detalhes || '-'}</li>`;
+                let valStr = prod.valor ? ` | R$ ${Number(prod.valor).toFixed(2)}` : '';
+                let corStr = prod.cor ? ` | Cor: ${prod.cor}` : '';
+                let detStr = prod.detalhes ? ` | Detalhes: ${prod.detalhes}` : '';
+                produtosHtml += `<li><strong>${prod.nome || 'Produto'}</strong> (Qtd: ${prod.qtd || 1})${valStr}${corStr}${detStr}</li>`;
             });
             produtosHtml += `</ul></div>`;
         }
@@ -364,7 +390,7 @@ async function carregarPropostas() {
                         <p><i class="fas fa-map-marker-alt"></i> Endereço: ${p.endereco || 'Não informado'}</p>
                     </div>
                     ${produtosHtml}
-                    <p class="mt-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>${q}x:</strong> R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
+                    <p class="mt-3"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>${q}x:</strong> R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
                     <p class="mt-1"><span class="indicador-status"><span class="luz-status ${luzStatus}"></span> ${p.status} | ${p.entrada_paga?'✅ Entrada Paga':'⏳ Aguardando Entrada'}</span></p>
                 </div>
                 <div class="botoes-acao">
@@ -378,14 +404,22 @@ async function carregarPropostas() {
             </div>
 
             <div class="prazo-entrega ${progressoEntrega.perc>=100?'concluido':''}">
-                <div class="info-entrega">
-                    <span>🚚 Prazo de Entrega: ${p.dias_entrega||7} dias úteis</span>
-                    <span>${progressoEntrega.perc>=100?'Entrega concluída':`${progressoEntrega.restante} dias úteis restantes`}</span>
-                </div>
-                <div class="barra-entrega">
-                    <div class="fundo-barra-entrega">
-                        <div class="preenchimento-entrega ${progressoEntrega.perc>=100?'preenchimento-concluido':''}" style="width:${progressoEntrega.perc}%"></div>
+                <div class="conteudo-prazo">
+                    <div class="info-entrega">
+                        <span>🚚 Prazo de Entrega: ${p.dias_entrega||7} dias úteis</span>
+                        <span>${progressoEntrega.perc>=100?'Entrega concluída':`${progressoEntrega.restante} dias úteis restantes`}</span>
                     </div>
+                    <div class="barra-entrega">
+                        <div class="fundo-barra-entrega">
+                            <div class="preenchimento-entrega ${progressoEntrega.perc>=100?'preenchimento-concluido':''}" style="width:${progressoEntrega.perc}%"></div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    ${p.entrega_concluida 
+                        ? `<button onclick="alternarEntregaConcluida('${p.id}', false)" class="botao botao-cinza" style="white-space:nowrap;"><i class="fas fa-undo"></i> Reabrir</button>`
+                        : `<button onclick="alternarEntregaConcluida('${p.id}', true)" class="botao botao-sucesso" style="white-space:nowrap;"><i class="fas fa-check-circle"></i> Concluir Entrega</button>`
+                    }
                 </div>
             </div>
 
@@ -412,6 +446,11 @@ async function carregarPropostas() {
         </div>`;
     });
     document.getElementById('listaPropostas').innerHTML = html;
+}
+
+async function alternarEntregaConcluida(id, status) {
+    await supabase.from('propostas').update({ entrega_concluida: status }).eq('id', id);
+    carregarPropostas();
 }
 
 async function marcarEntradaPaga(id) {
@@ -498,7 +537,7 @@ async function salvarNovo() {
         quantidade_parcelas: Number(form.querySelector('#quantidade_parcelas').value)||1,
         dias_entrega: Number(form.querySelector('#dias_entrega').value)||7,
         datas_parcelas: Array.from(form.querySelectorAll('input[name="data_parcela"]')).map(i=>i.value),
-        status: 'Nova', entrada_paga: false, contrato_assinado: false, parcelas_pagas: 0
+        status: 'Nova', entrada_paga: false, contrato_assinado: false, parcelas_pagas: 0, entrega_concluida: false
     };
     await supabase.from('propostas').insert([dados]);
     fecharNovo(); 
@@ -556,7 +595,6 @@ async function abrirEdicao(id) {
     `;
     containerEdicao.classList.add('ativa');
 
-    // Preenche os produtos existentes na edição
     if(p.produtos && p.produtos.length > 0) {
         p.produtos.forEach(prod => adicionarLinhaProduto(`Edit_${p.id}`, prod));
     } else {
