@@ -6,36 +6,32 @@ const mercadopago = require('mercadopago');
 const app = express();
 const PORTA = process.env.PORT || 3000;
 
-// 🔧 CONFIGURAÇÕES BÁSICAS
+// Configurações
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public')); // Para servir suas páginas HTML
+app.use(express.static('public'));
 
-// 📊 SUPABASE
+// Supabase
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_SERVICO_CHAVE = process.env.SUPABASE_SERVICO_CHAVE;
-
 if (!SUPABASE_SERVICO_CHAVE) {
   console.error('❌ ERRO: Variável SUPABASE_SERVICO_CHAVE não configurada!');
   process.exit(1);
 }
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICO_CHAVE);
 
-// 💳 MERCADO PAGO
+// Mercado Pago
 const MERCADOPAGO_TOKEN = process.env.MERCADOPAGO_TOKEN;
 if (!MERCADOPAGO_TOKEN) {
   console.error('❌ ERRO: Variável MERCADOPAGO_TOKEN não configurada!');
   process.exit(1);
 }
-
 mercadopago.configure({ access_token: MERCADOPAGO_TOKEN });
 
-// ✅ ROTA: GERAR PIX OFICIAL
+// Rota: Gerar Pix
 app.post('/api/gerar-pix', async (req, res) => {
   try {
     const { valor, descricao, referencia } = req.body;
-
     const pagamento = await mercadopago.payment.create({
       transaction_amount: Number(valor),
       description: descricao || 'Pagamento FlashCred',
@@ -44,29 +40,25 @@ app.post('/api/gerar-pix', async (req, res) => {
       notification_url: 'https://flashcred-sistema.onrender.com/api/webhook-mercadopago',
       payer: { email: 'pagamento@flashcred.com.br' }
     });
-
     res.json({
       sucesso: true,
       qr_code: pagamento.body.point_of_interaction.transaction_data.qr_code,
       id_pagamento: pagamento.body.id
     });
-
   } catch (erro) {
     console.error('Erro ao gerar Pix:', erro);
     res.status(500).json({ sucesso: false, erro: erro.message });
   }
 });
 
-// ✅ ROTA: RECEBER AVISO DE PAGAMENTO (WEBHOOK)
+// Rota: Webhook de confirmação
 app.post('/api/webhook-mercadopago', async (req, res) => {
   try {
     const evento = req.body;
     console.log('📩 Aviso recebido MP:', evento);
-
     if (evento.action === 'payment.updated' && evento.data?.status === 'approved') {
       const ref = evento.data.external_reference;
       console.log('✅ Pagamento aprovado! Ref:', ref);
-
       await supabase.from('propostas')
         .update({
           entrada_paga: true,
@@ -76,7 +68,6 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
         })
         .or('ultima_cobranca.eq.' + ref + ', id.eq.' + ref);
     }
-
     res.status(200).send('OK');
   } catch (erro) {
     console.error('Erro Webhook:', erro);
@@ -84,8 +75,7 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
   }
 });
 
-// 🚀 INICIAR SERVIDOR
+// Iniciar servidor
 app.listen(PORTA, () => {
   console.log(`✅ Servidor rodando na porta ${PORTA}`);
-  console.log(`🌐 Site: https://flashcred-sistema.onrender.com`);
 });
