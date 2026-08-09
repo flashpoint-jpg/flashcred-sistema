@@ -6,26 +6,26 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORTA = process.env.PORT || 3000;
 
-// Habilita tudo
+// Configurações obrigatórias
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Configurações
+// Dados do Supabase
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const SUPABASE_PUBLIC_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY);
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// Token Mercado Pago (coloque nas variáveis do Render ou direto aqui)
+// Token Mercado Pago (coloque nas VARIÁVEIS do Render, nunca deixe direto aqui em produção!)
 mercadopago.configure({
-  access_token: process.env.MERCADO_PAGO_TOKEN || 'COLOQUE_SEU_TOKEN_DE_PRODUCAO_AQUI'
+  access_token: process.env.MERCADO_PAGO_TOKEN || 'COLOQUE_AQUI_SEU_TOKEN_DE_PRODUCAO'
 });
 
-// ROTA GERAR PIX
+// ROTA PARA GERAR PIX
 app.post('/api/gerar-pix', async (req, res) => {
   try {
     const { valor, descricao, referencia } = req.body;
-    console.log('🔹 Requisição gerar Pix:', { valor, descricao, referencia });
+    console.log('🔹 Gerando Pix:', { valor, descricao, referencia });
 
     const pagamento = await mercadopago.payment.create({
       transaction_amount: Number(valor),
@@ -37,18 +37,18 @@ app.post('/api/gerar-pix', async (req, res) => {
     });
 
     const qrCode = pagamento?.response?.point_of_interaction?.transaction_data?.qr_code;
-    if (!qrCode) throw new Error('Não retornou o QR Code');
+    if (!qrCode) throw new Error('API não retornou o QR Code');
 
-    console.log('✅ Pix gerado com sucesso');
+    console.log('✅ PIX GERADO COM SUCESSO');
     res.json({ sucesso: true, qr_code: qrCode });
 
   } catch (erro) {
-    console.error('❌ ERRO:', erro);
+    console.error('❌ ERRO NO SERVIDOR:', erro);
     res.json({ sucesso: false, mensagem: erro.message || 'Falha ao gerar Pix' });
   }
 });
 
-// ROTA WEBHOOK PARA RECEBER CONFIRMAÇÃO
+// ROTA PARA RECEBER CONFIRMAÇÃO DE PAGAMENTO
 app.post('/api/webhook-mercadopago', async (req, res) => {
   try {
     if (req.body.type === 'payment') {
@@ -57,7 +57,7 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
       if (pg.response.status === 'approved') {
         const ref = pg.response.external_reference;
         console.log('✅ PAGAMENTO CONFIRMADO:', ref);
-        // Aqui você atualiza o status no Supabase se quiser
+        // Aqui adiciona o código para marcar parcela como paga no Supabase
       }
     }
     res.sendStatus(200);
@@ -67,4 +67,4 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
 });
 
 // INICIA O SERVIDOR
-app.listen(PORTA, () => console.log(`✅ SERVIDOR RODANDO NA PORTA ${PORTA}`));
+app.listen(PORTA, () => console.log(`✅ SERVIDOR FLASHCRED RODANDO NA PORTA ${PORTA}`));
