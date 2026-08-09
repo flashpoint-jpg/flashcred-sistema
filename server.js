@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const https = require('https'); // ✅ VAMOS CHAMAR A API DIRETO, SEM A BIBLIOTECA
-const { createClient } = require('@supabase/supabase-js');
+const https = require('https');
 
 const app = express();
 const PORTA = process.env.PORT || 3000;
@@ -10,21 +9,22 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
 const MP_TOKEN = process.env.MERCADO_PAGO_TOKEN;
 
-// ✅ ROTA 100% GARANTIDA — CHAMA A API DIRETO
+// ✅ ROTA DE TESTE ABSOLUTO
 app.post('/api/gerar-pix', async (req, res) => {
   try {
     const { valor, descricao, referencia } = req.body;
-    console.log('🔹 Gerando Pix:', { valor, descricao, referencia });
 
-    const dadosPagamento = JSON.stringify({
+    console.log('====================================');
+    console.log('🔹 TOKEN EXISTE?', !!MP_TOKEN);
+    console.log('🔹 VALOR:', valor);
+    console.log('🔹 DESCRICAO:', descricao);
+    console.log('====================================');
+
+    const corpo = JSON.stringify({
       transaction_amount: Number(valor),
-      description: descricao.substring(0, 45),
+      description: descricao.substring(0,40),
       payment_method_id: 'pix',
       external_reference: referencia,
       notification_url: 'https://flashcred-sistema.onrender.com/api/webhook-mercadopago',
@@ -38,43 +38,43 @@ app.post('/api/gerar-pix', async (req, res) => {
       headers: {
         'Authorization': `Bearer ${MP_TOKEN}`,
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(dadosPagamento)
+        'Content-Length': Buffer.byteLength(corpo)
       }
     };
 
     const requisicao = https.request(opcoes, (resp) => {
-      let corpo = '';
-      resp.on('data', (pedaco) => corpo += pedaco);
+      let respostaCrua = '';
+      resp.on('data', p => respostaCrua += p);
       resp.on('end', () => {
-        const resultado = JSON.parse(corpo);
-        console.log('🔹 Resposta da MP:', resultado);
+        console.log('🔹 RESPOSTA COMPLETA DA MP:', respostaCrua);
+        const dados = JSON.parse(respostaCrua);
 
-        if(resultado.error) throw new Error(resultado.message || resultado.error);
+        if(dados.error) {
+          console.error('❌ ERRO DA MP:', dados.error, dados.message);
+          return res.json({ sucesso: false, mensagem: `MP: ${dados.message || dados.error}` });
+        }
 
-        const qrCode = resultado.point_of_interaction?.transaction_data?.qr_code;
-        if(!qrCode) throw new Error('QR Code não encontrado na resposta');
+        const qr = dados?.point_of_interaction?.transaction_data?.qr_code;
+        if(!qr) return res.json({ sucesso: false, mensagem: 'Sem QR na resposta' });
 
-        res.json({ sucesso: true, qr_code: qrCode });
+        res.json({ sucesso: true, qr_code: qr });
       });
     });
 
-    requisicao.on('error', (erro) => {
-      console.error('❌ ERRO NA REQUISIÇÃO:', erro);
-      res.json({ sucesso: false, mensagem: erro.message });
+    requisicao.on('error', e => {
+      console.error('❌ ERRO DE CONEXÃO:', e);
+      res.json({ sucesso: false, mensagem: `Rede: ${e.message}` });
     });
 
-    requisicao.write(dadosPagamento);
+    requisicao.write(corpo);
     requisicao.end();
 
-  } catch (erro) {
-    console.error('❌ ERRO GERAL:', erro);
-    res.json({ sucesso: false, mensagem: erro.message });
+  } catch(e) {
+    console.error('❌ ERRO GERAL:', e);
+    res.json({ sucesso: false, mensagem: e.message });
   }
 });
 
-// WEBHOOK
-app.post('/api/webhook-mercadopago', async (req, res) => {
-  res.sendStatus(200);
-});
+app.post('/api/webhook-mercadopago', (req,res)=>res.sendStatus(200));
 
-app.listen(PORTA, () => console.log('✅ AGORA VAI!'));
+app.listen(PORTA, ()=>console.log('✅ AGORA VAI MOSTRAR O ERRO REAL!'));
