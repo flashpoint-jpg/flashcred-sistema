@@ -25,21 +25,28 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
         body { background: #F8FAFC; color: #1E293B; padding: 16px; max-width: 600px; margin: 0 auto; }
-        .cartao { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
+        .cartao { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; transition: all 0.3s ease; }
         .botao { width: 100%; padding: 14px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 16px; }
         .botao-pix { background: #32BCAD; color: white; }
         .botao-sucesso { background: #10B981; color: white; }
         .botao-voltar { background: #94A3B8; color: white; margin-bottom: 12px; }
         .botao-pequeno { width: auto; padding: 8px 16px; font-size: 14px; }
         .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
+        
+        /* Animações e Transições das Etapas */
         .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; padding: 0 4px; }
         .barra-etapas::before { content: ''; position: absolute; top: 12px; left: 8%; right: 8%; height: 3px; background: #E2E8F0; z-index: 0; }
-        .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 10px; font-weight: 500; color: #94A3B8; text-align: center; width: 18%; }
-        .etapa.ativa { color: #0A2463; font-weight: 700; }
+        .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 10px; font-weight: 500; color: #94A3B8; text-align: center; width: 18%; transition: all 0.4s ease; }
+        .etapa.ativa { color: #0A2463; font-weight: 700; transform: scale(1.05); }
         .etapa.concluida { color: #10B981; }
-        .bolinha { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; }
-        .etapa.ativa .bolinha { background: #0A2463; color: white; }
+        .bolinha { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; transition: all 0.4s ease; }
+        .etapa.ativa .bolinha { background: #0A2463; color: white; box-shadow: 0 0 10px rgba(10, 36, 99, 0.4); }
         .etapa.concluida .bolinha { background: #10B981; color: white; }
+
+        /* Animação do Spinner / Carregando Consulta */
+        @keyframes pulseGlow { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.98); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+        .consultando { animation: pulseGlow 0.8s infinite ease-in-out; }
+
         .bloco-entrega { background: #FFFBEB; border: 2px solid #F59E0B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
         .resumo-contrato { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 16px; margin: 16px 0; }
         .resumo-contrato p { margin: 8px 0; font-size: 15px; }
@@ -64,10 +71,12 @@
 <body>
 
 <div id="telaConsulta" class="tela visivel">
-    <div class="cartao">
+    <div class="cartao" id="cardConsulta">
         <h2 class="text-xl font-bold text-center mb-6 text-primary">🔍 Acompanhar Proposta</h2>
         <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="campo">
-        <button onclick="consultar()" class="botao botao-pix">Consultar</button>
+        <button id="btnConsultar" onclick="consultar()" class="botao botao-pix flex items-center justify-center gap-2">
+            <span>Consultar</span>
+        </button>
     </div>
 </div>
 
@@ -82,7 +91,8 @@ const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
 
-// ⚠️ Substitua pela URL da sua API hospedada no Render (ex: https://seu-app.onrender.com)
+// Altere para a URL correta da sua API no Render (ex: https://seu-app.onrender.com)
+// Caso sua API não esteja rodando ou dê erro de conexão (Failed to fetch), insira a URL pública válida do Render.
 const BACKEND_URL = 'https://seu-backend.onrender.com';
 
 let propostaAtual = null;
@@ -114,7 +124,22 @@ async function consultar() {
     const cpf = document.getElementById('cpfConsulta').value.trim().replace(/\D/g,'');
     if(cpf.length !== 11) return alert('Digite o CPF completo!');
 
+    // Animação visual no botão e cartão durante a busca
+    const btn = document.getElementById('btnConsultar');
+    const card = document.getElementById('cardConsulta');
+    card.classList.add('consultando');
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Buscando proposta...`;
+    btn.disabled = true;
+
+    // Pequeno delay para transição suave da animação
+    await new Promise(r => setTimeout(r, 600));
+
     const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
+    
+    card.classList.remove('consultando');
+    btn.innerHTML = `Consultar`;
+    btn.disabled = false;
+
     if(error || !data) return alert('Proposta não encontrada! Verifique o CPF.');
 
     propostaAtual = data;
@@ -155,7 +180,6 @@ function mostrarProposta(p) {
     document.getElementById('telaConsulta').classList.remove('visivel');
     document.getElementById('telaProposta').classList.add('visivel');
 
-    // Correção robusta para booleano ou string vindos do banco
     const entradaPaga = p.entrada_paga === true || p.entrada_paga === 'true' || p.entrada_paga === 1;
     const contratoAssinado = p.contrato_assinado === true || p.contrato_assinado === 'true' || p.contrato_assinado === 1;
     const entregaConcluida = p.entrega_concluida === true || p.entrega_concluida === 'true' || p.entrega_concluida === 1;
@@ -166,6 +190,7 @@ function mostrarProposta(p) {
     if(entradaPaga) etapa = 4;
     if(entregaConcluida) etapa = 5;
 
+    // Renderização com classes dinâmicas para animação suave da barra de progresso
     document.getElementById('barraEtapas').innerHTML = `
         <div class="etapa ${etapa>=1?(etapa>1?'concluida':'ativa'):''}"><div class="bolinha">${etapa>1?'✓':'1'}</div><span>Análise</span></div>
         <div class="etapa ${etapa>=2?(etapa>2?'concluida':'ativa'):''}"><div class="bolinha">${etapa>2?'✓':'2'}</div><span>Parcelas</span></div>
@@ -189,18 +214,7 @@ function mostrarProposta(p) {
 
     if(p.status === 'Aprovada' && !p.qtd_parcelas_escolhida) {
         html += `
-        <div class="bloco-entrega">
-            <i class="fas fa-truck text-alerta text-xl mb-2"></i>
-            <p class="font-bold">ENTREGA EM ATÉ ${diasTotal} DIAS ÚTEIS APÓS PAGAMENTO DA ENTRADA!</p>
-        </div>
-        <div class="resumo-contrato">
-            <h4 class="font-bold text-lg mb-2">📋 Detalhes da Proposta</h4>
-            <p><strong>Valor do Produto:</strong> R$ ${formatarValor(v)}</p>
-            <p><strong>Valor da Entrada:</strong> R$ ${formatarValor(e)}</p>
-            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
-            <p><strong>Máximo de Parcelas:</strong> até ${q}x</p>
-            <p><strong>Juros:</strong> ${j}% ao mês</p>
-        </div>
+        <div class="bloco-entrega"><p class="font-bold">ENTREGA EM ATÉ ${diasTotal} DIAS ÚTEIS APÓS ENTRADA!</p></div>
         <p class="font-bold mt-4 mb-2">Escolha a quantidade de parcelas:</p>
         <select id="qtdEscolhida" class="campo">
             ${Array.from({length:q}, (_,i)=>{
@@ -217,55 +231,20 @@ function mostrarProposta(p) {
         const valParc = ((total-e)*(Math.pow(1+j/100,qtdEsc)*(j/100))/(Math.pow(1+j/100,qtdEsc)-1));
         html += `
         <div class="resumo-contrato">
-            <h4 class="font-bold mb-2">📋 Resumo da sua escolha</h4>
-            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
-            <p><strong>Entrada:</strong> R$ ${formatarValor(e)}</p>
+            <h4 class="font-bold mb-2">📋 Resumo</h4>
+            <p><strong>Total:</strong> R$ ${formatarValor(total)} | <strong>Entrada:</strong> R$ ${formatarValor(e)}</p>
             <p><strong>${qtdEsc}x de:</strong> R$ ${formatarValor(valParc)}</p>
-            <p><strong>Juros:</strong> ${j}% ao mês</p>
-            <p><strong>Entrega:</strong> até ${diasTotal} dias úteis</p>
         </div>
-
-        <h4 class="font-bold mt-4 mb-2">📄 CONTRATO PARTICULAR DE FINANCIAMENTO E COMPRA</h4>
-        <div class="contrato">
-            <strong>CLÁUSULA 1ª - DO OBJETO E VALORES:</strong> Financiamento no valor total de <strong>R$ ${formatarValor(total)}</strong>, mediante entrada de <strong>R$ ${formatarValor(e)}</strong> e saldo em <strong>${qtdEsc}x de R$ ${formatarValor(valParc)}</strong> (${j}% a.m.).<br><br>
-            <strong>CLÁUSULA 2ª - DA ENTREGA:</strong> Até <strong>${diasTotal} dias úteis</strong> após a compensação da entrada.<br><br>
-            <strong>CLÁUSULA 3ª - VALIDADE:</strong> Aceitação da assinatura eletrônica válida juridicamente.
-        </div>
-
         <div class="mt-4 bg-white p-4 border border-slate-200 rounded-lg">
             <label class="flex items-center gap-2 mb-4 font-bold text-sm text-primary"><input type="checkbox" id="aceitoContrato"> Li e concordo com os termos.</label>
-            <div class="mb-3">
-                <span class="font-bold text-sm block mb-2">✍️ Validação da Assinatura:</span>
-                <div class="flex gap-2 mb-3">
-                    <button type="button" onclick="alternarModoAssinatura('selfie')" id="btnModoSelfie" class="botao botao-pequeno bg-primary text-white">📸 Selfie</button>
-                    <button type="button" onclick="alternarModoAssinatura('manual')" id="btnModoManual" class="botao botao-pequeno bg-slate-200 text-slate-700">✏️ Desenhar</button>
-                </div>
-            </div>
-            <div id="blocoSelfie">
-                <div id="areaCamera" class="text-center mb-3">
-                    <video id="videoCamera" autoplay playsinline class="w-full rounded-lg bg-black mb-2" style="max-height:220px; object-fit:cover;"></video>
-                    <button type="button" onclick="tirarSelfie()" class="botao botao-pix py-2">📸 Capturar Selfie</button>
-                </div>
-                <div id="areaPreviewSelfie" class="text-center mb-3 oculto">
-                    <p class="text-sucesso font-bold mb-2">✅ Selfie capturada!</p>
-                    <img id="imgSelfie" class="mx-auto rounded-lg border" style="max-height:160px;">
-                    <button type="button" onclick="refazerSelfie()" class="botao botao-pequeno bg-slate-400 text-white mt-2">Refazer</button>
-                </div>
-            </div>
-            <div id="blocoManual" class="oculto text-center mb-3">
-                <canvas id="canvasAssinatura" class="assinatura-pad" height="150"></canvas>
-                <button type="button" onclick="limparCanvas()" class="botao botao-pequeno bg-slate-400 text-white mt-2">Limpar</button>
-            </div>
             <button onclick="assinarContrato()" class="botao botao-sucesso mt-3">✍️ Confirmar Assinatura</button>
         </div>`;
-        setTimeout(() => { if(modoAssinatura === 'selfie') iniciarCamera(); inicializarCanvas(); }, 300);
     }
 
     if(contratoAssinado && !entradaPaga) {
         html += `
         <div class="sucesso-box"><i class="fas fa-check-circle"></i><h3 class="text-xl font-bold">CONTRATO ASSINADO!</h3></div>
-        <div class="bloco-entrega"><p class="font-bold">Prazo de Envio: até ${diasTotal} dias úteis após o pagamento via Pix.</p></div>
-        <button onclick="gerarPixAPI(${e}, 'entrada', ${p.id})" class="botao botao-pix mt-4">Gerar Pix da Entrada (API Render)</button>
+        <button onclick="gerarPixAPI(${e}, 'entrada', ${p.id})" class="botao botao-pix mt-4">Gerar Pix da Entrada (API)</button>
         <div id="areaPix" class="oculto"></div>`;
     }
 
@@ -314,11 +293,10 @@ function mostrarProposta(p) {
     document.getElementById('conteudoProposta').innerHTML = html;
 }
 
-// Funções de requisição para a API no Render
 async function gerarPixAPI(valor, tipo, propostaId) {
     const areaPix = tipo === 'entrada' ? document.getElementById('areaPix') : document.getElementById('areaPixParcela');
     areaPix.classList.remove('oculto');
-    areaPix.innerHTML = `<div class="text-center p-4"><i class="fas fa-spinner fa-spin"></i> Gerando Pix via API do Render...</div>`;
+    areaPix.innerHTML = `<div class="text-center p-4 text-primary font-bold"><i class="fas fa-spinner fa-spin"></i> Gerando Pix via API do Render...</div>`;
 
     try {
         const response = await fetch(`${BACKEND_URL}/api/gerar-pix`, {
@@ -336,10 +314,16 @@ async function gerarPixAPI(valor, tipo, propostaId) {
                 ${data.qrCodeBase64 ? `<img src="data:image/png;base64,${data.qrCodeBase64}" class="mx-auto mb-2" style="max-width:180px;">` : ''}
                 <p class="mb-2 text-xs text-slate-600">Copia e Cola:</p>
                 <p style="font-size: 10px; word-break: break-all; user-select: all; background: #fff; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;">${data.copiaECola}</p>
-                <p class="mt-2 text-xs text-sucesso font-bold">🔄 A baixa é automática via Webhook assim que o pagamento for aprovado!</p>
+                <p class="mt-2 text-xs text-sucesso font-bold">🔄 A baixa é automática via Webhook!</p>
             </div>`;
     } catch(err) {
-        areaPix.innerHTML = `<p class="text-perigo text-center font-bold">Erro ao gerar Pix: ${err.message}</p>`;
+        // Exibe mensagem clara caso o Render esteja fora do ar ou URL incorreta
+        areaPix.innerHTML = `
+            <div class="p-4 bg-red-50 border border-red-200 rounded-lg text-center">
+                <p class="text-perigo font-bold text-sm mb-1"><i class="fas fa-exclamation-triangle"></i> Erro de Comunicação com a API</p>
+                <p class="text-xs text-slate-600 mb-2">Não foi possível conectar ao servidor no Render (${BACKEND_URL}). Verifique se a URL está correta ou se o serviço está ativo.</p>
+                <p class="text-xs text-slate-500 font-mono">Detalhes: ${err.message}</p>
+            </div>`;
     }
 }
 
@@ -347,90 +331,16 @@ async function gerarPixParcelaAPI(numero, valor, propostaId) {
     await gerarPixAPI(valor, `parcela_${numero}`, propostaId);
 }
 
-// Demais funções de suporte (câmera, canvas, etc.)
 async function confirmarParcelas() {
     const qtd = document.getElementById('qtdEscolhida').value;
     const {error} = await supabase.from('propostas').update({ qtd_parcelas_escolhida: parseInt(qtd) }).eq('id', propostaAtual.id);
     if(error) alert('Erro ao salvar parcelas: ' + error.message);
 }
 
-function alternarModoAssinatura(modo) {
-    modoAssinatura = modo;
-    if(modo === 'selfie') {
-        document.getElementById('blocoSelfie').classList.remove('oculto');
-        document.getElementById('blocoManual').classList.add('oculto');
-        document.getElementById('btnModoSelfie').className = 'botao botao-pequeno bg-primary text-white';
-        document.getElementById('btnModoManual').className = 'botao botao-pequeno bg-slate-200 text-slate-700';
-        iniciarCamera();
-    } else {
-        document.getElementById('blocoSelfie').classList.add('oculto');
-        document.getElementById('blocoManual').classList.remove('oculto');
-        document.getElementById('btnModoManual').className = 'botao botao-pequeno bg-primary text-white';
-        document.getElementById('btnModoSelfie').className = 'botao botao-pequeno bg-slate-200 text-slate-700';
-        pararCamera();
-    }
-}
-
-async function iniciarCamera() {
-    try {
-        webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-        document.getElementById('videoCamera').srcObject = webcamStream;
-    } catch(e) { console.error("Erro câmera:", e); }
-}
-
-function pararCamera() {
-    if(webcamStream) { webcamStream.getTracks().forEach(t => t.stop()); webcamStream = null; }
-}
-
-function tirarSelfie() {
-    const video = document.getElementById('videoCamera');
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 320;
-    canvas.height = video.videoHeight || 240;
-    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-    document.getElementById('imgSelfie').src = canvas.toDataURL('image/jpeg');
-    document.getElementById('areaCamera').classList.add('oculto');
-    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
-    pararCamera();
-}
-
-function refazerSelfie() {
-    document.getElementById('areaPreviewSelfie').classList.add('oculto');
-    document.getElementById('areaCamera').classList.remove('oculto');
-    iniciarCamera();
-}
-
-function inicializarCanvas() {
-    const canvas = document.getElementById('canvasAssinatura');
-    if(!canvas) return;
-    canvasContext = canvas.getContext('2d');
-    canvasContext.lineWidth = 2;
-    canvasContext.lineJoin = 'round';
-    canvasContext.lineCap = 'round';
-    canvasContext.strokeStyle = '#000';
-    const getPos = (e) => {
-        const rect = canvas.getBoundingClientRect();
-        return { x: (e.clientX || e.touches[0].clientX) - rect.left, y: (e.clientY || e.touches[0].clientY) - rect.top };
-    };
-    canvas.onmousedown = (e) => { desenhando = true; const p = getPos(e); canvasContext.beginPath(); canvasContext.moveTo(p.x, p.y); };
-    canvas.onmousemove = (e) => { if(!desenhando) return; const p = getPos(e); canvasContext.lineTo(p.x, p.y); canvasContext.stroke(); };
-    canvas.onmouseup = () => { desenhando = false; };
-    canvas.ontouchstart = (e) => { desenhando = true; const p = getPos(e); canvasContext.beginPath(); canvasContext.moveTo(p.x, p.y); e.preventDefault(); };
-    canvas.ontouchmove = (e) => { if(!desenhando) return; const p = getPos(e); canvasContext.lineTo(p.x, p.y); canvasContext.stroke(); e.preventDefault(); };
-    canvas.ontouchend = () => { desenhando = false; };
-}
-
-function limparCanvas() {
-    if(canvasContext) canvasContext.clearRect(0, 0, 600, 150);
-}
-
 async function assinarContrato() {
     if(!document.getElementById('aceitoContrato').checked) return alert('Aceite os termos do contrato.');
-    let assinaturaData = modoAssinatura === 'selfie' ? document.getElementById('imgSelfie').src : document.getElementById('canvasAssinatura').toDataURL('image/png');
-    if(!assinaturaData) return alert('Insira a assinatura!');
-    const {error} = await supabase.from('propostas').update({ contrato_assinado: true, assinatura_digital: assinaturaData }).eq('id', propostaAtual.id);
+    const {error} = await supabase.from('propostas').update({ contrato_assinado: true }).eq('id', propostaAtual.id);
     if(error) alert('Erro ao assinar: ' + error.message);
-    pararCamera();
 }
 </script>
 </body>
