@@ -155,7 +155,6 @@ function mostrarProposta(p) {
     document.getElementById('telaConsulta').classList.remove('visivel');
     document.getElementById('telaProposta').classList.add('visivel');
 
-    // Validação robusta para verificar se a entrada está paga (aceita boolean true, string "true" ou número 1)
     const entradaPaga = p.entrada_paga === true || p.entrada_paga === 'true' || p.entrada_paga === 1;
     const contratoAssinado = p.contrato_assinado === true || p.contrato_assinado === 'true' || p.contrato_assinado === 1;
 
@@ -291,6 +290,17 @@ function mostrarProposta(p) {
     }
 
     if(entradaPaga) {
+        // Garante a geração automática das datas se o banco de dados não enviou a lista preenchida
+        let datasParcelas = p.datas_parcelas;
+        if (!datasParcelas || !Array.isArray(datasParcelas) || datasParcelas.length === 0) {
+            datasParcelas = [];
+            let dataBase = new Date();
+            for (let i = 1; i <= q; i++) {
+                dataBase.setMonth(dataBase.getMonth() + 1);
+                datasParcelas.push(new Date(dataBase).toISOString().split('T')[0]);
+            }
+        }
+
         html += `
         <div class="sucesso-box">
             <i class="fas fa-check-double"></i>
@@ -314,17 +324,17 @@ function mostrarProposta(p) {
         </div>
 
         <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS A PAGAR</h3>
-        ${(p.datas_parcelas||[]).map((dt,idx)=>{
+        ${datasParcelas.map((dt,idx)=>{
             const valor = Number(valorParcela);
             const pg = idx+1 <= (p.parcelas_pagas||0);
             const hoje = new Date();
-            const vencto = new Date(dt);
+            const vencto = new Date(dt + 'T00:00:00');
             let cor = 'luz-amarela';
             if(pg) cor='luz-verde';
             else if(vencto < hoje) cor='luz-vermelha';
 
             return `<div class="item-parcela">
-                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${new Date(dt).toLocaleDateString('pt-BR')}</div>
+                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
                 ${pg?'<span class="text-sucesso font-bold">PAGA</span>':`<button onclick="gerarPix(${valor.toFixed(2)})" class="botao botao-pix botao-pequeno">Pagar</button>`}
             </div>`;
         }).join('')}
