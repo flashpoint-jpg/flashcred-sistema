@@ -1,8 +1,6 @@
 const express = require('express');
-const cors = require('cors');
-const { createClient } = require('@supabase/supabase-js');
 const mercadopago = require('mercadopago');
-
+const cors = require('cors');
 const app = express();
 const PORTA = process.env.PORT || 3000;
 
@@ -10,58 +8,50 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// SUPABASE
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const SUPABASE_SERVICO_CHAVE = process.env.SUPABASE_SERVICO_CHAVE;
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICO_CHAVE);
-
-// MERCADO PAGO
+// ✅ Configura o Token do Mercado Pago
 mercadopago.configure({
-  access_token: process.env.MERCADOPAGO_TOKEN
+  access_token: process.env.MERCADO_PAGO_TOKEN || 'SEU_TOKEN_AQUI'
 });
 
-// GERAR PIX
+// ✅ ROTA PARA GERAR PIX
 app.post('/api/gerar-pix', async (req, res) => {
   try {
     const { valor, descricao, referencia } = req.body;
-    const pag = await mercadopago.payment.create({
+
+    const pagamento = await mercadopago.payment.create({
       transaction_amount: Number(valor),
       description: descricao,
       payment_method_id: 'pix',
-      external_reference: referencia,
       notification_url: 'https://flashcred-sistema.onrender.com/api/webhook-mercadopago',
-      payer: { email: 'contato@flashcred.com.br' }
+      external_reference: referencia,
+      payer: { email: 'pagamento@flashcred.com.br' }
     });
+
     res.json({
       sucesso: true,
-      qr_code: pag.response.point_of_interaction.transaction_data.qr_code,
-      id_pagamento: pag.response.id
+      qr_code: pagamento.response.point_of_interaction.transaction_data.qr_code,
+      id_pagamento: pagamento.response.id
     });
+
   } catch (erro) {
-    console.log(erro);
-    res.status(500).json({sucesso:false});
+    console.error('Erro ao gerar Pix:', erro);
+    res.json({ sucesso: false, mensagem: 'Não foi possível gerar o Pix' });
   }
 });
 
-// WEBHOOK
+// ✅ WEBHOOK PARA RECEBER CONFIRMAÇÃO DE PAGAMENTO
 app.post('/api/webhook-mercadopago', async (req, res) => {
   try {
-    const ev = req.body;
-    if(ev.action === 'payment.updated' && ev.data.status === 'approved'){
-      const ref = ev.data.external_reference;
-      await supabase.from('propostas')
-        .update({
-          entrada_paga: true,
-          data_pagamento: new Date(),
-          parcelas_pagas: supabase.raw('COALESCE(parcelas_pagas,0)+1')
-        })
-        .or('ultima_cobranca.eq.'+ref+', id.eq.'+ref);
+    if(req.body.type === 'payment') {
+      const idPag = req.body.data.id;
+      const pg = await mercadopago.payment.findById(idPag);
+      if(pg.response.status === 'approved') {
+        console.log('✅ PAGAMENTO CONFIRMADO:', pg.response.external_reference);
+        // Aqui você atualiza o status no Supabase
+      }
     }
-    res.send('OK');
-  } catch(e){
-    res.send('ERRO');
-  }
+    res.sendStatus(200);
+  } catch { res.sendStatus(500); }
 });
 
-// INICIAR
-app.listen(PORTA, ()=> console.log('✅ Servidor rodando!'));
+app.listen(PORTA, () => console.log(`✅ Servidor rodando na porta ${PORTA}`));
