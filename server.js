@@ -1,93 +1,98 @@
 const express = require('express');
-const path = require('path');
+const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
+const { MercadoPagoConfig, Payment } = require('mercadopago');
 
 const app = express();
+app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Configuração do Supabase
+const supabaseUrl = process.env.SUPABASE_URL || 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const supabaseKey = process.env.SUPABASE_KEY || 'SUA_SUPABASE_SERVICE_ROLE_KEY';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-const MERCADO_PAGO_TOKEN = process.env.MP_TOKEN || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
+// Configuração do Mercado Pago (Insira seu Access Token de Produção ou Teste)
+const client = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN || 'SEU_ACCESS_TOKEN_DO_MERCADO_PAGO' });
 
-app.post('/gerar-pix', async (req, res) => {
+// Rota para criar o pagamento Pix dinâmico
+app.post('/api/criar-pix', async (req, res) => {
     try {
-        const { valor, propostaId, nome } = req.body;
-        const valorNumerico = Number(String(valor).replace(',', '.'));
+        const { proposta_id, valor, nome, email } = req.body;
 
-        if (!valorNumerico || isNaN(valorNumerico) || valorNumerico <= 0) {
-            return res.status(400).json({ sucesso: false, erro: "Valor de transação inválido." });
-        }
-
-        const respostaMP = await fetch("https://api.mercadopago.com/v1/payments", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${MERCADO_PAGO_TOKEN.trim()}`,
-                "Content-Type": "application/json",
-                "X-Idempotency-Key": `proposta_${propostaId}_${Date.now()}_${Math.random()}`
+        const payment = new Payment(client);
+        const body = {
+            transaction_amount: Number(valor),
+            description: `Pagamento Proposta FlashCred #${proposta_id}`,
+            payment_method_id: 'pix',
+            payer: {
+                email: email || 'cliente@flashcred.com.br',
+                first_name: nome || 'Cliente FlashCred'
             },
-            body: JSON.stringify({
-                transaction_amount: Number(valorNumerico.toFixed(2)),
-                description: `Proposta FlashCred #${propostaId} - ${nome || 'Cliente'}`,
-                payment_method_id: 'pix',
-                payer: {
-                    email: `cliente_${propostaId}@flashcred.com`
-                },
-                external_reference: String(propostaId)
-            })
-        });
+            external_reference: String(proposta_id)
+        };
 
-        const dados = await respostaMP.json();
-        
-        if (!respostaMP.ok || !dados.point_of_interaction) {
-            return res.status(400).json({ sucesso: false, erro: dados.message || "Erro ao gerar pagamento no Mercado Pago" });
-        }
+        const response = await payment.create({ body });
 
-        return res.status(200).json({
+        res.json({
             sucesso: true,
-            qrcode: dados.point_of_interaction.transaction_data.qr_code_base64,
-            copia_cola: dados.point_of_interaction.transaction_data.qr_code
+            payment_id: response.id,
+            qr_code: response.point_of_interaction.transaction_data.qr_code,
+            qr_code_base64: response.point_of_interaction.transaction_data.qr_code_base64
         });
-
-    } catch (erro) {
-        console.error("Erro interno ao gerar Pix:", erro);
-        return res.status(500).json({ sucesso: false, erro: "Erro interno no servidor" });
+    } catch (error) {
+        console.error('Erro ao gerar Pix MP:', error);
+        res.status(500).json({ sucesso: false, erro: error.message });
     }
 });
 
+// Rota de Webhook para receber a confirmação de pagamento do Mercado Pago (Baixa Automática)
 app.post('/api/webhook-pix', async (req, res) => {
-    try {
-        const evento = req.body;
-        if (evento.type === 'payment' || (evento.action && evento.action.includes('payment'))) {
-            const paymentId = evento.data?.id;
-            if (paymentId) {
-                const respPagamento = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-                    headers: { 'Authorization': `Bearer ${MERCADO_PAGO_TOKEN.trim()}` }
-                });
-                const pagamento = await respPagamento.json();
-                if (pagamento.status === 'approved') {
-                    const propostaId = pagamento.external_reference;
-                    if (propostaId) {
-                        await supabase.from('propostas')
-                            .update({ 
-                                entrada_paga: true, 
-                                status: 'Em Andamento',
-                                data_aprovacao_entrada: new Date().toISOString()
-                            })
-                            .eq('id', propostaId);
+    const { action, data } = req.body;
+
+    if (action === 'payment.created' || action === 'payment.updated') {
+        try {
+            const paymentId = data.id;
+            const payment = new Payment(client);
+            const paymentInfo = await payment.get({ id: paymentId });
+
+            if (paymentInfo.status === 'approved') {
+                const propostaId = paymentInfo.external_reference;
+
+                // Busca a proposta no Supabase
+                const { data: proposta, err } = await supabase
+                    .from('propostas')
+                    .select('*')
+                    .eq('id', propostaId)
+                    .single();
+
+                if (proposta) {
+                    // Atualiza automaticamente a entrada ou incrementa parcelas pagas
+                    let novasPagas = (proposta.parcelas_pagas || 0) + 1;
+                    if (novasPagas > proposta.quantidade_parcelas) {
+                        novasPagas = proposta.quantidade_parcelas;
                     }
+
+                    await supabase
+                        .from('propostas')
+                        .update({ 
+                            entrada_paga: true, 
+                            parcelas_pagas: novasPagas 
+                        })
+                        .eq('id', propostaId);
+
+                    console.log(`Baixa automática realizada com sucesso para a proposta ID: ${propostaId}`);
                 }
             }
+        } catch (err) {
+            console.error('Erro no processamento do webhook:', err);
         }
-        return res.status(200).send('OK');
-    } catch (erro) {
-        return res.status(500).send('Erro interno');
     }
+
+    res.status(200).send('OK');
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
