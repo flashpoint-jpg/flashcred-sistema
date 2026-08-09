@@ -60,11 +60,6 @@
         .item-parcela { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px; border-bottom:1px solid var(--borda); font-size:13px; }
         .item-parcela:last-child { border-bottom:none; }
 
-        /* NOVO DESIGN LINHA DE PRODUTOS COMPACTA */
-        .bloco-produtos-admin { background: #FFFFFF; border: 1px solid var(--borda); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
-        .item-produto-linha { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; background: #F8FAFC; padding: 8px; border-radius: 8px; border: 1px solid var(--borda); }
-        .item-produto-linha input { margin-bottom: 0 !important; }
-
         .prazo-entrega { background:#FFFBEB; border:2px solid var(--alerta); border-radius:8px; padding:12px 16px; margin:10px 0; font-size:15px; font-weight:700; color:#92400E; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
         .prazo-entrega.concluido { background:#ECFDF5; border-color:var(--sucesso); color:#065F46; }
         .conteudo-prazo { flex-grow: 1; }
@@ -131,15 +126,7 @@
             <div><span class="label-campo">🏠 CEP</span><input type="text" id="cep" maxlength="8" class="campo"></div>
             <div class="md:col-span-2"><span class="label-campo">📍 Endereço Completo</span><input type="text" id="endereco" class="campo"></div>
             
-            <div class="md:col-span-2">
-                <span class="label-campo">🛍️ Produtos / Mercadorias Adquiridas</span>
-                <div class="bloco-produtos-admin">
-                    <div id="listaProdutosNovo"></div>
-                    <button type="button" onclick="adicionarLinhaProduto('Novo')" class="botao botao-primario mt-2"><i class="fas fa-plus"></i> Adicionar Produto</button>
-                </div>
-            </div>
-
-            <div><span class="label-campo">💵 Valor Total da Compra (Soma automática)</span><input type="number" id="valor_desejado" class="campo" readonly style="background:#E2E8F0; font-weight:bold;" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
+            <div><span class="label-campo">💵 Valor Base / Desejado</span><input type="number" id="valor_desejado" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">💸 Valor da Entrada</span><input type="number" id="valor_entrada" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">📊 Juros Mensal (%)</span><input type="number" id="juros_mensal" value="5" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">🧾 Quantidade de Parcelas</span><input type="number" id="quantidade_parcelas" min="1" max="48" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
@@ -217,57 +204,6 @@ window.onload = () => { if(localStorage.getItem('logado_flashcred') === 'SIM') m
 function entrar() { const s = document.getElementById('senha').value.trim(); if(s === SENHA) { localStorage.setItem('logado_flashcred', 'SIM'); mostrarPainel(); } else alert('Senha incorreta!'); }
 function sair() { localStorage.removeItem('logado_flashcred'); document.getElementById('telaLogin').style.display = 'block'; document.getElementById('telaPrincipal').style.display = 'none'; if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal); }
 function mostrarPainel() { document.getElementById('telaLogin').style.display = 'none'; document.getElementById('telaPrincipal').style.display = 'block'; carregarPropostas(); ativarTempoReal(); }
-
-function adicionarLinhaProduto(sufixo, produto = {}) {
-    const lista = document.getElementById(`listaProdutos${sufixo}`);
-    if(!lista) return;
-    const div = document.createElement('div');
-    div.className = 'item-produto-linha';
-    div.innerHTML = `
-        <input type="text" placeholder="Nome do Produto" value="${produto.nome || ''}" class="campo prod-nome" style="flex: 2;">
-        <input type="number" placeholder="Qtd" value="${produto.qtd || 1}" min="1" class="campo prod-qtd" style="width: 70px;" oninput="recalcularValorTotal(this)">
-        <input type="number" placeholder="Valor Unit. R$" value="${produto.valor || ''}" step="0.01" class="campo prod-valor" style="width: 120px;" oninput="recalcularValorTotal(this)">
-        <input type="text" placeholder="Cor" value="${produto.cor || ''}" class="campo prod-cor" style="width: 100px;">
-        <input type="text" placeholder="Detalhes" value="${produto.detalhes || ''}" class="campo prod-detalhes" style="flex: 1.5;">
-        <button type="button" onclick="this.closest('.item-produto-linha').remove(); recalcularValorTotal(this);" class="botao botao-perigo" style="height: 38px; width: 42px; display: flex; align-items: center; justify-content: center;"><i class="fas fa-trash"></i></button>
-    `;
-    lista.appendChild(div);
-    recalcularValorTotal(div);
-}
-
-function recalcularValorTotal(elemento) {
-    const bloco = elemento.closest('.area-edicao');
-    if(!bloco) return;
-    const linhas = bloco.querySelectorAll('.item-produto-linha');
-    let somaTotal = 0;
-    linhas.forEach(l => {
-        const qtd = Number(l.querySelector('.prod-qtd').value) || 0;
-        const valor = Number(l.querySelector('.prod-valor').value) || 0;
-        somaTotal += (qtd * valor);
-    });
-    const inputValorDesejado = bloco.querySelector('input[id^="valor_desejado"], input[id^="edit_valor_"]');
-    if(inputValorDesejado) {
-        inputValorDesejado.value = somaTotal.toFixed(2);
-    }
-    atualizarCalculo(bloco);
-}
-
-function coletarProdutos(containerId) {
-    const container = document.getElementById(containerId);
-    if(!container) return [];
-    const linhas = container.querySelectorAll('.item-produto-linha');
-    const produtos = [];
-    linhas.forEach(l => {
-        produtos.push({
-            nome: l.querySelector('.prod-nome').value.trim(),
-            qtd: Number(l.querySelector('.prod-qtd').value) || 1,
-            valor: l.querySelector('.prod-valor').value ? Number(l.querySelector('.prod-valor').value) : null,
-            cor: l.querySelector('.prod-cor').value.trim(),
-            detalhes: l.querySelector('.prod-detalhes').value.trim()
-        });
-    });
-    return produtos;
-}
 
 function atualizarCalculo(bloco) {
     const v = Number(bloco.querySelector('input[id^="valor_desejado"], input[id^="edit_valor_"]').value)||0;
@@ -365,18 +301,6 @@ async function carregarPropostas() {
         
         const progressoEntrega = calcularProgressoEntrega(p.dias_entrega||7, p.entrega_concluida);
 
-        let produtosHtml = '';
-        if(p.produtos && p.produtos.length > 0) {
-            produtosHtml = `<div class="mt-3 text-sm bg-slate-50 p-3 rounded border border-slate-200"><strong>🛒 Produtos / Mercadorias Adquiridas:</strong><ul class="list-disc pl-5 mt-1 space-y-1">`;
-            p.produtos.forEach(prod => {
-                let valStr = prod.valor ? ` | R$ ${Number(prod.valor).toFixed(2)}` : '';
-                let corStr = prod.cor ? ` | Cor: ${prod.cor}` : '';
-                let detStr = prod.detalhes ? ` | Detalhes: ${prod.detalhes}` : '';
-                produtosHtml += `<li><strong>${prod.nome || 'Produto'}</strong> (Qtd: ${prod.qtd || 1})${valStr}${corStr}${detStr}</li>`;
-            });
-            produtosHtml += `</ul></div>`;
-        }
-
         html += `
         <div class="linha-proposta ${statusClasse}">
             <div class="flex justify-between items-start mb-3">
@@ -387,8 +311,7 @@ async function carregarPropostas() {
                         <p><i class="fab fa-whatsapp"></i> WhatsApp: ${p.whatsapp || 'Não informado'}</p>
                         <p><i class="fas fa-map-marker-alt"></i> Endereço: ${p.endereco || 'Não informado'}</p>
                     </div>
-                    ${produtosHtml}
-                    <p class="mt-3"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>${q}x:</strong> R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
+                    <p class="mt-3"><strong>Valor Base:</strong> R$ ${v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>Total c/ Juros:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})} | <strong>${q}x:</strong> R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}</p>
                     <p class="mt-1"><span class="indicador-status"><span class="luz-status ${luzStatus}"></span> ${p.status} | ${p.entrada_paga?'✅ Entrada Paga':'⏳ Aguardando Entrada'}</span></p>
                 </div>
                 <div class="botoes-acao">
@@ -476,13 +399,14 @@ async function gerarPDF(id) {
     doc.text(`CPF: ${p.cpf ? p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4') : ''}`, 20, 48);
     doc.text(`WhatsApp: ${p.whatsapp||'-'}`, 20, 56);
     doc.text(`Endereço: ${p.endereco||'-'}`, 20, 64);
-    doc.text(`Valor Total: R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 80);
-    doc.text(`Entrada: R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 88);
-    doc.text(`Parcelas: ${q}x de R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 96);
-    doc.text(`Juros: ${j}% ao mês`, 20, 104);
-    doc.text(`Prazo Entrega: ${p.dias_entrega||7} dias úteis`, 20, 112);
-    doc.text(`Status: ${p.status}`, 20, 120);
-    doc.text('Muzambinho, MG', 20, 140);
+    doc.text(`Valor Base: R$ ${v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 80);
+    doc.text(`Valor Total c/ Juros: R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 88);
+    doc.text(`Entrada: R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 96);
+    doc.text(`Parcelas: ${q}x de R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2})}`, 20, 104);
+    doc.text(`Juros: ${j}% ao mês`, 20, 112);
+    doc.text(`Prazo Entrega: ${p.dias_entrega||7} dias úteis`, 20, 120);
+    doc.text(`Status: ${p.status}`, 20, 128);
+    doc.text('Muzambinho, MG', 20, 145);
     doc.setFontSize(10); doc.setTextColor(100,100,100);
     doc.text('FlashCred - Crédito e Financiamento', 105, 270, {align:'center'});
     doc.save(`Proposta_${p.nome.replace(/\s/g,'_')}.pdf`);
@@ -514,8 +438,6 @@ function enviarCobranca(nome,dt,valor,numero) {
 function abrirNovo() { 
     const form = document.getElementById('formNovo');
     form.classList.add('ativa'); 
-    document.getElementById('listaProdutosNovo').innerHTML = '';
-    adicionarLinhaProduto('Novo');
     atualizarCalculo(form); 
 }
 function fecharNovo() { document.getElementById('formNovo').classList.remove('ativa'); }
@@ -528,7 +450,6 @@ async function salvarNovo() {
         whatsapp: form.querySelector('#whatsapp').value.trim(),
         cep: form.querySelector('#cep').value.trim(),
         endereco: form.querySelector('#endereco').value.trim(),
-        produtos: coletarProdutos('listaProdutosNovo'),
         valor_desejado: Number(form.querySelector('#valor_desejado').value)||0,
         valor_entrada: Number(form.querySelector('#valor_entrada').value)||0,
         juros_mensal: Number(form.querySelector('#juros_mensal').value)||5,
@@ -568,15 +489,7 @@ async function abrirEdicao(id) {
             <div><span class="label-campo">🏠 CEP</span><input type="text" id="edit_cep_${p.id}" value="${p.cep || ''}" class="campo"></div>
             <div class="md:col-span-2"><span class="label-campo">📍 Endereço</span><input type="text" id="edit_endereco_${p.id}" value="${p.endereco || ''}" class="campo"></div>
             
-            <div class="md:col-span-2">
-                <span class="label-campo">🛍️ Produtos / Mercadorias</span>
-                <div class="bloco-produtos-admin">
-                    <div id="listaProdutosEdit_${p.id}"></div>
-                    <button type="button" onclick="adicionarLinhaProduto('Edit_${p.id}')" class="botao botao-primario mt-2"><i class="fas fa-plus"></i> Adicionar Produto</button>
-                </div>
-            </div>
-
-            <div><span class="label-campo">💵 Valor Total da Compra (Soma automática)</span><input type="number" id="edit_valor_${p.id}" value="${p.valor_desejado || 0}" class="campo" readonly style="background:#E2E8F0; font-weight:bold;"></div>
+            <div><span class="label-campo">💵 Valor Base / Desejado</span><input type="number" id="edit_valor_${p.id}" value="${p.valor_desejado || 0}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">💸 Valor da Entrada</span><input type="number" id="edit_entrada_${p.id}" value="${p.valor_entrada || 0}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">📊 Juros Mensal (%)</span><input type="number" id="edit_juros_${p.id}" value="${p.juros_mensal || 5}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
             <div><span class="label-campo">🧾 Quantidade de Parcelas</span><input type="number" id="edit_qtd_${p.id}" value="${p.quantidade_parcelas || 1}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
@@ -586,18 +499,14 @@ async function abrirEdicao(id) {
                 <div class="lista-datas" id="edit_lista_datas_${p.id}">${datasHtml}</div>
             </div>
         </div>
+        <div class="resumo-valores" id="resumoEdit_${p.id}"></div>
         <div class="flex gap-3 mt-4">
             <button onclick="salvarEdicao('${p.id}')" class="botao botao-sucesso">💾 Salvar Alterações</button>
             <button onclick="abrirEdicao('${p.id}')" class="botao botao-cinza">❌ Cancelar</button>
         </div>
     `;
     containerEdicao.classList.add('ativa');
-
-    if(p.produtos && p.produtos.length > 0) {
-        p.produtos.forEach(prod => adicionarLinhaProduto(`Edit_${p.id}`, prod));
-    } else {
-        adicionarLinhaProduto(`Edit_${p.id}`);
-    }
+    atualizarCalculo(containerEdicao);
 }
 
 async function salvarEdicao(id) {
@@ -608,7 +517,6 @@ async function salvarEdicao(id) {
         whatsapp: container.querySelector(`#edit_whatsapp_${id}`).value.trim(),
         cep: container.querySelector(`#edit_cep_${id}`).value.trim(),
         endereco: container.querySelector(`#edit_endereco_${id}`).value.trim(),
-        produtos: coletarProdutos(`listaProdutosEdit_${id}`),
         valor_desejado: Number(container.querySelector(`#edit_valor_${id}`).value) || 0,
         valor_entrada: Number(container.querySelector(`#edit_entrada_${id}`).value) || 0,
         juros_mensal: Number(container.querySelector(`#edit_juros_${id}`).value) || 0,
