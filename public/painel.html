@@ -146,7 +146,7 @@
                     <button type="button" onclick="gerarDatas(15)" class="botao botao-cinza botao-pequeno">📅 A cada 15 dias</button>
                     <button type="button" onclick="gerarDatas(30)" class="botao botao-cinza botao-pequeno">📅 A cada 30 dias</button>
                 </div>
-                <p class="text-xs text-gray-500 mb-2">*Depois de gerar, você pode alterar qualquer data manualmente</p>
+                <p class="text-xs text-gray-500 mb-2">*Depois de gerar, altere qualquer data manualmente</p>
                 <div id="listaDatas" class="lista-datas"></div>
             </div>
         </div>
@@ -198,13 +198,14 @@ function contarDiasUteis(dataInicio, diasUteisTotais) {
     return data;
 }
 
-function calcularProgressoEntrega(diasUteisTotais) {
+function calcularProgressoEntrega(diasUteisTotais, dataCriacao) {
     if(!diasUteisTotais || diasUteisTotais <= 0) return {perc:0, restante:0};
     const hoje = new Date(); hoje.setHours(0,0,0,0);
-    const dataFim = contarDiasUteis(hoje, diasUteisTotais);
+    const inicio = dataCriacao ? new Date(dataCriacao) : hoje;
+    const dataFim = contarDiasUteis(inicio, diasUteisTotais);
     if(hoje >= dataFim) return {perc:100, restante:0};
     let passados = 0;
-    let temp = new Date(hoje);
+    let temp = new Date(inicio);
     for(let i=0; i<diasUteisTotais; i++) {
         const d = temp.getDay();
         if(d !== 0 && d !== 6) passados++;
@@ -226,11 +227,16 @@ function verificarVencimento(datas, qtdPagas) {
     return {proximas:false, vencidas:false};
 }
 
-// LOGIN GARANTIDO, SEM ALTERAÇÕES
+// LOGIN CORRIGIDO: NÃO PERDE MAIS AO ATUALIZAR
 window.onload = () => {
-    localStorage.removeItem('logado_flashcred'); // limpa cache antigo que trava
-    document.getElementById('telaLogin').style.display='block';
-    document.getElementById('telaPrincipal').style.display='none';
+    if(localStorage.getItem('logado_flashcred') === 'SIM'){
+        document.getElementById('telaLogin').style.display='none';
+        document.getElementById('telaPrincipal').style.display='block';
+        carregarPropostas();
+    }else{
+        document.getElementById('telaLogin').style.display='block';
+        document.getElementById('telaPrincipal').style.display='none';
+    }
 };
 
 function entrar() {
@@ -310,120 +316,4 @@ function atualizarListasFiltradas() {
         if(filtroAtual==='proximas'&&!ver.proximas) return;
         if(p.status==='Nova') listas.aguardando.push(p);
         else if(p.status==='Aprovada'&&!p.contrato_assinado) listas.aprovadas.push(p);
-        else if(p.contrato_assinado&&!p.entrada_paga) listas.andamento.push(p);
-        else if(p.entrada_paga) listas.entrada.push(p);
-        else if(p.status==='Reprovada') listas.reprovadas.push(p);
-    });
-    Object.keys(listas).forEach(chave=>{
-        document.getElementById(`lista${chave.charAt(0).toUpperCase()+chave.slice(1)}`).innerHTML=listas[chave].map(p=>montarLinha(p)).join('');
-    });
-}
-
-function montarLinha(p) {
-    const ver=verificarVencimento(p.datas_parcelas||[], p.parcelas_pagas||0);
-    const prog=calcularProgressoEntrega(p.dias_entrega||8);
-    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||0), q=Number(p.quantidade_parcelas||0);
-    const total=v*(1+j/100), parc=q>0?(total-e)/q:0;
-    const classe=ver.vencidas?'destaque-perigo':(ver.proximas?'destaque-alerta':'');
-    const luz=ver.vencidas?'luz-vermelha-piscando':(ver.proximas?'luz-amarela':'luz-verde-fixa');
-    return `
-    <div class="linha-proposta ${classe}">
-        <div class="dados-cliente">
-            <p><strong>${p.nome}</strong> | CPF: ${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}</p>
-            <p>📱 ${p.whatsapp||'Não informado'} | 📍 ${p.endereco||'Não informado'}</p>
-            <p>💰 Total R$${formatarValor(total)} | Entrada R$${formatarValor(e)} | ${q}x R$${formatarValor(parc)}</p>
-            <div class="prazo-entrega">
-                <div class="flex-1">
-                    <div class="info-entrega">🚚 Entrega: ${prog.restante} dias úteis restantes</div>
-                    <div class="fundo-barra-entrega"><div class="preenchimento-entrega" style="width:${prog.perc}%"></div></div>
-                </div>
-            </div>
-            <div class="indicador-status"><span class="luz-status ${luz}"></span> ${ver.vencidas?'⚠️ Vencida':(ver.proximas?'🔔 A vencer em breve':'✅ Em dia')}</div>
-        </div>
-        <div class="botoes-acao">
-            <button onclick="editar('${p.id}')" class="botao botao-primario">✏️ Editar</button>
-            <button onclick="enviarWpp('${p.id}','${p.whatsapp}')" class="botao botao-wpp">📲 Link</button>
-            ${p.status==='Nova'?`<button onclick="altStatus('${p.id}','Aprovada')" class="botao botao-sucesso">✅ Aprovar</button>`:''}
-            ${!p.contrato_assinado?`<button onclick="marcar('${p.id}','contrato_assinado',true)" class="botao botao-alerta">✍️ Assinado</button>`:`<button onclick="marcar('${p.id}','contrato_assinado',false)" class="botao botao-cinza">Desmarcar</button>`}
-            ${!p.entrada_paga?`<button onclick="marcar('${p.id}','entrada_paga',true)" class="botao botao-sucesso">💵 Entrada Paga</button>`:`<button onclick="marcar('${p.id}','entrada_paga',false)" class="botao botao-cinza">Desmarcar</button>`}
-            <button onclick="excluir('${p.id}')" class="botao botao-perigo">🗑️ Excluir</button>
-        </div>
-        <div id="edit_${p.id}" class="area-edicao"></div>
-    </div>`;
-}
-
-async function editar(id) {
-    const div=document.getElementById(`edit_${id}`);
-    if(div.classList.contains('ativa')) return div.classList.remove('ativa');
-    const {data:p} = await supabase.from('propostas').select('*').eq('id',id).single();
-    div.innerHTML=`
-    <h3 class="titulo-bloco">✏️ Editar Proposta</h3>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div><span class="label-campo">Valor Total</span><input type="number" id="edit_valor" value="${p.valor_desejado}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-        <div>
-            <span class="label-campo">Entrada</span>
-            <div class="tipo-entrada">
-                <label class="opcao-entrada"><input type="radio" name="edit_tipo" value="valor" ${!p.entrada_percentual?'checked':''}> Valor</label>
-                <label class="opcao-entrada"><input type="radio" name="edit_tipo" value="porcento" ${p.entrada_percentual?'checked':''}> %</label>
-            </div>
-            <input type="number" id="edit_entrada" value="${p.valor_entrada}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))">
-        </div>
-        <div><span class="label-campo">Juros %</span><input type="number" id="edit_juros" value="${p.juros_mensal}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-        <div><span class="label-campo">Qtd Parcelas</span><input type="number" id="edit_qtd" value="${p.quantidade_parcelas}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-        <div><span class="label-campo">Dias Entrega</span><input type="number" id="edit_dias" value="${p.dias_entrega||8}" class="campo"></div>
-    </div>
-    <div class="resumo-valores" id="resumoEd"></div>
-    <div class="flex gap-3 mt-3">
-        <button onclick="salvarEd('${p.id}')" class="botao botao-sucesso">💾 Salvar</button>
-        <button onclick="document.getElementById('edit_${p.id}').classList.remove('ativa')" class="botao botao-cinza">Fechar</button>
-    </div>`;
-    div.classList.add('ativa');
-    atualizarCalculo(div);
-}
-
-async function salvarEd(id) {
-    const bloco=document.getElementById(`edit_${id}`);
-    const v=Number(bloco.querySelector('#edit_valor').value);
-    const tipo=bloco.querySelector('input[name="edit_tipo"]:checked').value;
-    const eBruto=Number(bloco.querySelector('#edit_entrada').value);
-    const e=tipo==='porcento'?v*(eBruto/100):eBruto;
-    await supabase.from('propostas').update({
-        valor_desejado:v, valor_entrada:e, entrada_percentual:tipo==='porcento',
-        juros_mensal:Number(bloco.querySelector('#edit_juros').value),
-        quantidade_parcelas:Number(bloco.querySelector('#edit_qtd').value),
-        dias_entrega:Number(bloco.querySelector('#edit_dias').value)
-    }).eq('id',id);
-    carregarPropostas();
-}
-
-async function salvarNovo() {
-    const tipo=document.querySelector('input[name="tipo_entrada"]:checked').value;
-    const v=Number(document.getElementById('valor_desejado').value);
-    const eBruto=Number(document.getElementById('valor_entrada').value);
-    const e=tipo==='porcento'?v*(eBruto/100):eBruto;
-    const datas=Array.from(document.querySelectorAll('#listaDatas input')).map(i=>i.value);
-    await supabase.from('propostas').insert({
-        nome:document.getElementById('nome').value,
-        cpf:document.getElementById('cpf').value.replace(/\D/g,''),
-        whatsapp:document.getElementById('whatsapp').value.replace(/\D/g,''),
-        endereco:document.getElementById('endereco').value,
-        valor_desejado:v, valor_entrada:e, entrada_percentual:tipo==='porcento',
-        juros_mensal:Number(document.getElementById('juros_mensal').value),
-        quantidade_parcelas:Number(document.getElementById('quantidade_parcelas').value),
-        dias_entrega:Number(document.getElementById('dias_entrega').value),
-        datas_parcelas:datas, status:'Nova'
-    });
-    fecharNovo(); carregarPropostas();
-}
-
-async function altStatus(id, s) { await supabase.from('propostas').update({status:s}).eq('id',id); carregarPropostas(); }
-async function marcar(id, campo, val) { await supabase.from('propostas').update({[campo]:val}).eq('id',id); carregarPropostas(); }
-async function excluir(id) { if(confirm('Tem certeza?')) { await supabase.from('propostas').delete().eq('id',id); carregarPropostas(); } }
-function enviarWpp(id, num) { const cpf=document.querySelector(`[onclick*="'${id}'"]`).closest('.linha-proposta').querySelector('.dados-cliente p').innerText.match(/CPF: (\d.+)/)[1].replace(/\D/g,''); window.open(`https://wa.me/55${num||NUMERO_SUPORTE}?text=Olá! Sua proposta: ${LINK_CONSULTA}?cpf=${cpf}`,'_blank'); }
-function abrirNovo() { document.getElementById('formNovo').classList.add('ativa'); gerarDatas(30); }
-function fecharNovo() { document.getElementById('formNovo').classList.remove('ativa'); }
-
-supabase.channel('atualizacoes').on('postgres_changes', {event:'*', schema:'public', table:'propostas'}, ()=>carregarPropostas()).subscribe();
-</script>
-</body>
-</html>
+        else if
