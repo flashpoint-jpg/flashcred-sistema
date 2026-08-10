@@ -63,7 +63,6 @@
         .oculto { display: none !important; }
         .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
         .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
-        canvas.assinatura-pad { border: 2px dashed #CBD5E1; border-radius: 8px; background: white; width: 100%; cursor: crosshair; }
     </style>
 </head>
 <body>
@@ -91,11 +90,12 @@ let propostaAtual = null;
 let inscricaoTempoReal = null;
 let webcamStream = null;
 let modoAssinatura = 'selfie';
-let canvasContext = null;
-let desenhando = false;
 
+// ✅ EVENTO DO BOTÃO DE BUSCA FORÇADO E GARANTIDO
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('btnConsultar').addEventListener('click', consultar);
+    const btn = document.getElementById('btnConsultar');
+    btn.onclick = consultar;
+    document.getElementById('cpfConsulta').addEventListener('keydown', (e)=>{ if(e.key==='Enter') consultar(); });
     
     const params = new URLSearchParams(window.location.search);
     const cpfUrl = params.get('cpf');
@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function voltarInicio() {
-    pararCamera();
+    if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
     if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
     propostaAtual = null;
     document.getElementById('cpfConsulta').value = '';
@@ -139,7 +139,7 @@ async function consultar() {
             }).subscribe();
 
     } catch(erro) {
-        alert('Erro: ' + erro);
+        alert('Erro na busca: ' + erro);
     }
 }
 
@@ -147,7 +147,7 @@ function formatarValor(v) {
     return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-// ✅ CÁLCULO EXATO DE DIAS ÚTEIS COM BARRA DE PROGRESSO
+// ✅ CÁLCULO DE DIAS ÚTEIS COM BARRA DE PROGRESSO
 function calcularDiasUteis(dataInicio, totalDias) {
     if (!dataInicio || totalDias <= 0) return {restante: totalDias, porcentagem: 0};
     let inicio = new Date(dataInicio);
@@ -239,19 +239,16 @@ function mostrarProposta(p) {
             <p><strong>Entrega:</strong> até ${diasTotal} dias úteis</p>
         </div>
 
-        <h4 class="font-bold mt-4 mb-2">📄 CONTRATO PARTICULAR DE FINANCIAMENTO E COMPRA</h4>
+        <h4 class="font-bold mt-4 mb-2">📄 CONTRATO</h4>
         <div class="contrato">
-            <strong>CLÁUSULA 1ª - DO OBJETO E VALORES:</strong> O presente instrumento tem por objeto o financiamento para aquisição de produtos/serviços no valor total de <strong>R$ ${formatarValor(total)}</strong>, mediante o pagamento de uma entrada no valor de <strong>R$ ${formatarValor(e)}</strong> e o saldo remanescente parcelado em <strong>${qtdEsc}x de R$ ${formatarValor(valParc)}</strong>, incidindo juros remuneratórios de <strong>${j}% ao mês</strong>.<br><br>
-            <strong>CLÁUSULA 2ª - DA ENTREGA E PRAZO:</strong> A entrega do produto/serviço fica estipulada em até <strong>${diasTotal} dias úteis</strong>, contados estritamente após a compensação bancária e confirmação do pagamento da taxa de entrada.<br><br>
-            <strong>CLÁUSULA 3ª - DO INADIMPLEMENTO E ENCARGOS:</strong> O atraso no pagamento de qualquer das parcelas acarretará a incidência de multa moratória de 2% sobre o valor devido, juros de mora de 1% ao mês, além de correção monetária, sujeitando o devedor à inclusão de seu CPF nos órgãos de proteção ao crédito.<br><br>
-            <strong>CLÁUSULA 4ª - DA VALIDADE:</strong> O contratante aceita a assinatura eletrônica/selfie como prova válida.
+            Valor total R$ ${formatarValor(total)}, entrada R$ ${formatarValor(e)}, saldo em ${qtdEsc}x de R$ ${formatarValor(valParc)}, juros ${j}% a.m. Entrega em até ${diasTotal} dias úteis após pagamento. Ao assinar concorda com os termos.
         </div>
 
         <div class="mt-4 bg-white p-4 border border-slate-200 rounded-lg">
-            <label class="flex items-center gap-2 mb-4 font-bold text-sm text-primary"><input type="checkbox" id="aceitoContrato"> Li e concordo com os termos</label>
+            <label class="flex items-center gap-2 mb-4 font-bold text-sm text-primary"><input type="checkbox" id="aceitoContrato"> Li e concordo</label>
             
             <div class="mb-3">
-                <span class="font-bold text-sm block mb-2">✍️ Forma de assinatura:</span>
+                <span class="font-bold text-sm block mb-2">✍️ Assinatura:</span>
                 <div class="flex gap-2 mb-3">
                     <button type="button" onclick="alternarModoAssinatura('selfie')" id="btnModoSelfie" class="botao botao-pequeno bg-primary text-white">📸 Selfie</button>
                     <button type="button" onclick="alternarModoAssinatura('texto')" id="btnModoTexto" class="botao botao-pequeno bg-slate-200 text-slate-700">✏️ Texto</button>
@@ -353,4 +350,71 @@ async function confirmarParcelas(){
 function alternarModoAssinatura(modo){
     modoAssinatura = modo;
     document.getElementById('blocoSelfie').classList.toggle('oculto', modo!=='selfie');
-    document.getElementById('blocoTexto').classList.toggle('o
+    document.getElementById('blocoTexto').classList.toggle('oculto', modo!=='texto');
+    document.getElementById('btnModoSelfie').classList.toggle('bg-primary', modo==='selfie');
+    document.getElementById('btnModoTexto').classList.toggle('bg-primary', modo==='texto');
+    if(modo==='selfie') iniciarCamera(); else pararCamera();
+}
+
+async function iniciarCamera(){
+    try{ webcamStream = await navigator.mediaDevices.getUserMedia({video:true}); document.getElementById('videoCamera').srcObject = webcamStream; }
+    catch(e){ alert('Permita a câmera!'); alternarModoAssinatura('texto'); }
+}
+function pararCamera(){ if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop()); }
+function tirarSelfie(){
+    const v = document.getElementById('videoCamera');
+    const c = document.createElement('canvas'); c.width=v.videoWidth; c.height=v.videoHeight;
+    c.getContext('2d').drawImage(v,0,0);
+    document.getElementById('imgSelfie').src = c.toDataURL();
+    document.getElementById('areaCamera').classList.add('oculto');
+    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
+    pararCamera();
+}
+function refazerSelfie(){
+    document.getElementById('areaPreviewSelfie').classList.add('oculto');
+    document.getElementById('areaCamera').classList.remove('oculto');
+    iniciarCamera();
+}
+
+async function assinarContrato(){
+    if(!document.getElementById('aceitoContrato').checked) return alert('Concorde com o contrato!');
+    let assinatura;
+    if(modoAssinatura==='selfie'){
+        assinatura = document.getElementById('imgSelfie').src;
+        if(!assinatura) return alert('Tire a foto!');
+    }else{
+        assinatura = document.getElementById('assinaturaTexto').value.trim();
+        if(!assinatura) return alert('Digite sua assinatura!');
+    }
+    await supabase.from('propostas').update({contrato_assinado:true, assinatura}).eq('id', propostaAtual.id);
+}
+
+// ✅ PIX FUNCIONAL PARA TODOS
+async function gerarPix(valor, tipo, numero=null){
+    const area = document.getElementById('areaPix');
+    area.classList.remove('oculto');
+    area.innerHTML = `<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Gerando...</div>`;
+
+    try{
+        if(!valor || valor<=0) throw "Valor inválido!";
+        const desc = tipo==='entrada' ? `Entrada - Proposta ${propostaAtual.id}` : `Parcela ${numero} - Proposta ${propostaAtual.id}`;
+        
+        const res = await fetch('/api/gerar-pix', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({valor: Number(valor), descricao: desc})
+        });
+
+        if(!res.ok) throw `Erro na API: ${res.status}`;
+        const ret = await res.json();
+        if(!ret.sucesso) throw ret.mensagem || "Falha ao gerar";
+
+        area.innerHTML = `<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix">${ret.qr_code || ret.copia_cola}</div>`;
+        new QRCode(document.getElementById('qrcode'), {text: ret.qr_code || ret.copia_cola, width:200, height:200});
+
+    }catch(erro){
+        area.innerHTML = `<div class="text-center py-4 text-perigo"><i class="fas fa-exclamation-triangle text-2xl mb-2"></i><p>Erro: ${erro}</p></div>`;
+    }
+}
+</script>
+</body>
+</html>
