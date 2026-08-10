@@ -96,8 +96,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     btn.onclick = consultar;
     document.getElementById('cpfConsulta').addEventListener('keydown', (e)=>{ if(e.key==='Enter') consultar(); });
 
-    // ✅ AO CARREGAR/ATUALIZAR: VOLTA DIRETO NA PROPOSTA SALVA
-    const cpfSalvo = sessionStorage.getItem('ultimo_cpf_consulta');
+    // ✅ FICA NA MESMA TELA QUANDO APERTAR F5
+    const cpfSalvo = sessionStorage.getItem('ultimo_cpf');
     if(cpfSalvo) {
         document.getElementById('cpfConsulta').value = cpfSalvo;
         await consultar();
@@ -108,7 +108,7 @@ function voltarInicio() {
     if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
     if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
     propostaAtual = null;
-    sessionStorage.removeItem('ultimo_cpf_consulta');
+    sessionStorage.removeItem('ultimo_cpf');
     document.getElementById('cpfConsulta').value = '';
     document.getElementById('telaProposta').classList.remove('visivel');
     document.getElementById('telaConsulta').classList.add('visivel');
@@ -116,22 +116,17 @@ function voltarInicio() {
 
 async function consultar() {
     const cpf = document.getElementById('cpfConsulta').value.trim().replace(/\D/g,'');
-    if(cpf.length !== 11) return alert('Digite o CPF completo com 11 números!');
+    if(cpf.length !== 11) return alert('Digite o CPF completo!');
 
     try {
-        const {data, error} = await supabase
-            .from('propostas')
-            .select('*')
-            .eq('cpf', cpf)
-            .limit(1);
-
+        const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).limit(1);
         if(error) throw error.message;
-        if(!data || data.length === 0) throw "Proposta não encontrada!";
+        if(!data.length) throw "Proposta não encontrada!";
 
         propostaAtual = data[0];
-        sessionStorage.setItem('ultimo_cpf_consulta', cpf); // SALVA PARA NÃO PERDER NO F5
+        sessionStorage.setItem('ultimo_cpf', cpf); // GUARDA PARA NÃO PERDER NO F5
         mostrarProposta(propostaAtual);
-        
+
         if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
         inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
             .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, (res)=>{
@@ -140,13 +135,13 @@ async function consultar() {
             }).subscribe();
 
     } catch(erro) {
-        alert('Erro na busca: ' + erro);
-        sessionStorage.removeItem('ultimo_cpf_consulta');
+        alert('Erro: ' + erro);
+        sessionStorage.removeItem('ultimo_cpf');
     }
 }
 
 function formatarValor(v) {
-    return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2});
 }
 
 function calcularDiasUteis(dataInicio, totalDias) {
@@ -155,13 +150,11 @@ function calcularDiasUteis(dataInicio, totalDias) {
     let hoje = new Date();
     let diasPassados = 0;
     let atual = new Date(inicio);
-    
     while (atual < hoje) {
         let dia = atual.getDay();
         if (dia !== 0 && dia !== 6) diasPassados++;
         atual.setDate(atual.getDate() + 1);
     }
-
     let restante = totalDias - diasPassados;
     restante = restante < 0 ? 0 : restante;
     let porcentagem = totalDias > 0 ? ((totalDias - restante) / totalDias) * 100 : 0;
@@ -172,8 +165,8 @@ function mostrarProposta(p) {
     document.getElementById('telaConsulta').classList.remove('visivel');
     document.getElementById('telaProposta').classList.add('visivel');
 
-    const entradaPaga = p.entrada_paga === true || p.entrada_paga === 'true' || p.entrada_paga === 1;
-    const contratoAssinado = p.contrato_assinado === true || p.contrato_assinado === 'true' || p.contrato_assinado === 1;
+    const entradaPaga = !!p.entrada_paga;
+    const contratoAssinado = !!p.contrato_assinado;
 
     let etapa = 1;
     if(p.status === 'Aprovada') etapa = 2;
@@ -191,32 +184,24 @@ function mostrarProposta(p) {
     const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
     const total = v*(1 + j/100);
     const valorParcela = q > 0 ? ((total - e) * (Math.pow(1 + j/100, q) * (j/100)) / (Math.pow(1 + j/100, q) - 1)) : 0;
-    
     const diasTotal = p.dias_entrega || 7;
-    const dataBase = p.data_aprovacao_entrada || p.updated_at || new Date().toISOString();
-    const entrega = calcularDiasUteis(dataBase, diasTotal);
+    const entrega = calcularDiasUteis(p.data_aprovacao_entrada || p.updated_at || new Date(), diasTotal);
 
     let html = `<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
 
     if(p.status === 'Nova') {
-        html += `<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação da proposta...</p></div>`;
+        html += `<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação...</p></div>`;
     }
 
     if(p.status === 'Aprovada' && !p.qtd_parcelas_escolhida) {
         html += `
-        <div class="bloco-entrega">
-            <i class="fas fa-truck text-alerta text-xl mb-2"></i>
-            <p class="font-bold">ENTREGA EM ATÉ ${diasTotal} DIAS ÚTEIS APÓS PAGAMENTO DA ENTRADA!</p>
-        </div>
+        <div class="bloco-entrega"><p class="font-bold">ENTREGA EM ATÉ ${diasTotal} DIAS ÚTEIS APÓS PAGAMENTO!</p></div>
         <div class="resumo-contrato">
-            <h4 class="font-bold text-lg mb-2">📋 Detalhes da Proposta</h4>
-            <p><strong>Valor do Produto:</strong> R$ ${formatarValor(v)}</p>
-            <p><strong>Valor da Entrada:</strong> R$ ${formatarValor(e)}</p>
-            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
-            <p><strong>Máximo de Parcelas:</strong> até ${q}x</p>
-            <p><strong>Juros:</strong> ${j}% ao mês</p>
+            <p><strong>Valor:</strong> R$ ${formatarValor(v)}</p>
+            <p><strong>Entrada:</strong> R$ ${formatarValor(e)}</p>
+            <p><strong>Total:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Até ${q}x — ${j}% a.m.</strong></p>
         </div>
-        <p class="font-bold mt-4 mb-2">Escolha a quantidade de parcelas:</p>
         <select id="qtdEscolhida" class="campo">
             ${Array.from({length:q}, (_,i)=>{
                 const n=i+1;
@@ -224,7 +209,7 @@ function mostrarProposta(p) {
                 return `<option value="${n}">${n}x de R$ ${formatarValor(val)}</option>`;
             }).join('')}
         </select>
-        <button onclick="confirmarParcelas()" class="botao botao-sucesso mt-2">Continuar para o Contrato</button>`;
+        <button onclick="confirmarParcelas()" class="botao botao-sucesso">Continuar</button>`;
     }
 
     if(p.status === 'Aprovada' && p.qtd_parcelas_escolhida && !contratoAssinado) {
@@ -232,138 +217,99 @@ function mostrarProposta(p) {
         const valParc = ((total-e)*(Math.pow(1+j/100,qtdEsc)*(j/100))/(Math.pow(1+j/100,qtdEsc)-1));
         html += `
         <div class="resumo-contrato">
-            <h4 class="font-bold mb-2">📋 Resumo da sua escolha</h4>
-            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
+            <p><strong>Total:</strong> R$ ${formatarValor(total)}</p>
             <p><strong>Entrada:</strong> R$ ${formatarValor(e)}</p>
             <p><strong>${qtdEsc}x de:</strong> R$ ${formatarValor(valParc)}</p>
-            <p><strong>Juros:</strong> ${j}% ao mês</p>
-            <p><strong>Entrega:</strong> até ${diasTotal} dias úteis</p>
         </div>
-
-        <h4 class="font-bold mt-4 mb-2">📄 CONTRATO</h4>
-        <div class="contrato">
-            Valor total R$ ${formatarValor(total)}, entrada R$ ${formatarValor(e)}, saldo em ${qtdEsc}x de R$ ${formatarValor(valParc)}, juros ${j}% a.m. Entrega em até ${diasTotal} dias úteis após pagamento. Ao assinar concorda com os termos.
+        <div class="contrato">Contrato: valor total R$ ${formatarValor(total)}, entrada R$ ${formatarValor(e)}, ${qtdEsc}x, juros ${j}% a.m., entrega em ${diasTotal} dias úteis. Ao assinar concorda.</div>
+        <label class="flex items-center gap-2 mb-3"><input type="checkbox" id="aceitoContrato"> Li e concordo</label>
+        <div class="flex gap-2 mb-3">
+            <button onclick="alternarModoAssinatura('selfie')" id="btnSelfie" class="botao botao-pequeno bg-primary text-white">📸 Selfie</button>
+            <button onclick="alternarModoAssinatura('texto')" id="btnTexto" class="botao botao-pequeno bg-gray-200">✏️ Texto</button>
         </div>
-
-        <div class="mt-4 bg-white p-4 border border-slate-200 rounded-lg">
-            <label class="flex items-center gap-2 mb-4 font-bold text-sm text-primary"><input type="checkbox" id="aceitoContrato"> Li e concordo</label>
-            
-            <div class="mb-3">
-                <span class="font-bold text-sm block mb-2">✍️ Assinatura:</span>
-                <div class="flex gap-2 mb-3">
-                    <button type="button" onclick="alternarModoAssinatura('selfie')" id="btnModoSelfie" class="botao botao-pequeno bg-primary text-white">📸 Selfie</button>
-                    <button type="button" onclick="alternarModoAssinatura('texto')" id="btnModoTexto" class="botao botao-pequeno bg-slate-200 text-slate-700">✏️ Texto</button>
-                </div>
-            </div>
-
-            <div id="blocoSelfie">
-                <div id="areaCamera" class="text-center mb-3">
-                    <video id="videoCamera" autoplay playsinline class="w-full rounded-lg bg-black mb-2" style="max-height:220px;"></video>
-                    <button type="button" onclick="tirarSelfie()" class="botao botao-pix py-2">📸 Capturar</button>
-                </div>
-                <div id="areaPreviewSelfie" class="text-center mb-3 oculto">
-                    <p class="text-sucesso font-bold mb-2">✅ Foto capturada!</p>
-                    <img id="imgSelfie" class="mx-auto rounded-lg border" style="max-height:160px;">
-                    <button type="button" onclick="refazerSelfie()" class="botao botao-pequeno bg-slate-400 text-white mt-2">Refazer</button>
-                </div>
-            </div>
-
-            <div id="blocoTexto" class="oculto mb-3">
-                <input type="text" id="assinaturaTexto" placeholder="Digite seu nome completo" class="campo">
-            </div>
-
-            <button onclick="assinarContrato()" class="botao botao-sucesso mt-3">✍️ Confirmar Assinatura</button>
-        </div>`;
-        
-        setTimeout(() => { if(modoAssinatura === 'selfie') iniciarCamera(); }, 300);
+        <div id="blocoSelfie"><video id="videoCamera" autoplay playsinline class="w-full rounded mb-2" style="max-height:180px;"></video><button onclick="tirarSelfie()" class="botao botao-pix">Capturar</button></div>
+        <div id="blocoPreviewSelfie" class="oculto text-center mb-3"><img id="imgSelfie" class="mx-auto rounded" style="max-height:160px;"><button onclick="refazerSelfie()" class="botao botao-pequeno bg-gray-400 mt-2">Refazer</button></div>
+        <input type="text" id="assinaturaTexto" class="campo oculto" placeholder="Digite seu nome">
+        <button onclick="assinarContrato()" class="botao botao-sucesso mt-2">Assinar</button>`;
+        setTimeout(()=>iniciarCamera(),300);
     }
 
     if(contratoAssinado && !entradaPaga) {
         html += `
-        <div class="sucesso-box">
-            <i class="fas fa-check-circle"></i>
-            <h3 class="text-xl font-bold">CONTRATO ASSINADO!</h3>
-        </div>
-        <div class="bloco-entrega">
-            <p class="font-bold">Entrega em até ${diasTotal} dias úteis após pagamento.</p>
-        </div>
-        <div class="resumo-contrato">
-            <p><strong>Total:</strong> R$ ${formatarValor(total)}</p>
-            <p><strong>Entrada:</strong> R$ ${formatarValor(e)}</p>
-            <p><strong>Restante:</strong> ${q}x de R$ ${formatarValor(valorParcela)}</p>
-        </div>
-        <button onclick="gerarPix(${e}, 'entrada')" class="botao botao-pix mt-4">💳 Gerar Pix da Entrada</button>
+        <div class="sucesso-box"><i class="fas fa-check-circle"></i><h3>CONTRATO ASSINADO!</h3></div>
+        <div class="resumo-contrato"><p>Entrada: R$ ${formatarValor(e)}</p></div>
+        <button onclick="gerarPix(${e}, 'entrada')" class="botao botao-pix">GERAR PIX DA ENTRADA</button>
         <div id="areaPix" class="oculto"></div>`;
     }
 
     if(entradaPaga) {
-        let datasParcelas = p.datas_parcelas || [];
-        if(datasParcelas.length === 0){
-            let dt = new Date();
-            for(let i=1;i<=q;i++){ dt.setMonth(dt.getMonth()+1); datasParcelas.push(dt.toISOString().split('T')[0]); }
-        }
-
+        let datas = p.datas_parcelas || [];
+        if(!datas.length){ let d=new Date(); for(let i=1;i<=q;i++){ d.setMonth(d.getMonth()+1); datas.push(d.toISOString().split('T')[0]); }}
         html += `
-        <div class="sucesso-box">
-            <i class="fas fa-check-double"></i>
-            <h3 class="text-xl font-bold">✅ ENTRADA CONFIRMADA!</h3>
-        </div>
-
-        <div class="bloco-entrega" style="background: #ECFDF5; border-color: #10B981;">
-            <i class="fas fa-box-open text-sucesso text-2xl mb-2"></i>
-            <p class="font-bold text-sucesso">PROCESSO DE ENTREGA</p>
-            <div class="barra-progresso"><div class="barra-preenchida" style="width: ${entrega.porcentagem}%"></div></div>
-            <p>Faltam <strong>${entrega.restante} dias úteis</strong> para entrega</p>
-        </div>
-
-        <div class="resumo-contrato">
-            <p><strong>Total:</strong> R$ ${formatarValor(total)}</p>
-            <p><strong>Entrada Paga:</strong> R$ ${formatarValor(e)}</p>
-            <p><strong>Restante:</strong> R$ ${formatarValor(total-e)}</p>
-            <p><strong>${q}x de:</strong> R$ ${formatarValor(valorParcela)}</p>
-        </div>
-
-        <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS</h3>
-        ${datasParcelas.map((dt,idx)=>{
-            const val = Number(valorParcela);
-            const pg = idx+1 <= (p.parcelas_pagas||0);
-            const vencto = new Date(dt+'T00:00:00');
-            const hoje = new Date();
-            let cor = pg ? 'luz-verde' : (vencto<hoje ? 'luz-vermelha' : 'luz-amarela');
-            return `<div class="item-parcela">
-                <div><span class="luz ${cor}"></span>${idx+1}ª - R$ ${formatarValor(val)} <br>Venc: ${vencto.toLocaleDateString()}</div>
-                ${pg?'<span class="text-sucesso font-bold">PAGO</span>':`<button onclick="gerarPix(${val}, 'parcela', ${idx+1})" class="botao botao-pequeno botao-pix">Pagar</button>`}
-            </div>`;
+        <div class="sucesso-box"><i class="fas fa-check-double"></i><h3>ENTRADA CONFIRMADA!</h3></div>
+        <div class="bloco-entrega" style="background:#ECFDF5;border-color:#10B981;"><p>Entrega: ${entrega.restante} dias úteis</p><div class="barra-progresso"><div class="barra-preenchida" style="width:${entrega.porcentagem}%"></div></div></div>
+        <h3 class="font-bold mt-4 mb-2">SUAS PARCELAS</h3>
+        ${datas.map((dt,i)=>{
+            const vP = Number(valorParcela);
+            const pg = i+1 <= (p.parcelas_pagas||0);
+            const ven = new Date(dt+'T00:00:00');
+            const cor = pg?'luz-verde':(ven<new Date()?'luz-vermelha':'luz-amarela');
+            return `<div class="item-parcela"><div><span class="luz ${cor}"></span>${i+1}ª - R$ ${formatarValor(vP)} <br>Venc: ${ven.toLocaleDateString()}</div>${pg?'<span class="text-sucesso">PAGO</span>':`<button onclick="gerarPix(${vP}, 'parcela', ${i+1})" class="botao botao-pequeno botao-pix">Pagar</button>`}</div>`;
         }).join('')}
-
-        <a href="https://wa.me/5511973294235?text=Ajuda proposta ${propostaAtual.id}" target="_blank" class="botao botao-wpp">💬 Falar com Suporte</a>`;
+        <a href="https://wa.me/5511973294235" target="_blank" class="botao botao-wpp mt-3">Falar com Suporte</a>`;
     }
 
     document.getElementById('conteudoProposta').innerHTML = html;
 }
 
 async function confirmarParcelas(){
-    const qtd = parseInt(document.getElementById('qtdEscolhida').value);
-    if(!qtd) return alert('Escolha a quantidade!');
-    await supabase.from('propostas').update({qtd_parcelas_escolhida: qtd}).eq('id', propostaAtual.id);
+    const q = parseInt(document.getElementById('qtdEscolhida').value);
+    if(!q) return alert('Escolha a quantidade!');
+    await supabase.from('propostas').update({qtd_parcelas_escolhida:q}).eq('id', propostaAtual.id);
 }
 
-function alternarModoAssinatura(modo){
-    modoAssinatura = modo;
-    document.getElementById('blocoSelfie').classList.toggle('oculto', modo!=='selfie');
-    document.getElementById('blocoTexto').classList.toggle('oculto', modo!=='texto');
-    document.getElementById('btnModoSelfie').classList.toggle('bg-primary', modo==='selfie');
-    document.getElementById('btnModoTexto').classList.toggle('bg-primary', modo==='texto');
-    if(modo==='selfie') iniciarCamera(); else pararCamera();
+function alternarModoAssinatura(m){
+    modoAssinatura=m;
+    document.getElementById('blocoSelfie').classList.toggle('oculto',m!=='selfie');
+    document.getElementById('assinaturaTexto').classList.toggle('oculto',m!=='texto');
+    document.getElementById('btnSelfie').classList.toggle('bg-primary',m==='selfie');
+    document.getElementById('btnTexto').classList.toggle('bg-primary',m==='texto');
+    m==='selfie'?iniciarCamera():pararCamera();
 }
 
-async function iniciarCamera(){
-    try{ webcamStream = await navigator.mediaDevices.getUserMedia({video:true}); document.getElementById('videoCamera').srcObject = webcamStream; }
-    catch(e){ alert('Permita a câmera!'); alternarModoAssinatura('texto'); }
+async function iniciarCamera(){try{webcamStream=await navigator.mediaDevices.getUserMedia({video:true});document.getElementById('videoCamera').srcObject=webcamStream;}catch{e{alert('Permita a câmera!');alternarModoAssinatura('texto');}}}
+function pararCamera(){if(webcamStream)webcamStream.getTracks().forEach(t=>t.stop());}
+function tirarSelfie(){const v=document.getElementById('videoCamera');const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);document.getElementById('imgSelfie').src=c.toDataURL();document.getElementById('blocoSelfie').classList.add('oculto');document.getElementById('blocoPreviewSelfie').classList.remove('oculto');pararCamera();}
+function refazerSelfie(){document.getElementById('blocoPreviewSelfie').classList.add('oculto');document.getElementById('blocoSelfie').classList.remove('oculto');iniciarCamera();}
+
+async function assinarContrato(){
+    if(!document.getElementById('aceitoContrato').checked)return alert('Concorde com o contrato!');
+    let ass;
+    if(modoAssinatura==='selfie'){ass=document.getElementById('imgSelfie').src;if(!ass)return alert('Tire a foto!');}
+    else{ass=document.getElementById('assinaturaTexto').value.trim();if(!ass)return alert('Digite sua assinatura!');}
+    await supabase.from('propostas').update({contrato_assinado:true,assinatura:ass}).eq('id',propostaAtual.id);
 }
-function pararCamera(){ if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop()); }
-function tirarSelfie(){
-    const v = document.getElementById('videoCamera');
-    const c = document.createElement('canvas'); c.width=v.videoWidth; c.height=v.videoHeight;
-    c.getContext('2d').drawImage(v,0,0);
-    document
+
+// ✅ PIX CORRIGIDO — AGORA FUNCIONA E MOSTRA O ERRO SE TIVER
+async function gerarPix(valor, tipo, num=null){
+    const area=document.getElementById('areaPix');
+    area.classList.remove('oculto');
+    area.innerHTML=`<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Gerando...</div>`;
+    try{
+        if(!propostaAtual)throw'Proposta não carregada!';
+        const desc=tipo==='entrada'?`Entrada ${propostaAtual.id}`:`Parcela ${num} ${propostaAtual.id}`;
+        const res=await fetch('/api/gerar-pix',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({valor:Number(valor),descricao:desc})});
+        const txt=await res.text();
+        if(!res.ok)throw`Erro ${res.status}: ${txt}`;
+        let r;try{r=JSON.parse(txt);}catch{throw'API não retornou JSON: '+txt;}
+        const cod=r.qr_code||r.copia_cola||r.pix||r.codigo;
+        if(!cod)throw'Pix não veio na resposta: '+JSON.stringify(r);
+        area.innerHTML=`<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${cod}</div>`;
+        new QRCode(document.getElementById('qrcode'),{text:cod,width:200,height:200});
+    }catch(e){
+        area.innerHTML=`<div class="text-center py-4 text-perigo p-4 rounded"><p class="font-bold">ERRO:</p><p>${e}</p></div>`;
+    }
+}
+</script>
+</body>
+</html>
