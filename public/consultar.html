@@ -294,7 +294,7 @@ function mostrarProposta(p) {
             <p><strong>Valor da Entrada:</strong> R$ ${formatarValor(e)}</p>
             <p><strong>Restante:</strong> ${q}x de R$ ${formatarValor(valorParcela)}</p>
         </div>
-        <button onclick="gerarPix(${e})" class="botao botao-pix mt-4">💳 Gerar Pix da Entrada</button>
+        <button onclick="gerarPix(${e}, 'entrada')" class="botao botao-pix mt-4">💳 Gerar Pix da Entrada</button>
         <div id="areaPix" class="oculto"></div>`;
     }
 
@@ -343,7 +343,7 @@ function mostrarProposta(p) {
 
             return `<div class="item-parcela">
                 <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
-                ${pg?'<span class="text-sucesso font-bold">PAGO</span>':'<button onclick="gerarPixParcela(\''+dt+'\','+valor+')" class="botao botao-pequeno botao-pix">Pagar</button>'}
+                ${pg?'<span class="text-sucesso font-bold">PAGO</span>':'<button onclick="gerarPix('+valor+', \'parcela\', '+idx+')" class="botao botao-pequeno botao-pix">Pagar</button>'}
             </div>`;
         }).join('')}
 
@@ -453,7 +453,8 @@ async function assinarContrato(){
     if(error) return alert('Erro ao assinar: '+error.message);
 }
 
-async function gerarPix(valor){
+// ✅ FUNÇÃO DE PIX UNIFICADA — FUNCIONA PARA ENTRADA E PARCELAS
+async function gerarPix(valor, tipo, numeroParcela=null){
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
     area.innerHTML = `<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Gerando Pix...</div>`;
@@ -461,23 +462,27 @@ async function gerarPix(valor){
     try{
         if(!valor || valor <= 0) throw "Valor inválido!";
 
+        let descricao = '';
+        if(tipo === 'entrada') descricao = `Entrada - Proposta ${propostaAtual.id} - ${propostaAtual.nome}`;
+        else descricao = `Parcela ${numeroParcela+1} - Proposta ${propostaAtual.id} - ${propostaAtual.nome}`;
+
         const res = await fetch('/api/gerar-pix', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({
                 valor: Number(valor),
-                descricao: `Entrada - Proposta ${propostaAtual.id} - ${propostaAtual.nome}`
+                descricao: descricao
             })
         });
 
-        if(!res.ok) throw `Erro: ${res.status}`;
+        if(!res.ok) throw `Erro na API: ${res.status}`;
         const ret = await res.json();
-        if(!ret.sucesso) throw ret.mensagem || "Não foi possível gerar";
+        if(!ret.sucesso) throw ret.mensagem || "Não foi possível gerar o Pix";
 
         area.innerHTML = `
         <div class="qrcode-area" id="qrcode"></div>
         <div class="codigo-pix mt-3">${ret.qr_code || ret.copia_cola}</div>
-        <p class="text-center text-sm mt-2 text-sucesso">✅ Pix gerado com sucesso!</p>`;
+        <p class="text-center text-sm mt-2 text-sucesso">✅ Pix gerado com sucesso! Escaneie ou copie o código</p>`;
         
         new QRCode(document.getElementById('qrcode'), {
             text: ret.qr_code || ret.copia_cola,
@@ -489,15 +494,10 @@ async function gerarPix(valor){
         area.innerHTML = `
         <div class="text-center py-4 text-perigo">
             <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
-            <p class="font-bold">Aviso:</p>
-            <p>A API de pagamento ainda está em configuração.</p>
-            <p class="text-sm mt-2">💡 Enquanto isso, aguarde a confirmação ou peça para o atendente marcar o pagamento manualmente.</p>
+            <p class="font-bold">Erro ao gerar Pix:</p>
+            <p>${erro}</p>
         </div>`;
     }
-}
-
-async function gerarPixParcela(data, valor){
-    alert(`🔧 Em breve: Pix para parcela de R$ ${formatarValor(valor)}\nVencimento: ${new Date(data+'T00:00:00').toLocaleDateString('pt-BR')}`);
 }
 </script>
 </body>
