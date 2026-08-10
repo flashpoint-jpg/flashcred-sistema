@@ -1243,4 +1243,3557 @@ function mostrarErroConsulta(
 
 
     el.innerHTML =
-        '<i class="fas fa-circle-exclama
+        '<i class="fas fa-circle-exclamation"></i> ' +
+        escapar(mensagem);
+
+
+    el.classList.remove(
+        'hidden'
+    );
+
+}
+
+
+function esconderErroConsulta() {
+
+    document
+        .getElementById(
+            'erroConsulta'
+        )
+        .classList.add(
+            'hidden'
+        );
+
+}
+
+
+/* ==========================================================
+   FORMATAÇÕES
+========================================================== */
+
+function moeda(valor) {
+
+    return Number(
+        valor || 0
+    ).toLocaleString(
+        'pt-BR',
+        {
+            minimumFractionDigits:2,
+            maximumFractionDigits:2
+        }
+    );
+
+}
+
+
+function numero(valor) {
+
+    return Number(
+        valor || 0
+    ).toLocaleString(
+        'pt-BR',
+        {
+            maximumFractionDigits:2
+        }
+    );
+
+}
+
+
+function escapar(valor) {
+
+    return String(
+        valor ?? ''
+    )
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+
+}
+
+
+function dataBR(valor) {
+
+    if(!valor)
+        return 'Não informado';
+
+
+    const d =
+        new Date(valor);
+
+
+    if(
+        Number.isNaN(
+            d.getTime()
+        )
+    )
+        return String(valor);
+
+
+    return d.toLocaleDateString(
+        'pt-BR'
+    );
+
+}
+
+
+/* ==========================================================
+   PEGAR CAMPO ALTERNATIVO
+========================================================== */
+
+function campo(
+    objeto,
+    nomes,
+    padrao = ''
+) {
+
+    for(
+        const nome of nomes
+    ) {
+
+        if(
+            objeto &&
+            objeto[nome] !== null &&
+            objeto[nome] !== undefined &&
+            objeto[nome] !== ''
+        ) {
+
+            return objeto[nome];
+
+        }
+
+    }
+
+
+    return padrao;
+
+}
+
+
+/* ==========================================================
+   STATUS
+========================================================== */
+
+function statusNormalizado(p) {
+
+    return String(
+        campo(
+            p,
+            [
+                'status',
+                'situacao',
+                'status_proposta'
+            ],
+            ''
+        )
+    )
+    .trim()
+    .toLowerCase();
+
+}
+
+
+function isAprovada(p) {
+
+    const s =
+        statusNormalizado(p);
+
+
+    return [
+        'aprovada',
+        'aprovado',
+        'aprovado(a)'
+    ].includes(s);
+
+}
+
+
+function isPaga(p) {
+
+    return Boolean(
+        campo(
+            p,
+            [
+                'entrada_paga',
+                'pagamento_entrada',
+                'entrada_pago'
+            ],
+            false
+        )
+    );
+
+}
+
+
+function isAssinado(p) {
+
+    return Boolean(
+        campo(
+            p,
+            [
+                'contrato_assinado',
+                'assinado'
+            ],
+            false
+        )
+    );
+
+}
+
+
+/* ==========================================================
+   ETAPA
+========================================================== */
+
+function determinarEtapa(p) {
+
+    if(!p)
+        return 1;
+
+
+    if(!isAprovada(p))
+        return 1;
+
+
+    const parcelas =
+        Number(
+            campo(
+                p,
+                [
+                    'qtd_parcelas_escolhida',
+                    'parcelas_escolhidas'
+                ],
+                0
+            )
+        );
+
+
+    if(!parcelas)
+        return 2;
+
+
+    if(!isAssinado(p))
+        return 3;
+
+
+    if(!isPaga(p))
+        return 4;
+
+
+    return 5;
+
+}
+
+
+/* ==========================================================
+   BARRA
+========================================================== */
+
+function montarEtapas(
+    etapa
+) {
+
+    const etapas = [
+
+        [
+            'Análise',
+            'fa-magnifying-glass'
+        ],
+
+        [
+            'Parcelas',
+            'fa-list-check'
+        ],
+
+        [
+            'Contrato',
+            'fa-file-signature'
+        ],
+
+        [
+            'Pix',
+            'fa-qrcode'
+        ],
+
+        [
+            'Entrega',
+            'fa-truck-fast'
+        ]
+
+    ];
+
+
+    document
+        .getElementById(
+            'barraEtapas'
+        )
+        .innerHTML =
+        etapas
+            .map(
+                function(item,index) {
+
+                    const numero =
+                        index + 1;
+
+
+                    let classe = '';
+
+
+                    if(
+                        numero < etapa
+                    )
+                        classe = 'done';
+
+
+                    else if(
+                        numero === etapa
+                    )
+                        classe = 'active';
+
+
+                    return `
+
+                        <div class="step ${classe}">
+
+                            <div class="step-circle">
+
+                                ${
+                                    numero < etapa
+                                    ? '<i class="fas fa-check"></i>'
+                                    : numero
+                                }
+
+                            </div>
+
+                            <span>
+                                ${item[0]}
+                            </span>
+
+                        </div>
+
+                    `;
+
+                }
+            )
+            .join('');
+
+}
+
+
+/* ==========================================================
+   CÁLCULO DE PARCELA
+========================================================== */
+
+function calcularParcela(
+    principal,
+    juros,
+    quantidade
+) {
+
+    principal =
+        Number(principal || 0);
+
+
+    juros =
+        Number(juros || 0) / 100;
+
+
+    quantidade =
+        Number(quantidade || 0);
+
+
+    if(
+        principal <= 0 ||
+        quantidade <= 0
+    )
+        return 0;
+
+
+    if(juros === 0)
+        return principal / quantidade;
+
+
+    const fator =
+        Math.pow(
+            1 + juros,
+            quantidade
+        );
+
+
+    return (
+        principal *
+        fator *
+        juros
+    ) /
+    (
+        fator - 1
+    );
+
+}
+
+
+/* ==========================================================
+   DIAS ÚTEIS
+========================================================== */
+
+function adicionarDiasUteis(
+    dataInicial,
+    quantidade
+) {
+
+    const data =
+        new Date(
+            dataInicial
+        );
+
+
+    if(
+        Number.isNaN(
+            data.getTime()
+        )
+    )
+        return null;
+
+
+    let adicionados = 0;
+
+
+    while(
+        adicionados <
+        Number(
+            quantidade || 0
+        )
+    ) {
+
+        data.setDate(
+            data.getDate() + 1
+        );
+
+
+        const dia =
+            data.getDay();
+
+
+        if(
+            dia !== 0 &&
+            dia !== 6
+        ) {
+
+            adicionados++;
+
+        }
+
+    }
+
+
+    return data;
+
+}
+
+
+function contarDiasUteis(
+    inicio,
+    fim
+) {
+
+    const a =
+        new Date(inicio);
+
+
+    const b =
+        new Date(fim);
+
+
+    a.setHours(
+        0,0,0,0
+    );
+
+    b.setHours(
+        0,0,0,0
+    );
+
+
+    if(a >= b)
+        return 0;
+
+
+    let total = 0;
+
+
+    while(a < b) {
+
+        a.setDate(
+            a.getDate() + 1
+        );
+
+
+        const dia =
+            a.getDay();
+
+
+        if(
+            dia !== 0 &&
+            dia !== 6
+        ) {
+
+            total++;
+
+        }
+
+    }
+
+
+    return total;
+
+}
+
+
+/* ==========================================================
+   ENTREGA
+========================================================== */
+
+function calcularEntrega(p) {
+
+    const dias =
+        Number(
+            campo(
+                p,
+                [
+                    'dias_entrega',
+                    'prazo_entrega',
+                    'dias_uteis_entrega'
+                ],
+                0
+            )
+        );
+
+
+    if(!dias) {
+
+        return {
+            dias,
+            inicio:null,
+            fim:null,
+            restantes:null,
+            progresso:0
+        };
+
+    }
+
+
+    const inicio =
+        campo(
+            p,
+            [
+                'data_inicio_entrega',
+                'data_pagamento_entrada',
+                'data_aprovacao_entrada',
+                'data_inicio',
+                'updated_at'
+            ],
+            null
+        );
+
+
+    if(!inicio) {
+
+        return {
+            dias,
+            inicio:null,
+            fim:null,
+            restantes:dias,
+            progresso:0
+        };
+
+    }
+
+
+    const inicioData =
+        new Date(inicio);
+
+
+    const fim =
+        adicionarDiasUteis(
+            inicioData,
+            dias
+        );
+
+
+    const hoje =
+        new Date();
+
+
+    let decorridos =
+        contarDiasUteis(
+            inicioData,
+            hoje
+        );
+
+
+    if(decorridos < 0)
+        decorridos = 0;
+
+
+    if(decorridos > dias)
+        decorridos = dias;
+
+
+    const progresso =
+        dias > 0
+        ? Math.round(
+            (
+                decorridos /
+                dias
+            ) * 100
+        )
+        : 0;
+
+
+    const restantes =
+        Math.max(
+            0,
+            dias - decorridos
+        );
+
+
+    return {
+        dias,
+        inicio:inicioData,
+        fim,
+        restantes,
+        progresso
+    };
+
+}
+
+
+/* ==========================================================
+   MOSTRAR PROPOSTA
+========================================================== */
+
+function mostrarProposta(p) {
+
+    if(!p)
+        return;
+
+
+    pararCamera();
+
+
+    const etapa =
+        determinarEtapa(p);
+
+
+    montarEtapas(etapa);
+
+
+    document
+        .getElementById(
+            'telaConsulta'
+        )
+        .classList.add(
+            'hidden'
+        );
+
+
+    document
+        .getElementById(
+            'telaProposta'
+        )
+        .classList.remove(
+            'hidden'
+        );
+
+
+    const nome =
+        campo(
+            p,
+            [
+                'nome',
+                'nome_completo',
+                'cliente_nome'
+            ],
+            'Cliente'
+        );
+
+
+    const cpf =
+        campo(
+            p,
+            [
+                'cpf',
+                'documento'
+            ],
+            ''
+        );
+
+
+    const telefone =
+        campo(
+            p,
+            [
+                'telefone',
+                'celular',
+                'whatsapp',
+                'telefone_whatsapp',
+                'numero_whatsapp'
+            ],
+            'Não informado'
+        );
+
+
+    const endereco =
+        campo(
+            p,
+            [
+                'endereco',
+                'logradouro',
+                'endereco_completo'
+            ],
+            'Não informado'
+        );
+
+
+    const numeroEndereco =
+        campo(
+            p,
+            [
+                'numero',
+                'numero_endereco'
+            ],
+            ''
+        );
+
+
+    const bairro =
+        campo(
+            p,
+            [
+                'bairro'
+            ],
+            ''
+        );
+
+
+    const cidade =
+        campo(
+            p,
+            [
+                'cidade',
+                'municipio'
+            ],
+            ''
+        );
+
+
+    const estado =
+        campo(
+            p,
+            [
+                'estado',
+                'uf'
+            ],
+            ''
+        );
+
+
+    const cep =
+        campo(
+            p,
+            [
+                'cep'
+            ],
+            'Não informado'
+        );
+
+
+    const valor =
+        Number(
+            campo(
+                p,
+                [
+                    'valor_desejado',
+                    'valor',
+                    'valor_solicitado'
+                ],
+                0
+            )
+        );
+
+
+    const entrada =
+        Number(
+            campo(
+                p,
+                [
+                    'valor_entrada',
+                    'entrada'
+                ],
+                0
+            )
+        );
+
+
+    const juros =
+        Number(
+            campo(
+                p,
+                [
+                    'juros_mensal',
+                    'juros'
+                ],
+                5
+            )
+        );
+
+
+    const limiteParcelas =
+        Number(
+            campo(
+                p,
+                [
+                    'quantidade_parcelas',
+                    'qtd_parcelas',
+                    'limite_parcelas',
+                    'max_parcelas'
+                ],
+                0
+            )
+        );
+
+
+    const escolhida =
+        Number(
+            campo(
+                p,
+                [
+                    'qtd_parcelas_escolhida',
+                    'parcelas_escolhidas'
+                ],
+                0
+            )
+        );
+
+
+    const total =
+        valor +
+        calcularJurosTotal(
+            valor,
+            juros
+        );
+
+
+    atualizarStatusHeader(
+        p
+    );
+
+
+    let html = '';
+
+
+    /* ======================================================
+       DADOS DO CLIENTE
+    ====================================================== */
+
+    html += `
+
+        <div class="card">
+
+            <div class="flex items-center justify-between gap-3">
+
+                <div>
+
+                    <div class="text-xs text-slate-400 font-bold">
+                        CLIENTE
+                    </div>
+
+                    <h2 class="text-xl font-bold">
+                        ${escapar(nome)}
+                    </h2>
+
+                </div>
+
+                <span class="badge badge-blue">
+                    <i class="fas fa-shield-halved"></i>
+                    FlashCred
+                </span>
+
+            </div>
+
+
+            <div class="dados-grid">
+
+                <div class="dado">
+
+                    <div class="dado-label">
+                        CPF
+                    </div>
+
+                    <div class="dado-value">
+                        ${formatarCPF(cpf)}
+                    </div>
+
+                </div>
+
+
+                <div class="dado">
+
+                    <div class="dado-label">
+                        WhatsApp / Telefone
+                    </div>
+
+                    <div class="dado-value">
+                        ${escapar(telefone)}
+                    </div>
+
+                </div>
+
+
+                <div class="dado">
+
+                    <div class="dado-label">
+                        CEP
+                    </div>
+
+                    <div class="dado-value">
+                        ${formatarCEP(cep)}
+                    </div>
+
+                </div>
+
+
+                <div class="dado">
+
+                    <div class="dado-label">
+                        Cidade / UF
+                    </div>
+
+                    <div class="dado-value">
+                        ${escapar(
+                            [cidade,estado]
+                            .filter(Boolean)
+                            .join(' / ')
+                            || 'Não informado'
+                        )}
+                    </div>
+
+                </div>
+
+
+                <div class="dado"
+                     style="grid-column:1/-1;">
+
+                    <div class="dado-label">
+                        Endereço
+                    </div>
+
+                    <div class="dado-value">
+
+                        ${escapar(
+                            [
+                                endereco,
+                                numeroEndereco,
+                                bairro
+                            ]
+                            .filter(Boolean)
+                            .join(', ')
+                            ||
+                            'Não informado'
+                        )}
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    `;
+
+
+    /* ======================================================
+       RESUMO FINANCEIRO
+    ====================================================== */
+
+    html += `
+
+        <div class="card">
+
+            <h3 class="font-bold text-lg mb-3">
+                <i class="fas fa-money-bill-wave text-primary"></i>
+                Resumo da proposta
+            </h3>
+
+            <div class="row">
+
+                <span class="label">
+                    Valor solicitado
+                </span>
+
+                <span class="value">
+                    R$ ${moeda(valor)}
+                </span>
+
+            </div>
+
+
+            <div class="row">
+
+                <span class="label">
+                    Entrada
+                </span>
+
+                <span class="value">
+                    R$ ${moeda(entrada)}
+                </span>
+
+            </div>
+
+
+            <div class="row">
+
+                <span class="label">
+                    Juros
+                </span>
+
+                <span class="value">
+                    ${numero(juros)}% a.m.
+                </span>
+
+            </div>
+
+
+            <div class="row">
+
+                <span class="label">
+                    Total calculado
+                </span>
+
+                <span class="value text-primary">
+                    R$ ${moeda(total)}
+                </span>
+
+            </div>
+
+        </div>
+
+    `;
+
+
+    /* ======================================================
+       AGUARDANDO ANÁLISE
+    ====================================================== */
+
+    if(!isAprovada(p)) {
+
+        html += `
+
+            <div class="card">
+
+                <div class="info info-yellow text-center">
+
+                    <i class="fas fa-clock text-3xl text-alerta"></i>
+
+                    <h3 class="font-bold text-lg mt-3">
+                        Proposta em análise
+                    </h3>
+
+                    <p class="text-sm text-slate-600 mt-2">
+                        Sua proposta está sendo analisada.
+                        Esta tela será atualizada automaticamente
+                        quando houver alteração.
+                    </p>
+
+                </div>
+
+            </div>
+
+        `;
+
+
+        document
+            .getElementById(
+                'conteudoProposta'
+            )
+            .innerHTML = html;
+
+
+        return;
+
+    }
+
+
+    /* ======================================================
+       PRAZO DE ENTREGA
+    ====================================================== */
+
+    const diasEntrega =
+        Number(
+            campo(
+                p,
+                [
+                    'dias_entrega',
+                    'prazo_entrega',
+                    'dias_uteis_entrega'
+                ],
+                0
+            )
+        );
+
+
+    if(diasEntrega > 0) {
+
+        html += `
+
+            <div class="info info-blue">
+
+                <i class="fas fa-truck-fast"></i>
+
+                <strong>
+                    Prazo de entrega:
+                </strong>
+
+                até ${diasEntrega} dias úteis,
+                conforme atualização da proposta.
+
+            </div>
+
+        `;
+
+    }
+
+
+    /* ======================================================
+       PARCELAS
+    ====================================================== */
+
+    if(!escolhida) {
+
+        html += montarSelecaoParcelas(
+            p,
+            valor,
+            entrada,
+            juros,
+            limiteParcelas
+        );
+
+
+        document
+            .getElementById(
+                'conteudoProposta'
+            )
+            .innerHTML = html;
+
+
+        return;
+
+    }
+
+
+    /* ======================================================
+       CONTRATO
+    ====================================================== */
+
+    if(!isAssinado(p)) {
+
+        html += montarContrato(
+            p,
+            valor,
+            entrada,
+            juros,
+            escolhida,
+            total,
+            diasEntrega
+        );
+
+
+        document
+            .getElementById(
+                'conteudoProposta'
+            )
+            .innerHTML = html;
+
+
+        iniciarAssinatura();
+
+
+        return;
+
+    }
+
+
+    /* ======================================================
+       PIX
+    ====================================================== */
+
+    if(!isPaga(p)) {
+
+        html += montarPixEntrada(
+            p,
+            entrada,
+            total
+        );
+
+
+        document
+            .getElementById(
+                'conteudoProposta'
+            )
+            .innerHTML = html;
+
+
+        return;
+
+    }
+
+
+    /* ======================================================
+       PAGAMENTO CONFIRMADO / ENTREGA
+    ====================================================== */
+
+    html += montarPagamentoConfirmado(
+        p,
+        valor,
+        entrada,
+        juros,
+        escolhida,
+        total
+    );
+
+
+    document
+        .getElementById(
+            'conteudoProposta'
+        )
+        .innerHTML = html;
+
+}
+
+
+/* ==========================================================
+   JUROS TOTAL
+========================================================== */
+
+function calcularJurosTotal(
+    valor,
+    juros
+) {
+
+    return (
+        Number(valor || 0) *
+        Number(juros || 0) /
+        100
+    );
+
+}
+
+
+/* ==========================================================
+   STATUS HEADER
+========================================================== */
+
+function atualizarStatusHeader(p) {
+
+    const el =
+        document.getElementById(
+            'statusHeader'
+        );
+
+
+    if(!el)
+        return;
+
+
+    if(!isAprovada(p)) {
+
+        el.innerHTML =
+            '<span class="badge badge-yellow">' +
+            '<i class="fas fa-clock"></i>' +
+            ' Em análise' +
+            '</span>';
+
+        return;
+
+    }
+
+
+    if(!campo(p,['qtd_parcelas_escolhida'],0)) {
+
+        el.innerHTML =
+            '<span class="badge badge-green">' +
+            '<i class="fas fa-check"></i>' +
+            ' Proposta aprovada' +
+            '</span>';
+
+        return;
+
+    }
+
+
+    if(!isAssinado(p)) {
+
+        el.innerHTML =
+            '<span class="badge badge-blue">' +
+            '<i class="fas fa-file-signature"></i>' +
+            ' Aguardando contrato' +
+            '</span>';
+
+        return;
+
+    }
+
+
+    if(!isPaga(p)) {
+
+        el.innerHTML =
+            '<span class="badge badge-yellow">' +
+            '<i class="fas fa-qrcode"></i>' +
+            ' Aguardando pagamento' +
+            '</span>';
+
+        return;
+
+    }
+
+
+    el.innerHTML =
+        '<span class="badge badge-green">' +
+        '<i class="fas fa-truck-fast"></i>' +
+        ' Em entrega' +
+        '</span>';
+
+}
+
+
+/* ==========================================================
+   SELEÇÃO DE PARCELAS
+========================================================== */
+
+function montarSelecaoParcelas(
+    p,
+    valor,
+    entrada,
+    juros,
+    limite
+) {
+
+    if(
+        !limite ||
+        limite < 1
+    ) {
+
+        return `
+
+            <div class="card">
+
+                <div class="info info-yellow">
+
+                    <strong>
+                        Proposta aprovada.
+                    </strong>
+
+                    <p class="text-sm mt-2">
+                        A quantidade de parcelas ainda
+                        não foi disponibilizada.
+                    </p>
+
+                </div>
+
+            </div>
+
+        `;
+
+    }
+
+
+    const principal =
+        Math.max(
+            0,
+            valor - entrada
+        );
+
+
+    let opcoes = '';
+
+
+    for(
+        let n = 1;
+        n <= limite;
+        n++
+    ) {
+
+        const parcela =
+            calcularParcela(
+                principal,
+                juros,
+                n
+            );
+
+
+        opcoes += `
+
+            <label
+                class="parcela-option"
+                onclick="selecionarParcelaVisual(this)"
+            >
+
+                <div class="flex items-center justify-between gap-3">
+
+                    <div>
+
+                        <div class="parcela-titulo">
+                            ${n}x
+                        </div>
+
+                        <div class="text-xs text-slate-500">
+                            Parcelas mensais
+                        </div>
+
+                    </div>
+
+
+                    <div class="parcela-valor">
+                        R$ ${moeda(parcela)}
+                    </div>
+
+                </div>
+
+
+                <input
+                    type="radio"
+                    name="parcelas"
+                    value="${n}"
+                    class="mt-3"
+                >
+
+                <span class="text-sm">
+                    Selecionar ${n}x
+                </span>
+
+            </label>
+
+        `;
+
+    }
+
+
+    return `
+
+        <div class="card">
+
+            <h3 class="text-xl font-bold">
+                Escolha suas parcelas
+            </h3>
+
+            <p class="text-sm text-slate-500 mt-1 mb-4">
+                Sua proposta foi aprovada.
+                Escolha uma das opções disponíveis.
+            </p>
+
+
+            <div class="resumo">
+
+                <div class="row">
+
+                    <span class="label">
+                        Valor
+                    </span>
+
+                    <span class="value">
+                        R$ ${moeda(valor)}
+                    </span>
+
+                </div>
+
+
+                <div class="row">
+
+                    <span class="label">
+                        Entrada
+                    </span>
+
+                    <span class="value">
+                        R$ ${moeda(entrada)}
+                    </span>
+
+                </div>
+
+
+                <div class="row">
+
+                    <span class="label">
+                        Juros mensais
+                    </span>
+
+                    <span class="value">
+                        ${numero(juros)}%
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div id="listaParcelas">
+
+                ${opcoes}
+
+            </div>
+
+
+            <button
+                onclick="confirmarParcelas()"
+                class="btn btn-success mt-4"
+            >
+
+                <i class="fas fa-arrow-right"></i>
+
+                Continuar com esta opção
+
+            </button>
+
+        </div>
+
+    `;
+
+}
+
+
+function selecionarParcelaVisual(
+    elemento
+) {
+
+    document
+        .querySelectorAll(
+            '.parcela-option'
+        )
+        .forEach(
+            function(el) {
+
+                el.classList.remove(
+                    'selected'
+                );
+
+            }
+        );
+
+
+    elemento.classList.add(
+        'selected'
+    );
+
+
+    const radio =
+        elemento.querySelector(
+            'input[type="radio"]'
+        );
+
+
+    if(radio)
+        radio.checked = true;
+
+}
+
+
+/* ==========================================================
+   CONFIRMAR PARCELAS
+========================================================== */
+
+async function confirmarParcelas() {
+
+    const radio =
+        document.querySelector(
+            'input[name="parcelas"]:checked'
+        );
+
+
+    if(!radio) {
+
+        alert(
+            'Selecione uma quantidade de parcelas.'
+        );
+
+        return;
+
+    }
+
+
+    const quantidade =
+        Number(
+            radio.value
+        );
+
+
+    try {
+
+        const resposta =
+            await supabase
+                .from('propostas')
+                .update({
+                    qtd_parcelas_escolhida:
+                        quantidade
+                })
+                .eq(
+                    'id',
+                    propostaAtual.id
+                );
+
+
+        if(resposta.error)
+            throw resposta.error;
+
+
+        propostaAtual.qtd_parcelas_escolhida =
+            quantidade;
+
+
+        salvarSessao();
+
+
+        mostrarProposta(
+            propostaAtual
+        );
+
+
+    } catch(error) {
+
+        console.error(error);
+
+        alert(
+            'Não foi possível salvar a escolha das parcelas.'
+        );
+
+    }
+
+}
+
+
+/* ==========================================================
+   CONTRATO
+========================================================== */
+
+function montarContrato(
+    p,
+    valor,
+    entrada,
+    juros,
+    quantidade,
+    total,
+    diasEntrega
+) {
+
+    const nome =
+        campo(
+            p,
+            ['nome','nome_completo'],
+            'Cliente'
+        );
+
+
+    const cpf =
+        campo(
+            p,
+            ['cpf'],
+            ''
+        );
+
+
+    const telefone =
+        campo(
+            p,
+            [
+                'telefone',
+                'celular',
+                'whatsapp'
+            ],
+            'Não informado'
+        );
+
+
+    const parcela =
+        calcularParcela(
+            Math.max(
+                0,
+                valor - entrada
+            ),
+            juros,
+            quantidade
+        );
+
+
+    return `
+
+        <div class="card">
+
+            <div class="info info-blue">
+
+                <i class="fas fa-file-signature"></i>
+
+                <strong>
+                    Confira o contrato antes de assinar.
+                </strong>
+
+                <p class="text-sm mt-1">
+                    O contrato ainda não está assinado.
+                    A assinatura somente será registrada
+                    após sua confirmação.
+                </p>
+
+            </div>
+
+
+            <div class="resumo">
+
+                <div class="row">
+                    <span class="label">
+                        Cliente
+                    </span>
+
+                    <span class="value">
+                        ${escapar(nome)}
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        CPF
+                    </span>
+
+                    <span class="value">
+                        ${formatarCPF(cpf)}
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Telefone
+                    </span>
+
+                    <span class="value">
+                        ${escapar(telefone)}
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Valor
+                    </span>
+
+                    <span class="value">
+                        R$ ${moeda(valor)}
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Entrada
+                    </span>
+
+                    <span class="value">
+                        R$ ${moeda(entrada)}
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Parcelamento
+                    </span>
+
+                    <span class="value">
+                        ${quantidade}x de R$ ${moeda(parcela)}
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Juros
+                    </span>
+
+                    <span class="value">
+                        ${numero(juros)}% a.m.
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Total calculado
+                    </span>
+
+                    <span class="value">
+                        R$ ${moeda(total)}
+                    </span>
+                </div>
+
+
+                <div class="row">
+                    <span class="label">
+                        Prazo de entrega
+                    </span>
+
+                    <span class="value">
+                        ${
+                            diasEntrega
+                            ? diasEntrega +
+                              ' dias úteis'
+                            : 'Conforme proposta'
+                        }
+                    </span>
+                </div>
+
+            </div>
+
+
+            <h3 class="font-bold mt-5 mb-3">
+                CONTRATO
+            </h3>
+
+
+            <div class="contract">
+
+                <h3>
+                    INSTRUMENTO DE CONTRATAÇÃO
+                </h3>
+
+
+                <p>
+                    Pelo presente instrumento, as partes
+                    identificadas na proposta eletrônica
+                    registram as condições comerciais
+                    referentes à operação apresentada
+                    ao cliente.
+                </p>
+
+
+                <h4>
+                    1. IDENTIFICAÇÃO
+                </h4>
+
+                <p>
+                    Cliente:
+                    <strong>
+                        ${escapar(nome)}
+                    </strong>.
+                    CPF:
+                    <strong>
+                        ${formatarCPF(cpf)}
+                    </strong>.
+                </p>
+
+
+                <h4>
+                    2. VALOR DA OPERAÇÃO
+                </h4>
+
+                <p>
+                    Valor informado:
+                    <strong>
+                        R$ ${moeda(valor)}
+                    </strong>.
+                    Entrada:
+                    <strong>
+                        R$ ${moeda(entrada)}
+                    </strong>.
+                </p>
+
+
+                <h4>
+                    3. PARCELAMENTO
+                </h4>
+
+                <p>
+                    A operação foi configurada para
+                    <strong>
+                        ${quantidade} parcelas
+                    </strong>,
+                    no valor aproximado de
+                    <strong>
+                        R$ ${moeda(parcela)}
+                    </strong>
+                    cada, conforme os dados registrados
+                    na proposta.
+                </p>
+
+
+                <h4>
+                    4. ENCARGOS
+                </h4>
+
+                <p>
+                    A taxa informada na proposta é de
+                    <strong>
+                        ${numero(juros)}% ao mês
+                    </strong>.
+                    Os valores apresentados devem ser
+                    conferidos pelo cliente antes da
+                    confirmação.
+                </p>
+
+
+                <h4>
+                    5. PAGAMENTO
+                </h4>
+
+                <p>
+                    O pagamento da entrada, quando previsto,
+                    será realizado através do meio de
+                    pagamento disponibilizado pela
+                    FlashCred.
+                </p>
+
+
+                <h4>
+                    6. ENTREGA
+                </h4>
+
+                <p>
+                    O prazo de entrega informado na proposta
+                    é de
+                    <strong>
+                        ${
+                            diasEntrega
+                            ? diasEntrega +
+                              ' dias úteis'
+                            : 'prazo conforme proposta'
+                        }
+                    </strong>,
+                    observadas as condições registradas no
+                    sistema.
+                </p>
+
+
+                <h4>
+                    7. DECLARAÇÃO DO CLIENTE
+                </h4>
+
+                <p>
+                    O cliente declara que conferiu seus
+                    dados, valores, quantidade de parcelas,
+                    condições de pagamento e demais
+                    informações apresentadas antes da
+                    confirmação.
+                </p>
+
+
+                <h4>
+                    8. ACEITE ELETRÔNICO
+                </h4>
+
+                <p>
+                    A confirmação eletrônica realizada pelo
+                    cliente será registrada juntamente com
+                    os dados disponíveis no sistema no
+                    momento da assinatura.
+                </p>
+
+
+                <h4>
+                    9. DISPOSIÇÕES FINAIS
+                </h4>
+
+                <p>
+                    Eventuais condições específicas da
+                    operação prevalecem quando expressamente
+                    registradas na proposta e nos documentos
+                    correspondentes.
+                </p>
+
+
+                <p class="mt-4 text-xs text-slate-500">
+                    Documento eletrônico. Recomenda-se revisão
+                    jurídica das cláusulas antes da utilização
+                    comercial definitiva.
+                </p>
+
+            </div>
+
+
+            <div class="assinatura-box">
+
+                <label class="flex gap-2 items-start">
+
+                    <input
+                        type="checkbox"
+                        id="aceitoContrato"
+                        class="mt-1"
+                    >
+
+                    <span class="text-sm">
+                        Declaro que li as condições acima,
+                        conferi meus dados e concordo com
+                        os termos apresentados.
+                    </span>
+
+                </label>
+
+
+                <div class="flex gap-2 mt-4">
+
+                    <button
+                        onclick="alternarModo('texto')"
+                        id="btnModoTexto"
+                        class="btn btn-primary"
+                    >
+                        <i class="fas fa-signature"></i>
+                        Assinar
+                    </button>
+
+
+                    <button
+                        onclick="alternarModo('selfie')"
+                        id="btnModoSelfie"
+                        class="btn btn-secondary"
+                    >
+                        <i class="fas fa-camera"></i>
+                        Selfie
+                    </button>
+
+                </div>
+
+
+                <div
+                    id="areaAssinaturaTexto"
+                    class="mt-4"
+                >
+
+                    <input
+                        id="assTxt"
+                        class="input"
+                        placeholder="Digite seu nome completo"
+                        autocomplete="name"
+                    >
+
+                </div>
+
+
+                <div
+                    id="areaAssinaturaSelfie"
+                    class="hidden mt-4"
+                >
+
+                    <div class="video-box">
+
+                        <video
+                            id="vid"
+                            autoplay
+                            playsinline
+                        ></video>
+
+                    </div>
+
+
+                    <button
+                        onclick="tirarFoto()"
+                        class="btn btn-primary"
+                    >
+                        <i class="fas fa-camera"></i>
+                        Capturar selfie
+                    </button>
+
+
+                    <div
+                        id="previewFoto"
+                        class="hidden mt-3"
+                    >
+
+                        <img
+                            id="imgSelfie"
+                            class="foto-assinatura"
+                        >
+
+                        <button
+                            onclick="refazerFoto()"
+                            class="btn btn-secondary mt-3"
+                        >
+                            Refazer foto
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <button
+                    onclick="assinarContrato()"
+                    class="btn btn-success mt-4"
+                >
+                    <i class="fas fa-file-signature"></i>
+                    Confirmar e assinar contrato
+                </button>
+
+            </div>
+
+        </div>
+
+    `;
+
+}
+
+
+/* ==========================================================
+   ASSINATURA
+========================================================== */
+
+function iniciarAssinatura() {
+
+    modoAssinatura = 'texto';
+
+    atualizarModoAssinatura();
+
+}
+
+
+function alternarModo(
+    modo
+) {
+
+    modoAssinatura =
+        modo === 'selfie'
+        ? 'selfie'
+        : 'texto';
+
+
+    atualizarModoAssinatura();
+
+
+    if(
+        modoAssinatura ===
+        'selfie'
+    ) {
+
+        iniciarCamera();
+
+    } else {
+
+        pararCamera();
+
+    }
+
+}
+
+
+function atualizarModoAssinatura() {
+
+    const texto =
+        document.getElementById(
+            'areaAssinaturaTexto'
+        );
+
+
+    const selfie =
+        document.getElementById(
+            'areaAssinaturaSelfie'
+        );
+
+
+    if(!texto || !selfie)
+        return;
+
+
+    texto.classList.toggle(
+        'hidden',
+        modoAssinatura !== 'texto'
+    );
+
+
+    selfie.classList.toggle(
+        'hidden',
+        modoAssinatura !== 'selfie'
+    );
+
+}
+
+
+/* ==========================================================
+   CAMERA
+========================================================== */
+
+async function iniciarCamera() {
+
+    try {
+
+        pararCamera();
+
+
+        webcamStream =
+            await navigator
+                .mediaDevices
+                .getUserMedia({
+                    video:true
+                });
+
+
+        const video =
+            document.getElementById(
+                'vid'
+            );
+
+
+        if(video)
+            video.srcObject =
+                webcamStream;
+
+
+    } catch(error) {
+
+        alert(
+            'Não foi possível acessar a câmera. Você pode usar a assinatura por nome.'
+        );
+
+
+        alternarModo(
+            'texto'
+        );
+
+    }
+
+}
+
+
+function pararCamera() {
+
+    if(
+        webcamStream
+    ) {
+
+        webcamStream
+            .getTracks()
+            .forEach(
+                track =>
+                    track.stop()
+            );
+
+        webcamStream = null;
+
+    }
+
+}
+
+
+function tirarFoto() {
+
+    const video =
+        document.getElementById(
+            'vid'
+        );
+
+
+    if(
+        !video ||
+        !video.videoWidth
+    ) {
+
+        alert(
+            'A câmera ainda não está pronta.'
+        );
+
+        return;
+
+    }
+
+
+    const canvas =
+        document.createElement(
+            'canvas'
+        );
+
+
+    canvas.width =
+        video.videoWidth;
+
+
+    canvas.height =
+        video.videoHeight;
+
+
+    const ctx =
+        canvas.getContext(
+            '2d'
+        );
+
+
+    ctx.drawImage(
+        video,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    const imagem =
+        canvas.toDataURL(
+            'image/jpeg',
+            .85
+        );
+
+
+    document
+        .getElementById(
+            'imgSelfie'
+        )
+        .src = imagem;
+
+
+    document
+        .getElementById(
+            'previewFoto'
+        )
+        .classList.remove(
+            'hidden'
+        );
+
+
+    pararCamera();
+
+}
+
+
+function refazerFoto() {
+
+    document
+        .getElementById(
+            'previewFoto'
+        )
+        .classList.add(
+            'hidden'
+        );
+
+
+    iniciarCamera();
+
+}
+
+
+/* ==========================================================
+   SALVAR ASSINATURA
+========================================================== */
+
+async function assinarContrato() {
+
+    const aceite =
+        document.getElementById(
+            'aceitoContrato'
+        );
+
+
+    if(
+        !aceite ||
+        !aceite.checked
+    ) {
+
+        alert(
+            'Marque que você leu e concorda com o contrato.'
+        );
+
+        return;
+
+    }
+
+
+    let assinatura = '';
+
+
+    if(
+        modoAssinatura ===
+        'texto'
+    ) {
+
+        assinatura =
+            document
+                .getElementById(
+                    'assTxt'
+                )
+                .value
+                .trim();
+
+
+        if(
+            assinatura.length < 3
+        ) {
+
+            alert(
+                'Digite seu nome completo para assinar.'
+            );
+
+            return;
+
+        }
+
+    } else {
+
+        assinatura =
+            document
+                .getElementById(
+                    'imgSelfie'
+                )
+                .src;
+
+
+        if(
+            !assinatura ||
+            assinatura ===
+            window.location.href
+        ) {
+
+            alert(
+                'Capture a selfie antes de assinar.'
+            );
+
+            return;
+
+        }
+
+    }
+
+
+    try {
+
+        const resposta =
+            await supabase
+                .from('propostas')
+                .update({
+
+                    contrato_assinado:true,
+
+                    assinatura:assinatura,
+
+                    data_assinatura:
+                        new Date()
+                            .toISOString()
+
+                })
+                .eq(
+                    'id',
+                    propostaAtual.id
+                );
+
+
+        if(resposta.error)
+            throw resposta.error;
+
+
+        propostaAtual.contrato_assinado =
+            true;
+
+
+        propostaAtual.assinatura =
+            assinatura;
+
+
+        propostaAtual.data_assinatura =
+            new Date().toISOString();
+
+
+        salvarSessao();
+
+
+        pararCamera();
+
+
+        mostrarProposta(
+            propostaAtual
+        );
+
+
+    } catch(error) {
+
+        console.error(error);
+
+        alert(
+            'Não foi possível registrar a assinatura.'
+        );
+
+    }
+
+}
+
+
+/* ==========================================================
+   PIX ENTRADA
+========================================================== */
+
+function montarPixEntrada(
+    p,
+    entrada,
+    total
+) {
+
+    return `
+
+        <div class="sucesso-box">
+
+            <i class="fas fa-file-circle-check"></i>
+
+            <h3 class="text-lg font-bold">
+                CONTRATO ASSINADO
+            </h3>
+
+            <p class="text-sm mt-2">
+                O contrato foi registrado.
+                Agora siga para o pagamento da entrada.
+            </p>
+
+        </div>
+
+
+        <div class="card">
+
+            <div class="resumo">
+
+                <div class="row">
+
+                    <span class="label">
+                        Entrada
+                    </span>
+
+                    <span class="value">
+                        R$ ${moeda(entrada)}
+                    </span>
+
+                </div>
+
+
+                <div class="row">
+
+                    <span class="label">
+                        Valor total
+                    </span>
+
+                    <span class="value">
+                        R$ ${moeda(total)}
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <button
+                onclick="gerarPixEntrada(${Number(entrada)})"
+                class="btn btn-pix"
+            >
+
+                <i class="fas fa-qrcode"></i>
+
+                Gerar Pix da entrada
+
+            </button>
+
+
+            <div
+                id="areaPixEntrada"
+                class="hidden"
+            ></div>
+
+        </div>
+
+    `;
+
+}
+
+
+/* ==========================================================
+   GERAR PIX ENTRADA
+========================================================== */
+
+async function gerarPixEntrada(
+    valor
+) {
+
+    const area =
+        document.getElementById(
+            'areaPixEntrada'
+        );
+
+
+    if(!area)
+        return;
+
+
+    area.classList.remove(
+        'hidden'
+    );
+
+
+    area.innerHTML = `
+
+        <div class="loading">
+
+            <div class="spinner"></div>
+
+            <span>
+                Gerando Pix...
+            </span>
+
+        </div>
+
+    `;
+
+
+    try {
+
+        const codigo =
+            await buscarPix(
+                valor,
+                `Entrada - ${propostaAtual.id}`
+            );
+
+
+        if(!codigo)
+            throw new Error(
+                'A API não retornou o código Pix.'
+            );
+
+
+        const idQR =
+            'qrEntrada_' +
+            Date.now();
+
+
+        area.innerHTML = `
+
+            <div class="pix-box">
+
+                <h3 class="font-bold text-lg">
+                    <i class="fas fa-qrcode"></i>
+                    Pix da entrada
+                </h3>
+
+
+                <div
+                    id="${idQR}"
+                    class="qr"
+                ></div>
+
+
+                <div class="copy">
+                    ${escapar(codigo)}
+                </div>
+
+
+                <button
+                    onclick="copiarPix(${JSON.stringify(codigo)})"
+                    class="btn btn-primary mt-3"
+                >
+                    <i class="fas fa-copy"></i>
+                    Copiar Pix
+                </button>
+
+            </div>
+
+        `;
+
+
+        setTimeout(
+            function() {
+
+                const el =
+                    document.getElementById(
+                        idQR
+                    );
+
+
+                if(el) {
+
+                    new QRCode(
+                        el,
+                        {
+                            text:codigo,
+                            width:210,
+                            height:210
+                        }
+                    );
+
+                }
+
+            },
+            50
+        );
+
+
+    } catch(error) {
+
+        console.error(
+            'Pix:',
+            error
+        );
+
+
+        area.innerHTML = `
+
+            <div class="info info-red mt-4">
+
+                <strong>
+                    Não foi possível gerar o Pix.
+                </strong>
+
+                <p class="text-sm mt-1">
+                    ${escapar(
+                        error.message ||
+                        String(error)
+                    )}
+                </p>
+
+                <button
+                    onclick="gerarPixEntrada(${Number(valor)})"
+                    class="btn btn-danger mt-3"
+                >
+                    Tentar novamente
+                </button>
+
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+/* ==========================================================
+   PIX PARCELA
+========================================================== */
+
+async function gerarPixParcela(
+    valor,
+    numeroParcela
+) {
+
+    const area =
+        document.getElementById(
+            'pixParcela_' +
+            numeroParcela
+        );
+
+
+    if(!area)
+        return;
+
+
+    area.classList.remove(
+        'hidden'
+    );
+
+
+    area.innerHTML = `
+
+        <div class="loading">
+
+            <div class="spinner"></div>
+
+            Gerando Pix...
+
+        </div>
+
+    `;
+
+
+    try {
+
+        const codigo =
+            await buscarPix(
+                valor,
+                `Parcela ${numeroParcela} - ${propostaAtual.id}`
+            );
+
+
+        if(!codigo)
+            throw new Error(
+                'A API não retornou o código Pix.'
+            );
+
+
+        const idQR =
+            'qrParcela_' +
+            numeroParcela +
+            '_' +
+            Date.now();
+
+
+        area.innerHTML = `
+
+            <div class="pix-box">
+
+                <div
+                    id="${idQR}"
+                    class="qr"
+                ></div>
+
+
+                <div class="copy">
+                    ${escapar(codigo)}
+                </div>
+
+
+                <button
+                    onclick="copiarPix(${JSON.stringify(codigo)})"
+                    class="btn btn-primary mt-3"
+                >
+                    <i class="fas fa-copy"></i>
+                    Copiar Pix
+                </button>
+
+            </div>
+
+        `;
+
+
+        setTimeout(
+            function() {
+
+                const el =
+                    document.getElementById(
+                        idQR
+                    );
+
+
+                if(el) {
+
+                    new QRCode(
+                        el,
+                        {
+                            text:codigo,
+                            width:190,
+                            height:190
+                        }
+                    );
+
+                }
+
+            },
+            50
+        );
+
+
+    } catch(error) {
+
+        area.innerHTML = `
+
+            <div class="info info-red">
+
+                ${escapar(
+                    error.message ||
+                    String(error)
+                )}
+
+            </div>
+
+        `;
+
+    }
+
+}
+
+
+/* ==========================================================
+   API PIX
+========================================================== */
+
+async function buscarPix(
+    valor,
+    descricao
+) {
+
+    /*
+     * MANTIDO O MESMO ENDPOINT
+     * QUE VOCÊ JÁ UTILIZA.
+     */
+
+    const resposta =
+        await fetch(
+            '/api/gerar-pix',
+            {
+                method:'POST',
+
+                headers:{
+                    'Content-Type':
+                        'application/json'
+                },
+
+                body:JSON.stringify({
+
+                    valor:
+                        Number(valor)
+                            .toFixed(2),
+
+                    descricao:
+                        descricao
+
+                })
+
+            }
+        );
+
+
+    if(!resposta.ok) {
+
+        let mensagem =
+            'Erro ao gerar Pix';
+
+
+        try {
+
+            const erro =
+                await resposta.json();
+
+
+            mensagem =
+                erro.message ||
+                erro.error ||
+                mensagem;
+
+        } catch(e) {}
+
+
+        throw new Error(
+            mensagem
+        );
+
+    }
+
+
+    const dados =
+        await resposta.json();
+
+
+    return (
+        dados.qr_code ||
+        dados.copia_cola ||
+        dados.pixCopiaECola ||
+        dados.codigo ||
+        dados.qrCode ||
+        dados.payload
+    );
+
+}
+
+
+/* ==========================================================
+   COPIAR PIX
+========================================================== */
+
+async function copiarPix(
+    codigo
+) {
+
+    try {
+
+        await navigator
+            .clipboard
+            .writeText(
+                codigo
+            );
+
+
+        alert(
+            'Pix copiado!'
+        );
+
+
+    } catch(error) {
+
+        alert(
+            'Não foi possível copiar automaticamente.'
+        );
+
+    }
+
+}
+
+
+/* ==========================================================
+   PAGAMENTO CONFIRMADO
+========================================================== */
+
+function montarPagamentoConfirmado(
+    p,
+    valor,
+    entrada,
+    juros,
+    quantidade,
+    total
+) {
+
+    const principal =
+        Math.max(
+            0,
+            valor - entrada
+        );
+
+
+    const parcela =
+        calcularParcela(
+            principal,
+            juros,
+            quantidade
+        );
+
+
+    const entrega =
+        calcularEntrega(
+            p
+        );
+
+
+    const quantidadePagas =
+        Number(
+            campo(
+                p,
+                [
+                    'parcelas_pagas',
+                    'qtd_parcelas_pagas'
+                ],
+                0
+            )
+        );
+
+
+    let html = `
+
+        <div class="sucesso-box">
+
+            <i class="fas fa-circle-check"></i>
+
+            <h3 class="text-lg font-bold">
+                PAGAMENTO CONFIRMADO
+            </h3>
+
+            <p class="text-sm mt-2">
+                Sua proposta está em processo de
+                entrega.
+            </p>
+
+        </div>
+
+    `;
+
+
+    /* ENTREGA */
+
+    if(entrada) {
+
+        const percentual =
+            entrega.progresso || 0;
+
+
+        const finalizada =
+            percentual >= 100;
+
+
+        html += `
+
+            <div class="card">
+
+                <div class="flex justify-between items-center">
+
+                    <h3 class="font-bold text-lg">
+                        <i class="fas fa-truck-fast text-primary"></i>
+                        Progresso da entrega
+                    </h3>
+
+                    <strong>
+                        ${percentual}%
+                    </strong>
+
+                </div>
+
+
+                <div class="entrega-box ${finalizada?'finalizada':''}">
+
+                    ${
+                        finalizada
+                        ?
+                        `
+                            <div class="text-success font-bold">
+                                <i class="fas fa-check-circle"></i>
+                                Prazo de entrega concluído
+                            </div>
+                        `
+                        :
+                        `
+                            <div>
+
+                                <strong>
+                                    ${
+                                        entrega.restantes ??
+                                        entrega.dias
+                                    }
+                                </strong>
+
+                                dias úteis restantes
+
+                            </div>
+                        `
+                    }
+
+
+                    <div class="progresso">
+
+                        <div
+                            class="progresso-fill"
+                            style="width:${percentual}%"
+                        ></div>
+
+                    </div>
+
+
+                    <div class="entrega-info">
+
+                        <span>
+                            Início:
+                            ${
+                                entrega.inicio
+                                ? dataBR(entrega.inicio)
+                                : 'Aguardando'
+                            }
+                        </span>
+
+                        <span>
+                            ${
+                                entrega.fim
+                                ? 'Previsão: ' +
+                                  dataBR(entrega.fim)
+                                : ''
+                            }
+                        </span>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        `;
+
+    }
+
+
+    /* RESUMO */
+
+    html += `
+
+        <div class="card">
+
+            <h3 class="font-bold text-lg mb-3">
+                Resumo financeiro
+            </h3>
+
+
+            <div class="row">
+
+                <span class="label">
+                    Total
+                </span>
+
+                <span class="value">
+                    R$ ${moeda(total)}
+                </span>
+
+            </div>
+
+
+            <div class="row">
+
+                <span class="label">
+                    Entrada paga
+                </span>
+
+                <span class="value">
+                    R$ ${moeda(entrada)}
+                </span>
+
+            </div>
+
+
+            <div class="row">
+
+                <span class="label">
+                    Parcelamento
+                </span>
+
+                <span class="value">
+                    ${quantidade}x
+                </span>
+
+            </div>
+
+
+            <div class="row">
+
+                <span class="label">
+                    Valor de cada parcela
+                </span>
+
+                <span class="value">
+                    R$ ${moeda(parcela)}
+                </span>
+
+            </div>
+
+        </div>
+
+    `;
+
+
+    /* PARCELAS */
+
+    html += `
+
+        <div class="card">
+
+            <h3 class="font-bold text-lg mb-3">
+                <i class="fas fa-list-check text-primary"></i>
+                Suas parcelas
+            </h3>
+
+    `;
+
+
+    const datas =
+        obterDatasParcelas(
+            p,
+            quantidade
+        );
+
+
+    for(
+        let i=0;
+        i<quantidade;
+        i++
+    ) {
+
+        const numeroParcela =
+            i + 1;
+
+
+        const pago =
+            numeroParcela <=
+            quantidadePagas;
+
+
+        const vencimento =
+            datas[i];
+
+
+        const atrasada =
+            !pago &&
+            vencimento &&
+            new Date(
+                vencimento
+            ) <
+            new Date();
+
+
+        const classe =
+            pago
+            ? 'luz-verde'
+            : atrasada
+            ? 'luz-vermelha'
+            : 'luz-amarela';
+
+
+        html += `
+
+            <div class="item-parcela">
+
+                <div class="parcela-top">
+
+                    <div>
+
+                        <div class="font-bold">
+
+                            <span class="luz ${classe}"></span>
+
+                            ${numeroParcela}ª parcela
+
+                        </div>
+
+
+                        <div class="text-sm text-slate-500 mt-1">
+
+                            Vencimento:
+                            ${
+                                vencimento
+                                ? dataBR(vencimento)
+                                : 'Não informado'
+                            }
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="text-right">
+
+                        <strong class="text-primary">
+                            R$ ${moeda(parcela)}
+                        </strong>
+
+
+                        <div class="text-xs mt-1">
+
+                            ${
+                                pago
+                                ?
+                                '<span class="text-green-600 font-bold">PAGO</span>'
+                                :
+                                atrasada
+                                ?
+                                '<span class="text-red-600 font-bold">VENCIDA</span>'
+                                :
+                                '<span class="text-yellow-600 font-bold">PENDENTE</span>'
+                            }
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                ${
+                    !pago
+                    ?
+                    `
+                        <button
+                            onclick="gerarPixParcela(${Number(parcela)},${numeroParcela})"
+                            class="btn btn-pix mt-3"
+                        >
+                            <i class="fas fa-qrcode"></i>
+                            Pagar parcela
+                        </button>
+
+
+                        <div
+                            id="pixParcela_${numeroParcela}"
+                            class="area-pix-parcela hidden"
+                        ></div>
+                    `
+                    :
+                    ''
+                }
+
+            </div>
+
+        `;
+
+    }
+
+
+    html += `
+
+        </div>
+
+    `;
+
+
+    const telefone =
+        campo(
+            p,
+            [
+                'telefone',
+                'celular',
+                'whatsapp'
+            ],
+            ''
+        );
+
+
+    if(telefone) {
+
+        const numeroWhatsApp =
+            String(
+                telefone
+            )
+            .replace(
+                /\D/g,
+                ''
+            );
+
+
+        html += `
+
+            <div class="card">
+
+                <a
+                    href="https://wa.me/55${numeroWhatsApp}"
+                    target="_blank"
+                    class="btn"
+                    style="background:#25D366;color:white;"
+                >
+
+                    <i class="fab fa-whatsapp"></i>
+
+                    Falar com o suporte
+
+                </a>
+
+            </div>
+
+        `;
+
+    }
+
+
+    return html;
+
+}
+
+
+/* ==========================================================
+   DATAS DAS PARCELAS
+========================================================== */
+
+function obterDatasParcelas(
+    p,
+    quantidade
+) {
+
+    const informadas =
+        campo(
+            p,
+            [
+                'datas_parcelas',
+                'vencimentos',
+                'datas_vencimento'
+            ],
+            []
+        );
+
+
+    if(
+        Array.isArray(
+            informadas
+        ) &&
+        informadas.length >= quantidade
+    ) {
+
+        return informadas;
+
+    }
+
+
+    const datas = [];
+
+
+    const inicio =
+        new Date(
+            campo(
+                p,
+                [
+                    'data_pagamento_entrada',
+                    'data_aprovacao_entrada',
+                    'updated_at'
+                ],
+                new Date()
+            )
+        );
+
+
+    for(
+        let i=1;
+        i<=quantidade;
+        i++
+    ) {
+
+        const d =
+            new Date(
+                inicio
+            );
+
+
+        d.setMonth(
+            d.getMonth() + i
+        );
+
+
+        datas.push(
+            d.toISOString()
+                .split('T')[0]
+        );
+
+    }
+
+
+    return datas;
+
+}
+
+
+/* ==========================================================
+   CPF
+========================================================== */
+
+function formatarCPF(
+    cpf
+) {
+
+    const n =
+        limparCPF(cpf);
+
+
+    if(n.length !== 11)
+        return escapar(
+            cpf || 'Não informado'
+        );
+
+
+    return (
+        n.substring(0,3) +
+        '.' +
+        n.substring(3,6) +
+        '.' +
+        n.substring(6,9) +
+        '-' +
+        n.substring(9,11)
+    );
+
+}
+
+
+/* ==========================================================
+   CEP
+========================================================== */
+
+function formatarCEP(
+    cep
+) {
+
+    const n =
+        String(
+            cep || ''
+        )
+        .replace(
+            /\D/g,
+            ''
+        );
+
+
+    if(n.length !== 8)
+        return escapar(
+            cep || 'Não informado'
+        );
+
+
+    return (
+        n.substring(0,5) +
+        '-' +
+        n.substring(5)
+    );
+
+}
+
+</script>
+
+</body>
+</html>
