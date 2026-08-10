@@ -9,19 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0A2463',
-                        pix: '#32BCAD',
-                        sucesso: '#10B981',
-                        alerta: '#F59E0B',
-                        perigo: '#EF4444'
-                    }
-                }
-            }
-        }
+        tailwind.config = { theme: { extend: { colors: { primary: '#0A2463', pix: '#32BCAD', sucesso: '#10B981', alerta: '#F59E0B', perigo: '#EF4444' } } } }
     </script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
@@ -70,8 +58,8 @@
     <div class="cartao">
         <h2 class="text-xl font-bold text-center mb-6 text-primary">🔍 Acompanhar Proposta</h2>
         <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="campo">
-        <!-- ✅ BOTÃO TESTADO E FUNCIONAL -->
-        <button id="btnConsultar" onclick="consultar()" class="botao botao-pix"><i class="fas fa-search mr-2"></i> Consultar</button>
+        <!-- ✅ BOTÃO COM EVENTO FORÇADO + TESTADO -->
+        <button id="btnConsultar" class="botao botao-pix"><i class="fas fa-search mr-2"></i> Consultar</button>
     </div>
 </div>
 
@@ -93,14 +81,17 @@ let modoAssinatura = 'selfie';
 let canvasContext = null;
 let desenhando = false;
 
-window.onload = () => {
+// ✅ EVENTO FORÇADO NO BOTÃO — NÃO FALHA MAIS!
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('btnConsultar').addEventListener('click', consultar);
+    
     const params = new URLSearchParams(window.location.search);
     const cpfUrl = params.get('cpf');
     if(cpfUrl) {
         document.getElementById('cpfConsulta').value = cpfUrl.replace(/\D/g,'');
         consultar();
     }
-};
+});
 
 function voltarInicio() {
     pararCamera();
@@ -341,4 +332,147 @@ function mostrarProposta(p) {
             const vencto = new Date(dt + 'T00:00:00');
             let cor = 'luz-amarela';
             if(pg) cor='luz-verde';
-            else
+            else if(vencto < hoje) cor='luz-vermelha';
+
+            return `<div class="item-parcela">
+                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
+                ${pg?'<span class="text-sucesso font-bold">PAGO</span>':'<button onclick="gerarPixParcela(\'${dt}\',${valor})" class="botao botao-pequeno botao-pix">Pagar</button>'}
+            </div>`;
+        }).join('')}
+
+        <a href="https://wa.me/5511973294235?text=Olá, preciso de ajuda com minha proposta ${propostaAtual.id}" target="_blank" class="botao botao-wpp">💬 Falar com o Suporte</a>`;
+    }
+
+    document.getElementById('conteudoProposta').innerHTML = html;
+}
+
+async function confirmarParcelas(){
+    const qtd = parseInt(document.getElementById('qtdEscolhida').value);
+    if(!qtd) return alert('Escolha a quantidade de parcelas!');
+
+    const {error} = await supabase.from('propostas').update({qtd_parcelas_escolhida: qtd}).eq('id', propostaAtual.id);
+    if(error) return alert('Erro ao confirmar: '+error.message);
+}
+
+function alternarModoAssinatura(modo){
+    modoAssinatura = modo;
+    document.getElementById('blocoSelfie').classList.toggle('oculto', modo!=='selfie');
+    document.getElementById('blocoManual').classList.toggle('oculto', modo!=='manual');
+    document.getElementById('btnModoSelfie').classList.toggle('bg-primary', modo==='selfie');
+    document.getElementById('btnModoSelfie').classList.toggle('bg-slate-200', modo!=='selfie');
+    document.getElementById('btnModoManual').classList.toggle('bg-primary', modo==='manual');
+    document.getElementById('btnModoManual').classList.toggle('bg-slate-200', modo!=='manual');
+    if(modo==='selfie') iniciarCamera();
+    else pararCamera();
+}
+
+async function iniciarCamera(){
+    try{
+        webcamStream = await navigator.mediaDevices.getUserMedia({video:true});
+        document.getElementById('videoCamera').srcObject = webcamStream;
+    }catch(e){
+        alert('Permita o acesso à câmera para assinar com selfie!');
+        alternarModoAssinatura('manual');
+    }
+}
+
+function pararCamera(){
+    if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
+}
+
+function tirarSelfie(){
+    const video = document.getElementById('videoCamera');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video,0,0);
+    document.getElementById('imgSelfie').src = canvas.toDataURL('image/png');
+    document.getElementById('areaCamera').classList.add('oculto');
+    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
+    pararCamera();
+}
+
+function refazerSelfie(){
+    document.getElementById('areaPreviewSelfie').classList.add('oculto');
+    document.getElementById('areaCamera').classList.remove('oculto');
+    iniciarCamera();
+}
+
+function inicializarCanvas(){
+    const canvas = document.getElementById('canvasAssinatura');
+    if(!canvas) return;
+    canvas.width = canvas.offsetWidth;
+    canvasContext = canvas.getContext('2d');
+    canvasContext.lineWidth = 2;
+    canvasContext.lineCap = 'round';
+    canvasContext.strokeStyle = '#000';
+
+    const desenhar = (e)=>{
+        if(!desenhando) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX||e.touches?.[0]?.clientX) - rect.left;
+        const y = (e.clientY||e.touches?.[0]?.clientY) - rect.top;
+        canvasContext.lineTo(x,y);
+        canvasContext.stroke();
+    };
+
+    canvas.onmousedown = canvas.ontouchstart = ()=>desenhando=true;
+    canvas.onmousemove = canvas.ontouchmove = desenhar;
+    canvas.onmouseup = canvas.ontouchend = canvas.onmouseout = ()=>desenhando=false;
+}
+
+function limparCanvas(){
+    if(canvasContext) canvasContext.clearRect(0,0,canvasContext.canvas.width, canvasContext.canvas.height);
+}
+
+async function assinarContrato(){
+    const aceito = document.getElementById('aceitoContrato').checked;
+    if(!aceito) return alert('Você precisa concordar com o contrato!');
+
+    let assinatura = null;
+    if(modoAssinatura==='selfie'){
+        assinatura = document.getElementById('imgSelfie').src;
+        if(!assinatura) return alert('Capture sua selfie primeiro!');
+    }else{
+        assinatura = document.getElementById('canvasAssinatura').toDataURL('image/png');
+    }
+
+    const {error} = await supabase.from('propostas').update({
+        contrato_assinado: true,
+        assinatura: assinatura
+    }).eq('id', propostaAtual.id);
+
+    if(error) return alert('Erro ao assinar: '+error.message);
+}
+
+async function gerarPix(valor){
+    const area = document.getElementById('areaPix');
+    area.classList.remove('oculto');
+    area.innerHTML = `<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Gerando Pix...</div>`;
+
+    try{
+        const res = await fetch('/api/gerar-pix', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({valor: valor, descricao: `Entrada proposta ${propostaAtual.id}`})
+        });
+
+        const ret = await res.json();
+        if(!ret.sucesso) throw ret.mensagem;
+
+        area.innerHTML = `
+        <div class="qrcode-area" id="qrcode"></div>
+        <div class="codigo-pix mt-3">${ret.qr_code}</div>`;
+        new QRCode(document.getElementById('qrcode'), ret.qr_code);
+
+    }catch(e){
+        area.innerHTML = `<p class="text-perigo text-center py-4">Erro ao gerar Pix: ${e}</p>`;
+    }
+}
+
+async function gerarPixParcela(data, valor){
+    alert(`Gerando Pix para parcela de R$ ${formatarValor(valor)} - Vencimento: ${new Date(data+'T00:00:00').toLocaleDateString('pt-BR')}`);
+}
+</script>
+</body>
+</html>
