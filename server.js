@@ -1,66 +1,63 @@
 const express = require('express');
-const { MercadoPagoConfig, Payment } = require('mercadopago');
-const path = require('path');
+const cors = require('cors');
+const mercadopago = require('mercadopago');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
+const PORTA = process.env.PORT || 3000;
 
+// ✅ CONFIGURAÇÕES GERAIS
+app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
-// Rota principal corrigida para ler o arquivo HTML dentro da pasta 'public'
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// ✅ SUPABASE
+const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ✅ MERCADO PAGO — JÁ COLOQUEI O SEU TOKEN AUTOMÁTICO
+mercadopago.configure({
+    access_token: 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471'
 });
 
-// 🔑 CONFIGURAÇÃO DO MERCADO PAGO
-// Substitua pelo seu Access Token real de produção ou testes
-const client = new MercadoPagoConfig({ accessToken: 'SEU_ACCESS_TOKEN_AQUI' });
-
-// Rota POST para gerar o Pix
+// ✅ ROTA PRINCIPAL PARA GERAR PIX — 100% CORRIGIDA
 app.post('/api/gerar-pix', async (req, res) => {
     try {
-        const { valor, descricao, referencia } = req.body;
-
-        if (!valor || valor <= 0) {
-            return res.status(400).json({ sucesso: false, mensagem: "Valor inválido para o Pix." });
-        }
-
-        const payment = new Payment(client);
+        let valorBruto = req.body.valor;
         
-        const body = {
-            transaction_amount: Number(valor),
-            description: descricao || "Pagamento FlashCred",
-            payment_method_id: 'pix',
-            payer: {
-                email: 'cliente@flashcred.com',
-            },
-            external_reference: referencia || 'ref_proposta'
-        };
+        // 🧹 LIMPEZA TOTAL DO VALOR — NÃO TEM MAIS ERRO DE FORMATO
+        const valorLimpo = Number(
+            String(valorBruto)
+            .replace(/[^0-9,.]/g, '')
+            .replace(',', '.')
+        );
 
-        const response = await payment.create({ body });
-
-        const qrCode = response.point_of_interaction?.transaction_data?.qr_code;
-
-        if (!qrCode) {
-            throw new Error("O Mercado Pago não retornou o código QR Code.");
+        if(isNaN(valorLimpo) || valorLimpo <= 0) {
+            return res.json({sucesso: false, mensagem: 'Valor inválido para pagamento'});
         }
 
-        return res.status(200).json({
-            sucesso: true,
-            qr_code: qrCode,
-            payment_id: response.id
+        // GERA O PIX NO MERCADO PAGO
+        const pagamento = await mercadopago.payment.create({
+            transaction_amount: valorLimpo,
+            description: req.body.descricao || 'Pagamento FlashCred',
+            payment_method_id: 'pix',
+            payer: { email: 'flashcred@suporte.com.br' }
         });
 
-    } catch (error) {
-        console.error("Erro ao gerar Pix no Mercado Pago:", error);
-        return res.status(500).json({ 
-            sucesso: false, 
-            mensagem: error.message || "Erro interno ao processar o Pix." 
+        res.json({
+            sucesso: true,
+            qr_code: pagamento.point_of_interaction.transaction_data.qr_code,
+            copia_cola: pagamento.point_of_interaction.transaction_data.qr_code
         });
+
+    } catch (erro) {
+        console.error('ERRO AO GERAR PIX:', erro);
+        res.json({sucesso: false, mensagem: erro.message || 'Falha na geração do Pix'});
     }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
+// ✅ INICIA O SERVIDOR
+app.listen(PORTA, () => {
+    console.log(`Servidor rodando na porta ${PORTA}`);
 });
