@@ -6,6 +6,7 @@
     <title>Acompanhar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
         tailwind.config = {
@@ -110,15 +111,24 @@ function voltarInicio() {
     document.getElementById('telaConsulta').classList.add('visivel');
 }
 
+// ✅ FUNÇÃO CONSULTAR CORRIGIDA (Substituído .single() por .limit(1))
 async function consultar() {
     const cpf = document.getElementById('cpfConsulta').value.trim().replace(/\D/g,'');
-    if(cpf.length !== 11) return alert('Digite o CPF completo!');
+    if(cpf.length !== 11) return alert('Digite o CPF completo com 11 números!');
 
-    const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).single();
-    if(error || !data) return alert('Proposta não encontrada! Verifique o CPF.');
+    const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).limit(1);
+    
+    if(error) {
+        console.error("Erro Supabase:", error);
+        return alert('Erro ao consultar proposta: ' + error.message);
+    }
+    
+    if(!data || data.length === 0) {
+        return alert('Proposta não encontrada! Verifique se o CPF está correto.');
+    }
 
-    propostaAtual = data;
-    mostrarProposta(data);
+    propostaAtual = data[0];
+    mostrarProposta(propostaAtual);
     
     if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
     inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
@@ -149,6 +159,77 @@ function calcularDiasUteisRestantes(dataInicio, prazoTotalDias) {
 
     let restante = prazoTotalDias - diasUteisPassados;
     return restante > 0 ? restante : 0;
+}
+
+// ✅ FUNÇÃO PIX CORRIGIDA
+async function gerarPix(valor) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Gerando...';
+    try {
+        const valorLimpo = Number(String(valor).replace(/[^0-9,.]/g, '').replace(',', '.'));
+        if(isNaN(valorLimpo) || valorLimpo <= 0) throw new Error('Valor inválido');
+
+        const res = await fetch('/api/gerar-pix', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+                valor: valorLimpo,
+                descricao: `Entrada - Proposta ${propostaAtual.id}`,
+                referencia: `prop_${propostaAtual.id}_entrada`
+            })
+        });
+        const ret = await res.json();
+        if(!ret.sucesso) throw new Error(ret.mensagem || 'Falha ao gerar Pix');
+
+        document.getElementById('areaPix').classList.remove('oculto');
+        document.getElementById('areaPix').innerHTML = `
+            <div class="qrcode-area" id="qrcodeEntrada"></div>
+            <div class="codigo-pix">${ret.qr_code}</div>
+            <button onclick="navigator.clipboard.writeText('${ret.qr_code}')" class="botao botao-pix mt-2">Copiar Código Pix</button>
+        `;
+        new QRCode(document.getElementById('qrcodeEntrada'), {text: ret.qr_code, width:220});
+
+    } catch(e) {
+        alert(`❌ Erro: ${e.message}`);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Gerar Pix da Entrada';
+    }
+}
+
+// ✅ FUNÇÃO PARCELAS CORRIGIDA
+async function gerarPixParcela(valor, numeroParcela, idProposta){
+    const botao = event.target;
+    botao.disabled = true;
+    botao.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    try {
+        const valorLimpo = Number(String(valor).replace(/[^0-9,.]/g, '').replace(',', '.'));
+        if(isNaN(valorLimpo) || valorLimpo <= 0) throw new Error('Valor inválido');
+
+        const resposta = await fetch('/api/gerar-pix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                valor: valorLimpo,
+                descricao: `Parcela ${numeroParcela} - Proposta ${idProposta}`,
+                referencia: `prop_${idProposta}_parc_${numeroParcela}`
+            })
+        });
+
+        const resultado = await resposta.json();
+        if(!resultado.sucesso) throw new Error(resultado.mensagem || 'Falha ao gerar Pix');
+
+        alert(`✅ Pix da ${numeroParcela}ª parcela gerado! Código copiado.`);
+        navigator.clipboard.writeText(resultado.qr_code);
+
+    } catch (erro) {
+        alert(`❌ Erro: ${erro.message}`);
+    } finally {
+        botao.disabled = false;
+        botao.innerHTML = 'Pagar';
+    }
 }
 
 function mostrarProposta(p) {
@@ -290,7 +371,6 @@ function mostrarProposta(p) {
     }
 
     if(entradaPaga) {
-        // Garante a geração automática das datas se o banco de dados não enviou a lista preenchida
         let datasParcelas = p.datas_parcelas;
         if (!datasParcelas || !Array.isArray(datasParcelas) || datasParcelas.length === 0) {
             datasParcelas = [];
@@ -324,15 +404,158 @@ function mostrarProposta(p) {
         </div>
 
         <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS A PAGAR</h3>
-        ${datasParcelas.map((dt,idx)=>{
-            const valor = Number(valorParcela);
-            const pg = idx+1 <= (p.parcelas_pagas||0);
-            const hoje = new Date();
-            const vencto = new Date(dt + 'T00:00:00');
-            let cor = 'luz-amarela';
-            if(pg) cor='luz-verde';
-            else if(vencto < hoje) cor='luz-vermelha';
+        <div class="cartao" style="padding: 0; overflow: hidden;">
+            ${datasParcelas.map((dt,idx)=>{
+                const valor = Number(valorParcela);
+                const pg = idx+1 <= (p.parcelas_pagas||0);
+                const hoje = new Date();
+                const vencto = new Date(dt + 'T00:00:00');
+                let cor = 'luz-amarela';
+                if(pg) cor='luz-verde';
+                else if(vencto < hoje) cor='luz-vermelha';
 
-            return `<div class="item-parcela">
-                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
-                ${pg?'<s
+                return `<div class="item-parcela">
+                    <div><span class="luz ${cor}"></span><strong>${idx+1}ª Parcela:</strong> R$ ${formatarValor(valor)} <br><small class="text-slate-500">Venc: ${vencto.toLocaleDateString('pt-BR')}</small></div>
+                    ${pg ? '<span class="text-sucesso font-bold">Pago</span>' : `<button onclick="gerarPixParcela(${valor}, ${idx+1}, ${p.id})" class="botao botao-pequeno botao-pix">Pagar</button>`}
+                </div>`;
+            }).join('')}
+        </div>
+
+        <button onclick="window.open('https://wa.me/5500000000000?text=Olá,%20gostaria%20de%20suporte%20sobre%20a%20proposta%20${p.id}', '_blank')" class="botao botao-wpp">
+            <i class="fab fa-whatsapp"></i> Falar com Suporte via WhatsApp
+        </button>`;
+    }
+
+    document.getElementById('conteudoProposta').innerHTML = html;
+}
+
+async function confirmarParcelas() {
+    const qtd = document.getElementById('qtdEscolhida').value;
+    const { error } = await supabase.from('propostas').update({ qtd_parcelas_escolhida: qtd }).eq('id', propostaAtual.id);
+    if(error) alert('Erro ao salvar parcelas: ' + error.message);
+}
+
+function alternarModoAssinatura(modo) {
+    modoAssinatura = modo;
+    if(modo === 'selfie') {
+        document.getElementById('blocoSelfie').classList.remove('oculto');
+        document.getElementById('blocoManual').classList.add('oculto');
+        document.getElementById('btnModoSelfie').className = 'botao botao-pequeno bg-primary text-white';
+        document.getElementById('btnModoManual').className = 'botao botao-pequeno bg-slate-200 text-slate-700';
+        iniciarCamera();
+    } else {
+        document.getElementById('blocoSelfie').classList.add('oculto');
+        document.getElementById('blocoManual').classList.remove('oculto');
+        document.getElementById('btnModoManual').className = 'botao botao-pequeno bg-primary text-white';
+        document.getElementById('btnModoSelfie').className = 'botao botao-pequeno bg-slate-200 text-slate-700';
+        pararCamera();
+        inicializarCanvas();
+    }
+}
+
+async function iniciarCamera() {
+    try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        document.getElementById('videoCamera').srcObject = webcamStream;
+    } catch(e) {
+        console.error("Erro ao acessar câmera:", e);
+    }
+}
+
+function pararCamera() {
+    if(webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+        webcamStream = null;
+    }
+}
+
+function tirarSelfie() {
+    const video = document.getElementById('videoCamera');
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 320;
+    canvas.height = video.videoHeight || 240;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const dataUrl = canvas.toDataURL('image/jpeg');
+    document.getElementById('imgSelfie').src = dataUrl;
+    document.getElementById('areaCamera').classList.add('oculto');
+    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
+    pararCamera();
+    window.ultimaSelfie = dataUrl;
+}
+
+function refazerSelfie() {
+    document.getElementById('areaPreviewSelfie').classList.add('oculto');
+    document.getElementById('areaCamera').classList.remove('oculto');
+    iniciarCamera();
+    window.ultimaSelfie = null;
+}
+
+function inicializarCanvas() {
+    const canvas = document.getElementById('canvasAssinatura');
+    if(!canvas) return;
+    canvasContext = canvas.getContext('2d');
+    
+    canvas.onmousedown = (e) => { desenhando = true; canvasContext.beginPath(); canvasContext.moveTo(e.offsetX, e.offsetY); };
+    canvas.onmousemove = (e) => { if(desenhando) { canvasContext.lineTo(e.offsetX, e.offsetY); canvasContext.stroke(); } };
+    canvas.onmouseup = () => { desenhando = false; };
+    
+    canvas.ontouchstart = (e) => {
+        desenhando = true;
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        canvasContext.beginPath();
+        canvasContext.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+        e.preventDefault();
+    };
+    canvas.ontouchmove = (e) => {
+        if(!desenhando) return;
+        const rect = canvas.getBoundingClientRect();
+        const touch = e.touches[0];
+        canvasContext.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+        canvasContext.stroke();
+        e.preventDefault();
+    };
+    canvas.ontouchend = () => { desenhando = false; };
+}
+
+function limparCanvas() {
+    if(!canvasContext) return;
+    const canvas = document.getElementById('canvasAssinatura');
+    canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+async function assinarContrato() {
+    const aceito = document.getElementById('aceitoContrato').checked;
+    if(!aceito) return alert('Você deve ler e aceitar os termos do contrato!');
+
+    if(modoAssinatura === 'selfie' && !window.ultimaSelfie) {
+        return alert('Por favor, tire a selfie para validar sua assinatura.');
+    }
+
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processando Assinatura...';
+
+    try {
+        let assinaturaPayload = modoAssinatura === 'selfie' ? window.ultimaSelfie : document.getElementById('canvasAssinatura').toDataURL();
+
+        const { error } = await supabase.from('propostas').update({
+            contrato_assinado: true,
+            data_assinatura: new Date().toISOString(),
+            assinatura_digital: assinaturaPayload
+        }).eq('id', propostaAtual.id);
+
+        if(error) throw error;
+
+        alert('🎉 Contrato assinado com sucesso!');
+    } catch(e) {
+        alert('❌ Erro ao assinar contrato: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = '✍️ Confirmar Assinatura e Enviar Proposta';
+    }
+}
+</script>
+</body>
+</html>
