@@ -6,7 +6,6 @@
     <title>Minha Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
         tailwind.config = {
@@ -32,143 +31,154 @@
         let etapaAtual = 1;
 
         async function carregarProposta() {
-            if(!CPF) return window.location.href = 'consultar.html';
-            const {data: proposta, error} = await supabase.from('propostas').select('*').eq('cpf', CPF.replace(/\D/g,'')).single();
-            if(error || !proposta) return alert('Proposta não encontrada!');
-            
-            propostaAtual = proposta;
-            // ✅ DADOS EXATOS DO PAINEL, NÃO MUDA NADA
-            const v = Number(proposta.valor_desejado||0);
-            const e = Number(proposta.valor_entrada||0);
-            const j = Number(proposta.juros_mensal||5);
-            const q = Number(proposta.quantidade_parcelas||1);
-            const total = v*(1+j/100);
-            const parcela = q>0 ? (total-e)/q : 0;
-            const diasEntrega = Number(proposta.dias_entrega||8);
-
-            // ✅ BARRA DE ETAPAS
-            let html = `
-            <div class="max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
-                <div class="flex justify-between px-4 py-3 bg-gray-50 border-b">
-                    <div class="text-center ${etapaAtual>=1?'text-primary font-bold':'text-gray-400'}">
-                        <div class="w-8 h-8 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=1?'border-primary bg-primary text-white':'border-gray-300'}">1</div>
-                        <small>Análise</small>
-                    </div>
-                    <div class="text-center ${etapaAtual>=2?'text-primary font-bold':'text-gray-400'}">
-                        <div class="w-8 h-8 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=2?'border-primary bg-primary text-white':'border-gray-300'}">2</div>
-                        <small>Parcelas</small>
-                    </div>
-                    <div class="text-center ${etapaAtual>=3?'text-primary font-bold':'text-gray-400'}">
-                        <div class="w-8 h-8 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=3?'border-primary bg-primary text-white':'border-gray-300'}">3</div>
-                        <small>Contrato</small>
-                    </div>
-                    <div class="text-center ${etapaAtual>=4?'text-primary font-bold':'text-gray-400'}">
-                        <div class="w-8 h-8 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=4?'border-primary bg-primary text-white':'border-gray-300'}">4</div>
-                        <small>Entrada</small>
-                    </div>
-                    <div class="text-center ${etapaAtual>=5?'text-primary font-bold':'text-gray-400'}">
-                        <div class="w-8 h-8 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=5?'border-primary bg-primary text-white':'border-gray-300'}">5</div>
-                        <small>Entrega</small>
-                    </div>
-                </div>
-
-                <div class="p-6">
-                    <h2 class="text-xl font-bold text-center text-primary mb-4">Olá, ${proposta.nome}!</h2>`;
-
-            // ✅ ETAPA 1: DADOS DA PROPOSTA
-            if(etapaAtual === 1) {
-                html += `
-                <div class="bg-blue-50 p-4 rounded-lg mb-4">
-                    <p class="mb-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                    <p class="mb-2"><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                    <p class="mb-2"><strong>Parcelamento:</strong> ${q}x de R$ ${parcela.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                    <p class="mb-2"><strong>Juros:</strong> ${j}% ao mês</p>
-                    <p class="mb-2"><strong>Prazo de Entrega:</strong> ${diasEntrega} dias úteis</p>
-                </div>
-                <button onclick="proximaEtapa()" class="w-full bg-primary text-white py-3 rounded-lg font-bold">Continuar</button>`;
-            }
-
-            // ✅ ETAPA 2: ESCOLHER PARCELAS (SÓ O QUE VOCÊ LIBEROU)
-            if(etapaAtual === 2) {
-                let opcoes = '';
-                for(let i=1; i<=q; i++){
-                    const val = i>0 ? (total-e)/i : 0;
-                    opcoes += `
-                    <label class="flex items-center gap-3 p-3 border rounded-lg mb-2 cursor-pointer hover:bg-gray-50">
-                        <input type="radio" name="qtd_parcelas" value="${i}" class="w-4 h-4" onchange="atualizarParcela(${i})">
-                        ${i}x de R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits:2})}
-                    </label>`;
-                }
-                html += `
-                <h3 class="font-bold mb-3">Escolha a quantidade de parcelas</h3>
-                ${opcoes}
-                <div class="flex gap-3 mt-4">
-                    <button onclick="etapaAtual--;carregarProposta()" class="flex-1 bg-gray-200 py-2 rounded-lg">Voltar</button>
-                    <button onclick="confirmarParcela()" class="flex-1 bg-primary text-white py-2 rounded-lg font-bold">Confirmar</button>
-                </div>`;
-            }
-
-            // ✅ ETAPA 3: CONTRATO E ASSINATURA
-            if(etapaAtual === 3) {
-                html += `
-                <div class="bg-blue-50 p-4 rounded-lg mb-4">
-                    <p class="mb-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                    <p class="mb-2"><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                    <p class="mb-2"><strong>Parcelamento:</strong> <span id="parcelaEscolhida">${q}x de R$ ${parcela.toLocaleString('pt-BR', {minimumFractionDigits:2})}</span></p>
-                    <p class="mb-2"><strong>Juros:</strong> ${j}% ao mês</p>
-                    <p class="mb-2"><strong>Prazo de Entrega:</strong> ${diasEntrega} dias úteis</p>
-                </div>
-                <p class="text-sm mb-4">Ao assinar você concorda com todos os termos do contrato.</p>
-                <label class="flex items-center gap-2 mb-4 cursor-pointer">
-                    <input type="checkbox" id="concordo" class="w-4 h-4">
-                    Li e concordo com o contrato
-                </label>
-                <div class="flex gap-3 mb-4">
-                    <button class="flex-1 bg-primary text-white py-2 rounded-lg" onclick="assinarSelfie()">
-                        <i class="fas fa-camera mr-1"></i> Selfie
-                    </button>
-                    <button class="flex-1 bg-gray-200 py-2 rounded-lg" onclick="assinarTexto()">
-                        <i class="fas fa-pen mr-1"></i> Assinatura
-                    </button>
-                </div>
-                <div id="areaSelfie" class="hidden mb-4">
-                    <video id="camera" autoplay playsinline class="w-full rounded-lg"></video>
-                    <button onclick="tirarFoto()" class="w-full bg-sucesso text-white py-2 rounded-lg mt-2">Tirar Foto</button>
-                </div>
-                <div id="areaAssinatura" class="hidden mb-4">
-                    <canvas id="assinatura" class="w-full h-32 border rounded-lg bg-white"></canvas>
-                    <button onclick="limparAssinatura()" class="w-full bg-gray-200 py-2 rounded-lg mt-2">Limpar</button>
-                </div>
-                <div class="flex gap-3 mt-4">
-                    <button onclick="etapaAtual--;carregarProposta()" class="flex-1 bg-gray-200 py-2 rounded-lg">Voltar</button>
-                    <button id="btnAssinar" onclick="confirmarAssinatura()" class="flex-1 bg-sucesso text-white py-2 rounded-lg font-bold hidden">Assinar Contrato</button>
-                </div>`;
-            }
-
-            html += `
-                </div>
-                <div class="text-center text-sm text-gray-600 pb-4">
-                    Dúvidas? <a href="https://wa.me/${NUMERO_SUPORTE}" target="_blank" class="text-primary font-semibold">Falar com Suporte</a>
-                </div>
+            // ✅ TELA DE CARREGAMENTO ENQUANTO BUSCA
+            document.getElementById('conteudo').innerHTML = `
+            <div class="flex flex-col items-center justify-center min-h-screen p-4">
+                <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p class="text-gray-600">Carregando sua proposta...</p>
             </div>`;
 
-            document.getElementById('conteudo').innerHTML = html;
+            if(!CPF) {
+                setTimeout(() => window.location.href = 'consultar.html', 1500);
+                return;
+            }
+
+            try {
+                const {data: proposta, error} = await supabase.from('propostas').select('*').eq('cpf', CPF.replace(/\D/g,'')).single();
+                if(error || !proposta) throw new Error('Proposta não encontrada');
+                
+                propostaAtual = proposta;
+                // ✅ VALORES EXATOS DO PAINEL
+                const v = Number(proposta.valor_desejado||0);
+                const e = Number(proposta.valor_entrada||0);
+                const j = Number(proposta.juros_mensal||5);
+                const q = Number(proposta.quantidade_parcelas||1);
+                const total = v*(1+j/100);
+                const parcela = q>0 ? (total-e)/q : 0;
+                const diasEntrega = Number(proposta.dias_entrega||8);
+
+                // ✅ BARRA DE ETAPAS E CONTEÚDO
+                let html = `
+                <div class="max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden my-4">
+                    <div class="flex justify-between px-3 py-3 bg-gray-50 border-b">
+                        <div class="text-center text-xs ${etapaAtual>=1?'text-primary font-bold':'text-gray-400'}">
+                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=1?'border-primary bg-primary text-white':'border-gray-300'}">1</div>
+                            Análise
+                        </div>
+                        <div class="text-center text-xs ${etapaAtual>=2?'text-primary font-bold':'text-gray-400'}">
+                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=2?'border-primary bg-primary text-white':'border-gray-300'}">2</div>
+                            Parcelas
+                        </div>
+                        <div class="text-center text-xs ${etapaAtual>=3?'text-primary font-bold':'text-gray-400'}">
+                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=3?'border-primary bg-primary text-white':'border-gray-300'}">3</div>
+                            Contrato
+                        </div>
+                        <div class="text-center text-xs ${etapaAtual>=4?'text-primary font-bold':'text-gray-400'}">
+                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=4?'border-primary bg-primary text-white':'border-gray-300'}">4</div>
+                            Entrada
+                        </div>
+                        <div class="text-center text-xs ${etapaAtual>=5?'text-primary font-bold':'text-gray-400'}">
+                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=5?'border-primary bg-primary text-white':'border-gray-300'}">5</div>
+                            Entrega
+                        </div>
+                    </div>
+
+                    <div class="p-5">
+                        <h2 class="text-xl font-bold text-center text-primary mb-4">Olá, ${proposta.nome}!</h2>`;
+
+                // ETAPA 1: DADOS
+                if(etapaAtual === 1) {
+                    html += `
+                    <div class="bg-blue-50 p-4 rounded-lg mb-4">
+                        <p class="mb-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                        <p class="mb-2"><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                        <p class="mb-2"><strong>Parcelamento:</strong> ${q}x de R$ ${parcela.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                        <p class="mb-2"><strong>Juros:</strong> ${j}% ao mês</p>
+                        <p class="mb-2"><strong>Prazo de Entrega:</strong> ${diasEntrega} dias úteis</p>
+                    </div>
+                    <button onclick="proximaEtapa()" class="w-full bg-primary text-white py-3 rounded-lg font-bold">Continuar</button>`;
+                }
+
+                // ETAPA 2: ESCOLHER PARCELAS (SÓ ATÉ O QUE VOCÊ LIBEROU)
+                if(etapaAtual === 2) {
+                    let opcoes = '';
+                    for(let i=1; i<=q; i++){
+                        const val = (total-e)/i;
+                        opcoes += `
+                        <label class="flex items-center gap-3 p-3 border rounded-lg mb-2 cursor-pointer hover:bg-gray-50">
+                            <input type="radio" name="qtd_parcelas" value="${i}" class="w-4 h-4">
+                            ${i}x de R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits:2})}
+                        </label>`;
+                    }
+                    html += `
+                    <h3 class="font-bold mb-3">Escolha a quantidade de parcelas</h3>
+                    ${opcoes}
+                    <div class="flex gap-3 mt-4">
+                        <button onclick="etapaAtual=1;carregarProposta()" class="flex-1 bg-gray-200 py-2 rounded-lg">Voltar</button>
+                        <button onclick="confirmarParcela()" class="flex-1 bg-primary text-white py-2 rounded-lg font-bold">Confirmar</button>
+                    </div>`;
+                }
+
+                // ETAPA 3: CONTRATO E ASSINATURA
+                if(etapaAtual === 3) {
+                    html += `
+                    <div class="bg-blue-50 p-4 rounded-lg mb-4">
+                        <p class="mb-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                        <p class="mb-2"><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                        <p class="mb-2"><strong>Parcelamento:</strong> ${q}x de R$ ${parcela.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                        <p class="mb-2"><strong>Juros:</strong> ${j}% ao mês</p>
+                        <p class="mb-2"><strong>Prazo de Entrega:</strong> ${diasEntrega} dias úteis</p>
+                    </div>
+                    <p class="text-sm mb-4">Ao assinar você concorda com todos os termos do contrato.</p>
+                    <label class="flex items-center gap-2 mb-4 cursor-pointer">
+                        <input type="checkbox" id="concordo" class="w-4 h-4">
+                        Li e concordo com o contrato
+                    </label>
+                    <div class="flex gap-3 mb-4">
+                        <button class="flex-1 bg-primary text-white py-2 rounded-lg" onclick="assinarSelfie()">
+                            <i class="fas fa-camera mr-1"></i> Selfie
+                        </button>
+                        <button class="flex-1 bg-gray-200 py-2 rounded-lg" onclick="assinarTexto()">
+                            <i class="fas fa-pen mr-1"></i> Assinatura
+                        </button>
+                    </div>
+                    <div id="areaSelfie" class="hidden mb-4">
+                        <video id="camera" autoplay playsinline class="w-full rounded-lg"></video>
+                        <button onclick="tirarFoto()" class="w-full bg-sucesso text-white py-2 rounded-lg mt-2">Tirar Foto</button>
+                    </div>
+                    <div id="areaAssinatura" class="hidden mb-4">
+                        <canvas id="assinatura" class="w-full h-32 border rounded-lg bg-white"></canvas>
+                    </div>
+                    <div class="flex gap-3 mt-4">
+                        <button onclick="etapaAtual=2;carregarProposta()" class="flex-1 bg-gray-200 py-2 rounded-lg">Voltar</button>
+                        <button id="btnAssinar" onclick="confirmarAssinatura()" class="flex-1 bg-sucesso text-white py-2 rounded-lg font-bold hidden">Assinar Contrato</button>
+                    </div>`;
+                }
+
+                html += `
+                    </div>
+                    <div class="text-center text-sm text-gray-600 pb-4">
+                        Dúvidas? <a href="https://wa.me/${NUMERO_SUPORTE}" target="_blank" class="text-primary font-semibold">Falar com Suporte</a>
+                    </div>
+                </div>`;
+
+                document.getElementById('conteudo').innerHTML = html;
+
+            } catch (erro) {
+                document.getElementById('conteudo').innerHTML = `
+                <div class="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+                    <i class="fas fa-exclamation-triangle text-alerta text-4xl mb-4"></i>
+                    <p class="mb-4">${erro.message}</p>
+                    <button onclick="window.location.href='consultar.html'" class="botao botao-primario">Voltar e Consultar Novamente</button>
+                </div>`;
+            }
         }
 
         function proximaEtapa() { etapaAtual++; carregarProposta(); }
-        function atualizarParcela(qtd) {
-            const v = Number(propostaAtual.valor_desejado||0);
-            const e = Number(propostaAtual.valor_entrada||0);
-            const j = Number(propostaAtual.juros_mensal||5);
-            const total = v*(1+j/100);
-            const val = qtd>0 ? (total-e)/qtd : 0;
-            document.getElementById('parcelaEscolhida').innerText = `${qtd}x de R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits:2})}`;
-        }
         function confirmarParcela() {
             const sel = document.querySelector('input[name="qtd_parcelas"]:checked');
             if(!sel) return alert('Escolha a quantidade de parcelas!');
             etapaAtual = 3;
-            // ✅ ATUALIZA NO BANCO A ESCOLHA DO CLIENTE
             supabase.from('propostas').update({qtd_escolhida:Number(sel.value)}).eq('id', propostaAtual.id);
             carregarProposta();
         }
@@ -184,21 +194,20 @@
             document.getElementById('btnAssinar').classList.remove('hidden');
         }
         function confirmarAssinatura() {
-            if(!document.getElementById('concordo').checked) return alert('Você precisa concordar com o contrato!');
-            // ✅ SALVA ASSINATURA E VAI PARA PAGAMENTO
+            if(!document.getElementById('concordo').checked) return alert('Você precisa concordar com os termos!');
             supabase.from('propostas').update({assinado:true, data_assinatura:new Date()}).eq('id', propostaAtual.id);
+            alert('Contrato assinado! Agora gere o Pix da entrada.');
             etapaAtual = 4;
-            alert('Contrato assinado com sucesso! Agora gere o Pix da entrada.');
-            // Aqui você coloca a tela do Pix
+            carregarProposta();
         }
 
-        // ✅ TEMPO REAL: SE ALTERAR NO PAINEL, ATUALIZA AQUI
-        supabase.channel('flash_atualizacao').on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`cpf=eq.${CPF.replace(/\D/g,'')}`}, ()=>carregarProposta()).subscribe();
+        // ✅ ATUALIZAÇÃO EM TEMPO REAL SEM TRAVAR
+        supabase.channel('flash_sync').on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`cpf=eq.${CPF.replace(/\D/g,'')}`}, ()=>carregarProposta()).subscribe();
 
         window.onload = carregarProposta;
     </script>
 </head>
-<body class="bg-gray-100 py-4">
+<body class="bg-gray-100">
     <div id="conteudo"></div>
 </body>
 </html>
