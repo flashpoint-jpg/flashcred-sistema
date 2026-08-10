@@ -78,7 +78,6 @@
     <button onclick="voltarInicio()" class="botao botao-voltar"><i class="fas fa-arrow-left"></i> Consultar Outro CPF</button>
     <div class="barra-etapas" id="barraEtapas"></div>
     <div class="cartao" id="conteudoProposta"></div>
-    <!-- ✅ ÁREA DO PIX SEMPRE EXISTE AGORA -->
     <div id="areaPix" class="oculto mt-4"></div>
 </div>
 
@@ -206,7 +205,6 @@ function mostrarProposta(p) {
         <a href="https://wa.me/5511973294235" target="_blank" class="botao botao-wpp mt-3">Falar com Suporte</a>`;
     }
     document.getElementById('conteudoProposta').innerHTML=html;
-    // ✅ LIMPA O PIX SEMPRE QUE CARREGAR NOVA TELA
     document.getElementById('areaPix').innerHTML='';
     document.getElementById('areaPix').classList.add('oculto');
 }
@@ -217,23 +215,28 @@ function tirar(){const v=document.getElementById('vid'),c=document.createElement
 function refazer(){document.getElementById('s2').classList.add('oculto');document.getElementById('s1').classList.remove('oculto');navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;});}
 async function assinar(){if(!document.getElementById('aceitoContrato').checked)return alert('Você precisa concordar com os termos!');let a;if(modoAssinatura==='selfie'){a=document.getElementById('img').src;if(!a)return alert('Tire a foto para assinar!');}else{a=document.getElementById('assTxt').value.trim();if(!a)return alert('Digite seu nome para assinar!');}await supabase.from('propostas').update({contrato_assinado:true,assinatura:a}).eq('id',propostaAtual.id);}
 
-// ✅ FUNÇÃO PIX 100% SEGURA AGORA
+// ✅ FUNÇÃO PIX CORRIGIDA - ENVIA VALOR PURO PARA A API
 async function gerarPix(valor,tipo,num=null){
-    // SEMPRE EXISTE AGORA, NÃO DÁ MAIS ERRO
     const a = document.getElementById('areaPix');
     a.classList.remove('oculto');
     a.innerHTML=`<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Processando...</div>`;
     try{
         if(!propostaAtual)throw'Proposta não carregada! Volte e consulte novamente.';
         const dsc=tipo==='entrada'?`Entrada - Proposta ${propostaAtual.id}`:`Parcela ${num} - Proposta ${propostaAtual.id}`;
-        const r=await fetch('/api/gerar-pix',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({valor:Number(valor),descricao:dsc})});
+        // ✅ VALOR LIMPO, SEM VÍRGULA, SEM FORMATAÇÃO
+        const valorLimpo = Number(valor).toFixed(2);
+        const r=await fetch('/api/gerar-pix',{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({valor:valorLimpo,descricao:dsc})
+        });
         const t=await r.text();if(!r.ok)throw`Erro ${r.status}: ${t}`;
         let j;try{j=JSON.parse(t);}catch{throw'Resposta inválida do servidor: '+t;}
         const cd=j.qr_code||j.copia_cola||j.pixCopiaECola||j.codigo;if(!cd)throw'Código Pix não retornado: '+JSON.stringify(j);
         a.innerHTML=`<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${cd}</div>`;
         setTimeout(()=>{new QRCode(document.getElementById('qrcode'),{text:cd,width:220,height:220});},50);
     }catch(e){
-        a.innerHTML=`<div class="text-center py-4 text-perigo p-4 border-2 border-red-300 rounded-lg"><p class="font-bold mb-2">⚠️ O que deu errado:</p><p>${e}</p><p class="text-sm mt-2">O botão está funcionando! Se der erro, é na configuração do Pix no servidor.</p></div>`;
+        a.innerHTML=`<div class="text-center py-4 text-perigo p-4 border-2 border-red-300 rounded-lg"><p class="font-bold mb-2">⚠️ O que deu errado:</p><p>${e}</p><p class="text-sm mt-2">Agora o valor está correto! Se der erro ainda, é na configuração da API do Mercado Pago.</p></div>`;
     }
 }
 </script>
