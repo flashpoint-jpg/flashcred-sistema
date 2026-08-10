@@ -1,278 +1,2814 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acompanhar Proposta | FlashCred</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script>
-        tailwind.config = { theme: { extend: { colors: { primary: '#0A2463', pix: '#32BCAD', sucesso: '#10B981', alerta: '#F59E0B', perigo: '#EF4444' } } } }
-    </script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
-        body { background: #F8FAFC; color: #1E293B; padding: 16px; max-width: 600px; margin: 0 auto; }
-        .cartao { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
-        .botao { padding: 10px 16px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-        .botao-pix { background: #32BCAD; color: white; min-width: 110px; }
-        .botao-pix-menor { padding: 6px 10px; font-size: 13px; min-width: auto; }
-        .botao-sucesso { background: #10B981; color: white; width: 100%; }
-        .botao-voltar { background: #94A3B8; color: white; margin-bottom: 12px; width: 100%; }
-        .botao-wpp { background: #25D366; color: white; margin-top: 12px; width: 100%; }
-        .botao-copiar { background: #0A2463; color: white; margin-top: 8px; font-size: 13px; padding: 8px 12px; }
-        .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
-        .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; padding: 0 4px; }
-        .barra-etapas::before { content: ''; position: absolute; top: 12px; left: 8%; right: 8%; height: 3px; background: #E2E8F0; z-index: 0; }
-        .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 10px; font-weight: 500; color: #94A3B8; text-align: center; width: 18%; }
-        .etapa.ativa { color: #0A2463; font-weight: 700; }
-        .etapa.concluida { color: #10B981; }
-        .bolinha { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; }
-        .etapa.ativa .bolinha { background: #0A2463; color: white; }
-        .etapa.concluida .bolinha { background: #10B981; color: white; }
-        .bloco-entrega { background: #FFFBEB; border: 2px solid #F59E0B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
-        .barra-progresso { width: 100%; height: 12px; background: #E2E8F0; border-radius: 6px; overflow: hidden; margin: 8px 0; }
-        .barra-preenchida { height: 100%; background: #F59E0B; transition: width 0.5s ease; }
-        .resumo-contrato { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 18px; margin: 16px 0; }
-        .resumo-contrato p { margin: 10px 0; font-size: 15px; }
-        .resumo-contrato strong { color: #0A2463; font-size: 16px; font-weight: 700; }
-        .contrato { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; max-height: 220px; overflow-y: auto; margin: 16px 0; font-size: 13px; line-height: 1.6; text-align: justify; }
-        .qrcode-area { display: flex; justify-content: center; padding: 12px; background: white; border-radius: 10px; border: 1px solid #E2E8F0; margin: 10px 0; }
-        .codigo-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 12px; text-align: center; font-weight: 600; margin: 8px 0; word-break: break-all; font-size: 12px; }
-        .item-parcela { display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 12px; border-bottom: 1px solid #E2E8F0; font-size: 14px; gap: 10px; }
-        .item-parcela:last-child { border-bottom: none; }
-        .dados-parcela { flex: 1; }
-        .area-pix-parcela { width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #E2E8F0; }
-        .luz { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
-        .luz-verde { background: #10B981; }
-        .luz-amarela { background: #F59E0B; animation: piscar 1.2s infinite; }
-        .luz-vermelha { background: #EF4444; animation: piscar 1s infinite; }
-        @keyframes piscar { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
-        .tela { display: none; }
-        .tela.visivel { display: block; }
-        .oculto { display: none !important; }
-        .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
-        .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Acompanhar Proposta | FlashCred</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet"
+href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            colors: {
+                primary: '#0A2463',
+                pix: '#32BCAD',
+                sucesso: '#10B981',
+                alerta: '#F59E0B',
+                perigo: '#EF4444'
+            }
+        }
+    }
+}
+</script>
+
+<style>
+*{
+    box-sizing:border-box;
+}
+
+body{
+    margin:0;
+    padding:0;
+    font-family:'Segoe UI',Arial,sans-serif;
+    background:
+        linear-gradient(180deg,#071b4d 0,#0A2463 230px,#f1f5f9 230px);
+    color:#1e293b;
+    min-height:100vh;
+}
+
+.app{
+    width:100%;
+    max-width:620px;
+    margin:auto;
+    padding:18px 14px 40px;
+}
+
+.logo{
+    color:white;
+    text-align:center;
+    padding:12px 0 24px;
+}
+
+.logo-title{
+    font-size:28px;
+    font-weight:800;
+    letter-spacing:.5px;
+}
+
+.logo-sub{
+    font-size:13px;
+    opacity:.8;
+    margin-top:3px;
+}
+
+.card{
+    background:white;
+    border-radius:18px;
+    padding:22px;
+    margin-bottom:15px;
+    box-shadow:0 8px 30px rgba(15,23,42,.08);
+}
+
+.input{
+    width:100%;
+    padding:14px 15px;
+    border:1px solid #cbd5e1;
+    border-radius:11px;
+    outline:none;
+    font-size:16px;
+    margin-bottom:12px;
+}
+
+.input:focus{
+    border-color:#0A2463;
+    box-shadow:0 0 0 3px rgba(10,36,99,.1);
+}
+
+.btn{
+    border:0;
+    border-radius:11px;
+    padding:13px 16px;
+    font-size:15px;
+    font-weight:700;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    width:100%;
+    transition:.2s;
+}
+
+.btn:disabled{
+    opacity:.6;
+    cursor:not-allowed;
+}
+
+.btn-primary{
+    background:#0A2463;
+    color:white;
+}
+
+.btn-success{
+    background:#10B981;
+    color:white;
+}
+
+.btn-pix{
+    background:#32BCAD;
+    color:white;
+}
+
+.btn-back{
+    background:#64748b;
+    color:white;
+    margin-bottom:14px;
+}
+
+.btn-whatsapp{
+    background:#25D366;
+    color:white;
+}
+
+.btn-small{
+    width:auto;
+    padding:8px 11px;
+    font-size:13px;
+}
+
+.title{
+    color:#0A2463;
+    font-weight:800;
+    font-size:20px;
+    text-align:center;
+    margin-bottom:18px;
+}
+
+.etapas{
+    background:white;
+    border-radius:16px;
+    padding:15px 8px;
+    display:flex;
+    justify-content:space-between;
+    margin-bottom:15px;
+    box-shadow:0 5px 20px rgba(15,23,42,.06);
+}
+
+.etapa{
+    flex:1;
+    text-align:center;
+    font-size:9px;
+    color:#94a3b8;
+    position:relative;
+}
+
+.etapa:before{
+    content:'';
+    position:absolute;
+    top:12px;
+    left:0;
+    right:0;
+    height:2px;
+    background:#e2e8f0;
+    z-index:0;
+}
+
+.etapa:first-child:before{
+    left:50%;
+}
+
+.etapa:last-child:before{
+    right:50%;
+}
+
+.circle{
+    width:25px;
+    height:25px;
+    margin:auto;
+    border-radius:50%;
+    background:#e2e8f0;
+    color:#64748b;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    position:relative;
+    z-index:2;
+    font-weight:800;
+    font-size:11px;
+    background-clip:padding-box;
+}
+
+.etapa.ativa{
+    color:#0A2463;
+    font-weight:800;
+}
+
+.etapa.ativa .circle{
+    background:#0A2463;
+    color:white;
+}
+
+.etapa.ok{
+    color:#10B981;
+    font-weight:800;
+}
+
+.etapa.ok .circle{
+    background:#10B981;
+    color:white;
+}
+
+.status{
+    padding:15px;
+    border-radius:13px;
+    text-align:center;
+    margin-bottom:15px;
+}
+
+.status-amarelo{
+    background:#fffbeb;
+    border:1px solid #fcd34d;
+    color:#92400e;
+}
+
+.status-verde{
+    background:#ecfdf5;
+    border:1px solid #6ee7b7;
+    color:#065f46;
+}
+
+.status-azul{
+    background:#eff6ff;
+    border:1px solid #93c5fd;
+    color:#1e3a8a;
+}
+
+.resumo{
+    background:#f8fafc;
+    border:1px solid #e2e8f0;
+    border-radius:13px;
+    padding:15px;
+    margin:15px 0;
+}
+
+.linha{
+    display:flex;
+    justify-content:space-between;
+    gap:15px;
+    padding:9px 0;
+    border-bottom:1px solid #e2e8f0;
+    font-size:14px;
+}
+
+.linha:last-child{
+    border-bottom:0;
+}
+
+.valor{
+    color:#0A2463;
+    font-weight:800;
+}
+
+.contrato{
+    max-height:230px;
+    overflow-y:auto;
+    background:#f8fafc;
+    border:1px solid #cbd5e1;
+    border-radius:12px;
+    padding:15px;
+    font-size:13px;
+    line-height:1.6;
+    text-align:justify;
+    margin:15px 0;
+}
+
+.camera{
+    width:100%;
+    background:#020617;
+    border-radius:14px;
+    overflow:hidden;
+    margin:12px 0;
+}
+
+.camera video{
+    width:100%;
+    max-height:280px;
+    display:block;
+    object-fit:cover;
+}
+
+.preview{
+    text-align:center;
+    margin:12px 0;
+}
+
+.preview img{
+    width:100%;
+    max-height:280px;
+    object-fit:contain;
+    border-radius:13px;
+    background:#020617;
+}
+
+.pix-box{
+    margin-top:15px;
+    padding:15px;
+    background:#ecfdf5;
+    border:2px solid #10B981;
+    border-radius:14px;
+}
+
+.qr{
+    background:white;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:12px;
+    border-radius:12px;
+    margin-bottom:12px;
+}
+
+.codigo{
+    background:white;
+    border:1px solid #a7f3d0;
+    border-radius:9px;
+    padding:10px;
+    word-break:break-all;
+    font-size:11px;
+    margin-bottom:8px;
+}
+
+.parcela{
+    border:1px solid #e2e8f0;
+    border-radius:13px;
+    padding:13px;
+    margin-bottom:10px;
+    background:white;
+}
+
+.parcela-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+}
+
+.dot{
+    width:10px;
+    height:10px;
+    border-radius:50%;
+    display:inline-block;
+    margin-right:6px;
+}
+
+.green{background:#10B981}
+.yellow{background:#F59E0B}
+.red{background:#EF4444}
+
+.progress{
+    height:12px;
+    background:#e2e8f0;
+    border-radius:8px;
+    overflow:hidden;
+    margin-top:10px;
+}
+
+.progress-bar{
+    height:100%;
+    background:#10B981;
+    transition:.4s;
+}
+
+.hidden{
+    display:none!important;
+}
+
+.alert{
+    padding:12px;
+    border-radius:10px;
+    margin-bottom:12px;
+    font-size:14px;
+}
+
+.alert-error{
+    background:#fef2f2;
+    color:#991b1b;
+    border:1px solid #fecaca;
+}
+
+.alert-success{
+    background:#ecfdf5;
+    color:#065f46;
+    border:1px solid #a7f3d0;
+}
+
+@media(max-width:400px){
+    .card{
+        padding:17px;
+    }
+
+    .logo-title{
+        font-size:24px;
+    }
+
+    .etapa{
+        font-size:8px;
+    }
+}
+</style>
 </head>
+
 <body>
 
-<div id="telaConsulta" class="tela visivel">
-    <div class="cartao">
-        <h2 class="text-xl font-bold text-center mb-6 text-primary">🔍 Acompanhar Proposta</h2>
-        <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="campo">
-        <button id="btnConsultar" class="botao botao-pix" onclick="executarConsulta()">
-            <i class="fas fa-search mr-2"></i> Consultar
-        </button>
-    </div>
-</div>
+<div class="app">
 
-<div id="telaProposta" class="tela">
-    <button onclick="voltarInicio()" class="botao botao-voltar"><i class="fas fa-arrow-left"></i> Consultar Outro CPF</button>
-    <div class="barra-etapas" id="barraEtapas"></div>
-    <div class="cartao" id="conteudoProposta"></div>
+    <div class="logo">
+        <div class="logo-title">
+            <i class="fas fa-bolt"></i> FlashCred
+        </div>
+        <div class="logo-sub">
+            Acompanhe sua proposta de forma segura
+        </div>
+    </div>
+
+    <!-- CONSULTA -->
+    <div id="telaConsulta">
+
+        <div class="card">
+
+            <div class="title">
+                Acompanhar Proposta
+            </div>
+
+            <p style="text-align:center;color:#64748b;font-size:14px;margin-bottom:18px">
+                Digite seu CPF para consultar o andamento da sua proposta.
+            </p>
+
+            <input
+                type="tel"
+                id="cpfConsulta"
+                class="input"
+                maxlength="14"
+                placeholder="Digite seu CPF"
+                autocomplete="off"
+            >
+
+            <button
+                id="btnConsultar"
+                class="btn btn-primary"
+                onclick="executarConsulta()"
+            >
+                <i class="fas fa-search"></i>
+                Consultar proposta
+            </button>
+
+            <div id="erroConsulta" class="alert alert-error hidden" style="margin-top:12px"></div>
+
+        </div>
+
+    </div>
+
+    <!-- PROPOSTA -->
+    <div id="telaProposta" class="hidden">
+
+        <button
+            onclick="voltarInicio()"
+            class="btn btn-back"
+        >
+            <i class="fas fa-arrow-left"></i>
+            Consultar outro CPF
+        </button>
+
+        <div id="barraEtapas" class="etapas"></div>
+
+        <div id="conteudoProposta"></div>
+
+    </div>
+
 </div>
 
 <script>
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+
+const SUPABASE_URL =
+'https://rgcclordmqjmwuzrrfbd.supabase.co';
+
+const SUPABASE_KEY =
+'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+
+const supabaseClient =
+window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_KEY
+);
 
 let propostaAtual = null;
-let inscricaoTempoReal = null;
+let canalAtual = null;
 let webcamStream = null;
-let modoAssinatura = 'selfie';
+let assinaturaFoto = null;
+let gerandoPix = false;
 
-// ✅ FUNÇÃO DIRETA NO BOTÃO — NÃO TRAVA MAIS
-async function executarConsulta() {
-    const cpfInput = document.getElementById('cpfConsulta');
-    const cpf = cpfInput.value.trim().replace(/\D/g, '');
-    if(cpf.length !== 11) return alert('Digite os 11 números do CPF!');
 
-    try {
-        const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).limit(1);
-        if(error) throw error.message;
-        if(!data || data.length === 0) throw 'Nenhuma proposta encontrada';
+/* =========================
+   UTILITÁRIOS
+========================= */
 
-        propostaAtual = data[0];
-        sessionStorage.setItem('ultimo_cpf', cpf);
-        mostrarProposta(propostaAtual);
+function somenteNumeros(valor){
+    return String(valor || '').replace(/\D/g,'');
+}
 
-        if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
-        inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
-            .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, res => {
-                propostaAtual = res.new;
-                mostrarProposta(res.new);
-            }).subscribe();
-    } catch(erro) {
-        alert('Erro: ' + erro);
+function formatarCPF(valor){
+
+    let cpf = somenteNumeros(valor).substring(0,11);
+
+    if(cpf.length > 9){
+        return cpf.replace(
+            /(\d{3})(\d{3})(\d{3})(\d{2})/,
+            '$1.$2.$3-$4'
+        );
+    }
+
+    if(cpf.length > 6){
+        return cpf.replace(
+            /(\d{3})(\d{3})(\d+)/,
+            '$1.$2.$3'
+        );
+    }
+
+    if(cpf.length > 3){
+        return cpf.replace(
+            /(\d{3})(\d+)/,
+            '$1.$2'
+        );
+    }
+
+    return cpf;
+}
+
+function formatarValor(valor){
+
+    let n = Number(valor);
+
+    if(!Number.isFinite(n)){
+        n = 0;
+    }
+
+    return n.toLocaleString(
+        'pt-BR',
+        {
+            minimumFractionDigits:2,
+            maximumFractionDigits:2
+        }
+    );
+}
+
+function dinheiro(valor){
+
+    return `R$ ${formatarValor(valor)}`;
+
+}
+
+function mostrarErroConsulta(msg){
+
+    const el =
+        document.getElementById('erroConsulta');
+
+    el.textContent = msg;
+    el.classList.remove('hidden');
+
+}
+
+function esconderErroConsulta(){
+
+    document
+        .getElementById('erroConsulta')
+        .classList.add('hidden');
+
+}
+
+
+/* =========================
+   CÁLCULO
+========================= */
+
+function calcularParcela(valorFinanciado, juros, quantidade){
+
+    valorFinanciado =
+        Number(valorFinanciado) || 0;
+
+    juros =
+        Number(juros) || 0;
+
+    quantidade =
+        parseInt(quantidade) || 0;
+
+    if(quantidade <= 0){
+        return 0;
+    }
+
+    if(juros <= 0){
+        return valorFinanciado / quantidade;
+    }
+
+    const taxa = juros / 100;
+
+    return valorFinanciado *
+        (
+            taxa *
+            Math.pow(1 + taxa, quantidade)
+        ) /
+        (
+            Math.pow(1 + taxa, quantidade) - 1
+        );
+}
+
+
+/*
+    Pega quantidade máxima de parcelas.
+    Primeiro tenta campos normais.
+    Depois tenta JSONB.
+*/
+
+function obterQuantidadeMaxima(p){
+
+    const candidatos = [
+        p.quantidade_parcelas,
+        p.qtd_parcelas,
+        p.numero_parcelas,
+        p.max_parcelas
+    ];
+
+    for(const valor of candidatos){
+
+        const n = parseInt(valor);
+
+        if(Number.isFinite(n) && n > 0 && n <= 100){
+            return n;
+        }
+    }
+
+    const fontes = [
+        p.parcelas,
+        p.dados_parcelas
+    ];
+
+    for(const fonte of fontes){
+
+        if(!fonte) continue;
+
+        try{
+
+            const obj =
+                typeof fonte === 'string'
+                    ? JSON.parse(fonte)
+                    : fonte;
+
+            if(Array.isArray(obj) && obj.length){
+
+                return obj.length;
+            }
+
+            if(obj && typeof obj === 'object'){
+
+                const possiveis = [
+                    obj.quantidade,
+                    obj.quantidade_parcelas,
+                    obj.qtd_parcelas,
+                    obj.max_parcelas,
+                    obj.numero_parcelas
+                ];
+
+                for(const valor of possiveis){
+
+                    const n = parseInt(valor);
+
+                    if(Number.isFinite(n) && n > 0 && n <= 100){
+                        return n;
+                    }
+                }
+            }
+
+        }catch(e){}
+    }
+
+    /*
+      Se não encontrou no JSON,
+      usa 1 como segurança.
+    */
+
+    return 1;
+}
+
+
+/* =========================
+   DATAS
+========================= */
+
+function adicionarMes(data, meses){
+
+    const d = new Date(data);
+
+    const dia =
+        d.getDate();
+
+    d.setDate(1);
+
+    d.setMonth(
+        d.getMonth() + meses
+    );
+
+    const ultimoDia =
+        new Date(
+            d.getFullYear(),
+            d.getMonth()+1,
+            0
+        ).getDate();
+
+    d.setDate(
+        Math.min(dia, ultimoDia)
+    );
+
+    return d;
+}
+
+function formatarData(data){
+
+    if(!data) return '-';
+
+    const d =
+        new Date(data);
+
+    if(Number.isNaN(d.getTime())){
+        return '-';
+    }
+
+    return d.toLocaleDateString('pt-BR');
+
+}
+
+function calcularDiasUteis(inicio, total){
+
+    total =
+        parseInt(total) || 0;
+
+    if(total <= 0){
+        return {
+            restante:0,
+            porcentagem:0
+        };
+    }
+
+    const inicioData =
+        new Date(inicio);
+
+    if(Number.isNaN(inicioData.getTime())){
+        return {
+            restante:total,
+            porcentagem:0
+        };
+    }
+
+    const hoje =
+        new Date();
+
+    inicioData.setHours(0,0,0,0);
+    hoje.setHours(0,0,0,0);
+
+    let diasPassados = 0;
+
+    const atual =
+        new Date(inicioData);
+
+    while(atual < hoje){
+
+        const dia =
+            atual.getDay();
+
+        if(dia !== 0 && dia !== 6){
+            diasPassados++;
+        }
+
+        atual.setDate(
+            atual.getDate()+1
+        );
+    }
+
+    const restante =
+        Math.max(
+            0,
+            total - diasPassados
+        );
+
+    const porcentagem =
+        Math.min(
+            100,
+            (diasPassados / total) * 100
+        );
+
+    return {
+        restante,
+        porcentagem
+    };
+}
+
+
+/* =========================
+   CONSULTA
+========================= */
+
+async function executarConsulta(){
+
+    esconderErroConsulta();
+
+    const input =
+        document.getElementById('cpfConsulta');
+
+    const btn =
+        document.getElementById('btnConsultar');
+
+    const cpf =
+        somenteNumeros(input.value);
+
+    if(cpf.length !== 11){
+
+        mostrarErroConsulta(
+            'Digite os 11 números do CPF.'
+        );
+
+        return;
+    }
+
+    btn.disabled = true;
+
+    btn.innerHTML =
+        '<i class="fas fa-spinner fa-spin"></i> Consultando...';
+
+    try{
+
+        const {data,error} =
+            await supabaseClient
+                .from('propostas')
+                .select('*')
+                .eq('cpf',cpf)
+                .limit(1);
+
+        if(error){
+
+            console.error(error);
+
+            throw new Error(
+                'Não foi possível consultar a proposta.'
+            );
+        }
+
+        if(!data || !data.length){
+
+            throw new Error(
+                'Nenhuma proposta encontrada para este CPF.'
+            );
+        }
+
+        propostaAtual =
+            data[0];
+
+        sessionStorage.setItem(
+            'ultimo_cpf',
+            cpf
+        );
+
+        mostrarProposta(
+            propostaAtual
+        );
+
+        iniciarTempoReal();
+
+    }catch(error){
+
+        mostrarErroConsulta(
+            error.message ||
+            'Erro ao consultar proposta.'
+        );
+
+    }finally{
+
+        btn.disabled = false;
+
+        btn.innerHTML =
+            '<i class="fas fa-search"></i> Consultar proposta';
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('cpfConsulta').addEventListener('keydown', e => {
-        if(e.key === 'Enter') executarConsulta();
+
+/* =========================
+   TEMPO REAL
+========================= */
+
+function iniciarTempoReal(){
+
+    if(canalAtual){
+
+        supabaseClient.removeChannel(
+            canalAtual
+        );
+    }
+
+    if(!propostaAtual?.id) return;
+
+    canalAtual =
+        supabaseClient
+            .channel(
+                'proposta-' +
+                propostaAtual.id
+            )
+            .on(
+                'postgres_changes',
+                {
+                    event:'UPDATE',
+                    schema:'public',
+                    table:'propostas',
+                    filter:
+                        `id=eq.${propostaAtual.id}`
+                },
+                payload => {
+
+                    propostaAtual =
+                        payload.new;
+
+                    mostrarProposta(
+                        propostaAtual
+                    );
+                }
+            )
+            .subscribe();
+}
+
+
+/* =========================
+   ETAPAS
+========================= */
+
+function determinarEtapa(p){
+
+    const status =
+        String(p.status || '').toLowerCase();
+
+    const assinada =
+        p.assinatura_assinada === true ||
+        !!p.selfie_cliente ||
+        !!p.contrato_assinado;
+
+    const entradaPaga =
+        p.valor_entrada_pago === true;
+
+    if(entradaPaga) return 5;
+
+    if(assinada) return 4;
+
+    if(
+        status === 'aprovada' ||
+        status === 'aprovado'
+    ){
+        return 2;
+    }
+
+    return 1;
+}
+
+function desenharEtapas(etapa){
+
+    const nomes = [
+        'Análise',
+        'Parcelas',
+        'Contrato',
+        'Entrada',
+        'Entrega'
+    ];
+
+    let html = '';
+
+    nomes.forEach((nome,i)=>{
+
+        const numero =
+            i+1;
+
+        let classe = '';
+
+        if(numero < etapa){
+            classe = 'ok';
+        }
+
+        if(numero === etapa){
+            classe = 'ativa';
+        }
+
+        html += `
+            <div class="etapa ${classe}">
+                <div class="circle">
+                    ${numero < etapa ? '✓' : numero}
+                </div>
+                <div style="margin-top:5px">
+                    ${nome}
+                </div>
+            </div>
+        `;
     });
-    const salvo = sessionStorage.getItem('ultimo_cpf');
-    if(salvo) {
-        document.getElementById('cpfConsulta').value = salvo;
-        executarConsulta();
-    }
-});
 
-function voltarInicio() {
-    if(webcamStream) webcamStream.getTracks().forEach(t => t.stop());
-    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
-    propostaAtual = null;
-    sessionStorage.removeItem('ultimo_cpf');
-    document.getElementById('cpfConsulta').value = '';
-    document.getElementById('telaProposta').classList.remove('visivel');
-    document.getElementById('telaConsulta').classList.add('visivel');
+    document
+        .getElementById('barraEtapas')
+        .innerHTML = html;
 }
 
-function formatarValor(v) { return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2}); }
-function calcularDiasUteis(dataInicio, totalDias) {
-    if(!dataInicio||totalDias<=0) return {restante:totalDias, porcentagem:0};
-    let i=new Date(dataInicio), h=new Date(), p=0, a=new Date(i);
-    while(a<h){ let d=a.getDay(); if(d!==0&&d!==6)p++; a.setDate(a.getDate()+1); }
-    let r=totalDias-p; r=r<0?0:r; let po=totalDias>0?((totalDias-r)/totalDias)*100:0;
-    return {restante:r, porcentagem:po};
-}
 
-function mostrarProposta(p) {
-    document.getElementById('telaConsulta').classList.remove('visivel');
-    document.getElementById('telaProposta').classList.add('visivel');
-    const entradaPaga = !!p.entrada_paga;
-    const assinado = !!p.contrato_assinado;
-    let etapa=1; 
-    if(p.status==='Aprovada') etapa=2; 
-    if(assinado) etapa=3; 
-    if(entradaPaga) etapa=4;
+/* =========================
+   PROPOSTA
+========================= */
 
-    document.getElementById('barraEtapas').innerHTML = `
-        <div class="etapa ${etapa>=1?(etapa>1?'concluida':'ativa'):''}"><div class="bolinha">${etapa>1?'✓':'1'}</div><span>Análise</span></div>
-        <div class="etapa ${etapa>=2?(etapa>2?'concluida':'ativa'):''}"><div class="bolinha">${etapa>2?'✓':'2'}</div><span>Parcelas</span></div>
-        <div class="etapa ${etapa>=3?'concluida':'ativa'}"><div class="bolinha">${etapa>=3?'✓':'3'}</div><span>Contrato</span></div>
-        <div class="etapa ${etapa>=4?'concluida':''}"><div class="bolinha">${etapa>=4?'✓':'4'}</div><span>Entrada</span></div>
-        <div class="etapa ${etapa>=5?'concluida':''}"><div class="bolinha">${etapa>=5?'✓':'5'}</div><span>Entrega</span></div>`;
+function mostrarProposta(p){
 
-    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
-    const total=v*(1+j/100), parc=q>0?((total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1)):0;
-    const dias=p.dias_entrega||0;
-    const entrega=calcularDiasUteis(p.data_aprovacao_entrada||p.updated_at||new Date(), dias);
+    document
+        .getElementById('telaConsulta')
+        .classList.add('hidden');
 
-    let html=`<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
-    if(p.status==='Nova') html+=`<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação...</p></div>`;
+    document
+        .getElementById('telaProposta')
+        .classList.remove('hidden');
 
-    if(p.status==='Aprovada'&&!p.qtd_parcelas_escolhida){
-        html+=`<div class="bloco-entrega"><p class="font-bold">ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO!</p></div>
-        <div class="resumo-contrato">
-            <p>Valor do Produto: <strong>R$ ${formatarValor(v)}</strong></p>
-            <p>Valor da Entrada: <strong>R$ ${formatarValor(e)}</strong></p>
-            <p>Juros Mensais: <strong>${j}%</strong></p>
-            <p>Valor Total Final: <strong>R$ ${formatarValor(total)}</strong></p>
-            <p>Até <strong>${q}x</strong> parcelas</p>
-        </div>
-        <select id="qtdEscolhida" class="campo">${Array.from({length:q},(_,i)=>{let n=i+1,vl=((total-e)*(Math.pow(1+j/100,n)*(j/100))/(Math.pow(1+j/100,n)-1));return `<option value="${n}">${n}x de R$ ${formatarValor(vl)}</option>`}).join('')}</select>
-        <button onclick="confirmarParcelas()" class="botao botao-sucesso">Continuar</button>`;
+    const etapa =
+        determinarEtapa(p);
+
+    desenharEtapas(etapa);
+
+    const nome =
+        p.nome || 'Cliente';
+
+    const valorProduto =
+        Number(
+            p.valor_desejado ||
+            p.valor_total_final ||
+            0
+        );
+
+    const entrada =
+        Number(
+            p.valor_entrada ||
+            0
+        );
+
+    const juros =
+        Number(
+            p.juros_mensal ||
+            0
+        );
+
+    const totalBanco =
+        Number(
+            p.valor_total_final ||
+            0
+        );
+
+    const total =
+        totalBanco > 0
+            ? totalBanco
+            : valorProduto;
+
+    const maxParcelas =
+        obterQuantidadeMaxima(p);
+
+    const entradaPaga =
+        p.valor_entrada_pago === true;
+
+    const assinada =
+        p.assinatura_assinada === true ||
+        !!p.selfie_cliente ||
+        !!p.contrato_assinado;
+
+    const status =
+        String(p.status || '');
+
+    let html = '';
+
+    html += `
+        <div class="card">
+
+            <div class="title">
+                Olá, ${escapeHTML(nome)}!
+            </div>
+
+            <div class="status status-azul">
+                <strong>Status da proposta:</strong><br>
+                ${escapeHTML(status || 'Em análise')}
+            </div>
+    `;
+
+
+    /* ======================
+       AGUARDANDO ANÁLISE
+    ====================== */
+
+    if(
+        status.toLowerCase() !== 'aprovada' &&
+        status.toLowerCase() !== 'aprovado'
+    ){
+
+        html += `
+            <div class="status status-amarelo">
+
+                <i class="fas fa-clock"
+                   style="font-size:28px;margin-bottom:8px"></i>
+
+                <div style="font-weight:800;font-size:17px">
+                    Proposta em análise
+                </div>
+
+                <div style="font-size:13px;margin-top:5px">
+                    Aguarde a análise da sua proposta.
+                </div>
+
+            </div>
+        `;
+
+        html += '</div>';
+
+        document
+            .getElementById('conteudoProposta')
+            .innerHTML = html;
+
+        return;
     }
 
-    if(p.status==='Aprovada'&&p.qtd_parcelas_escolhida&&!assinado){
-        const qe=p.qtd_parcelas_escolhida, vl=((total-e)*(Math.pow(1+j/100,qe)*(j/100))/(Math.pow(1+j/100,qe)-1));
-        html+=`<div class="resumo-contrato">
-            <p>Valor Total: <strong>R$ ${formatarValor(total)}</strong></p>
-            <p>Entrada: <strong>R$ ${formatarValor(e)}</strong></p>
-            <p>Parcelamento: <strong>${qe}x de R$ ${formatarValor(vl)}</strong></p>
-            <p>Juros: <strong>${j}% ao mês</strong></p>
-            <p>Prazo de Entrega: <strong>${dias} dias úteis</strong></p>
-        </div>
-        <div class="contrato">Valor total R$ ${formatarValor(total)}, entrada R$ ${formatarValor(e)}, ${qe}x, juros ${j}% a.m., entrega em ${dias} dias úteis. Ao assinar concorda com todos os termos.</div>
-        <label class="flex items-center gap-2 mb-3"><input type="checkbox" id="aceitoContrato"> Li e concordo com o contrato</label>
-        <div class="flex gap-2 mb-3"><button onclick="alternarModo('selfie')" id="bs" class="botao botao-pix-menor bg-primary text-white">📸 Selfie</button><button onclick="alternarModo('texto')" id="bt" class="botao botao-pix-menor bg-gray-200">✏️ Assinatura</button></div>
-        <div id="s1"><video id="vid" autoplay playsinline class="w-full rounded mb-2" style="max-height:180px;"></video><button onclick="tirar()" class="botao botao-pix">Capturar Foto</button></div>
-        <div id="s2" class="oculto text-center mb-3"><img id="img" class="mx-auto rounded" style="max-height:160px;"><button onclick="refazer()" class="botao botao-pix-menor bg-gray-400 mt-2">Refazer</button></div>
-        <input type="text" id="assTxt" class="campo oculto" placeholder="Digite seu nome completo">
-        <button onclick="assinar()" class="botao botao-sucesso mt-2">Assinar Contrato</button>`;
-        setTimeout(()=>{if(modoAssinatura==='selfie')navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;}).catch(()=>alternarModo('texto'));},300);
+
+    /* ======================
+       ESCOLHA DAS PARCELAS
+    ====================== */
+
+    if(
+        !assinada &&
+        !p.qtd_parcelas_escolhida &&
+        !entradaPaga
+    ){
+
+        const financiado =
+            Math.max(
+                0,
+                total - entrada
+            );
+
+        html += `
+            <div class="resumo">
+
+                <div class="linha">
+                    <span>Valor do produto</span>
+                    <strong class="valor">
+                        ${dinheiro(valorProduto)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Entrada</span>
+                    <strong class="valor">
+                        ${dinheiro(entrada)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Juros mensais</span>
+                    <strong class="valor">
+                        ${formatarValor(juros)}%
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Valor financiado</span>
+                    <strong class="valor">
+                        ${dinheiro(financiado)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Máximo de parcelas</span>
+                    <strong class="valor">
+                        ${maxParcelas}x
+                    </strong>
+                </div>
+
+            </div>
+
+            <label style="font-weight:700;font-size:14px">
+                Escolha a quantidade de parcelas
+            </label>
+
+            <select
+                id="qtdEscolhida"
+                class="input"
+                style="margin-top:8px"
+            >
+        `;
+
+        for(
+            let n=1;
+            n<=maxParcelas;
+            n++
+        ){
+
+            const parcela =
+                calcularParcela(
+                    financiado,
+                    juros,
+                    n
+                );
+
+            html += `
+                <option value="${n}">
+                    ${n}x de ${dinheiro(parcela)}
+                </option>
+            `;
+        }
+
+        html += `
+            </select>
+
+            <button
+                id="btnContinuarParcelas"
+                onclick="confirmarParcelas()"
+                class="btn btn-success"
+            >
+                Continuar
+                <i class="fas fa-arrow-right"></i>
+            </button>
+        `;
+
     }
 
-    if(assinado&&!entradaPaga){
-        html+=`<div class="sucesso-box"><i class="fas fa-check-circle"></i><h3>CONTRATO ASSINADO!</h3></div>
-        <div class="resumo-contrato">
-            <p>Valor da Entrada: <strong>R$ ${formatarValor(e)}</strong></p>
-            <p>Valor Total: <strong>R$ ${formatarValor(total)}</strong></p>
-        </div>
-        <button onclick="gerarPixEntrada(${e})" class="botao botao-pix">GERAR PIX DA ENTRADA</button>
-        <div id="areaPixEntrada" class="oculto mt-4"></div>`;
+
+    /* ======================
+       CONTRATO
+    ====================== */
+
+    if(
+        !assinada &&
+        !entradaPaga &&
+        p.qtd_parcelas_escolhida
+    ){
+
+        const q =
+            parseInt(
+                p.qtd_parcelas_escolhida
+            );
+
+        const financiado =
+            Math.max(
+                0,
+                total - entrada
+            );
+
+        const parcela =
+            calcularParcela(
+                financiado,
+                juros,
+                q
+            );
+
+        const dias =
+            Number(
+                p.dias_entrega || 0
+            );
+
+        html += `
+            <div class="status status-verde">
+
+                <i class="fas fa-check-circle"></i>
+
+                <strong>
+                    Condição aprovada
+                </strong>
+
+            </div>
+
+            <div class="resumo">
+
+                <div class="linha">
+                    <span>Valor total</span>
+                    <strong class="valor">
+                        ${dinheiro(total)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Entrada</span>
+                    <strong class="valor">
+                        ${dinheiro(entrada)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Parcelamento</span>
+                    <strong class="valor">
+                        ${q}x de ${dinheiro(parcela)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Juros</span>
+                    <strong class="valor">
+                        ${formatarValor(juros)}% ao mês
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Prazo de entrega</span>
+                    <strong class="valor">
+                        ${dias} dias úteis
+                    </strong>
+                </div>
+
+            </div>
+
+            <h3 style="font-weight:800;color:#0A2463">
+                Contrato
+            </h3>
+
+            <div class="contrato">
+                <strong>CONTRATO DE COMPRA E PAGAMENTO</strong>
+                <br><br>
+
+                Cliente:
+                ${escapeHTML(nome)}
+                <br>
+
+                Valor total:
+                ${dinheiro(total)}
+                <br>
+
+                Entrada:
+                ${dinheiro(entrada)}
+                <br>
+
+                Parcelamento:
+                ${q}x de ${dinheiro(parcela)}
+                <br>
+
+                Juros:
+                ${formatarValor(juros)}% ao mês
+                <br>
+
+                Prazo de entrega:
+                ${dias} dias úteis após a confirmação do pagamento da entrada.
+                <br><br>
+
+                Ao prosseguir, o cliente declara que leu,
+                compreendeu e concorda com as condições
+                apresentadas nesta proposta.
+            </div>
+
+            <label style="
+                display:flex;
+                gap:8px;
+                align-items:center;
+                font-size:14px;
+                margin-bottom:14px;
+            ">
+                <input type="checkbox" id="aceitoContrato">
+                Li e concordo com as condições do contrato.
+            </label>
+
+            <div style="
+                display:flex;
+                gap:8px;
+                margin-bottom:12px;
+            ">
+
+                <button
+                    onclick="alternarModo('selfie')"
+                    id="btnSelfie"
+                    class="btn btn-primary"
+                    style="width:50%"
+                >
+                    <i class="fas fa-camera"></i>
+                    Selfie
+                </button>
+
+                <button
+                    onclick="alternarModo('texto')"
+                    id="btnTexto"
+                    class="btn"
+                    style="
+                        width:50%;
+                        background:#e2e8f0;
+                        color:#1e293b;
+                    "
+                >
+                    <i class="fas fa-signature"></i>
+                    Nome
+                </button>
+
+            </div>
+
+            <div id="areaSelfie">
+
+                <div class="camera">
+                    <video
+                        id="vid"
+                        autoplay
+                        muted
+                        playsinline
+                    ></video>
+                </div>
+
+                <button
+                    onclick="tirarFoto()"
+                    class="btn btn-pix"
+                >
+                    <i class="fas fa-camera"></i>
+                    Capturar selfie
+                </button>
+
+                <div
+                    id="preview"
+                    class="preview hidden"
+                >
+                    <img id="img">
+                </div>
+
+                <button
+                    onclick="refazerFoto()"
+                    id="btnRefazer"
+                    class="btn"
+                    style="
+                        background:#94a3b8;
+                        color:white;
+                        margin-top:8px;
+                    "
+                >
+                    Refazer selfie
+                </button>
+
+            </div>
+
+            <div id="areaTexto" class="hidden">
+
+                <input
+                    id="assTxt"
+                    class="input"
+                    placeholder="Digite seu nome completo"
+                >
+
+            </div>
+
+            <button
+                onclick="assinarContrato()"
+                id="btnAssinar"
+                class="btn btn-success"
+                style="margin-top:12px"
+            >
+                <i class="fas fa-file-signature"></i>
+                Assinar contrato
+            </button>
+
+            <div
+                id="erroAssinatura"
+                class="alert alert-error hidden"
+                style="margin-top:12px"
+            ></div>
+        `;
+
+        setTimeout(
+            iniciarCamera,
+            400
+        );
     }
+
+
+    /* ======================
+       ASSINADO / ENTRADA
+    ====================== */
+
+    if(
+        assinada &&
+        !entradaPaga
+    ){
+
+        html += `
+            <div class="status status-verde">
+
+                <i
+                    class="fas fa-check-circle"
+                    style="font-size:38px"
+                ></i>
+
+                <div style="
+                    font-size:19px;
+                    font-weight:800;
+                    margin-top:8px
+                ">
+                    Contrato assinado!
+                </div>
+
+                <div style="font-size:13px;margin-top:5px">
+                    Sua assinatura foi registrada com sucesso.
+                </div>
+
+            </div>
+
+            <div class="resumo">
+
+                <div class="linha">
+                    <span>Entrada</span>
+                    <strong class="valor">
+                        ${dinheiro(entrada)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Valor total</span>
+                    <strong class="valor">
+                        ${dinheiro(total)}
+                    </strong>
+                </div>
+
+            </div>
+
+            <button
+                onclick="gerarPixEntrada(${entrada})"
+                id="btnPixEntrada"
+                class="btn btn-pix"
+            >
+                <i class="fas fa-qrcode"></i>
+                Gerar PIX da entrada
+            </button>
+
+            <div
+                id="areaPixEntrada"
+                class="hidden"
+            ></div>
+        `;
+    }
+
+
+    /* ======================
+       ENTRADA PAGA
+    ====================== */
 
     if(entradaPaga){
-        let dt=p.datas_parcelas||[]; if(!dt.length){let d=new Date();for(let i=1;i<=q;i++){d.setMonth(d.getMonth()+1);dt.push(d.toISOString().split('T')[0]);}}
-        html+=`<div class="sucesso-box"><i class="fas fa-check-double"></i><h3>PAGAMENTO CONFIRMADO!</h3></div>
-        <div class="bloco-entrega" style="background:#ECFDF5;border-color:#10B981;">
-            <p>Faltam <strong>${entrega.restante} dias úteis</strong> para entrega</p>
-            <div class="barra-progresso mt-2"><div class="barra-preenchida" style="width:${entrega.porcentagem}%"></div></div>
-        </div>
-        <div class="resumo-contrato mt-4">
-            <p>Total: <strong>R$ ${formatarValor(total)}</strong></p>
-            <p>Entrada Paga: <strong>R$ ${formatarValor(e)}</strong></p>
-            <p>Restante: <strong>R$ ${formatarValor(total-e)}</strong></p>
-            <p>${q}x de: <strong>R$ ${formatarValor(parc)}</strong></p>
-        </div>
-        <h3 class="font-bold mt-4 mb-3">SUAS PARCELAS</h3>`;
-        
-        dt.forEach((d,i)=>{
-            let vP=Number(parc),pg=i+1<=(p.parcelas_pagas||0),vn=new Date(d+'T00:00:00'),cr=pg?'luz-verde':(vn<new Date()?'luz-vermelha':'luz-amarela');
-            html+=`<div class="item-parcela">
-                <div class="dados-parcela">
-                    <span class="luz ${cr}"></span>
-                    <strong>${i+1}ª</strong> | R$ ${formatarValor(vP)} <br>Venc: ${vn.toLocaleDateString()}
-                </div>
-                <div>${pg?'<span class="sucesso">PAGO</span>':`<button onclick="gerarPixParcela(${vP},${i+1})" class="botao botao-pix-menor botao-pix">Pagar</button>`}</div>
-                <div id="pixParcela${i+1}" class="area-pix-parcela oculto"></div>
-            </div>`;
-        });
 
-        html+=`<a href="https://wa.me/5511973294235" target="_blank" class="botao botao-wpp mt-3">Suporte WhatsApp</a>`;
+        const dias =
+            Number(
+                p.dias_entrega || 0
+            );
+
+        const entrega =
+            calcularDiasUteis(
+                p.data_aprovacao_entrada ||
+                p.updated_at ||
+                new Date(),
+                dias
+            );
+
+        const financiado =
+            Math.max(
+                0,
+                total - entrada
+            );
+
+        const q =
+            Number(
+                p.qtd_parcelas_escolhida ||
+                obterQuantidadeEscolhida(p) ||
+                1
+            );
+
+        const parcela =
+            calcularParcela(
+                financiado,
+                juros,
+                q
+            );
+
+        html += `
+
+            <div class="status status-verde">
+
+                <i
+                    class="fas fa-circle-check"
+                    style="font-size:40px"
+                ></i>
+
+                <div style="
+                    font-size:19px;
+                    font-weight:800;
+                    margin-top:7px
+                ">
+                    Pagamento confirmado!
+                </div>
+
+            </div>
+
+            <div class="status status-azul">
+
+                <strong>
+                    Entrega
+                </strong>
+
+                <div style="font-size:15px;margin-top:5px">
+                    Faltam
+                    <strong>
+                        ${entrega.restante} dias úteis
+                    </strong>
+                    para a entrega.
+                </div>
+
+                <div class="progress">
+                    <div
+                        class="progress-bar"
+                        style="width:${entrega.porcentagem}%"
+                    ></div>
+                </div>
+
+            </div>
+
+            <div class="resumo">
+
+                <div class="linha">
+                    <span>Valor total</span>
+                    <strong class="valor">
+                        ${dinheiro(total)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Entrada paga</span>
+                    <strong class="valor">
+                        ${dinheiro(entrada)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Saldo</span>
+                    <strong class="valor">
+                        ${dinheiro(financiado)}
+                    </strong>
+                </div>
+
+                <div class="linha">
+                    <span>Parcelamento</span>
+                    <strong class="valor">
+                        ${q}x de ${dinheiro(parcela)}
+                    </strong>
+                </div>
+
+            </div>
+
+            <h3 style="
+                font-weight:800;
+                color:#0A2463;
+                margin:18px 0 10px;
+            ">
+                Suas parcelas
+            </h3>
+        `;
+
+        const datas =
+            obterDatasParcelas(
+                p,
+                q
+            );
+
+        for(
+            let i=0;
+            i<q;
+            i++
+        ){
+
+            const numero =
+                i+1;
+
+            const pago =
+                numero <=
+                Number(
+                    p.parcelas_pagas || 0
+                );
+
+            const vencimento =
+                datas[i];
+
+            let classe =
+                pago
+                    ? 'green'
+                    : new Date(vencimento) < new Date()
+                        ? 'red'
+                        : 'yellow';
+
+            html += `
+
+                <div class="parcela">
+
+                    <div class="parcela-top">
+
+                        <div>
+
+                            <span class="dot ${classe}"></span>
+
+                            <strong>
+                                ${numero}ª parcela
+                            </strong>
+
+                            <br>
+
+                            <small>
+                                Vencimento:
+                                ${formatarData(vencimento)}
+                            </small>
+
+                        </div>
+
+                        <strong class="valor">
+                            ${dinheiro(parcela)}
+                        </strong>
+
+                    </div>
+
+                    ${
+                        pago
+                        ?
+                        `<div style="
+                            color:#059669;
+                            font-weight:800;
+                            margin-top:8px;
+                        ">
+                            ✓ PAGO
+                        </div>`
+                        :
+                        `
+                        <button
+                            onclick="gerarPixParcela(${parcela},${numero})"
+                            class="btn btn-pix"
+                            style="margin-top:10px"
+                        >
+                            Pagar parcela
+                        </button>
+
+                        <div
+                            id="pixParcela${numero}"
+                            class="hidden"
+                        ></div>
+                        `
+                    }
+
+                </div>
+            `;
+        }
+
+        html += `
+
+            <a
+                href="https://wa.me/5511973294235"
+                target="_blank"
+                class="btn btn-whatsapp"
+                style="text-decoration:none;margin-top:14px"
+            >
+                <i class="fab fa-whatsapp"></i>
+                Falar com suporte
+            </a>
+        `;
     }
-    document.getElementById('conteudoProposta').innerHTML=html;
+
+
+    html += '</div>';
+
+    document
+        .getElementById('conteudoProposta')
+        .innerHTML = html;
+
 }
 
-async function confirmarParcelas(){const q=parseInt(document.getElementById('qtdEscolhida').value);await supabase.from('propostas').update({qtd_parcelas_escolhida:q}).eq('id',propostaAtual.id);}
-function alternarModo(m){modoAssinatura=m;document.getElementById('s1').classList.toggle('oculto',m!=='selfie');document.getElementById('s2').classList.toggle('oculto',m!=='texto');document.getElementById('assTxt').classList.toggle('oculto',m!=='texto');if(m==='selfie')navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;}).catch(()=>alternarModo('texto'));else if(webcamStream)webcamStream.getTracks().forEach(t=>t.stop());}
-function tirar(){const v=document.getElementById('vid'),c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);document.getElementById('img').src=c.toDataURL();document.getElementById('s1').classList.add('oculto');document.getElementById('s2').classList.remove('oculto');}
-function refazer(){document.getElementById('s2').classList.add('oculto');document.getElementById('s1').classList.remove('oculto');navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;});}
-async function assinar(){if(!document.getElementById('aceitoContrato').checked)return alert('Concorde com os termos!');let a=modoAssinatura==='selfie'?document.getElementById('img').src:document.getElementById('assTxt').value.trim();if(!a)return alert('Assine corretamente!');await supabase.from('propostas').update({contrato_assinado:true,assinatura:a}).eq('id',propostaAtual.id);}
+
+/* =========================
+   QUANTIDADE ESCOLHIDA
+========================= */
+
+function obterQuantidadeEscolhida(p){
+
+    const fontes = [
+        p.dados_parcelas,
+        p.parcelas
+    ];
+
+    for(const fonte of fontes){
+
+        if(!fonte) continue;
+
+        try{
+
+            const obj =
+                typeof fonte === 'string'
+                    ? JSON.parse(fonte)
+                    : fonte;
+
+            if(
+                obj &&
+                !Array.isArray(obj)
+            ){
+
+                const n =
+                    parseInt(
+                        obj.quantidade_escolhida ||
+                        obj.qtd_escolhida ||
+                        obj.parcelas_escolhidas ||
+                        obj.quantidade_parcelas
+                    );
+
+                if(n > 0){
+                    return n;
+                }
+            }
+
+        }catch(e){}
+    }
+
+    return 1;
+}
+
+
+/* =========================
+   SALVAR PARCELAMENTO
+========================= */
+
+async function confirmarParcelas(){
+
+    const select =
+        document.getElementById(
+            'qtdEscolhida'
+        );
+
+    const btn =
+        document.getElementById(
+            'btnContinuarParcelas'
+        );
+
+    if(!select) return;
+
+    const quantidade =
+        parseInt(select.value);
+
+    if(
+        !Number.isFinite(quantidade) ||
+        quantidade <= 0
+    ){
+        alert(
+            'Selecione uma quantidade válida de parcelas.'
+        );
+
+        return;
+    }
+
+    btn.disabled = true;
+
+    btn.innerHTML =
+        '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+
+    try{
+
+        /*
+          Como seu banco possui dados_parcelas
+          como JSONB, guardamos a escolha nele.
+        */
+
+        const atual =
+            propostaAtual.dados_parcelas || {};
+
+        let dados;
+
+        if(typeof atual === 'string'){
+
+            try{
+                dados = JSON.parse(atual);
+            }catch(e){
+                dados = {};
+            }
+
+        }else{
+
+            dados = {
+                ...atual
+            };
+        }
+
+        dados.quantidade_escolhida =
+            quantidade;
+
+        dados.qtd_escolhida =
+            quantidade;
+
+        const {data,error} =
+            await supabaseClient
+                .from('propostas')
+                .update({
+                    dados_parcelas:dados
+                })
+                .eq(
+                    'id',
+                    propostaAtual.id
+                )
+                .select()
+                .single();
+
+        if(error){
+
+            console.error(error);
+
+            throw new Error(
+                'Não foi possível salvar a quantidade de parcelas.'
+            );
+        }
+
+        propostaAtual =
+            data;
+
+        /*
+          Mantém também em memória para
+          a tela atual.
+        */
+
+        propostaAtual.qtd_parcelas_escolhida =
+            quantidade;
+
+        mostrarProposta(
+            propostaAtual
+        );
+
+    }catch(error){
+
+        alert(
+            error.message ||
+            'Erro ao salvar parcelas.'
+        );
+
+        btn.disabled = false;
+
+        btn.innerHTML =
+            'Continuar <i class="fas fa-arrow-right"></i>';
+    }
+}
+
+
+/* =========================
+   ASSINATURA
+========================= */
+
+async function assinarContrato(){
+
+    const erro =
+        document.getElementById(
+            'erroAssinatura'
+        );
+
+    erro.classList.add('hidden');
+
+    const aceite =
+        document.getElementById(
+            'aceitoContrato'
+        );
+
+    if(
+        !aceite ||
+        !aceite.checked
+    ){
+
+        erro.textContent =
+            'Você precisa aceitar o contrato antes de assinar.';
+
+        erro.classList.remove('hidden');
+
+        return;
+    }
+
+    let assinatura = '';
+
+    if(
+        !document
+            .getElementById('areaSelfie')
+            .classList.contains('hidden')
+    ){
+
+        if(!assinaturaFoto){
+
+            erro.textContent =
+                'Primeiro capture sua selfie para assinar.';
+
+            erro.classList.remove('hidden');
+
+            return;
+        }
+
+        assinatura =
+            assinaturaFoto;
+
+    }else{
+
+        const nome =
+            document
+                .getElementById('assTxt')
+                .value
+                .trim();
+
+        if(!nome){
+
+            erro.textContent =
+                'Digite seu nome completo para assinar.';
+
+            erro.classList.remove('hidden');
+
+            return;
+        }
+
+        assinatura =
+            nome;
+    }
+
+    const btn =
+        document.getElementById(
+            'btnAssinar'
+        );
+
+    btn.disabled = true;
+
+    btn.innerHTML =
+        '<i class="fas fa-spinner fa-spin"></i> Registrando assinatura...';
+
+    try{
+
+        /*
+          CAMPOS CORRETOS DA SUA TABELA:
+
+          assinatura_assinada = boolean
+          selfie_cliente      = text
+          contrato_assinado   = text
+        */
+
+        const contratoTexto =
+            `Contrato assinado eletronicamente pelo cliente ${propostaAtual.nome || ''} em ${new Date().toLocaleString('pt-BR')}.`;
+
+        const update = {
+            assinatura_assinada:true,
+            selfie_cliente:assinatura,
+            contrato_assinado:contratoTexto
+        };
+
+        const {data,error} =
+            await supabaseClient
+                .from('propostas')
+                .update(update)
+                .eq(
+                    'id',
+                    propostaAtual.id
+                )
+                .select()
+                .single();
+
+        if(error){
+
+            console.error(
+                'Erro Supabase:',
+                error
+            );
+
+            throw new Error(
+                error.message ||
+                'O banco recusou o registro da assinatura.'
+            );
+        }
+
+        propostaAtual =
+            data;
+
+        pararCamera();
+
+        assinaturaFoto =
+            null;
+
+        mostrarProposta(
+            propostaAtual
+        );
+
+    }catch(error){
+
+        console.error(error);
+
+        erro.textContent =
+            'Não foi possível registrar a assinatura: ' +
+            error.message;
+
+        erro.classList.remove('hidden');
+
+        btn.disabled = false;
+
+        btn.innerHTML =
+            '<i class="fas fa-file-signature"></i> Assinar contrato';
+    }
+}
+
+
+/* =========================
+   CÂMERA
+========================= */
+
+async function iniciarCamera(){
+
+    if(
+        document
+            .getElementById('areaSelfie')
+            ?.classList
+            .contains('hidden')
+    ){
+        return;
+    }
+
+    try{
+
+        if(!navigator.mediaDevices?.getUserMedia){
+
+            throw new Error(
+                'Câmera não suportada.'
+            );
+        }
+
+        pararCamera();
+
+        webcamStream =
+            await navigator.mediaDevices.getUserMedia({
+                video:{
+                    facingMode:'user'
+                },
+                audio:false
+            });
+
+        const video =
+            document.getElementById('vid');
+
+        if(video){
+
+            video.srcObject =
+                webcamStream;
+
+            await video.play();
+        }
+
+    }catch(error){
+
+        console.error(error);
+
+        /*
+          Se câmera não funcionar,
+          muda automaticamente para assinatura
+          por nome.
+        */
+
+        alternarModo('texto');
+
+        const erro =
+            document.getElementById(
+                'erroAssinatura'
+            );
+
+        if(erro){
+
+            erro.textContent =
+                'Não foi possível acessar a câmera. Você pode assinar digitando seu nome.';
+
+            erro.classList.remove(
+                'hidden'
+            );
+        }
+    }
+}
+
+function pararCamera(){
+
+    if(webcamStream){
+
+        webcamStream
+            .getTracks()
+            .forEach(
+                track => track.stop()
+            );
+
+        webcamStream =
+            null;
+    }
+}
+
+function tirarFoto(){
+
+    const video =
+        document.getElementById('vid');
+
+    if(
+        !video ||
+        !video.videoWidth
+    ){
+
+        alert(
+            'A câmera ainda não está pronta.'
+        );
+
+        return;
+    }
+
+    const canvas =
+        document.createElement('canvas');
+
+    canvas.width =
+        video.videoWidth;
+
+    canvas.height =
+        video.videoHeight;
+
+    const ctx =
+        canvas.getContext('2d');
+
+    ctx.drawImage(
+        video,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    assinaturaFoto =
+        canvas.toDataURL(
+            'image/jpeg',
+            0.75
+        );
+
+    document
+        .getElementById('img')
+        .src =
+        assinaturaFoto;
+
+    document
+        .getElementById('preview')
+        .classList
+        .remove('hidden');
+
+    pararCamera();
+
+    document
+        .getElementById('btnRefazer')
+        .classList
+        .remove('hidden');
+}
+
+function refazerFoto(){
+
+    assinaturaFoto =
+        null;
+
+    document
+        .getElementById('preview')
+        .classList
+        .add('hidden');
+
+    iniciarCamera();
+}
+
+
+/* =========================
+   MODO ASSINATURA
+========================= */
+
+function alternarModo(modo){
+
+    const selfie =
+        document.getElementById(
+            'areaSelfie'
+        );
+
+    const texto =
+        document.getElementById(
+            'areaTexto'
+        );
+
+    if(modo === 'texto'){
+
+        pararCamera();
+
+        selfie.classList.add(
+            'hidden'
+        );
+
+        texto.classList.remove(
+            'hidden'
+        );
+
+    }else{
+
+        texto.classList.add(
+            'hidden'
+        );
+
+        selfie.classList.remove(
+            'hidden'
+        );
+
+        iniciarCamera();
+    }
+}
+
+
+/* =========================
+   PIX
+========================= */
+
+async function buscarPix(
+    valor,
+    descricao
+){
+
+    const resposta =
+        await fetch(
+            '/api/gerar-pix',
+            {
+                method:'POST',
+
+                headers:{
+                    'Content-Type':
+                        'application/json'
+                },
+
+                body:JSON.stringify({
+                    valor:Number(valor)
+                        .toFixed(2),
+
+                    descricao
+                })
+            }
+        );
+
+    if(!resposta.ok){
+
+        throw new Error(
+            'Não foi possível gerar o PIX.'
+        );
+    }
+
+    const json =
+        await resposta.json();
+
+    const codigo =
+        json.qr_code ||
+        json.copia_cola ||
+        json.pixCopiaECola ||
+        json.codigo;
+
+    if(!codigo){
+
+        throw new Error(
+            'A API não retornou o código PIX.'
+        );
+    }
+
+    return codigo;
+}
+
+
+/* =========================
+   PIX ENTRADA
+========================= */
 
 async function gerarPixEntrada(valor){
-    const a = document.getElementById('areaPixEntrada');
-    a.classList.remove('oculto');
-    a.innerHTML=`<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Gerando...</div>`;
+
+    if(gerandoPix) return;
+
+    if(
+        !valor ||
+        Number(valor) <= 0
+    ){
+
+        alert(
+            'O valor da entrada não é válido.'
+        );
+
+        return;
+    }
+
+    gerandoPix = true;
+
+    const area =
+        document.getElementById(
+            'areaPixEntrada'
+        );
+
+    const btn =
+        document.getElementById(
+            'btnPixEntrada'
+        );
+
+    area.classList.remove(
+        'hidden'
+    );
+
+    area.innerHTML = `
+        <div class="pix-box" style="text-align:center">
+            <i class="fas fa-spinner fa-spin"></i>
+            <br>
+            Gerando PIX...
+        </div>
+    `;
+
+    btn.disabled = true;
+
     try{
-        const cd=await buscarPix(valor,`Entrada - ${propostaAtual.id}`);
-        a.innerHTML=`<div class="qrcode-area" id="qrentrada"></div><div class="codigo-pix">${cd}</div><button onclick="navigator.clipboard.writeText('${cd}').then(()=>alert('Copiado!'))" class="botao botao-copiar">📋 Copiar</button>`;
-        setTimeout(()=>new QRCode(document.getElementById('qrentrada'),{text:cd,width:200,height:200}),50);
-    }catch(e){a.innerHTML=`<div class="text-center text-perigo">${e}</div>`;}
+
+        const codigo =
+            await buscarPix(
+                valor,
+                `Entrada - Proposta ${propostaAtual.id}`
+            );
+
+        area.innerHTML = `
+            <div class="pix-box">
+
+                <div style="
+                    text-align:center;
+                    font-weight:800;
+                    color:#047857;
+                    margin-bottom:10px;
+                ">
+                    PIX da entrada
+                </div>
+
+                <div
+                    id="qrEntrada"
+                    class="qr"
+                ></div>
+
+                <div class="codigo">
+                    ${escapeHTML(codigo)}
+                </div>
+
+                <button
+                    onclick="copiarPix(${JSON.stringify(codigo)})"
+                    class="btn btn-primary"
+                >
+                    <i class="fas fa-copy"></i>
+                    Copiar código PIX
+                </button>
+
+            </div>
+        `;
+
+        setTimeout(()=>{
+
+            new QRCode(
+                document.getElementById(
+                    'qrEntrada'
+                ),
+                {
+                    text:codigo,
+                    width:210,
+                    height:210
+                }
+            );
+
+        },50);
+
+    }catch(error){
+
+        area.innerHTML = `
+            <div class="alert alert-error">
+                ${escapeHTML(error.message)}
+            </div>
+        `;
+
+    }finally{
+
+        gerandoPix = false;
+
+        btn.disabled = false;
+    }
 }
 
-async function gerarPixParcela(valor,num){
-    const a = document.getElementById(`pixParcela${num}`);
-    a.classList.remove('oculto');
-    a.innerHTML=`<div class="text-center py-2"><i class="fas fa-spinner fa-spin"></i></div>`;
+
+/* =========================
+   PIX PARCELA
+========================= */
+
+async function gerarPixParcela(
+    valor,
+    numero
+){
+
+    const area =
+        document.getElementById(
+            `pixParcela${numero}`
+        );
+
+    if(!area) return;
+
+    area.classList.remove(
+        'hidden'
+    );
+
+    area.innerHTML = `
+        <div class="pix-box"
+             style="text-align:center">
+            <i class="fas fa-spinner fa-spin"></i>
+            Gerando PIX...
+        </div>
+    `;
+
     try{
-        const cd=await buscarPix(valor,`Parcela ${num} - ${propostaAtual.id}`);
-        a.innerHTML=`<div class="qrcode-area" id="qr${num}"></div><div class="codigo-pix">${cd}</div><button onclick="navigator.clipboard.writeText('${cd}').then(()=>alert('Copiado!'))" class="botao botao-copiar">📋 Copiar</button>`;
-        setTimeout(()=>new QRCode(document.getElementById(`qr${num}`),{text:cd,width:180,height:180}),50);
-    }catch(e){a.innerHTML=`<div class="text-center text-perigo">${e}</div>`;}
+
+        const codigo =
+            await buscarPix(
+                valor,
+                `Parcela ${numero} - Proposta ${propostaAtual.id}`
+            );
+
+        area.innerHTML = `
+            <div class="pix-box">
+
+                <div
+                    id="qrParcela${numero}"
+                    class="qr"
+                ></div>
+
+                <div class="codigo">
+                    ${escapeHTML(codigo)}
+                </div>
+
+                <button
+                    onclick="copiarPix(${JSON.stringify(codigo)})"
+                    class="btn btn-primary"
+                >
+                    <i class="fas fa-copy"></i>
+                    Copiar PIX
+                </button>
+
+            </div>
+        `;
+
+        setTimeout(()=>{
+
+            new QRCode(
+                document.getElementById(
+                    `qrParcela${numero}`
+                ),
+                {
+                    text:codigo,
+                    width:190,
+                    height:190
+                }
+            );
+
+        },50);
+
+    }catch(error){
+
+        area.innerHTML = `
+            <div class="alert alert-error">
+                ${escapeHTML(error.message)}
+            </div>
+        `;
+    }
 }
 
-async function buscarPix(valor,desc){
-    const r=await fetch('/api/gerar-pix',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({valor:parseFloat(valor).toFixed(2),descricao:desc})});
-    if(!r.ok)throw 'Erro ao gerar Pix';
-    const j=await r.json();
-    return j.qr_code||j.copia_cola||j.pixCopiaECola||j.codigo;
+
+/* =========================
+   COPIAR PIX
+========================= */
+
+async function copiarPix(codigo){
+
+    try{
+
+        await navigator.clipboard.writeText(
+            codigo
+        );
+
+        alert(
+            'Código PIX copiado!'
+        );
+
+    }catch(error){
+
+        const textarea =
+            document.createElement(
+                'textarea'
+            );
+
+        textarea.value =
+            codigo;
+
+        document.body.appendChild(
+            textarea
+        );
+
+        textarea.select();
+
+        document.execCommand(
+            'copy'
+        );
+
+        textarea.remove();
+
+        alert(
+            'Código PIX copiado!'
+        );
+    }
 }
+
+
+/* =========================
+   DATAS PARCELAS
+========================= */
+
+function obterDatasParcelas(
+    p,
+    quantidade
+){
+
+    let fonte =
+        p.datas_parcelas;
+
+    if(
+        typeof fonte === 'string'
+    ){
+
+        try{
+            fonte =
+                JSON.parse(fonte);
+        }catch(e){
+            fonte = [];
+        }
+    }
+
+    if(
+        Array.isArray(fonte) &&
+        fonte.length >= quantidade
+    ){
+
+        return fonte
+            .slice(0,quantidade);
+    }
+
+    const inicio =
+        p.data_aprovacao_entrada ||
+        p.updated_at ||
+        new Date();
+
+    const resultado = [];
+
+    for(
+        let i=1;
+        i<=quantidade;
+        i++
+    ){
+
+        resultado.push(
+            adicionarMes(
+                inicio,
+                i
+            ).toISOString()
+        );
+    }
+
+    return resultado;
+}
+
+
+/* =========================
+   SEGURANÇA HTML
+========================= */
+
+function escapeHTML(valor){
+
+    return String(
+        valor ?? ''
+    )
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+}
+
+
+/* =========================
+   VOLTAR
+========================= */
+
+function voltarInicio(){
+
+    pararCamera();
+
+    if(canalAtual){
+
+        supabaseClient.removeChannel(
+            canalAtual
+        );
+
+        canalAtual = null;
+    }
+
+    propostaAtual =
+        null;
+
+    assinaturaFoto =
+        null;
+
+    sessionStorage.removeItem(
+        'ultimo_cpf'
+    );
+
+    document
+        .getElementById(
+            'cpfConsulta'
+        )
+        .value = '';
+
+    document
+        .getElementById(
+            'telaProposta'
+        )
+        .classList
+        .add('hidden');
+
+    document
+        .getElementById(
+            'telaConsulta'
+        )
+        .classList
+        .remove('hidden');
+
+    esconderErroConsulta();
+}
+
+
+/* =========================
+   INICIALIZAÇÃO
+========================= */
+
+document.addEventListener(
+    'DOMContentLoaded',
+    ()=>{
+
+        const cpf =
+            document.getElementById(
+                'cpfConsulta'
+            );
+
+        cpf.addEventListener(
+            'input',
+            ()=>{
+                cpf.value =
+                    formatarCPF(
+                        cpf.value
+                    );
+            }
+        );
+
+        cpf.addEventListener(
+            'keydown',
+            event => {
+
+                if(
+                    event.key === 'Enter'
+                ){
+
+                    executarConsulta();
+                }
+            }
+        );
+
+        const salvo =
+            sessionStorage.getItem(
+                'ultimo_cpf'
+            );
+
+        if(salvo){
+
+            cpf.value =
+                formatarCPF(
+                    salvo
+                );
+
+            executarConsulta();
+        }
+    }
+);
+
+window.addEventListener(
+    'beforeunload',
+    pararCamera
+);
+
 </script>
+
 </body>
 </html>
