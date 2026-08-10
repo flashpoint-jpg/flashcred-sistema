@@ -91,16 +91,16 @@ let inscricaoTempoReal = null;
 let webcamStream = null;
 let modoAssinatura = 'selfie';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const btn = document.getElementById('btnConsultar');
     btn.onclick = consultar;
     document.getElementById('cpfConsulta').addEventListener('keydown', (e)=>{ if(e.key==='Enter') consultar(); });
-    
-    const params = new URLSearchParams(window.location.search);
-    const cpfUrl = params.get('cpf');
-    if(cpfUrl) {
-        document.getElementById('cpfConsulta').value = cpfUrl.replace(/\D/g,'');
-        consultar();
+
+    // ✅ AO CARREGAR/ATUALIZAR: VOLTA DIRETO NA PROPOSTA SALVA
+    const cpfSalvo = sessionStorage.getItem('ultimo_cpf_consulta');
+    if(cpfSalvo) {
+        document.getElementById('cpfConsulta').value = cpfSalvo;
+        await consultar();
     }
 });
 
@@ -108,6 +108,7 @@ function voltarInicio() {
     if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
     if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
     propostaAtual = null;
+    sessionStorage.removeItem('ultimo_cpf_consulta');
     document.getElementById('cpfConsulta').value = '';
     document.getElementById('telaProposta').classList.remove('visivel');
     document.getElementById('telaConsulta').classList.add('visivel');
@@ -128,6 +129,7 @@ async function consultar() {
         if(!data || data.length === 0) throw "Proposta não encontrada!";
 
         propostaAtual = data[0];
+        sessionStorage.setItem('ultimo_cpf_consulta', cpf); // SALVA PARA NÃO PERDER NO F5
         mostrarProposta(propostaAtual);
         
         if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
@@ -139,6 +141,7 @@ async function consultar() {
 
     } catch(erro) {
         alert('Erro na busca: ' + erro);
+        sessionStorage.removeItem('ultimo_cpf_consulta');
     }
 }
 
@@ -363,64 +366,4 @@ function tirarSelfie(){
     const v = document.getElementById('videoCamera');
     const c = document.createElement('canvas'); c.width=v.videoWidth; c.height=v.videoHeight;
     c.getContext('2d').drawImage(v,0,0);
-    document.getElementById('imgSelfie').src = c.toDataURL();
-    document.getElementById('areaCamera').classList.add('oculto');
-    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
-    pararCamera();
-}
-function refazerSelfie(){
-    document.getElementById('areaPreviewSelfie').classList.add('oculto');
-    document.getElementById('areaCamera').classList.remove('oculto');
-    iniciarCamera();
-}
-
-async function assinarContrato(){
-    if(!document.getElementById('aceitoContrato').checked) return alert('Concorde com o contrato!');
-    let assinatura;
-    if(modoAssinatura==='selfie'){
-        assinatura = document.getElementById('imgSelfie').src;
-        if(!assinatura) return alert('Tire a foto!');
-    }else{
-        assinatura = document.getElementById('assinaturaTexto').value.trim();
-        if(!assinatura) return alert('Digite sua assinatura!');
-    }
-    await supabase.from('propostas').update({contrato_assinado:true, assinatura}).eq('id', propostaAtual.id);
-}
-
-// ✅ FUNÇÃO COM TESTE — NÃO QUEBRA NADA, SÓ MOSTRA O ERRO
-async function gerarPix(valor, tipo, numero=null){
-    const area = document.getElementById('areaPix');
-    area.classList.remove('oculto');
-    area.innerHTML = `<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Verificando...</div>`;
-
-    try{
-        if(!propostaAtual) throw "Nenhuma proposta carregada!";
-        if(!valor || valor<=0) throw "Valor inválido!";
-
-        const desc = tipo==='entrada' ? `Entrada - Proposta ${propostaAtual.id}` : `Parcela ${numero} - Proposta ${propostaAtual.id}`;
-        const res = await fetch('/api/gerar-pix', {
-            method:'POST', 
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({valor: Number(valor), descricao: desc})
-        });
-
-        const texto = await res.text();
-        let ret;
-        try { ret = JSON.parse(texto); } catch { throw "Erro na API: " + texto; }
-
-        const codigo = ret.qr_code || ret.copia_cola || ret.pix;
-        if(!codigo) throw "Não veio o Pix: " + JSON.stringify(ret);
-
-        area.innerHTML = `<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${codigo}</div>`;
-        new QRCode(document.getElementById('qrcode'), {text: codigo, width:200, height:200});
-
-    }catch(erro){
-        area.innerHTML = `<div class="text-center py-4 text-perigo p-4 rounded-lg border-2 border-red-300">
-            <p class="font-bold mb-2">⚠️ O QUE ACONTECEU:</p>
-            <p>${erro}</p>
-        </div>`;
-    }
-}
-</script>
-</body>
-</html>
+    document
