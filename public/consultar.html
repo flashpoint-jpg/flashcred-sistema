@@ -387,36 +387,38 @@ async function assinarContrato(){
     await supabase.from('propostas').update({contrato_assinado:true, assinatura}).eq('id', propostaAtual.id);
 }
 
-// ✅ FUNÇÃO DE PIX CORRIGIDA — AGORA FUNCIONA NA HORA
+// ✅ FUNÇÃO COM TESTE — NÃO QUEBRA NADA, SÓ MOSTRA O ERRO
 async function gerarPix(valor, tipo, numero=null){
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
-    area.innerHTML = `<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Gerando Pix...</div>`;
+    area.innerHTML = `<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Verificando...</div>`;
 
     try{
+        if(!propostaAtual) throw "Nenhuma proposta carregada!";
         if(!valor || valor<=0) throw "Valor inválido!";
+
         const desc = tipo==='entrada' ? `Entrada - Proposta ${propostaAtual.id}` : `Parcela ${numero} - Proposta ${propostaAtual.id}`;
-        
-        // Chama a API e aceita qualquer retorno válido do Mercado Pago
         const res = await fetch('/api/gerar-pix', {
             method:'POST', 
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({valor: Number(valor), descricao: desc})
         });
 
-        const ret = await res.json();
-        // Aceita tanto retorno com sucesso:true quanto direto com qr_code/copia_cola
-        if(!ret.qr_code && !ret.copia_cola) throw ret.mensagem || "Não foi possível gerar o Pix";
+        const texto = await res.text();
+        let ret;
+        try { ret = JSON.parse(texto); } catch { throw "Erro na API: " + texto; }
 
-        area.innerHTML = `<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${ret.qr_code || ret.copia_cola}</div>`;
-        new QRCode(document.getElementById('qrcode'), {
-            text: ret.qr_code || ret.copia_cola,
-            width: 200,
-            height: 200
-        });
+        const codigo = ret.qr_code || ret.copia_cola || ret.pix;
+        if(!codigo) throw "Não veio o Pix: " + JSON.stringify(ret);
+
+        area.innerHTML = `<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${codigo}</div>`;
+        new QRCode(document.getElementById('qrcode'), {text: codigo, width:200, height:200});
 
     }catch(erro){
-        area.innerHTML = `<div class="text-center py-4 text-perigo"><i class="fas fa-exclamation-triangle text-2xl mb-2"></i><p class="font-bold">Erro ao gerar Pix:</p><p>${erro}</p></div>`;
+        area.innerHTML = `<div class="text-center py-4 text-perigo p-4 rounded-lg border-2 border-red-300">
+            <p class="font-bold mb-2">⚠️ O QUE ACONTECEU:</p>
+            <p>${erro}</p>
+        </div>`;
     }
 }
 </script>
