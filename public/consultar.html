@@ -8,206 +8,51 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0A2463',
-                        pix: '#32BCAD',
-                        sucesso: '#10B981',
-                        alerta: '#F59E0B',
-                        perigo: '#EF4444',
-                        andamento: '#3B82F6'
-                    }
-                }
-            }
-        };
+        tailwind.config = { theme: { extend: { colors: { primary: '#0A2463', sucesso: '#10B981', alerta: '#F59E0B' } } } };
         const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         const CPF = new URLSearchParams(window.location.search).get('cpf');
-        const NUMERO_SUPORTE = '5511973294235';
-        let propostaAtual = null;
-        let etapaAtual = 1;
 
-        async function carregarProposta() {
-            // ✅ TELA DE CARREGAMENTO ENQUANTO BUSCA
-            document.getElementById('conteudo').innerHTML = `
-            <div class="flex flex-col items-center justify-center min-h-screen p-4">
-                <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
-                <p class="text-gray-600">Carregando sua proposta...</p>
+        async function carregar() {
+            document.getElementById('area').innerHTML = `<div class="text-center p-10"><div class="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div><p>Carregando...</p></div>`;
+            
+            if(!CPF) return window.location.href='consultar.html';
+            
+            const {data:p} = await supabase.from('propostas').select('*').eq('cpf', CPF.replace(/\D/g,'')).single();
+            if(!p) return document.getElementById('area').innerHTML=`<p class="text-center p-10 text-red-600">Proposta não encontrada</p>`;
+
+            const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||1);
+            const total=v*(1+j/100), parc=q>0?(total-e)/q:0;
+            const dias=Number(p.dias_entrega||8);
+
+            document.getElementById('area').innerHTML = `
+            <div class="max-w-md mx-auto bg-white p-5 rounded-xl shadow">
+                <h2 class="text-xl font-bold text-center text-primary mb-4">Olá, ${p.nome}!</h2>
+                <div class="bg-blue-50 p-4 rounded-lg mb-4">
+                    <p><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                    <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                    <p><strong>Parcelamento:</strong> ${q}x de R$ ${parc.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
+                    <p><strong>Juros:</strong> ${j}% ao mês</p>
+                    <p><strong>Prazo de Entrega:</strong> ${dias} dias úteis</p>
+                </div>
+                <p class="text-sm mb-4">Valor total R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}, entrada R$ ${e.toLocaleString('pt-BR',{minimumFractionDigits:2})}, ${q} parcelas, juros ${j}% a.m., entrega em ${dias} dias úteis.</p>
+                <label class="flex items-center gap-2 mb-4"><input type="checkbox" id="ok"> Li e concordo com o contrato</label>
+                <button onclick="assinar()" class="w-full bg-primary text-white py-3 rounded-lg font-bold">Assinar Contrato</button>
+                <div class="text-center mt-4"><a href="https://wa.me/5511973294235" target="_blank" class="text-primary">Falar com Suporte</a></div>
             </div>`;
-
-            if(!CPF) {
-                setTimeout(() => window.location.href = 'consultar.html', 1500);
-                return;
-            }
-
-            try {
-                const {data: proposta, error} = await supabase.from('propostas').select('*').eq('cpf', CPF.replace(/\D/g,'')).single();
-                if(error || !proposta) throw new Error('Proposta não encontrada');
-                
-                propostaAtual = proposta;
-                // ✅ VALORES EXATOS DO PAINEL
-                const v = Number(proposta.valor_desejado||0);
-                const e = Number(proposta.valor_entrada||0);
-                const j = Number(proposta.juros_mensal||5);
-                const q = Number(proposta.quantidade_parcelas||1);
-                const total = v*(1+j/100);
-                const parcela = q>0 ? (total-e)/q : 0;
-                const diasEntrega = Number(proposta.dias_entrega||8);
-
-                // ✅ BARRA DE ETAPAS E CONTEÚDO
-                let html = `
-                <div class="max-w-md mx-auto bg-white rounded-xl shadow-lg overflow-hidden my-4">
-                    <div class="flex justify-between px-3 py-3 bg-gray-50 border-b">
-                        <div class="text-center text-xs ${etapaAtual>=1?'text-primary font-bold':'text-gray-400'}">
-                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=1?'border-primary bg-primary text-white':'border-gray-300'}">1</div>
-                            Análise
-                        </div>
-                        <div class="text-center text-xs ${etapaAtual>=2?'text-primary font-bold':'text-gray-400'}">
-                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=2?'border-primary bg-primary text-white':'border-gray-300'}">2</div>
-                            Parcelas
-                        </div>
-                        <div class="text-center text-xs ${etapaAtual>=3?'text-primary font-bold':'text-gray-400'}">
-                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=3?'border-primary bg-primary text-white':'border-gray-300'}">3</div>
-                            Contrato
-                        </div>
-                        <div class="text-center text-xs ${etapaAtual>=4?'text-primary font-bold':'text-gray-400'}">
-                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=4?'border-primary bg-primary text-white':'border-gray-300'}">4</div>
-                            Entrada
-                        </div>
-                        <div class="text-center text-xs ${etapaAtual>=5?'text-primary font-bold':'text-gray-400'}">
-                            <div class="w-7 h-7 rounded-full border-2 mx-auto mb-1 flex items-center justify-center ${etapaAtual>=5?'border-primary bg-primary text-white':'border-gray-300'}">5</div>
-                            Entrega
-                        </div>
-                    </div>
-
-                    <div class="p-5">
-                        <h2 class="text-xl font-bold text-center text-primary mb-4">Olá, ${proposta.nome}!</h2>`;
-
-                // ETAPA 1: DADOS
-                if(etapaAtual === 1) {
-                    html += `
-                    <div class="bg-blue-50 p-4 rounded-lg mb-4">
-                        <p class="mb-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                        <p class="mb-2"><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                        <p class="mb-2"><strong>Parcelamento:</strong> ${q}x de R$ ${parcela.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                        <p class="mb-2"><strong>Juros:</strong> ${j}% ao mês</p>
-                        <p class="mb-2"><strong>Prazo de Entrega:</strong> ${diasEntrega} dias úteis</p>
-                    </div>
-                    <button onclick="proximaEtapa()" class="w-full bg-primary text-white py-3 rounded-lg font-bold">Continuar</button>`;
-                }
-
-                // ETAPA 2: ESCOLHER PARCELAS (SÓ ATÉ O QUE VOCÊ LIBEROU)
-                if(etapaAtual === 2) {
-                    let opcoes = '';
-                    for(let i=1; i<=q; i++){
-                        const val = (total-e)/i;
-                        opcoes += `
-                        <label class="flex items-center gap-3 p-3 border rounded-lg mb-2 cursor-pointer hover:bg-gray-50">
-                            <input type="radio" name="qtd_parcelas" value="${i}" class="w-4 h-4">
-                            ${i}x de R$ ${val.toLocaleString('pt-BR', {minimumFractionDigits:2})}
-                        </label>`;
-                    }
-                    html += `
-                    <h3 class="font-bold mb-3">Escolha a quantidade de parcelas</h3>
-                    ${opcoes}
-                    <div class="flex gap-3 mt-4">
-                        <button onclick="etapaAtual=1;carregarProposta()" class="flex-1 bg-gray-200 py-2 rounded-lg">Voltar</button>
-                        <button onclick="confirmarParcela()" class="flex-1 bg-primary text-white py-2 rounded-lg font-bold">Confirmar</button>
-                    </div>`;
-                }
-
-                // ETAPA 3: CONTRATO E ASSINATURA
-                if(etapaAtual === 3) {
-                    html += `
-                    <div class="bg-blue-50 p-4 rounded-lg mb-4">
-                        <p class="mb-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                        <p class="mb-2"><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                        <p class="mb-2"><strong>Parcelamento:</strong> ${q}x de R$ ${parcela.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
-                        <p class="mb-2"><strong>Juros:</strong> ${j}% ao mês</p>
-                        <p class="mb-2"><strong>Prazo de Entrega:</strong> ${diasEntrega} dias úteis</p>
-                    </div>
-                    <p class="text-sm mb-4">Ao assinar você concorda com todos os termos do contrato.</p>
-                    <label class="flex items-center gap-2 mb-4 cursor-pointer">
-                        <input type="checkbox" id="concordo" class="w-4 h-4">
-                        Li e concordo com o contrato
-                    </label>
-                    <div class="flex gap-3 mb-4">
-                        <button class="flex-1 bg-primary text-white py-2 rounded-lg" onclick="assinarSelfie()">
-                            <i class="fas fa-camera mr-1"></i> Selfie
-                        </button>
-                        <button class="flex-1 bg-gray-200 py-2 rounded-lg" onclick="assinarTexto()">
-                            <i class="fas fa-pen mr-1"></i> Assinatura
-                        </button>
-                    </div>
-                    <div id="areaSelfie" class="hidden mb-4">
-                        <video id="camera" autoplay playsinline class="w-full rounded-lg"></video>
-                        <button onclick="tirarFoto()" class="w-full bg-sucesso text-white py-2 rounded-lg mt-2">Tirar Foto</button>
-                    </div>
-                    <div id="areaAssinatura" class="hidden mb-4">
-                        <canvas id="assinatura" class="w-full h-32 border rounded-lg bg-white"></canvas>
-                    </div>
-                    <div class="flex gap-3 mt-4">
-                        <button onclick="etapaAtual=2;carregarProposta()" class="flex-1 bg-gray-200 py-2 rounded-lg">Voltar</button>
-                        <button id="btnAssinar" onclick="confirmarAssinatura()" class="flex-1 bg-sucesso text-white py-2 rounded-lg font-bold hidden">Assinar Contrato</button>
-                    </div>`;
-                }
-
-                html += `
-                    </div>
-                    <div class="text-center text-sm text-gray-600 pb-4">
-                        Dúvidas? <a href="https://wa.me/${NUMERO_SUPORTE}" target="_blank" class="text-primary font-semibold">Falar com Suporte</a>
-                    </div>
-                </div>`;
-
-                document.getElementById('conteudo').innerHTML = html;
-
-            } catch (erro) {
-                document.getElementById('conteudo').innerHTML = `
-                <div class="flex flex-col items-center justify-center min-h-screen p-4 text-center">
-                    <i class="fas fa-exclamation-triangle text-alerta text-4xl mb-4"></i>
-                    <p class="mb-4">${erro.message}</p>
-                    <button onclick="window.location.href='consultar.html'" class="botao botao-primario">Voltar e Consultar Novamente</button>
-                </div>`;
-            }
         }
 
-        function proximaEtapa() { etapaAtual++; carregarProposta(); }
-        function confirmarParcela() {
-            const sel = document.querySelector('input[name="qtd_parcelas"]:checked');
-            if(!sel) return alert('Escolha a quantidade de parcelas!');
-            etapaAtual = 3;
-            supabase.from('propostas').update({qtd_escolhida:Number(sel.value)}).eq('id', propostaAtual.id);
-            carregarProposta();
-        }
-        function assinarSelfie() {
-            document.getElementById('areaSelfie').classList.remove('hidden');
-            document.getElementById('areaAssinatura').classList.add('hidden');
-            document.getElementById('btnAssinar').classList.remove('hidden');
-            navigator.mediaDevices.getUserMedia({video:true}).then(v=>document.getElementById('camera').srcObject=v);
-        }
-        function assinarTexto() {
-            document.getElementById('areaAssinatura').classList.remove('hidden');
-            document.getElementById('areaSelfie').classList.add('hidden');
-            document.getElementById('btnAssinar').classList.remove('hidden');
-        }
-        function confirmarAssinatura() {
-            if(!document.getElementById('concordo').checked) return alert('Você precisa concordar com os termos!');
-            supabase.from('propostas').update({assinado:true, data_assinatura:new Date()}).eq('id', propostaAtual.id);
+        function assinar() {
+            if(!document.getElementById('ok').checked) return alert('Concorde primeiro!');
             alert('Contrato assinado! Agora gere o Pix da entrada.');
-            etapaAtual = 4;
-            carregarProposta();
         }
 
-        // ✅ ATUALIZAÇÃO EM TEMPO REAL SEM TRAVAR
-        supabase.channel('flash_sync').on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`cpf=eq.${CPF.replace(/\D/g,'')}`}, ()=>carregarProposta()).subscribe();
-
-        window.onload = carregarProposta;
+        window.onload = carregar;
+        supabase.channel('sinc').on('postgres_changes',{event:'UPDATE',schema:'public',table:'propostas',filter:`cpf=eq.${CPF.replace(/\D/g,'')}`},carregar).subscribe();
     </script>
 </head>
-<body class="bg-gray-100">
-    <div id="conteudo"></div>
+<body class="bg-gray-100 py-4">
+    <div id="area"></div>
 </body>
 </html>
