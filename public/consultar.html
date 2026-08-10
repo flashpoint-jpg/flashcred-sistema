@@ -66,6 +66,7 @@
         .oculto { display: none !important; }
         .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
         .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
+        .carregando { text-align: center; padding: 20px; color: #0A2463; }
     </style>
 </head>
 <body>
@@ -73,7 +74,7 @@
 <div id="telaConsulta" class="tela visivel">
     <div class="cartao">
         <h2 class="text-xl font-bold text-center mb-6 text-primary">🔍 Acompanhar Proposta</h2>
-        <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="campo">
+        <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="14" class="campo">
         <button id="btnConsultar" class="botao botao-pix"><i class="fas fa-search mr-2"></i> Consultar</button>
     </div>
 </div>
@@ -99,8 +100,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const cpfInput = document.getElementById('cpfConsulta');
 
     async function fazerConsulta() {
+        // ✅ LIMPA TUDO QUE NÃO FOR NÚMERO DO CPF
         const cpf = cpfInput.value.trim().replace(/\D/g, '');
-        if(cpf.length !== 11) return alert('Digite os 11 números do CPF!');
+        if(cpf.length !== 11) return alert('Digite os 11 números do CPF, sem pontos ou traços!');
+
+        // ✅ MOSTRA CARREGANDO PARA NÃO FICAR PARADO
+        document.getElementById('conteudoProposta').innerHTML = `<div class="carregando"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p>Buscando proposta...</p></div>`;
 
         try {
             const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).limit(1);
@@ -120,10 +125,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch(erro) {
             alert('Aviso: ' + erro);
             sessionStorage.removeItem('ultimo_cpf');
+            document.getElementById('conteudoProposta').innerHTML = '';
         }
     }
 
-    btn.addEventListener('click', fazerConsulta);
+    // ✅ GARANTE QUE O CLIQUE FUNCIONE SEM TRAVAR
+    btn.onclick = fazerConsulta;
     cpfInput.addEventListener('keydown', e => { if(e.key === 'Enter') fazerConsulta(); });
 
     const salvo = sessionStorage.getItem('ultimo_cpf');
@@ -272,12 +279,4 @@ async function gerarPixEntrada(valor){
         const r=await fetch('/api/gerar-pix',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({valor:valorLimpo,descricao:`Entrada - Proposta ${propostaAtual.id}`})});
         const t=await r.text();if(!r.ok)throw t;
         const j=JSON.parse(t);const cd=j.qr_code||j.copia_cola||j.pixCopiaECola||j.codigo;
-        a.innerHTML=`<div class="qrcode-area" id="qrentrada"></div><div class="codigo-pix mt-3">${cd}</div><button onclick="navigator.clipboard.writeText('${cd}').then(()=>alert('Código copiado!'))" class="botao botao-copiar">📋 Copiar Código Pix</button>`;
-        setTimeout(()=>new QRCode(document.getElementById('qrentrada'),{text:cd,width:200,height:200}),50);
-    }catch(e){a.innerHTML=`<div class="text-center py-3 text-perigo">Erro: ${e}</div>`;}
-}
-
-async function gerarPixParcela(valor,num){
-    const a = document.getElementById(`pixParcela${num}`);
-    a.classList.remove('oculto');
-    a.innerHTML=`<div class="text-center py-2"><i class="fas fa-spinner fa-
+        a.innerHTML=`<div class="qrcode-area" id="qrentrada"></div><div class="codigo-pix mt-3">${cd}</div><button onclick="navigator.clipboard.writeText('${cd}').then(()=>alert('Código 
