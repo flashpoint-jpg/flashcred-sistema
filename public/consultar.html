@@ -8,51 +8,109 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
-        tailwind.config = { theme: { extend: { colors: { primary: '#0A2463', sucesso: '#10B981', alerta: '#F59E0B' } } } };
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0A2463',
+                        sucesso: '#10B981',
+                        alerta: '#F59E0B',
+                        perigo: '#EF4444'
+                    }
+                }
+            }
+        };
+
         const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         const CPF = new URLSearchParams(window.location.search).get('cpf');
+        let jaCarregou = false; // ✅ EVITA CARREGAR VÁRIAS VEZES
 
-        async function carregar() {
-            document.getElementById('area').innerHTML = `<div class="text-center p-10"><div class="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div><p>Carregando...</p></div>`;
-            
-            if(!CPF) return window.location.href='consultar.html';
-            
-            const {data:p} = await supabase.from('propostas').select('*').eq('cpf', CPF.replace(/\D/g,'')).single();
-            if(!p) return document.getElementById('area').innerHTML=`<p class="text-center p-10 text-red-600">Proposta não encontrada</p>`;
-
-            const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||1);
-            const total=v*(1+j/100), parc=q>0?(total-e)/q:0;
-            const dias=Number(p.dias_entrega||8);
+        async function carregarProposta() {
+            // ✅ SE JÁ CARREGOU, NÃO FAZ NADA MAIS
+            if(jaCarregou) return;
+            jaCarregou = true;
 
             document.getElementById('area').innerHTML = `
-            <div class="max-w-md mx-auto bg-white p-5 rounded-xl shadow">
-                <h2 class="text-xl font-bold text-center text-primary mb-4">Olá, ${p.nome}!</h2>
-                <div class="bg-blue-50 p-4 rounded-lg mb-4">
-                    <p><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                    <p><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                    <p><strong>Parcelamento:</strong> ${q}x de R$ ${parc.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                    <p><strong>Juros:</strong> ${j}% ao mês</p>
-                    <p><strong>Prazo de Entrega:</strong> ${dias} dias úteis</p>
-                </div>
-                <p class="text-sm mb-4">Valor total R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}, entrada R$ ${e.toLocaleString('pt-BR',{minimumFractionDigits:2})}, ${q} parcelas, juros ${j}% a.m., entrega em ${dias} dias úteis.</p>
-                <label class="flex items-center gap-2 mb-4"><input type="checkbox" id="ok"> Li e concordo com o contrato</label>
-                <button onclick="assinar()" class="w-full bg-primary text-white py-3 rounded-lg font-bold">Assinar Contrato</button>
-                <div class="text-center mt-4"><a href="https://wa.me/5511973294235" target="_blank" class="text-primary">Falar com Suporte</a></div>
+            <div class="flex flex-col items-center justify-center min-h-screen p-4">
+                <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+                <p class="text-gray-600">Carregando sua proposta...</p>
             </div>`;
+
+            if(!CPF) {
+                setTimeout(() => window.location.href = 'consultar.html', 1200);
+                return;
+            }
+
+            try {
+                const {data: proposta, error} = await supabase
+                    .from('propostas')
+                    .select('*')
+                    .eq('cpf', CPF.replace(/\D/g,''))
+                    .single();
+
+                if(error || !proposta) throw new Error('Proposta não encontrada');
+
+                const v = Number(proposta.valor_desejado||0);
+                const e = Number(proposta.valor_entrada||0);
+                const j = Number(proposta.juros_mensal||5);
+                const q = Number(proposta.quantidade_parcelas||1);
+                const total = v*(1+j/100);
+                const parc = q>0 ? (total-e)/q : 0;
+                const dias = Number(proposta.dias_entrega||8);
+
+                document.getElementById('area').innerHTML = `
+                <div class="max-w-md mx-auto bg-white p-5 rounded-xl shadow-lg my-4">
+                    <h2 class="text-xl font-bold text-center text-primary mb-4">Olá, ${proposta.nome}!</h2>
+                    
+                    <div class="bg-blue-50 p-4 rounded-lg mb-4">
+                        <p class="mb-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                        <p class="mb-2"><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                        <p class="mb-2"><strong>Parcelamento:</strong> ${q}x de R$ ${parc.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                        <p class="mb-2"><strong>Juros:</strong> ${j}% ao mês</p>
+                        <p class="mb-2"><strong>Prazo de Entrega:</strong> ${dias} dias úteis</p>
+                    </div>
+
+                    <p class="text-sm mb-4">
+                        Valor total R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}, entrada R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}, ${q} parcelas, juros ${j}% a.m., entrega em ${dias} dias úteis.<br>
+                        Ao assinar você concorda com todos os termos do contrato.
+                    </p>
+
+                    <label class="flex items-center gap-2 mb-4 cursor-pointer">
+                        <input type="checkbox" id="concordo" class="w-4 h-4">
+                        Li e concordo com o contrato
+                    </label>
+
+                    <button onclick="assinar()" class="w-full bg-primary text-white py-3 rounded-lg font-bold">Assinar Contrato</button>
+
+                    <div class="text-center mt-4 text-sm">
+                        Dúvidas? <a href="https://wa.me/5511973294235" target="_blank" class="text-primary font-semibold">Falar com o Suporte</a>
+                    </div>
+                </div>`;
+
+            } catch (erro) {
+                document.getElementById('area').innerHTML = `
+                <div class="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+                    <i class="fas fa-exclamation-triangle text-alerta text-4xl mb-4"></i>
+                    <p class="mb-4">${erro.message}</p>
+                    <button onclick="window.location.href='consultar.html'" class="bg-primary text-white px-4 py-2 rounded-lg">Voltar e Consultar</button>
+                </div>`;
+            }
         }
 
         function assinar() {
-            if(!document.getElementById('ok').checked) return alert('Concorde primeiro!');
-            alert('Contrato assinado! Agora gere o Pix da entrada.');
+            if(!document.getElementById('concordo').checked) return alert('Você precisa concordar com os termos!');
+            alert('Contrato assinado com sucesso! Agora você pode gerar o Pix da entrada.');
         }
 
-        window.onload = carregar;
-        supabase.channel('sinc').on('postgres_changes',{event:'UPDATE',schema:'public',table:'propostas',filter:`cpf=eq.${CPF.replace(/\D/g,'')}`},carregar).subscribe();
+        // ✅ CARREGA UMA VEZ SÓ AO ABRIR A PÁGINA — SEM LOOP, SEM PISCAR
+        window.onload = carregarProposta;
+
+        // ✅ REMOVI O REALTIME QUE ESTAVA CAUSANDO O LOOP INFINITO
     </script>
 </head>
-<body class="bg-gray-100 py-4">
+<body class="bg-gray-100">
     <div id="area"></div>
 </body>
 </html>
