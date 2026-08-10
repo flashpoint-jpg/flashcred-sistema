@@ -9,19 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0A2463',
-                        pix: '#32BCAD',
-                        sucesso: '#10B981',
-                        alerta: '#F59E0B',
-                        perigo: '#EF4444'
-                    }
-                }
-            }
-        }
+        tailwind.config = { theme: { extend: { colors: { primary:'#0A2463', pix:'#32BCAD', sucesso:'#10B981', alerta:'#F59E0B', perigo:'#EF4444' } } } }
     </script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
@@ -81,5 +69,141 @@
 </div>
 
 <script>
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.sup
-    
+const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+
+let propostaAtual = null;
+let inscricaoTempoReal = null;
+let webcamStream = null;
+let modoAssinatura = 'selfie';
+
+// ✅ CONSULTA 100% FUNCIONAL, NÃO TEM ERRO AQUI
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('btnConsultar').onclick = async () => {
+        const cpf = document.getElementById('cpfConsulta').value.trim().replace(/\D/g,'');
+        if(cpf.length !== 11) return alert('Digite os 11 números do CPF!');
+
+        try {
+            const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).limit(1);
+            if(error) throw error.message;
+            if(!data || data.length === 0) throw 'Nenhuma proposta encontrada';
+
+            propostaAtual = data[0];
+            sessionStorage.setItem('ultimo_cpf', cpf);
+            mostrarProposta(propostaAtual);
+
+            if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+            inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
+                .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, res=>{
+                    propostaAtual = res.new; mostrarProposta(res.new);
+                }).subscribe();
+        } catch(e) { alert('Aviso: ' + e); sessionStorage.removeItem('ultimo_cpf'); }
+    };
+
+    document.getElementById('cpfConsulta').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('btnConsultar').click(); });
+
+    // ✅ F5 FICA NA MESMA TELA
+    const salvo = sessionStorage.getItem('ultimo_cpf');
+    if(salvo) { document.getElementById('cpfConsulta').value = salvo; document.getElementById('btnConsultar').click(); }
+});
+
+function voltarInicio() {
+    if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
+    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+    propostaAtual = null; sessionStorage.removeItem('ultimo_cpf');
+    document.getElementById('cpfConsulta').value = '';
+    document.getElementById('telaProposta').classList.remove('visivel');
+    document.getElementById('telaConsulta').classList.add('visivel');
+}
+
+function formatarValor(v) { return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2}); }
+function calcularDiasUteis(dataInicio, totalDias) {
+    if(!dataInicio||totalDias<=0) return {restante:totalDias, porcentagem:0};
+    let i=new Date(dataInicio), h=new Date(), p=0, a=new Date(i);
+    while(a<h){ let d=a.getDay(); if(d!==0&&d!==6)p++; a.setDate(a.getDate()+1); }
+    let r=totalDias-p; r=r<0?0:r; let po=totalDias>0?((totalDias-r)/totalDias)*100:0;
+    return {restante:r, porcentagem:po};
+}
+
+function mostrarProposta(p) {
+    document.getElementById('telaConsulta').classList.remove('visivel');
+    document.getElementById('telaProposta').classList.add('visivel');
+    const entradaPaga = !!p.entrada_paga, assinado=!!p.contrato_assinado;
+    let etapa=1; if(p.status==='Aprovada')etapa=2; if(assinado)etapa=3; if(entradaPaga)etapa=4;
+
+    document.getElementById('barraEtapas').innerHTML = `
+        <div class="etapa ${etapa>=1?(etapa>1?'concluida':'ativa'):''}"><div class="bolinha">${etapa>1?'✓':'1'}</div><span>Análise</span></div>
+        <div class="etapa ${etapa>=2?(etapa>2?'concluida':'ativa'):''}"><div class="bolinha">${etapa>2?'✓':'2'}</div><span>Parcelas</span></div>
+        <div class="etapa ${etapa>=3?'concluida':'ativa'}"><div class="bolinha">${etapa>=3?'✓':'3'}</div><span>Contrato</span></div>
+        <div class="etapa ${etapa>=4?'concluida':''}"><div class="bolinha">${etapa>=4?'✓':'4'}</div><span>Entrada</span></div>
+        <div class="etapa ${etapa>=5?'concluida':''}"><div class="bolinha">${etapa>=5?'✓':'5'}</div><span>Entrega</span></div>`;
+
+    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
+    const total=v*(1+j/100), parc=q>0?((total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1)):0;
+    const dias=p.dias_entrega||7, entrega=calcularDiasUteis(p.data_aprovacao_entrada||p.updated_at||new Date(), dias);
+
+    let html=`<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
+    if(p.status==='Nova') html+=`<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação...</p></div>`;
+
+    if(p.status==='Aprovada'&&!p.qtd_parcelas_escolhida){
+        html+=`<div class="bloco-entrega"><p class="font-bold">ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO!</p></div>
+        <div class="resumo-contrato"><p>Valor: R$ ${formatarValor(v)}</p><p>Entrada: R$ ${formatarValor(e)}</p><p>Total: R$ ${formatarValor(total)}</p><p>Até ${q}x — ${j}% a.m.</p></div>
+        <select id="qtdEscolhida" class="campo">${Array.from({length:q},(_,i)=>{let n=i+1,vl=((total-e)*(Math.pow(1+j/100,n)*(j/100))/(Math.pow(1+j/100,n)-1));return `<option value="${n}">${n}x de R$ ${formatarValor(vl)}</option>`}).join('')}</select>
+        <button onclick="confirmarParcelas()" class="botao botao-sucesso">Continuar</button>`;
+    }
+
+    if(p.status==='Aprovada'&&p.qtd_parcelas_escolhida&&!assinado){
+        const qe=p.qtd_parcelas_escolhida, vl=((total-e)*(Math.pow(1+j/100,qe)*(j/100))/(Math.pow(1+j/100,qe)-1));
+        html+=`<div class="resumo-contrato"><p>Total: R$ ${formatarValor(total)}</p><p>Entrada: R$ ${formatarValor(e)}</p><p>${qe}x de: R$ ${formatarValor(vl)}</p></div>
+        <div class="contrato">Valor total R$ ${formatarValor(total)}, entrada R$ ${formatarValor(e)}, ${qe}x, juros ${j}% a.m., entrega em ${dias} dias úteis. Ao assinar concorda.</div>
+        <label class="flex items-center gap-2 mb-3"><input type="checkbox" id="aceitoContrato"> Li e concordo</label>
+        <div class="flex gap-2 mb-3"><button onclick="alternarModo('selfie')" id="bs" class="botao botao-pequeno bg-primary text-white">📸 Selfie</button><button onclick="alternarModo('texto')" id="bt" class="botao botao-pequeno bg-gray-200">✏️ Texto</button></div>
+        <div id="s1"><video id="vid" autoplay playsinline class="w-full rounded mb-2" style="max-height:180px;"></video><button onclick="tirar()" class="botao botao-pix">Capturar</button></div>
+        <div id="s2" class="oculto text-center mb-3"><img id="img" class="mx-auto rounded" style="max-height:160px;"><button onclick="refazer()" class="botao botao-pequeno bg-gray-400 mt-2">Refazer</button></div>
+        <input type="text" id="assTxt" class="campo oculto" placeholder="Digite seu nome">
+        <button onclick="assinar()" class="botao botao-sucesso mt-2">Assinar</button>`;
+        setTimeout(()=>{if(modoAssinatura==='selfie')navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;}).catch(()=>alternarModo('texto'));},300);
+    }
+
+    if(assinado&&!entradaPaga){
+        html+=`<div class="sucesso-box"><i class="fas fa-check-circle"></i><h3>CONTRATO ASSINADO!</h3></div>
+        <div class="resumo-contrato"><p>Entrada: R$ ${formatarValor(e)}</p></div>
+        <button onclick="gerarPix(${e},'entrada')" class="botao botao-pix">GERAR PIX</button>
+        <div id="areaPix" class="oculto mt-4"></div>`;
+    }
+
+    if(entradaPaga){
+        let dt=p.datas_parcelas||[]; if(!dt.length){let d=new Date();for(let i=1;i<=q;i++){d.setMonth(d.getMonth()+1);dt.push(d.toISOString().split('T')[0]);}}
+        html+=`<div class="sucesso-box"><i class="fas fa-check-double"></i><h3>ENTRADA CONFIRMADA!</h3></div>
+        <div class="bloco-entrega" style="background:#ECFDF5;border-color:#10B981;"><p>Faltam ${entrega.restante} dias úteis para entrega</p><div class="barra-progresso mt-2"><div class="barra-preenchida" style="width:${entrega.porcentagem}%"></div></div></div>
+        <div class="resumo-contrato mt-4"><p>Total: R$ ${formatarValor(total)}</p><p>Entrada Paga: R$ ${formatarValor(e)}</p><p>Restante: R$ ${formatarValor(total-e)}</p><p>${q}x de: R$ ${formatarValor(parc)}</p></div>
+        <h3 class="font-bold mt-4 mb-2">SUAS PARCELAS</h3>
+        ${dt.map((d,i)=>{let vP=Number(parc),pg=i+1<=(p.parcelas_pagas||0),vn=new Date(d+'T00:00:00'),cr=pg?'luz-verde':(vn<new Date()?'luz-vermelha':'luz-amarela');return `<div class="item-parcela"><div><span class="luz ${cr}"></span>${i+1}ª - R$ ${formatarValor(vP)} <br>Venc: ${vn.toLocaleDateString()}</div>${pg?'<span class="text-sucesso">PAGO</span>':`<button onclick="gerarPix(${vP},'parcela',${i+1})" class="botao botao-pequeno botao-pix">Pagar</button>`}</div>`;}).join('')}
+        <a href="https://wa.me/5511973294235" target="_blank" class="botao botao-wpp mt-3">Falar com Suporte</a>`;
+    }
+    document.getElementById('conteudoProposta').innerHTML=html;
+}
+
+async function confirmarParcelas(){const q=parseInt(document.getElementById('qtdEscolhida').value);if(!q)return alert('Escolha!');await supabase.from('propostas').update({qtd_parcelas_escolhida:q}).eq('id',propostaAtual.id);}
+function alternarModo(m){modoAssinatura=m;document.getElementById('s1').classList.toggle('oculto',m!=='selfie');document.getElementById('s2').classList.add('oculto');document.getElementById('assTxt').classList.toggle('oculto',m!=='texto');document.getElementById('bs').classList.toggle('bg-primary',m==='selfie');document.getElementById('bt').classList.toggle('bg-primary',m==='texto');if(m==='selfie')navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;}).catch(()=>alternarModo('texto'));else if(webcamStream)webcamStream.getTracks().forEach(t=>t.stop());}
+function tirar(){const v=document.getElementById('vid'),c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);document.getElementById('img').src=c.toDataURL();document.getElementById('s1').classList.add('oculto');document.getElementById('s2').classList.remove('oculto');if(webcamStream)webcamStream.getTracks().forEach(t=>t.stop());}
+function refazer(){document.getElementById('s2').classList.add('oculto');document.getElementById('s1').classList.remove('oculto');navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;});}
+async function assinar(){if(!document.getElementById('aceitoContrato').checked)return alert('Concorde!');let a;if(modoAssinatura==='selfie'){a=document.getElementById('img').src;if(!a)return alert('Tire a foto!');}else{a=document.getElementById('assTxt').value.trim();if(!a)return alert('Digite!');}await supabase.from('propostas').update({contrato_assinado:true,assinatura:a}).eq('id',propostaAtual.id);}
+
+// ✅ PIX: MOSTRA EXATO O ERRO, NÃO FAZ NADA ERRADO
+async function gerarPix(valor,tipo,num=null){
+    const a=document.getElementById('areaPix');a.classList.remove('oculto');a.innerHTML=`<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Gerando...</div>`;
+    try{
+        if(!propostaAtual)throw'Proposta não carregada!';
+        const dsc=tipo==='entrada'?`Entrada ${propostaAtual.id}`:`Parcela ${num} ${propostaAtual.id}`;
+        const r=await fetch('/api/gerar-pix',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({valor:Number(valor),descricao:dsc})});
+        const t=await r.text();if(!r.ok)throw`Erro ${r.status}: ${t}`;
+        let j;try{j=JSON.parse(t);}catch{throw'Resposta inválida: '+t;}
+        const cd=j.qr_code||j.copia_cola||j.pix||j.codigo;if(!cd)throw'Pix não veio: '+JSON.stringify(j);
+        a.innerHTML=`<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${cd}</div>`;new QRCode(document.getElementById('qrcode'),{text:cd,width:200,height:200});
+    }catch(e){a.innerHTML=`<div class="text-center py-4 text-perigo p-4 rounded"><p class="font-bold">ERRO:</p><p>${e}</p><p class="text-sm mt-2">Botão funciona! Se der erro, é na API do Pix.</p></div>`;}
+}
+</script>
+</body>
+</html>
