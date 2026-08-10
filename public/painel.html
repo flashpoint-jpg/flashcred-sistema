@@ -3,279 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Administrativo | FlashCred</title>
+    <title>Minha Proposta | FlashCred</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --primary: #0A2463;
-            --sucesso: #10B981;
-            --alerta: #F59E0B;
-            --perigo: #EF4444;
-            --andamento: #3B82F6;
-            --bg-body: #F0F4F8;
-            --borda: #D1D9E6;
-            --texto: #1E293B;
-            --texto-claro: #64748B;
-            --sombra: 0 4px 12px rgba(0,0,0,0.06);
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0A2463',
+                        pix: '#32BCAD',
+                        sucesso: '#10B981',
+                        alerta: '#F59E0B',
+                        perigo: '#EF4444',
+                        andamento: '#3B82F6'
+                    }
+                }
+            }
+        };
+        const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const CPF = new URLSearchParams(window.location.search).get('cpf');
+        const NUMERO_SUPORTE = '5511973294235';
+
+        async function carregarProposta() {
+            if(!CPF) return window.location.href = 'consultar.html';
+            const {data: proposta, error} = await supabase.from('propostas').select('*').eq('cpf', CPF.replace(/\D/g,'')).single();
+            if(error || !proposta) return alert('Proposta não encontrada! Verifique o link ou consulte novamente.');
+
+            const v = Number(proposta.valor_desejado||0);
+            const e = Number(proposta.valor_entrada||0);
+            const j = Number(proposta.juros_mensal||5);
+            const q = Number(proposta.quantidade_parcelas||1);
+            const total = v*(1+j/100);
+            const parcela = q===1 ? total : (q>0 ? (total-e)/q : 0);
+            // ✅ NUNCA MAIS APARECE 0 DIAS
+            const diasEntrega = Number(proposta.dias_entrega||8);
+            const whatsCliente = proposta.whatsapp ? `(${proposta.whatsapp.substring(0,2)}) ${proposta.whatsapp.substring(2)}` : 'Não informado';
+
+            document.getElementById('conteudo').innerHTML = `
+            <div class="max-w-md mx-auto bg-white p-6 rounded-xl shadow-lg">
+                <h2 class="text-xl font-bold text-primary mb-4">Olá, ${proposta.nome}!</h2>
+                
+                <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                    <p class="mb-2"><strong>Valor Total:</strong> R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                    <p class="mb-2"><strong>Entrada:</strong> R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                    <p class="mb-2"><strong>Parcelamento:</strong> ${q}x de R$ ${parcela.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                    <p class="mb-2"><strong>Juros:</strong> ${j}% ao mês</p>
+                    <p class="mb-2"><strong>Prazo de Entrega:</strong> ${diasEntrega} dias úteis</p>
+                </div>
+
+                <p class="text-sm mb-4">
+                    Valor total R$ ${total.toLocaleString('pt-BR', {minimumFractionDigits:2})}, entrada R$ ${e.toLocaleString('pt-BR', {minimumFractionDigits:2})}, ${q} parcelas, juros ${j}% a.m., entrega em ${diasEntrega} dias úteis.<br>
+                    Ao assinar você concorda com todos os termos do contrato.
+                </p>
+
+                <label class="flex items-center gap-2 mb-4 cursor-pointer">
+                    <input type="checkbox" id="concordo" class="w-4 h-4">
+                    Li e concordo com todos os termos do contrato
+                </label>
+
+                <div class="flex gap-3 mb-4">
+                    <button class="botao bg-primary text-white flex-1 py-2 rounded-lg" onclick="assinarSelfie()">
+                        <i class="fas fa-camera mr-1"></i> Assinar com Selfie
+                    </button>
+                    <button class="botao bg-gray-200 text-gray-800 flex-1 py-2 rounded-lg" onclick="assinarTexto()">
+                        <i class="fas fa-pen mr-1"></i> Assinar por Escrito
+                    </button>
+                </div>
+
+                <div class="text-center text-sm text-gray-600 mt-4">
+                    Dúvidas? <a href="https://wa.me/${NUMERO_SUPORTE}?text=Olá ${proposta.nome}, preciso de ajuda com minha proposta" target="_blank" class="text-primary font-semibold">Fale com o Atendimento</a>
+                </div>
+            </div>`;
         }
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
-        body { background: var(--bg-body); color: var(--texto); line-height: 1.5; }
-        .cartao { background: white; border-radius: 12px; padding: 24px; box-shadow: var(--sombra); }
-        .botao { padding: 10px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: all 0.2s; font-size:14px; }
-        .botao:hover { transform: translateY(-1px); }
-        .botao-primario { background: var(--primary); color: white; }
-        .botao-sucesso { background: var(--sucesso); color: white; }
-        .botao-alerta { background: var(--alerta); color: white; }
-        .botao-perigo { background: var(--perigo); color: white; }
-        .botao-cinza { background: var(--borda); color: var(--texto); }
-        .botao-wpp { background: #25D366; color: white; }
-        .barra-resumo { background: white; border-radius: 12px; padding: 16px; margin-bottom:20px; display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between; box-shadow:var(--sombra); }
-        .item-resumo { display:flex; flex-direction:column; font-size:13px; padding:8px 12px; border-radius:8px; background:#F8FAFC; }
-        .item-resumo span:first-child { color:var(--texto-claro); }
-        .item-resumo span:last-child { font-weight:700; font-size:18px; margin-top:2px; }
-        .sininho { position:relative; padding:8px; border-radius:50%; background:#F8FAFC; }
-        .contador-notif { position:absolute; top:-4px; right:-4px; background:var(--perigo); color:white; border-radius:50%; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:bold; border:2px solid white; }
-        
-        .linha-proposta { background:white; border-radius:12px; padding:20px; margin-bottom:16px; box-shadow:var(--sombra); border-left:4px solid var(--borda); }
-        .status-nova { border-left-color: var(--alerta); background: #FFFBEB; }
-        .status-aprovada { border-left-color: var(--sucesso); background: #ECFDF5; }
-        .status-andamento { border-left-color: var(--andamento); background: #EFF6FF; }
-        .status-reprovada { border-left-color: var(--perigo); background: #FFF5F5; }
 
-        .area-edicao, .area-parcelas { display:none; margin-top:16px; padding:20px; background:#F8FAFC; border-radius:10px; border:1px solid var(--borda); }
-        .area-edicao.ativa, .area-parcelas.ativa { display:block; }
-        .label-campo { font-size:13px; color:var(--texto-claro); margin-bottom:4px; display:block; font-weight:600; }
-        .resumo-valores { font-weight:700; margin-top:12px; padding:12px; background:#ECFDF5; border-radius:8px; font-size:14px; color:#065F46; }
-        .container { max-width:1200px; margin:0 auto; padding:20px; }
-        .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:16px; }
-        .campo { width:100%; padding:10px 12px; border:1px solid var(--borda); border-radius:8px; margin-bottom:10px; font-size:14px; background: white; }
-        .campo:focus { outline:none; border-color:var(--primary); }
-        
-        .prazo-entrega { display:none; background:#EFF6FF; border:2px solid var(--andamento); border-radius:8px; padding:12px 16px; margin:10px 0; font-size:15px; font-weight:700; color:#1E40AF; }
-        .prazo-entrega.mostrar { display:block; }
-        .prazo-entrega.concluido { background:#ECFDF5; border-color:var(--sucesso); color:#065F46; }
-        .info-entrega { display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:4px; }
-        .fundo-barra-entrega { width:100%; height:10px; border-radius:5px; background:#DBEAFE; overflow:hidden; }
-        .preenchimento-entrega { height:100%; background:var(--andamento); transition:width 0.5s ease; }
-        .preenchimento-concluido { background:var(--sucesso); }
-
-        .indicador-status { display:inline-flex; align-items:center; gap:6px; margin-right:8px; }
-        .luz-status { width:12px; height:12px; border-radius:50%; display:inline-block; }
-        .luz-amarela { background:var(--alerta); animation:piscar 1.2s infinite; }
-        .luz-verde-fixa { background:var(--sucesso); }
-        .luz-azul { background:var(--andamento); animation:piscar 1.2s infinite; }
-        .luz-vermelha { background:var(--perigo); }
-        @keyframes piscar { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
-
-        .lista-datas { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:8px; margin-top:10px; }
-        .titulo-bloco { font-size:15px; font-weight:700; color:var(--primary); margin-bottom:8px; padding-bottom:6px; border-bottom:1px solid var(--borda); }
-        .botoes-acao { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-        .dados-cliente { margin:8px 0; font-size:14px; color:var(--texto); }
-        .dados-cliente p { margin:4px 0; }
-        .item-parcela { display:flex; justify-content:space-between; padding:8px; border-bottom:1px solid var(--borda); font-size:13px; }
-        .paga { color:var(--sucesso); font-weight:600; }
-        .aberta { color:var(--alerta); }
+        function assinarSelfie(){ alert('Abrindo câmera para assinatura...'); }
+        function assinarTexto(){ alert('Abrindo campo para assinatura...'); }
+        window.onload = carregarProposta;
+    </script>
+    <style>
+        .botao:hover { opacity: 0.9; }
     </style>
 </head>
-<body>
-<div id="telaLogin" class="container" style="max-width:420px; margin-top:120px;">
-    <div class="cartao text-center">
-        <h2 class="mb-4">🔐 Acesso Painel FlashCred</h2>
-        <input type="password" id="senha" placeholder="Digite sua senha" class="campo text-center">
-        <button onclick="entrar()" class="botao botao-primario w-full">Entrar</button>
-    </div>
-</div>
-
-<div id="telaPrincipal" class="container" style="display:none;">
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-xl font-bold text-primary">⚙️ Painel Administrativo | FlashCred</h1>
-        <button onclick="sair()" class="botao botao-cinza">Sair</button>
-    </div>
-
-    <div class="barra-resumo">
-        <div class="item-resumo"><span>💰 Total Recebido</span><span id="totalRecebido">R$ 0,00</span></div>
-        <div class="item-resumo"><span>⏳ A Receber</span><span id="totalReceber">R$ 0,00</span></div>
-        <div class="item-resumo"><span>⚠️ Vencidas</span><span id="qtdVencidas">0</span></div>
-        <div class="sininho"><i class="fas fa-bell text-xl"></i><div class="contador-notif" id="contadorNotif">0</div></div>
-    </div>
-
-    <button onclick="abrirNovo()" class="botao botao-sucesso mb-4">➕ Nova Proposta</button>
-
-    <div id="formNovo" class="area-edicao mb-5">
-        <h3 class="titulo-bloco">📝 Dados da Proposta</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><span class="label-campo">👤 Nome</span><input type="text" id="nome" class="campo"></div>
-            <div><span class="label-campo">📄 CPF</span><input type="text" id="cpf" maxlength="11" class="campo"></div>
-            <div><span class="label-campo">📱 WhatsApp</span><input type="text" id="whatsapp" class="campo"></div>
-            <div class="md:col-span-2"><span class="label-campo">📍 Endereço</span><input type="text" id="endereco" class="campo"></div>
-            <div><span class="label-campo">💵 Valor Total</span><input type="number" id="valor_desejado" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-            <div><span class="label-campo">💸 Entrada R$</span><input type="number" id="valor_entrada" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-            <div><span class="label-campo">📊 Juros %</span><input type="number" id="juros_mensal" value="5" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-            <div><span class="label-campo">🧾 Qtd Parcelas</span><input type="number" id="quantidade_parcelas" min="1" max="48" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-            <div><span class="label-campo">🚚 Dias Entrega</span><input type="number" id="dias_entrega" value="8" class="campo"></div>
-            <div class="md:col-span-2">
-                <div class="titulo-bloco">📅 Datas: 1ª manual → resto automático</div>
-                <div class="flex gap-2 mb-2">
-                    <input type="date" id="primeira_data" class="campo" style="width:auto" onchange="preencherRestoDatas()">
-                    <input type="number" id="intervalo_dias" value="30" class="campo" style="width:80px" min="1" placeholder="dias" oninput="preencherRestoDatas()">
-                    <button onclick="preencherRestoDatas()" class="botao botao-cinza botao-pequeno">Gerar</button>
-                </div>
-                <div id="listaDatas" class="lista-datas"></div>
-            </div>
-        </div>
-        <div class="resumo-valores" id="resumoNovo"></div>
-        <div class="flex gap-3 mt-4">
-            <button onclick="salvarNovo()" class="botao botao-sucesso">💾 Salvar</button>
-            <button onclick="fecharNovo()" class="botao botao-cinza">❌ Cancelar</button>
-        </div>
-    </div>
-
-    <div id="listaPropostas"></div>
-</div>
-
-<script>
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
-const SENHA = 'flash2026';
-const LINK_CONSULTA = new URL('consultar.html', window.location.href).href;
-
-function formatarValor(v) { return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2}); }
-window.onload = () => { if(localStorage.getItem('logado_flashcred')==='SIM'){ document.getElementById('telaLogin').style.display='none'; document.getElementById('telaPrincipal').style.display='block'; carregarPropostas(); } };
-function entrar() { if(document.getElementById('senha').value.trim()===SENHA){ localStorage.setItem('logado_flashcred','SIM'); carregarPropostas(); document.getElementById('telaLogin').style.display='none'; document.getElementById('telaPrincipal').style.display='block'; }else alert('Senha incorreta!'); }
-function sair() { localStorage.removeItem('logado_flashcred'); location.reload(); }
-
-// ✅ CÁLCULO AUTOMÁTICO
-function atualizarCalculo(bloco) {
-    const v=Number(bloco.querySelector('[id^="valor_desejado"],[id^="edit_valor"]').value)||0;
-    const e=Number(bloco.querySelector('[id^="valor_entrada"],[id^="edit_entrada"]').value)||0;
-    const j=Number(bloco.querySelector('[id^="juros_mensal"],[id^="edit_juros"]').value)||0;
-    const q=Number(bloco.querySelector('[id^="quantidade_parcelas"],[id^="edit_qtd"]').value)||1;
-    const total=v*(1+j/100);
-    const parc=q>0?(total-e)/q:0;
-    const res=bloco.querySelector('.resumo-valores');
-    if(res) res.innerHTML=`💵 Total: R$${formatarValor(total)} | Entrada: R$${formatarValor(e)} | ${q}x de R$${formatarValor(parc)}`;
-}
-
-// ✅ PRIMEIRA DATA MANUAL, RESTO AUTOMÁTICO
-function preencherRestoDatas() {
-    const q=Number(document.getElementById('quantidade_parcelas').value)||1;
-    const dt1=document.getElementById('primeira_data').value;
-    const dias=Number(document.getElementById('intervalo_dias').value)||30;
-    if(!dt1) return;
-    let d=new Date(dt1), html='';
-    for(let i=0;i<q;i++){ html+=`<input type="date" value="${d.toISOString().split('T')[0]}" class="campo">`; d.setDate(d.getDate()+dias); }
-    document.getElementById('listaDatas').innerHTML=html;
-}
-
-// ✅ CARREGAR E MOSTRAR PARCELAS DO CLIENTE NO PAINEL
-async function carregarPropostas() {
-    const {data} = await supabase.from('propostas').select('*').order('created_at',{ascending:false});
-    let totalRec=0, totalRecb=0, qtdV=0;
-    data.forEach(p=>{ const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0); if(p.entrada_paga) totalRec+=e; totalRecb+=v-e; (p.datas_parcelas||[]).forEach(d=>{ if(new Date(d)<new Date()) qtdV++; }); });
-    document.getElementById('totalRecebido').innerText=`R$${formatarValor(totalRec)}`;
-    document.getElementById('totalReceber').innerText=`R$${formatarValor(totalRecb)}`;
-    document.getElementById('qtdVencidas').innerText=qtdV;
-    document.getElementById('contadorNotif').innerText=(data||[]).filter(x=>x.status==='Nova').length;
-
-    document.getElementById('listaPropostas').innerHTML=(data||[]).map(p=>{
-        const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||0), q=Number(p.quantidade_parcelas||0);
-        const total=v*(1+j/100), parc=q>0?(total-e)/q:0;
-        let classe='status-nova', status='🟡 Aguardando', luz='luz-amarela';
-        if(p.status==='Aprovada'&&!p.entrada_paga){classe='status-aprovada';status='🟢 Aprovada';luz='luz-verde-fixa';}
-        if(p.entrada_paga){classe='status-andamento';status='🔵 Em Andamento';luz='luz-azul';}
-        if(p.status==='Reprovada'){classe='status-reprovada';status='🔴 Reprovada';luz='luz-vermelha';}
-        const mostraBarra=p.entrada_paga?'mostrar':'';
-        const parcelasCliente=(p.datas_parcelas||[]).map((d,i)=>`<div class="item-parcela ${i<(p.parcelas_pagas||0)?'paga':'aberta'}">${i+1}ª - ${new Date(d).toLocaleDateString('pt-BR')} - R$${formatarValor(parc)} ${i<(p.parcelas_pagas||0)?'✅ PAGA':'⏳ A PAGAR'}</div>`).join('');
-
-        return `
-        <div class="linha-proposta ${classe}">
-            <div class="dados-cliente">
-                <p><strong>${p.nome}</strong> | CPF: ${p.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4')}</p>
-                <p>📱 ${p.whatsapp||'Não informado'} | 📍 ${p.endereco||'Não informado'}</p>
-                <p>💰 Total R$${formatarValor(total)} | Entrada R$${formatarValor(e)} | ${q}x R$${formatarValor(parc)}</p>
-                <p class="mt-2"><span class="indicador-status"><span class="luz-status ${luz}"></span> ${status}</span></p>
-            </div>
-            <div class="prazo-entrega ${mostraBarra}">🚚 Entrega em ${p.dias_entrega||8} dias úteis</div>
-            <div class="botoes-acao">
-                <button onclick="editar('${p.id}')" class="botao botao-primario">✏️ Editar</button>
-                <button onclick="verParcelas('${p.id}')" class="botao botao-alerta">📋 Ver Parcelas</button>
-                <button onclick="enviarWpp('${p.id}','${p.whatsapp}')" class="botao botao-wpp">📲 Link</button>
-                ${p.status==='Nova'?`<button onclick="altStatus('${p.id}','Aprovada')" class="botao botao-sucesso">✅ Aprovar</button>`:''}
-                ${!p.entrada_paga?`<button onclick="marcar('${p.id}','entrada_paga',true)" class="botao botao-sucesso">💵 Entrada Paga</button>`:''}
-                <button onclick="excluir('${p.id}')" class="botao botao-perigo">🗑️ Excluir</button>
-            </div>
-            <div id="edit_${p.id}" class="area-edicao"></div>
-            <div id="parc_${p.id}" class="area-parcelas"><div class="titulo-bloco">📋 Parcelas Escolhidas</div>${parcelasCliente}</div>
-        </div>`;
-    }).join('');
-}
-
-function verParcelas(id){ document.getElementById(`parc_${id}`).classList.toggle('ativa'); }
-async function editar(id){
-    const div=document.getElementById(`edit_${id}`);
-    if(div.classList.contains('ativa')) return div.classList.remove('ativa');
-    const {data:p} = await supabase.from('propostas').select('*').eq('id',id).single();
-    div.innerHTML=`
-    <h3 class="titulo-bloco">✏️ Editar Proposta</h3>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div><span class="label-campo">Valor Total</span><input type="number" id="edit_valor" value="${p.valor_desejado}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-        <div><span class="label-campo">Entrada</span><input type="number" id="edit_entrada" value="${p.valor_entrada}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-        <div><span class="label-campo">Juros %</span><input type="number" id="edit_juros" value="${p.juros_mensal}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-        <div><span class="label-campo">Qtd Parcelas</span><input type="number" id="edit_qtd" value="${p.quantidade_parcelas}" class="campo" oninput="atualizarCalculo(this.closest('.area-edicao'))"></div>
-        <div class="md:col-span-2">
-            <div class="titulo-bloco">📅 Datas: 1ª manual → resto automático</div>
-            <div class="flex gap-2 mb-2">
-                <input type="date" id="edit_primeira" value="${p.datas_parcelas?.[0]||''}" class="campo" style="width:auto" onchange="gerarEditDatas()">
-                <input type="number" id="edit_intervalo" value="30" class="campo" style="width:80px" min="1" oninput="gerarEditDatas()">
-            </div>
-            <div id="edit_lista_datas" class="lista-datas">${(p.datas_parcelas||[]).map(d=>`<input type="date" value="${d}" class="campo">`).join('')}</div>
-        </div>
-    </div>
-    <div class="resumo-valores"></div>
-    <div class="flex gap-3 mt-3"><button onclick="salvarEd('${p.id}')" class="botao botao-sucesso">💾 Salvar</button><button onclick="div.classList.remove('ativa')" class="botao botao-cinza">Fechar</button></div>`;
-    div.classList.add('ativa');
-    atualizarCalculo(div);
-}
-function gerarEditDatas(){
-    const q=Number(document.getElementById('edit_qtd').value)||1;
-    const dt1=document.getElementById('edit_primeira').value;
-    const dias=Number(document.getElementById('edit_intervalo').value)||30;
-    if(!dt1) return;
-    let d=new Date(dt1), html='';
-    for(let i=0;i<q;i++){ html+=`<input type="date" value="${d.toISOString().split('T')[0]}" class="campo">`; d.setDate(d.getDate()+dias); }
-    document.getElementById('edit_lista_datas').innerHTML=html;
-}
-async function salvarEd(id){
-    const b=document.getElementById(`edit_${id}`);
-    await supabase.from('propostas').update({
-        valor_desejado:Number(b.querySelector('#edit_valor').value),
-        valor_entrada:Number(b.querySelector('#edit_entrada').value),
-        juros_mensal:Number(b.querySelector('#edit_juros').value),
-        quantidade_parcelas:Number(b.querySelector('#edit_qtd').value),
-        datas_parcelas:Array.from(b.querySelectorAll('#edit_lista_datas input')).map(i=>i.value)
-    }).eq('id',id);
-    carregarPropostas();
-}
-async function salvarNovo(){
-    const datas=Array.from(document.querySelectorAll('#listaDatas input')).map(i=>i.value);
-    await supabase.from('propostas').insert({
-        nome:document.getElementById('nome').value.trim(), cpf:document.getElementById('cpf').value.replace(/\D/g,''),
-        whatsapp:document.getElementById('whatsapp').value.replace(/\D/g,''), endereco:document.getElementById('endereco').value.trim(),
-        valor_desejado:Number(document.getElementById('valor_desejado').value), valor_entrada:Number(document.getElementById('valor_entrada').value),
-        juros_mensal:Number(document.getElementById('juros_mensal').value), quantidade_parcelas:Number(document.getElementById('quantidade_parcelas').value),
-        dias_entrega:Number(document.getElementById('dias_entrega').value), datas_parcelas:datas, status:'Nova'
-    });
-    fecharNovo(); carregarPropostas();
-}
-async function altStatus(id,s){ await supabase.from('propostas').update({status:s}).eq('id',id); carregarPropostas(); }
-async function marcar(id,c,v){ await supabase.from('propostas').update({[c]:v}).eq('id',id); carregarPropostas(); }
-async function excluir(id){ if(confirm('Tem certeza?')){ await supabase.from('propostas').delete().eq('id',id); carregarPropostas(); } }
-function enviarWpp(id,num){ const cpf=document.querySelector(`[onclick*="'${id}'"]`).closest('.linha-proposta').querySelector('.dados-cliente p').innerText.match(/CPF: (\d.+)/)[1].replace(/\D/g,''); window.open(`https://wa.me/55${num||'5511973294235'}?text=Olá! Sua proposta: ${LINK_CONSULTA}?cpf=${cpf}`); }
-function abrirNovo(){ document.getElementById('formNovo').classList.add('ativa'); }
-function fecharNovo(){ document.getElementById('formNovo').classList.remove('ativa'); }
-supabase.channel('atualiza').on('postgres_changes',{event:'*',schema:'public',table:'propostas'},()=>carregarPropostas()).subscribe();
-</script>
+<body class="bg-gray-100 py-8">
+    <div id="conteudo"></div>
 </body>
 </html>
