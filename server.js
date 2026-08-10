@@ -5,14 +5,15 @@ const path = require('path');
 const app = express();
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// ➕ ADICIONE ESTA ROTA PARA RESOLVER O "Cannot GET /"
+// Rota principal corrigida para ler o arquivo HTML dentro da pasta 'public'
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // 🔑 CONFIGURAÇÃO DO MERCADO PAGO
+// Substitua pelo seu Access Token real de produção ou testes
 const client = new MercadoPagoConfig({ accessToken: 'SEU_ACCESS_TOKEN_AQUI' });
 
 // Rota POST para gerar o Pix
@@ -63,4 +64,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
-            
