@@ -9,7 +9,19 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
-        tailwind.config = { theme: { extend: { colors: { primary:'#0A2463', pix:'#32BCAD', sucesso:'#10B981', alerta:'#F59E0B', perigo:'#EF4444' } } } }
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#0A2463',
+                        pix: '#32BCAD',
+                        sucesso: '#10B981',
+                        alerta: '#F59E0B',
+                        perigo: '#EF4444'
+                    }
+                }
+            }
+        }
     </script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
@@ -78,16 +90,18 @@ let inscricaoTempoReal = null;
 let webcamStream = null;
 let modoAssinatura = 'selfie';
 
-// ✅ CONSULTA 100% FUNCIONAL, NÃO TEM ERRO AQUI
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('btnConsultar').onclick = async () => {
-        const cpf = document.getElementById('cpfConsulta').value.trim().replace(/\D/g,'');
+    const btn = document.getElementById('btnConsultar');
+    const cpfInput = document.getElementById('cpfConsulta');
+
+    async function fazerConsulta() {
+        const cpf = cpfInput.value.trim().replace(/\D/g, '');
         if(cpf.length !== 11) return alert('Digite os 11 números do CPF!');
 
         try {
             const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).limit(1);
             if(error) throw error.message;
-            if(!data || data.length === 0) throw 'Nenhuma proposta encontrada';
+            if(!data || data.length === 0) throw 'Nenhuma proposta encontrada para este CPF';
 
             propostaAtual = data[0];
             sessionStorage.setItem('ultimo_cpf', cpf);
@@ -95,23 +109,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
             inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
-                .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, res=>{
-                    propostaAtual = res.new; mostrarProposta(res.new);
+                .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, res => {
+                    propostaAtual = res.new;
+                    mostrarProposta(res.new);
                 }).subscribe();
-        } catch(e) { alert('Aviso: ' + e); sessionStorage.removeItem('ultimo_cpf'); }
-    };
+        } catch(erro) {
+            alert('Aviso: ' + erro);
+            sessionStorage.removeItem('ultimo_cpf');
+        }
+    }
 
-    document.getElementById('cpfConsulta').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('btnConsultar').click(); });
+    btn.addEventListener('click', fazerConsulta);
+    cpfInput.addEventListener('keydown', e => { if(e.key === 'Enter') fazerConsulta(); });
 
-    // ✅ F5 FICA NA MESMA TELA
     const salvo = sessionStorage.getItem('ultimo_cpf');
-    if(salvo) { document.getElementById('cpfConsulta').value = salvo; document.getElementById('btnConsultar').click(); }
+    if(salvo) {
+        cpfInput.value = salvo;
+        fazerConsulta();
+    }
 });
 
 function voltarInicio() {
-    if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
+    if(webcamStream) webcamStream.getTracks().forEach(t => t.stop());
     if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
-    propostaAtual = null; sessionStorage.removeItem('ultimo_cpf');
+    propostaAtual = null;
+    sessionStorage.removeItem('ultimo_cpf');
     document.getElementById('cpfConsulta').value = '';
     document.getElementById('telaProposta').classList.remove('visivel');
     document.getElementById('telaConsulta').classList.add('visivel');
@@ -169,13 +191,13 @@ function mostrarProposta(p) {
     if(assinado&&!entradaPaga){
         html+=`<div class="sucesso-box"><i class="fas fa-check-circle"></i><h3>CONTRATO ASSINADO!</h3></div>
         <div class="resumo-contrato"><p>Entrada: R$ ${formatarValor(e)}</p></div>
-        <button onclick="gerarPix(${e},'entrada')" class="botao botao-pix">GERAR PIX</button>
+        <button onclick="gerarPix(${e},'entrada')" class="botao botao-pix">GERAR PIX DA ENTRADA</button>
         <div id="areaPix" class="oculto mt-4"></div>`;
     }
 
     if(entradaPaga){
         let dt=p.datas_parcelas||[]; if(!dt.length){let d=new Date();for(let i=1;i<=q;i++){d.setMonth(d.getMonth()+1);dt.push(d.toISOString().split('T')[0]);}}
-        html+=`<div class="sucesso-box"><i class="fas fa-check-double"></i><h3>ENTRADA CONFIRMADA!</h3></div>
+        html+=`<div class="sucesso-box"><i class="fas fa-check-double"></i><h3>PAGAMENTO CONFIRMADO!</h3></div>
         <div class="bloco-entrega" style="background:#ECFDF5;border-color:#10B981;"><p>Faltam ${entrega.restante} dias úteis para entrega</p><div class="barra-progresso mt-2"><div class="barra-preenchida" style="width:${entrega.porcentagem}%"></div></div></div>
         <div class="resumo-contrato mt-4"><p>Total: R$ ${formatarValor(total)}</p><p>Entrada Paga: R$ ${formatarValor(e)}</p><p>Restante: R$ ${formatarValor(total-e)}</p><p>${q}x de: R$ ${formatarValor(parc)}</p></div>
         <h3 class="font-bold mt-4 mb-2">SUAS PARCELAS</h3>
@@ -185,24 +207,31 @@ function mostrarProposta(p) {
     document.getElementById('conteudoProposta').innerHTML=html;
 }
 
-async function confirmarParcelas(){const q=parseInt(document.getElementById('qtdEscolhida').value);if(!q)return alert('Escolha!');await supabase.from('propostas').update({qtd_parcelas_escolhida:q}).eq('id',propostaAtual.id);}
+async function confirmarParcelas(){const q=parseInt(document.getElementById('qtdEscolhida').value);if(!q)return alert('Escolha a quantidade!');await supabase.from('propostas').update({qtd_parcelas_escolhida:q}).eq('id',propostaAtual.id);}
 function alternarModo(m){modoAssinatura=m;document.getElementById('s1').classList.toggle('oculto',m!=='selfie');document.getElementById('s2').classList.add('oculto');document.getElementById('assTxt').classList.toggle('oculto',m!=='texto');document.getElementById('bs').classList.toggle('bg-primary',m==='selfie');document.getElementById('bt').classList.toggle('bg-primary',m==='texto');if(m==='selfie')navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;}).catch(()=>alternarModo('texto'));else if(webcamStream)webcamStream.getTracks().forEach(t=>t.stop());}
 function tirar(){const v=document.getElementById('vid'),c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);document.getElementById('img').src=c.toDataURL();document.getElementById('s1').classList.add('oculto');document.getElementById('s2').classList.remove('oculto');if(webcamStream)webcamStream.getTracks().forEach(t=>t.stop());}
 function refazer(){document.getElementById('s2').classList.add('oculto');document.getElementById('s1').classList.remove('oculto');navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;});}
-async function assinar(){if(!document.getElementById('aceitoContrato').checked)return alert('Concorde!');let a;if(modoAssinatura==='selfie'){a=document.getElementById('img').src;if(!a)return alert('Tire a foto!');}else{a=document.getElementById('assTxt').value.trim();if(!a)return alert('Digite!');}await supabase.from('propostas').update({contrato_assinado:true,assinatura:a}).eq('id',propostaAtual.id);}
+async function assinar(){if(!document.getElementById('aceitoContrato').checked)return alert('Você precisa concordar com os termos!');let a;if(modoAssinatura==='selfie'){a=document.getElementById('img').src;if(!a)return alert('Tire a foto para assinar!');}else{a=document.getElementById('assTxt').value.trim();if(!a)return alert('Digite seu nome para assinar!');}await supabase.from('propostas').update({contrato_assinado:true,assinatura:a}).eq('id',propostaAtual.id);}
 
-// ✅ PIX: MOSTRA EXATO O ERRO, NÃO FAZ NADA ERRADO
+// ✅ FUNÇÃO PIX CORRIGIDA - NÃO DÁ MAIS ERRO DE NULL
 async function gerarPix(valor,tipo,num=null){
-    const a=document.getElementById('areaPix');a.classList.remove('oculto');a.innerHTML=`<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Gerando...</div>`;
+    const a = document.getElementById('areaPix');
+    if(!a) return alert('Erro: área de exibição não encontrada!');
+
+    a.classList.remove('oculto');
+    a.innerHTML=`<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Processando...</div>`;
     try{
-        if(!propostaAtual)throw'Proposta não carregada!';
-        const dsc=tipo==='entrada'?`Entrada ${propostaAtual.id}`:`Parcela ${num} ${propostaAtual.id}`;
+        if(!propostaAtual)throw'Proposta não carregada! Volte e consulte novamente.';
+        const dsc=tipo==='entrada'?`Entrada - Proposta ${propostaAtual.id}`:`Parcela ${num} - Proposta ${propostaAtual.id}`;
         const r=await fetch('/api/gerar-pix',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({valor:Number(valor),descricao:dsc})});
         const t=await r.text();if(!r.ok)throw`Erro ${r.status}: ${t}`;
-        let j;try{j=JSON.parse(t);}catch{throw'Resposta inválida: '+t;}
-        const cd=j.qr_code||j.copia_cola||j.pix||j.codigo;if(!cd)throw'Pix não veio: '+JSON.stringify(j);
-        a.innerHTML=`<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${cd}</div>`;new QRCode(document.getElementById('qrcode'),{text:cd,width:200,height:200});
-    }catch(e){a.innerHTML=`<div class="text-center py-4 text-perigo p-4 rounded"><p class="font-bold">ERRO:</p><p>${e}</p><p class="text-sm mt-2">Botão funciona! Se der erro, é na API do Pix.</p></div>`;}
+        let j;try{j=JSON.parse(t);}catch{throw'Resposta inválida do servidor: '+t;}
+        const cd=j.qr_code||j.copia_cola||j.pixCopiaECola||j.codigo;if(!cd)throw'Código Pix não retornado: '+JSON.stringify(j);
+        a.innerHTML=`<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${cd}</div>`;
+        setTimeout(()=>{new QRCode(document.getElementById('qrcode'),{text:cd,width:220,height:220});},50);
+    }catch(e){
+        a.innerHTML=`<div class="text-center py-4 text-perigo p-4 border-2 border-red-300 rounded-lg"><p class="font-bold mb-2">⚠️ O que deu errado:</p><p>${e}</p><p class="text-sm mt-2">O botão está funcionando! Se der erro, é na configuração do Pix no servidor.</p></div>`;
+    }
 }
 </script>
 </body>
