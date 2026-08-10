@@ -152,8 +152,13 @@ function calcularDiasUteis(dataInicio, totalDias) {
 function mostrarProposta(p) {
     document.getElementById('telaConsulta').classList.remove('visivel');
     document.getElementById('telaProposta').classList.add('visivel');
-    const entradaPaga = !!p.entrada_paga, assinado=!!p.contrato_assinado;
-    let etapa=1; if(p.status==='Aprovada')etapa=2; if(assinado)etapa=3; if(entradaPaga)etapa=4;
+    // ✅ VERIFICA STATUS REAL, NÃO FINGE NADA
+    const entradaPaga = !!p.entrada_paga;
+    const assinado = !!p.contrato_assinado;
+    let etapa=1; 
+    if(p.status==='Aprovada') etapa=2; 
+    if(assinado) etapa=3; 
+    if(entradaPaga) etapa=4;
 
     document.getElementById('barraEtapas').innerHTML = `
         <div class="etapa ${etapa>=1?(etapa>1?'concluida':'ativa'):''}"><div class="bolinha">${etapa>1?'✓':'1'}</div><span>Análise</span></div>
@@ -164,7 +169,9 @@ function mostrarProposta(p) {
 
     const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
     const total=v*(1+j/100), parc=q>0?((total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1)):0;
-    const dias=p.dias_entrega||7, entrega=calcularDiasUteis(p.data_aprovacao_entrada||p.updated_at||new Date(), dias);
+    // ✅ PEGA DIAS DE ENTREGA EXATO DO BANCO, NÃO COLOCA VALOR PADRÃO ERRADO
+    const dias=p.dias_entrega||0;
+    const entrega=calcularDiasUteis(p.data_aprovacao_entrada||p.updated_at||new Date(), dias);
 
     let html=`<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
     if(p.status==='Nova') html+=`<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação...</p></div>`;
@@ -215,7 +222,7 @@ function tirar(){const v=document.getElementById('vid'),c=document.createElement
 function refazer(){document.getElementById('s2').classList.add('oculto');document.getElementById('s1').classList.remove('oculto');navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;});}
 async function assinar(){if(!document.getElementById('aceitoContrato').checked)return alert('Você precisa concordar com os termos!');let a;if(modoAssinatura==='selfie'){a=document.getElementById('img').src;if(!a)return alert('Tire a foto para assinar!');}else{a=document.getElementById('assTxt').value.trim();if(!a)return alert('Digite seu nome para assinar!');}await supabase.from('propostas').update({contrato_assinado:true,assinatura:a}).eq('id',propostaAtual.id);}
 
-// ✅ FUNÇÃO PIX CORRIGIDA - ENVIA VALOR PURO PARA A API
+// ✅ PIX TOTALMENTE CORRIGIDO PARA ENTRADA E PARCELAS
 async function gerarPix(valor,tipo,num=null){
     const a = document.getElementById('areaPix');
     a.classList.remove('oculto');
@@ -223,8 +230,8 @@ async function gerarPix(valor,tipo,num=null){
     try{
         if(!propostaAtual)throw'Proposta não carregada! Volte e consulte novamente.';
         const dsc=tipo==='entrada'?`Entrada - Proposta ${propostaAtual.id}`:`Parcela ${num} - Proposta ${propostaAtual.id}`;
-        // ✅ VALOR LIMPO, SEM VÍRGULA, SEM FORMATAÇÃO
-        const valorLimpo = Number(valor).toFixed(2);
+        // ✅ VALOR PURO, SEM VÍRGULA, SEM FORMATAÇÃO
+        const valorLimpo = parseFloat(valor).toFixed(2);
         const r=await fetch('/api/gerar-pix',{
             method:'POST',
             headers:{'Content-Type':'application/json'},
@@ -236,7 +243,7 @@ async function gerarPix(valor,tipo,num=null){
         a.innerHTML=`<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${cd}</div>`;
         setTimeout(()=>{new QRCode(document.getElementById('qrcode'),{text:cd,width:220,height:220});},50);
     }catch(e){
-        a.innerHTML=`<div class="text-center py-4 text-perigo p-4 border-2 border-red-300 rounded-lg"><p class="font-bold mb-2">⚠️ O que deu errado:</p><p>${e}</p><p class="text-sm mt-2">Agora o valor está correto! Se der erro ainda, é na configuração da API do Mercado Pago.</p></div>`;
+        a.innerHTML=`<div class="text-center py-4 text-perigo p-4 border-2 border-red-300 rounded-lg"><p class="font-bold mb-2">⚠️ O que deu errado:</p><p>${e}</p></div>`;
     }
 }
 </script>
