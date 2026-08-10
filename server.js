@@ -4,12 +4,15 @@ const path = require('path');
 
 const app = express();
 
-// Configurações básicas
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
+// ➕ ADICIONE ESTA ROTA PARA RESOLVER O "Cannot GET /"
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // 🔑 CONFIGURAÇÃO DO MERCADO PAGO
-// Substitua pelo seu Access Token de produção ou teste
 const client = new MercadoPagoConfig({ accessToken: 'SEU_ACCESS_TOKEN_AQUI' });
 
 // Rota POST para gerar o Pix
@@ -56,8 +59,8 @@ app.post('/api/gerar-pix', async (req, res) => {
     }
 });
 
-// Porta dinâmica para o Render ou ambiente local
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
 });
+            
