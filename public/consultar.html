@@ -69,8 +69,10 @@
 <div id="telaConsulta" class="tela visivel">
     <div class="cartao">
         <h2 class="text-xl font-bold text-center mb-6 text-primary">🔍 Acompanhar Proposta</h2>
-        <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="campo">
-        <button id="btnConsultar" class="botao botao-pix"><i class="fas fa-search mr-2"></i> Consultar</button>
+        <form id="formConsulta" onsubmit="return false;">
+            <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="campo" inputmode="numeric">
+            <button type="submit" id="btnConsultar" class="botao botao-pix"><i class="fas fa-search mr-2"></i> Consultar</button>
+        </form>
     </div>
 </div>
 
@@ -92,20 +94,40 @@ let modoAssinatura = 'selfie';
 let canvasContext = null;
 let desenhando = false;
 
-window.onload = () => {
+document.addEventListener('DOMContentLoaded', () => {
+    const inputCpf = document.getElementById('cpfConsulta');
+    const formConsulta = document.getElementById('formConsulta');
+
+    // Força a digitação apenas de números
+    if (inputCpf) {
+        inputCpf.addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/\D/g, '');
+        });
+    }
+
+    // Gerencia o envio do formulário/botão consultar
+    if (formConsulta) {
+        formConsulta.addEventListener('submit', (e) => {
+            e.preventDefault();
+            consultar();
+        });
+    }
+
+    // Consulta automática se houver parâmetro ?cpf= na URL
     const params = new URLSearchParams(window.location.search);
     const cpfUrl = params.get('cpf');
-    if(cpfUrl) {
-        document.getElementById('cpfConsulta').value = cpfUrl.replace(/\D/g,'');
-        consultar();
+    if (cpfUrl) {
+        const cpfLimpo = cpfUrl.replace(/\D/g, '');
+        if (inputCpf) inputCpf.value = cpfLimpo;
+        if (cpfLimpo.length === 11) {
+            consultar();
+        }
     }
-    // ✅ BOTÃO DE CONSULTA GARANTIDO
-    document.getElementById('btnConsultar').addEventListener('click', consultar);
-};
+});
 
 function voltarInicio() {
     pararCamera();
-    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+    if (inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
     propostaAtual = null;
     document.getElementById('cpfConsulta').value = '';
     document.getElementById('telaProposta').classList.remove('visivel');
@@ -113,37 +135,48 @@ function voltarInicio() {
 }
 
 async function consultar() {
-    const cpf = document.getElementById('cpfConsulta').value.trim().replace(/\D/g,'');
-    if(cpf.length !== 11) return alert('Digite o CPF completo com 11 números!');
+    const inputCpf = document.getElementById('cpfConsulta');
+    const btnConsultar = document.getElementById('btnConsultar');
+    const cpf = inputCpf.value.trim().replace(/\D/g, '');
+
+    if (cpf.length !== 11) {
+        return alert('Digite o CPF completo com 11 números!');
+    }
+
+    btnConsultar.disabled = true;
+    btnConsultar.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i> Buscando...`;
 
     try {
-        const {data, error} = await supabase
+        const { data, error } = await supabase
             .from('propostas')
             .select('*')
             .eq('cpf', cpf)
             .limit(1);
 
-        if(error) throw error.message;
-        if(!data || data.length === 0) throw "Proposta não encontrada!";
+        if (error) throw error.message;
+        if (!data || data.length === 0) throw "Nenhuma proposta encontrada para este CPF.";
 
         propostaAtual = data[0];
         mostrarProposta(propostaAtual);
         
-        // Atualização em tempo real
-        if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+        // Atualização em tempo real via Supabase Realtime
+        if (inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
         inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
-            .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, (res)=>{
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `id=eq.${propostaAtual.id}` }, (res) => {
                 propostaAtual = res.new;
                 mostrarProposta(res.new);
             }).subscribe();
 
-    } catch(erro) {
-        alert('Erro: ' + erro);
+    } catch (erro) {
+        alert('Atenção: ' + erro);
+    } finally {
+        btnConsultar.disabled = false;
+        btnConsultar.innerHTML = `<i class="fas fa-search mr-2"></i> Consultar`;
     }
 }
 
 function formatarValor(v) {
-    return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    return Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function calcularDiasUteisRestantes(dataInicio, prazoTotalDias) {
@@ -171,32 +204,32 @@ function mostrarProposta(p) {
     const contratoAssinado = p.contrato_assinado === true || p.contrato_assinado === 'true' || p.contrato_assinado === 1;
 
     let etapa = 1;
-    if(p.status === 'Aprovada') etapa = 2;
-    if(contratoAssinado) etapa = 3;
-    if(entradaPaga) etapa = 4;
+    if (p.status === 'Aprovada') etapa = 2;
+    if (contratoAssinado) etapa = 3;
+    if (entradaPaga) etapa = 4;
 
     document.getElementById('barraEtapas').innerHTML = `
         <div class="etapa ${etapa>=1?(etapa>1?'concluida':'ativa'):''}"><div class="bolinha">${etapa>1?'✓':'1'}</div><span>Análise</span></div>
         <div class="etapa ${etapa>=2?(etapa>2?'concluida':'ativa'):''}"><div class="bolinha">${etapa>2?'✓':'2'}</div><span>Parcelas</span></div>
-        <div class="etapa ${etapa>=3?'concluida':'ativa'}"><div class="bolinha">${etapa>=3?'✓':'3'}</div><span>Contrato</span></div>
+        <div class="etapa ${etapa>=3?(etapa>3?'concluida':'ativa')}"><div class="bolinha">${etapa>=3?'✓':'3'}</div><span>Contrato</span></div>
         <div class="etapa ${etapa>=4?'concluida':''}"><div class="bolinha">${etapa>=4?'✓':'4'}</div><span>Entrada</span></div>
         <div class="etapa ${etapa>=5?'concluida':''}"><div class="bolinha">${etapa>=5?'✓':'5'}</div><span>Entrega</span></div>
     `;
 
-    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
-    const total = v*(1 + j/100);
-    const valorParcela = q > 0 ? ((total - e) * (Math.pow(1 + j/100, q) * (j/100)) / (Math.pow(1 + j/100, q) - 1)) : 0;
+    const v = Number(p.valor_desejado || 0), e = Number(p.valor_entrada || 0), j = Number(p.juros_mensal || 5), q = Number(p.qtd_parcelas_escolhida || p.quantidade_parcelas || 0);
+    const total = v * (1 + j / 100);
+    const valorParcela = q > 0 ? ((total - e) * (Math.pow(1 + j / 100, q) * (j / 100)) / (Math.pow(1 + j / 100, q) - 1)) : 0;
     
     const diasTotal = p.dias_entrega || 7;
     const diasRestantes = entradaPaga ? calcularDiasUteisRestantes(p.data_aprovacao_entrada || p.updated_at, diasTotal) : diasTotal;
 
     let html = `<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
 
-    if(p.status === 'Nova') {
+    if (p.status === 'Nova') {
         html += `<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação da proposta...</p></div>`;
     }
 
-    if(p.status === 'Aprovada' && !p.qtd_parcelas_escolhida) {
+    if (p.status === 'Aprovada' && !p.qtd_parcelas_escolhida) {
         html += `
         <div class="bloco-entrega">
             <i class="fas fa-truck text-alerta text-xl mb-2"></i>
@@ -212,18 +245,18 @@ function mostrarProposta(p) {
         </div>
         <p class="font-bold mt-4 mb-2">Escolha a quantidade de parcelas:</p>
         <select id="qtdEscolhida" class="campo">
-            ${Array.from({length:q}, (_,i)=>{
-                const n=i+1;
-                const val = ((total-e)*(Math.pow(1+j/100,n)*(j/100))/(Math.pow(1+j/100,n)-1));
+            ${Array.from({ length: q }, (_, i) => {
+                const n = i + 1;
+                const val = ((total - e) * (Math.pow(1 + j / 100, n) * (j / 100)) / (Math.pow(1 + j / 100, n) - 1));
                 return `<option value="${n}">${n}x de R$ ${formatarValor(val)}</option>`;
             }).join('')}
         </select>
         <button onclick="confirmarParcelas()" class="botao botao-sucesso mt-2">Continuar para o Contrato</button>`;
     }
 
-    if(p.status === 'Aprovada' && p.qtd_parcelas_escolhida && !contratoAssinado) {
+    if (p.status === 'Aprovada' && p.qtd_parcelas_escolhida && !contratoAssinado) {
         const qtdEsc = p.qtd_parcelas_escolhida;
-        const valParc = ((total-e)*(Math.pow(1+j/100,qtdEsc)*(j/100))/(Math.pow(1+j/100,qtdEsc)-1));
+        const valParc = ((total - e) * (Math.pow(1 + j / 100, qtdEsc) * (j / 100)) / (Math.pow(1 + j / 100, qtdEsc) - 1));
         html += `
         <div class="resumo-contrato">
             <h4 class="font-bold mb-2">📋 Resumo da sua escolha</h4>
@@ -276,12 +309,12 @@ function mostrarProposta(p) {
         </div>`;
         
         setTimeout(() => {
-            if(modoAssinatura === 'selfie') iniciarCamera();
+            if (modoAssinatura === 'selfie') iniciarCamera();
             inicializarCanvas();
         }, 300);
     }
 
-    if(contratoAssinado && !entradaPaga) {
+    if (contratoAssinado && !entradaPaga) {
         html += `
         <div class="sucesso-box">
             <i class="fas fa-check-circle"></i>
@@ -301,7 +334,7 @@ function mostrarProposta(p) {
         <div id="areaPix" class="oculto"></div>`;
     }
 
-    if(entradaPaga) {
+    if (entradaPaga) {
         let datasParcelas = p.datas_parcelas;
         if (!datasParcelas || !Array.isArray(datasParcelas) || datasParcelas.length === 0) {
             datasParcelas = [];
@@ -335,153 +368,153 @@ function mostrarProposta(p) {
         </div>
 
         <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS A PAGAR</h3>
-        ${datasParcelas.map((dt,idx)=>{
+        ${datasParcelas.map((dt, idx) => {
             const valor = Number(valorParcela);
-            const pg = idx+1 <= (p.parcelas_pagas||0);
+            const pg = idx + 1 <= (p.parcelas_pagas || 0);
             const hoje = new Date();
             const vencto = new Date(dt + 'T00:00:00');
             let cor = 'luz-amarela';
-            if(pg) cor='luz-verde';
-            else if(vencto < hoje) cor='luz-vermelha';
+            if (pg) cor = 'luz-verde';
+            else if (vencto < hoje) cor = 'luz-vermelha';
 
             return `<div class="item-parcela">
-                <div><span class="luz ${cor}"></span>${idx+1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
-                ${pg?'<span class="text-sucesso font-bold">PAGO</span>':'<button onclick="gerarPixParcela('${dt}',${valor})" class="botao botao-pequeno botao-pix">Pagar</button>'}
+                <div><span class="luz ${cor}"></span>${idx + 1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
+                ${pg ? '<span class="text-sucesso font-bold">PAGO</span>' : `<button onclick="gerarPixParcela('${dt}',${valor})" class="botao botao-pequeno botao-pix">Pagar</button>`}
             </div>`;
         }).join('')}
 
-        <a href="https://wa.me/5511973294235?text=Olá, preciso de ajuda com minha proposta ${propostaAtual.id}" target="_blank" class="botao botao-wpp">💬 Falar com o Suporte</a>`;
+        <a href="https://wa.me/5511973294235?text=Olá, preciso de ajuda com minha proposta ${propostaAtual.id}" target="_blank" class="botao botao-wpp text-center block">💬 Falar com o Suporte</a>`;
     }
 
     document.getElementById('conteudoProposta').innerHTML = html;
 }
 
-async function confirmarParcelas(){
+async function confirmarParcelas() {
     const qtd = parseInt(document.getElementById('qtdEscolhida').value);
-    if(!qtd) return alert('Escolha a quantidade de parcelas!');
+    if (!qtd) return alert('Escolha a quantidade de parcelas!');
 
-    const {error} = await supabase.from('propostas').update({qtd_parcelas_escolhida: qtd}).eq('id', propostaAtual.id);
-    if(error) return alert('Erro ao confirmar: '+error.message);
+    const { error } = await supabase.from('propostas').update({ qtd_parcelas_escolhida: qtd }).eq('id', propostaAtual.id);
+    if (error) return alert('Erro ao confirmar: ' + error.message);
 }
 
-function alternarModoAssinatura(modo){
+function alternarModoAssinatura(modo) {
     modoAssinatura = modo;
-    document.getElementById('blocoSelfie').classList.toggle('oculto', modo!=='selfie');
-    document.getElementById('blocoManual').classList.toggle('oculto', modo!=='manual');
-    document.getElementById('btnModoSelfie').classList.toggle('bg-primary', modo==='selfie');
-    document.getElementById('btnModoSelfie').classList.toggle('bg-slate-200', modo!=='selfie');
-    document.getElementById('btnModoManual').classList.toggle('bg-primary', modo==='manual');
-    document.getElementById('btnModoManual').classList.toggle('bg-slate-200', modo!=='manual');
-    if(modo==='selfie') iniciarCamera();
+    document.getElementById('blocoSelfie').classList.toggle('oculto', modo !== 'selfie');
+    document.getElementById('blocoManual').classList.toggle('oculto', modo !== 'manual');
+    document.getElementById('btnModoSelfie').classList.toggle('bg-primary', modo === 'selfie');
+    document.getElementById('btnModoSelfie').classList.toggle('bg-slate-200', modo !== 'selfie');
+    document.getElementById('btnModoManual').classList.toggle('bg-primary', modo === 'manual');
+    document.getElementById('btnModoManual').classList.toggle('bg-slate-200', modo !== 'manual');
+    if (modo === 'selfie') iniciarCamera();
     else pararCamera();
 }
 
-async function iniciarCamera(){
-    try{
-        webcamStream = await navigator.mediaDevices.getUserMedia({video:true});
+async function iniciarCamera() {
+    try {
+        webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
         document.getElementById('videoCamera').srcObject = webcamStream;
-    }catch(e){
+    } catch (e) {
         alert('Permita o acesso à câmera para assinar com selfie!');
         alternarModoAssinatura('manual');
     }
 }
 
-function pararCamera(){
-    if(webcamStream) webcamStream.getTracks().forEach(t=>t.stop());
+function pararCamera() {
+    if (webcamStream) webcamStream.getTracks().forEach(t => t.stop());
 }
 
-function tirarSelfie(){
+function tirarSelfie() {
     const video = document.getElementById('videoCamera');
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video,0,0);
+    canvas.getContext('2d').drawImage(video, 0, 0);
     document.getElementById('imgSelfie').src = canvas.toDataURL('image/png');
     document.getElementById('areaCamera').classList.add('oculto');
     document.getElementById('areaPreviewSelfie').classList.remove('oculto');
     pararCamera();
 }
 
-function refazerSelfie(){
+function refazerSelfie() {
     document.getElementById('areaPreviewSelfie').classList.add('oculto');
     document.getElementById('areaCamera').classList.remove('oculto');
     iniciarCamera();
 }
 
-function inicializarCanvas(){
+function inicializarCanvas() {
     const canvas = document.getElementById('canvasAssinatura');
-    if(!canvas) return;
+    if (!canvas) return;
     canvas.width = canvas.offsetWidth;
     canvasContext = canvas.getContext('2d');
     canvasContext.lineWidth = 2;
     canvasContext.lineCap = 'round';
     canvasContext.strokeStyle = '#000';
 
-    const desenhar = (e)=>{
-        if(!desenhando) return;
+    const desenhar = (e) => {
+        if (!desenhando) return;
         const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX||e.touches?.[0]?.clientX) - rect.left;
-        const y = (e.clientY||e.touches?.[0]?.clientY) - rect.top;
-        canvasContext.lineTo(x,y);
+        const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
+        const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
+        canvasContext.lineTo(x, y);
         canvasContext.stroke();
     };
 
-    canvas.onmousedown = canvas.ontouchstart = ()=>desenhando=true;
+    canvas.onmousedown = canvas.ontouchstart = () => desenhando = true;
     canvas.onmousemove = canvas.ontouchmove = desenhar;
-    canvas.onmouseup = canvas.ontouchend = canvas.onmouseout = ()=>desenhando=false;
+    canvas.onmouseup = canvas.ontouchend = canvas.onmouseout = () => desenhando = false;
 }
 
-function limparCanvas(){
-    if(canvasContext) canvasContext.clearRect(0,0,canvasContext.canvas.width, canvasContext.canvas.height);
+function limparCanvas() {
+    if (canvasContext) canvasContext.clearRect(0, 0, canvasContext.canvas.width, canvasContext.canvas.height);
 }
 
-async function assinarContrato(){
+async function assinarContrato() {
     const aceito = document.getElementById('aceitoContrato').checked;
-    if(!aceito) return alert('Você precisa concordar com o contrato!');
+    if (!aceito) return alert('Você precisa concordar com o contrato!');
 
     let assinatura = null;
-    if(modoAssinatura==='selfie'){
+    if (modoAssinatura === 'selfie') {
         assinatura = document.getElementById('imgSelfie').src;
-        if(!assinatura) return alert('Capture sua selfie primeiro!');
-    }else{
+        if (!assinatura || assinatura === window.location.href) return alert('Capture sua selfie primeiro!');
+    } else {
         assinatura = document.getElementById('canvasAssinatura').toDataURL('image/png');
     }
 
-    const {error} = await supabase.from('propostas').update({
+    const { error } = await supabase.from('propostas').update({
         contrato_assinado: true,
         assinatura: assinatura
     }).eq('id', propostaAtual.id);
 
-    if(error) return alert('Erro ao assinar: '+error.message);
+    if (error) return alert('Erro ao assinar: ' + error.message);
 }
 
-async function gerarPix(valor){
+async function gerarPix(valor) {
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
-    area.innerHTML = `<div class="carregando"><i class="fas fa-spinner fa-spin"></i> Gerando Pix...</div>`;
+    area.innerHTML = `<div class="carregando text-center p-4"><i class="fas fa-spinner fa-spin mr-2"></i> Gerando Pix...</div>`;
 
-    try{
+    try {
         const res = await fetch('/api/gerar-pix', {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({valor: valor, descricao: `Entrada proposta ${propostaAtual.id}`})
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ valor: valor, descricao: `Entrada proposta ${propostaAtual.id}` })
         });
 
         const ret = await res.json();
-        if(!ret.sucesso) throw ret.mensagem;
+        if (!ret.sucesso) throw ret.mensagem;
 
         area.innerHTML = `
         <div class="qrcode-area" id="qrcode"></div>
         <div class="codigo-pix">${ret.qr_code}</div>`;
         new QRCode(document.getElementById('qrcode'), ret.qr_code);
 
-    }catch(e){
-        area.innerHTML = `<p class="text-perigo text-center">Erro: ${e}</p>`;
+    } catch (e) {
+        area.innerHTML = `<p class="text-perigo text-center mt-2">Erro: ${e}</p>`;
     }
 }
 
-async function gerarPixParcela(data, valor){
-    alert(`Gerando Pix para parcela de R$ ${formatarValor(valor)} vencimento ${new Date(data+'T00:00:00').toLocaleDateString('pt-BR')}`);
+async function gerarPixParcela(data, valor) {
+    alert(`Gerando Pix para parcela de R$ ${formatarValor(valor)} vencimento ${new Date(data + 'T00:00:00').toLocaleDateString('pt-BR')}`);
 }
 </script>
 </body>
