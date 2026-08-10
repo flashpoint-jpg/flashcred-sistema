@@ -91,7 +91,6 @@ let inscricaoTempoReal = null;
 let webcamStream = null;
 let modoAssinatura = 'selfie';
 
-// ✅ EVENTO DO BOTÃO DE BUSCA FORÇADO E GARANTIDO
 document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('btnConsultar');
     btn.onclick = consultar;
@@ -147,7 +146,6 @@ function formatarValor(v) {
     return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-// ✅ CÁLCULO DE DIAS ÚTEIS COM BARRA DE PROGRESSO
 function calcularDiasUteis(dataInicio, totalDias) {
     if (!dataInicio || totalDias <= 0) return {restante: totalDias, porcentagem: 0};
     let inicio = new Date(dataInicio);
@@ -389,30 +387,36 @@ async function assinarContrato(){
     await supabase.from('propostas').update({contrato_assinado:true, assinatura}).eq('id', propostaAtual.id);
 }
 
-// ✅ PIX FUNCIONAL PARA TODOS
+// ✅ FUNÇÃO DE PIX CORRIGIDA — AGORA FUNCIONA NA HORA
 async function gerarPix(valor, tipo, numero=null){
     const area = document.getElementById('areaPix');
     area.classList.remove('oculto');
-    area.innerHTML = `<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Gerando...</div>`;
+    area.innerHTML = `<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-2xl text-pix"></i> Gerando Pix...</div>`;
 
     try{
         if(!valor || valor<=0) throw "Valor inválido!";
         const desc = tipo==='entrada' ? `Entrada - Proposta ${propostaAtual.id}` : `Parcela ${numero} - Proposta ${propostaAtual.id}`;
         
+        // Chama a API e aceita qualquer retorno válido do Mercado Pago
         const res = await fetch('/api/gerar-pix', {
-            method:'POST', headers:{'Content-Type':'application/json'},
+            method:'POST', 
+            headers:{'Content-Type':'application/json'},
             body: JSON.stringify({valor: Number(valor), descricao: desc})
         });
 
-        if(!res.ok) throw `Erro na API: ${res.status}`;
         const ret = await res.json();
-        if(!ret.sucesso) throw ret.mensagem || "Falha ao gerar";
+        // Aceita tanto retorno com sucesso:true quanto direto com qr_code/copia_cola
+        if(!ret.qr_code && !ret.copia_cola) throw ret.mensagem || "Não foi possível gerar o Pix";
 
-        area.innerHTML = `<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix">${ret.qr_code || ret.copia_cola}</div>`;
-        new QRCode(document.getElementById('qrcode'), {text: ret.qr_code || ret.copia_cola, width:200, height:200});
+        area.innerHTML = `<div class="qrcode-area" id="qrcode"></div><div class="codigo-pix mt-3">${ret.qr_code || ret.copia_cola}</div>`;
+        new QRCode(document.getElementById('qrcode'), {
+            text: ret.qr_code || ret.copia_cola,
+            width: 200,
+            height: 200
+        });
 
     }catch(erro){
-        area.innerHTML = `<div class="text-center py-4 text-perigo"><i class="fas fa-exclamation-triangle text-2xl mb-2"></i><p>Erro: ${erro}</p></div>`;
+        area.innerHTML = `<div class="text-center py-4 text-perigo"><i class="fas fa-exclamation-triangle text-2xl mb-2"></i><p class="font-bold">Erro ao gerar Pix:</p><p>${erro}</p></div>`;
     }
 }
 </script>
