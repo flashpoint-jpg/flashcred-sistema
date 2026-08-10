@@ -1,93 +1,60 @@
 const express = require('express');
-const path = require('path');
-const { createClient } = require('@supabase/supabase-js');
-
+const { MercadoPagoConfig, Payment } = require('mercadopago');
 const app = express();
+
+// Configuração básica do Express
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname)); // Serve os arquivos HTML/JS da pasta
 
-const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// 🔑 CONFIGURAÇÃO DO MERCADO PAGO
+// Substitua 'SEU_ACCESS_TOKEN_AQUI' pelo seu Access Token real do Mercado Pago (produção ou teste)
+const client = new MercadoPagoConfig({ accessToken: 'SEU_ACCESS_TOKEN_AQUI' });
 
-const MERCADO_PAGO_TOKEN = process.env.MP_TOKEN || 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471';
-
-app.post('/gerar-pix', async (req, res) => {
+// Rota POST para gerar o Pix que o seu front-end está chamando
+app.post('/api/gerar-pix', async (req, res) => {
     try {
-        const { valor, propostaId, nome } = req.body;
-        const valorNumerico = Number(String(valor).replace(',', '.'));
+        const { valor, descricao, referencia } = req.body;
 
-        if (!valorNumerico || isNaN(valorNumerico) || valorNumerico <= 0) {
-            return res.status(400).json({ sucesso: false, erro: "Valor de transaÃ§Ã£o invÃ¡lido." });
+        if (!valor || valor <= 0) {
+            return res.status(400).json({ sucesso: false, mensagem: "Valor inválido para o Pix." });
         }
 
-        const respostaMP = await fetch("https://api.mercadopago.com/v1/payments", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${MERCADO_PAGO_TOKEN.trim()}`,
-                "Content-Type": "application/json",
-                "X-Idempotency-Key": `proposta_${propostaId}_${Date.now()}_${Math.random()}`
-            },
-            body: JSON.stringify({
-                transaction_amount: Number(valorNumerico.toFixed(2)),
-                description: `Proposta FlashCred #${propostaId} - ${nome || 'Cliente'}`,
-                payment_method_id: 'pix',
-                payer: {
-                    email: `cliente_${propostaId}@flashcred.com`
-                },
-                external_reference: String(propostaId)
-            })
-        });
-
-        const dados = await respostaMP.json();
+        const payment = new Payment(client);
         
-        if (!respostaMP.ok || !dados.point_of_interaction) {
-            return res.status(400).json({ sucesso: false, erro: dados.message || "Erro ao gerar pagamento no Mercado Pago" });
-        }
+        // Dados da cobrança Pix para o Mercado Pago
+        const body = {
+            transaction_amount: Number(valor),
+            description: descricao || "Pagamento FlashCred",
+            payment_method_id: 'pix',
+            payer: {
+                email: 'cliente@email.com', // Pode ser ajustado se tiver o e-mail do cliente
+            },
+            external_reference: referencia || 'ref_proposta'
+        };
 
+        const response = await payment.create({ body });
+
+        // Extrai o código "Copia e Cola" do Pix gerado pelo Mercado Pago
+        const qrCode = response.point_of_interaction.transaction_data.qr_code;
+
+        // Retorna sempre em formato JSON válido para o front-end
         return res.status(200).json({
             sucesso: true,
-            qrcode: dados.point_of_interaction.transaction_data.qr_code_base64,
-            copia_cola: dados.point_of_interaction.transaction_data.qr_code
+            qr_code: qrCode,
+            payment_id: response.id
         });
 
-    } catch (erro) {
-        console.error("Erro interno ao gerar Pix:", erro);
-        return res.status(500).json({ sucesso: false, erro: "Erro interno no servidor" });
+    } catch (error) {
+        console.error("Erro ao gerar Pix no Mercado Pago:", error);
+        return res.status(500).json({ 
+            sucesso: false, 
+            mensagem: error.message || "Erro interno ao processar o Pix." 
+        });
     }
 });
 
-app.post('/api/webhook-pix', async (req, res) => {
-    try {
-        const evento = req.body;
-        if (evento.type === 'payment' || (evento.action && evento.action.includes('payment'))) {
-            const paymentId = evento.data?.id;
-            if (paymentId) {
-                const respPagamento = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-                    headers: { 'Authorization': `Bearer ${MERCADO_PAGO_TOKEN.trim()}` }
-                });
-                const pagamento = await respPagamento.json();
-                if (pagamento.status === 'approved') {
-                    const propostaId = pagamento.external_reference;
-                    if (propostaId) {
-                        await supabase.from('propostas')
-                            .update({ 
-                                entrada_paga: true, 
-                                status: 'Em Andamento',
-                                data_aprovacao_entrada: new Date().toISOString()
-                            })
-                            .eq('id', propostaId);
-                    }
-                }
-            }
-        }
-        return res.status(200).send('OK');
-    } catch (erro) {
-        return res.status(500).send('Erro interno');
-    }
-});
-
+// Porta padrão para o Render ou ambiente local
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`ðŸš€ Servidor rodando na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
 });
