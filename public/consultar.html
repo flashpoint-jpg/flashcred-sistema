@@ -3,66 +3,600 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Minha Proposta | FlashCred</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    colors: { primary: '#0A2463', sucesso: '#10B981', alerta: '#F59E0B' }
+                    colors: {
+                        primary: '#0A2463',
+                        sucesso: '#10B981',
+                        alerta: '#F59E0B'
+                    }
                 }
             }
         };
 
-        // ✅ NENHUMA VARIAVEL GLOBAL QUE CAUSE LOOP
-        async function iniciar() {
-            const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
-            const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-            const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-            const cpf = new URLSearchParams(window.location.search).get('cpf');
+        let supabaseClient = null;
+        let propostaAtual = null;
 
-            // ✅ NÃO TEM NENHUM OUTRO CHAMADA, NENHUM EVENTO, NENHUM LOOP
-            if(!cpf) { window.location.href='consultar.html'; return; }
+        async function iniciar() {
+
+            const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+
+            const SUPABASE_KEY =
+                'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+
+            supabaseClient = window.supabase.createClient(
+                SUPABASE_URL,
+                SUPABASE_KEY
+            );
+
+            const parametros = new URLSearchParams(window.location.search);
+            const cpfParametro = parametros.get('cpf');
+
+            if (!cpfParametro) {
+                window.location.href = 'consultar.html';
+                return;
+            }
+
+            const cpf = cpfParametro.replace(/\D/g, '');
 
             try {
-                const {data:p} = await supabase.from('propostas').select('*').eq('cpf', cpf.replace(/\D/g,'')).single();
-                if(!p) throw new Error('Proposta não encontrada');
 
-                const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.quantidade_parcelas||1);
-                const total=v*(1+j/100), parc=q>0?(total-e)/q:0;
-                const dias=Number(p.dias_entrega||8);
+                const { data: p, error } = await supabaseClient
+                    .from('propostas')
+                    .select('*')
+                    .eq('cpf', cpf)
+                    .single();
+
+                if (error) {
+                    throw error;
+                }
+
+                if (!p) {
+                    throw new Error('Proposta não encontrada.');
+                }
+
+                propostaAtual = p;
+
+                const v = Number(p.valor_desejado || 0);
+                const e = Number(p.valor_entrada || 0);
+                const j = Number(p.juros_mensal || 5);
+                const q = Number(p.quantidade_parcelas || 1);
+                const dias = Number(p.dias_entrega || 8);
+
+                const total = v * (1 + j / 100);
+                const valorFinanciado = total - e;
+                const parc = q > 0 ? valorFinanciado / q : 0;
+
+                const nome = p.nome || 'Cliente';
+
+                const jaAssinada =
+                    p.status === 'assinado' ||
+                    p.assinado_em !== null && p.assinado_em !== undefined;
 
                 document.body.innerHTML = `
-                <div class="max-w-md mx-auto bg-white p-5 rounded-xl shadow my-4">
-                    <h2 class="text-xl font-bold text-center text-primary mb-4">Olá, ${p.nome}!</h2>
-                    <div class="bg-blue-50 p-4 rounded-lg mb-4">
-                        <p>Valor Total: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                        <p>Entrada: R$ ${e.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                        <p>Parcelamento: ${q}x de R$ ${parc.toLocaleString('pt-BR',{minimumFractionDigits:2})}</p>
-                        <p>Juros: ${j}% ao mês</p>
-                        <p>Prazo de Entrega: ${dias} dias úteis</p>
+                    <div class="min-h-screen bg-gray-100 py-6 px-4">
+
+                        <div class="max-w-md mx-auto">
+
+                            <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+
+                                <!-- CABEÇALHO -->
+                                <div class="bg-primary text-white p-6 text-center">
+
+                                    <div class="text-3xl mb-2">
+                                        <i class="fa-solid fa-file-signature"></i>
+                                    </div>
+
+                                    <h1 class="text-2xl font-bold">
+                                        FlashCred
+                                    </h1>
+
+                                    <p class="text-sm opacity-90 mt-1">
+                                        Minha Proposta
+                                    </p>
+
+                                </div>
+
+                                <div class="p-5">
+
+                                    <!-- CLIENTE -->
+                                    <div class="mb-5">
+                                        <p class="text-sm text-gray-500">
+                                            Olá,
+                                        </p>
+
+                                        <h2 class="text-xl font-bold text-gray-800">
+                                            ${escaparHTML(nome)}
+                                        </h2>
+                                    </div>
+
+                                    <!-- VALORES -->
+                                    <div class="bg-blue-50 border border-blue-100
+                                                p-4 rounded-xl mb-5">
+
+                                        <h3 class="font-bold text-primary mb-3">
+                                            <i class="fa-solid fa-file-invoice-dollar mr-1"></i>
+                                            Detalhes da proposta
+                                        </h3>
+
+                                        <div class="space-y-2 text-sm">
+
+                                            <div class="flex justify-between gap-3">
+                                                <span class="text-gray-600">
+                                                    Valor desejado:
+                                                </span>
+
+                                                <strong>
+                                                    R$ ${formatarMoeda(v)}
+                                                </strong>
+                                            </div>
+
+                                            <div class="flex justify-between gap-3">
+                                                <span class="text-gray-600">
+                                                    Valor total:
+                                                </span>
+
+                                                <strong>
+                                                    R$ ${formatarMoeda(total)}
+                                                </strong>
+                                            </div>
+
+                                            <div class="flex justify-between gap-3">
+                                                <span class="text-gray-600">
+                                                    Entrada:
+                                                </span>
+
+                                                <strong>
+                                                    R$ ${formatarMoeda(e)}
+                                                </strong>
+                                            </div>
+
+                                            <div class="flex justify-between gap-3">
+                                                <span class="text-gray-600">
+                                                    Parcelamento:
+                                                </span>
+
+                                                <strong>
+                                                    ${q}x de R$ ${formatarMoeda(parc)}
+                                                </strong>
+                                            </div>
+
+                                            <div class="flex justify-between gap-3">
+                                                <span class="text-gray-600">
+                                                    Juros:
+                                                </span>
+
+                                                <strong>
+                                                    ${formatarNumero(j)}% ao mês
+                                                </strong>
+                                            </div>
+
+                                            <div class="flex justify-between gap-3">
+                                                <span class="text-gray-600">
+                                                    Prazo de entrega:
+                                                </span>
+
+                                                <strong>
+                                                    ${dias} dias úteis
+                                                </strong>
+                                            </div>
+
+                                        </div>
+                                    </div>
+
+                                    <!-- STATUS SE JÁ ASSINADA -->
+                                    ${
+                                        jaAssinada
+                                        ?
+                                        `
+                                        <div class="bg-green-50 border border-green-200
+                                                    rounded-xl p-5 text-center">
+
+                                            <div class="w-14 h-14 bg-green-100
+                                                        text-green-600 rounded-full
+                                                        flex items-center justify-center
+                                                        mx-auto mb-3">
+
+                                                <i class="fa-solid fa-check text-2xl"></i>
+
+                                            </div>
+
+                                            <h3 class="text-lg font-bold text-green-700">
+                                                Proposta já assinada
+                                            </h3>
+
+                                            <p class="text-sm text-gray-600 mt-2">
+                                                Sua assinatura foi registrada com sucesso.
+                                            </p>
+
+                                            ${
+                                                p.assinado_em
+                                                ?
+                                                `
+                                                <p class="text-xs text-gray-500 mt-3">
+                                                    Assinada em:
+                                                    ${formatarData(p.assinado_em)}
+                                                </p>
+                                                `
+                                                :
+                                                ''
+                                            }
+
+                                        </div>
+                                        `
+                                        :
+                                        `
+                                        <!-- TERMOS -->
+                                        <div class="border border-gray-200
+                                                    rounded-xl p-4 mb-4">
+
+                                            <p class="text-sm text-gray-600 leading-relaxed">
+                                                Ao assinar esta proposta, você declara que
+                                                leu e concorda com as informações e condições
+                                                apresentadas nesta página.
+                                            </p>
+
+                                        </div>
+
+                                        <!-- CHECKBOX -->
+                                        <label class="flex items-start gap-3
+                                                      cursor-pointer mb-5">
+
+                                            <input
+                                                type="checkbox"
+                                                id="ok"
+                                                class="mt-1 w-5 h-5"
+                                            >
+
+                                            <span class="text-sm text-gray-700">
+                                                Li e concordo com os termos da proposta.
+                                            </span>
+
+                                        </label>
+
+                                        <!-- MENSAGEM -->
+                                        <div id="mensagem"
+                                             class="hidden mb-4 rounded-xl p-4 text-sm">
+                                        </div>
+
+                                        <!-- BOTÃO -->
+                                        <button
+                                            id="btnAssinar"
+                                            onclick="assinarProposta()"
+                                            class="w-full bg-primary hover:bg-blue-900
+                                                   text-white py-3.5 rounded-xl
+                                                   font-bold transition
+                                                   flex items-center justify-center gap-2">
+
+                                            <i class="fa-solid fa-pen-nib"></i>
+
+                                            Assinar proposta
+
+                                        </button>
+
+                                        <p class="text-xs text-gray-500 text-center mt-4">
+                                            Sua assinatura será registrada eletronicamente.
+                                        </p>
+                                        `
+                                    }
+
+                                </div>
+                            </div>
+
+                            <p class="text-center text-xs text-gray-400 mt-5">
+                                FlashCred
+                            </p>
+
+                        </div>
                     </div>
-                    <p class="text-sm mb-4">Ao assinar concorda com todos os termos.</p>
-                    <label class="flex items-center gap-2 mb-4"><input type="checkbox" id="ok"> Li e concordo</label>
-                    <button onclick="alert('Assinado!')" class="w-full bg-primary text-white py-3 rounded-lg font-bold">Assinar</button>
-                    <div class="text-center mt-4"><a href="https://wa.me/5511973294235" class="text-primary">Suporte</a></div>
-                </div>`;
+                `;
 
             } catch (erro) {
-                document.body.innerHTML = `<div class="text-center p-10 text-red-600">${erro.message}<br><a href="consultar.html">Voltar</a></div>`;
+
+                console.error(erro);
+
+                document.body.innerHTML = `
+                    <div class="min-h-screen bg-gray-100
+                                flex items-center justify-center px-4">
+
+                        <div class="bg-white rounded-2xl shadow-lg
+                                    max-w-md w-full p-8 text-center">
+
+                            <div class="w-16 h-16 bg-red-100 text-red-600
+                                        rounded-full flex items-center justify-center
+                                        mx-auto mb-4">
+
+                                <i class="fa-solid fa-circle-exclamation text-2xl"></i>
+
+                            </div>
+
+                            <h2 class="text-xl font-bold text-gray-800 mb-2">
+                                Não foi possível carregar a proposta
+                            </h2>
+
+                            <p class="text-sm text-gray-600 mb-5">
+                                ${escaparHTML(
+                                    erro.message || 'Erro ao consultar a proposta.'
+                                )}
+                            </p>
+
+                            <a href="consultar.html"
+                               class="inline-block bg-primary text-white
+                                      px-6 py-3 rounded-xl font-bold">
+
+                                Voltar
+
+                            </a>
+
+                        </div>
+                    </div>
+                `;
             }
         }
 
-        // ✅ CHAMA UMA VEZ SÓ E PARA
-        document.addEventListener('DOMContentLoaded', iniciar);
+
+        async function assinarProposta() {
+
+            const checkbox = document.getElementById('ok');
+            const botao = document.getElementById('btnAssinar');
+            const mensagem = document.getElementById('mensagem');
+
+            if (!checkbox || !botao || !mensagem) {
+                return;
+            }
+
+            if (!checkbox.checked) {
+
+                mostrarMensagem(
+                    'Você precisa marcar "Li e concordo com os termos da proposta" antes de assinar.',
+                    'erro'
+                );
+
+                return;
+            }
+
+            if (!propostaAtual || !propostaAtual.id) {
+
+                mostrarMensagem(
+                    'Não foi possível identificar a proposta.',
+                    'erro'
+                );
+
+                return;
+            }
+
+            botao.disabled = true;
+
+            botao.innerHTML = `
+                <i class="fa-solid fa-spinner fa-spin"></i>
+                Registrando assinatura...
+            `;
+
+            try {
+
+                const dataAssinatura = new Date().toISOString();
+
+                /*
+                 * Atualiza somente a proposta encontrada.
+                 *
+                 * status = assinado
+                 * assinado_em = data/hora da assinatura
+                 */
+
+                const { data, error } = await supabaseClient
+                    .from('propostas')
+                    .update({
+                        status: 'assinado',
+                        assinado_em: dataAssinatura
+                    })
+                    .eq('id', propostaAtual.id)
+                    .select()
+                    .single();
+
+                if (error) {
+                    throw error;
+                }
+
+                if (!data) {
+                    throw new Error(
+                        'Não foi possível registrar a assinatura.'
+                    );
+                }
+
+                propostaAtual = data;
+
+                /*
+                 * Substitui a área de assinatura pela confirmação.
+                 * Não existe redirecionamento.
+                 */
+
+                const area = botao.parentElement;
+
+                area.innerHTML = `
+                    <div class="bg-green-50 border border-green-200
+                                rounded-xl p-6 text-center">
+
+                        <div class="w-16 h-16 bg-green-100
+                                    text-green-600 rounded-full
+                                    flex items-center justify-center
+                                    mx-auto mb-4">
+
+                            <i class="fa-solid fa-check text-3xl"></i>
+
+                        </div>
+
+                        <h2 class="text-xl font-bold text-green-700 mb-2">
+                            Proposta assinada com sucesso!
+                        </h2>
+
+                        <p class="text-sm text-gray-600">
+                            Sua assinatura foi registrada eletronicamente.
+                        </p>
+
+                        <p class="text-xs text-gray-500 mt-4">
+                            Data da assinatura:
+                            ${formatarData(dataAssinatura)}
+                        </p>
+
+                    </div>
+                `;
+
+            } catch (erro) {
+
+                console.error(erro);
+
+                botao.disabled = false;
+
+                botao.innerHTML = `
+                    <i class="fa-solid fa-pen-nib"></i>
+                    Assinar proposta
+                `;
+
+                mostrarMensagem(
+                    erro.message ||
+                    'Não foi possível registrar sua assinatura. Tente novamente.',
+                    'erro'
+                );
+            }
+        }
+
+
+        function mostrarMensagem(texto, tipo) {
+
+            const mensagem = document.getElementById('mensagem');
+
+            if (!mensagem) {
+                return;
+            }
+
+            mensagem.classList.remove(
+                'hidden',
+                'bg-red-50',
+                'border-red-200',
+                'text-red-700',
+                'bg-green-50',
+                'border-green-200',
+                'text-green-700'
+            );
+
+            if (tipo === 'erro') {
+
+                mensagem.classList.add(
+                    'bg-red-50',
+                    'border',
+                    'border-red-200',
+                    'text-red-700'
+                );
+
+                mensagem.innerHTML = `
+                    <i class="fa-solid fa-circle-exclamation mr-1"></i>
+                    ${escaparHTML(texto)}
+                `;
+
+            } else {
+
+                mensagem.classList.add(
+                    'bg-green-50',
+                    'border',
+                    'border-green-200',
+                    'text-green-700'
+                );
+
+                mensagem.innerHTML = `
+                    <i class="fa-solid fa-check mr-1"></i>
+                    ${escaparHTML(texto)}
+                `;
+            }
+        }
+
+
+        function formatarMoeda(valor) {
+
+            return Number(valor || 0).toLocaleString(
+                'pt-BR',
+                {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }
+            );
+        }
+
+
+        function formatarNumero(valor) {
+
+            return Number(valor || 0).toLocaleString(
+                'pt-BR',
+                {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2
+                }
+            );
+        }
+
+
+        function formatarData(data) {
+
+            const d = new Date(data);
+
+            return d.toLocaleString(
+                'pt-BR',
+                {
+                    dateStyle: 'short',
+                    timeStyle: 'medium'
+                }
+            );
+        }
+
+
+        function escaparHTML(texto) {
+
+            return String(texto)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+
+        document.addEventListener(
+            'DOMContentLoaded',
+            iniciar,
+            { once: true }
+        );
+
     </script>
 </head>
+
 <body class="bg-gray-100">
-    <div class="text-center p-10">
-        <div class="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-        <p>Carregando...</p>
+
+    <div class="min-h-screen flex items-center justify-center">
+
+        <div class="text-center p-10">
+
+            <div class="w-12 h-12 border-4 border-primary
+                        border-t-transparent rounded-full
+                        animate-spin mx-auto mb-3">
+            </div>
+
+            <p class="text-gray-600">
+                Carregando proposta...
+            </p>
+
+        </div>
+
     </div>
+
 </body>
 </html>
