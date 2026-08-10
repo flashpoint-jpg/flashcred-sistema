@@ -148,6 +148,21 @@ button{
     color:var(--texto);
 }
 
+.botao-copiar-campo{
+    border:0;
+    background:transparent;
+    cursor:pointer;
+    padding:2px 4px;
+    font-size:14px;
+    vertical-align:middle;
+    opacity:.75;
+}
+
+.botao-copiar-campo:hover{
+    opacity:1;
+    transform:scale(1.08);
+}
+
 .botao-wpp{
     background:#25D366;
     color:#fff;
@@ -207,6 +222,79 @@ button{
     font-size:18px;
     font-weight:800;
     margin-top:3px;
+}
+
+.item-resumo.clicavel{
+    cursor:pointer;
+    transition:.2s;
+    border:2px solid transparent;
+}
+
+.item-resumo.clicavel:hover{
+    transform:translateY(-2px);
+    box-shadow:0 4px 12px rgba(0,0,0,.10);
+    border-color:var(--primary);
+}
+
+.item-resumo.clicavel.ativo{
+    border-color:var(--primary);
+    background:#EEF4FF;
+}
+
+.fluxo-abas{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin:0 0 20px;
+    padding:10px;
+    background:#fff;
+    border-radius:var(--raio);
+    box-shadow:var(--sombra);
+}
+
+.fluxo-aba{
+    flex:1 1 160px;
+    border:2px solid transparent;
+    background:#F8FAFC;
+    color:var(--texto);
+    border-radius:9px;
+    padding:12px 14px;
+    cursor:pointer;
+    font-weight:800;
+    text-align:left;
+    transition:.2s;
+}
+
+.fluxo-aba:hover{
+    transform:translateY(-1px);
+    border-color:var(--primary);
+}
+
+.fluxo-aba.ativa{
+    border-color:var(--primary);
+    background:#EEF4FF;
+}
+
+.fluxo-aba small{
+    display:block;
+    margin-top:3px;
+    font-size:12px;
+    opacity:.7;
+}
+
+.filtro-aviso{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:15px;
+    padding:10px 14px;
+    background:#fff;
+    border:1px solid var(--borda);
+    border-radius:9px;
+    box-shadow:var(--sombra);
+    font-size:13px;
+    font-weight:700;
 }
 
 .sininho{
@@ -700,19 +788,19 @@ button{
             </span>
         </div>
 
-        <div class="item-resumo">
+        <div class="item-resumo clicavel" id="resumoPagas" onclick="filtrarResumo('pagas')" title="Ver clientes com parcelas pagas">
             <span>🧾 Parcelas Pagas</span>
             <span id="qtdPagas">0</span>
         </div>
 
-        <div class="item-resumo">
+        <div class="item-resumo clicavel" id="resumoVencidas" onclick="filtrarResumo('vencidas')" title="Ver parcelas vencidas">
             <span>⚠️ Vencidas</span>
             <span id="qtdVencidas" class="texto-perigo">
                 0
             </span>
         </div>
 
-        <div class="item-resumo">
+        <div class="item-resumo clicavel" id="resumoProximas" onclick="filtrarResumo('proximas')" title="Ver próximas parcelas">
             <span>🔔 Próximas</span>
             <span id="qtdProximas" class="texto-alerta">
                 0
@@ -741,6 +829,40 @@ button{
             </div>
         </div>
 
+    </div>
+
+
+    <!-- FLUXO DE CLIENTES -->
+    <div class="fluxo-abas">
+        <button
+            type="button"
+            class="fluxo-aba ativa"
+            id="abaNovos"
+            onclick="filtrarFluxo('novos')"
+        >
+            🆕 Novos Clientes
+            <small><span id="qtdNovos">0</span> cliente(s)</small>
+        </button>
+
+        <button
+            type="button"
+            class="fluxo-aba"
+            id="abaAprovados"
+            onclick="filtrarFluxo('aprovados')"
+        >
+            ✅ Aprovados
+            <small><span id="qtdAprovados">0</span> cliente(s)</small>
+        </button>
+
+        <button
+            type="button"
+            class="fluxo-aba"
+            id="abaEntradaPaga"
+            onclick="filtrarFluxo('entrada')"
+        >
+            💵 Entrada Paga
+            <small><span id="qtdEntradaPaga">0</span> cliente(s)</small>
+        </button>
     </div>
 
 
@@ -2097,6 +2219,171 @@ function limparFormulario(){
    CARREGAR PROPOSTAS
 ============================================================ */
 
+let propostasCache = [];
+let filtroResumoAtual = 'todos';
+let filtroFluxoAtual = 'novos';
+
+function clienteNoFluxo(item, tipo){
+    if(tipo === 'novos'){
+        return item.status === 'Nova' && !Boolean(item.entrada_paga);
+    }
+
+    if(tipo === 'aprovados'){
+        return item.status === 'Aprovada' && !Boolean(item.entrada_paga);
+    }
+
+    if(tipo === 'entrada'){
+        return Boolean(item.entrada_paga);
+    }
+
+    return true;
+}
+
+function filtrarFluxo(tipo){
+    filtroFluxoAtual = tipo;
+    filtroResumoAtual = 'todos';
+
+    document.querySelectorAll('.fluxo-aba').forEach(el =>
+        el.classList.remove('ativa')
+    );
+
+    const ids = {
+        novos:'abaNovos',
+        aprovados:'abaAprovados',
+        entrada:'abaEntradaPaga'
+    };
+
+    const aba = document.getElementById(ids[tipo]);
+    if(aba) aba.classList.add('ativa');
+
+    document.querySelectorAll('.item-resumo.clicavel').forEach(el =>
+        el.classList.remove('ativo')
+    );
+
+    renderizarListaFiltrada();
+}
+
+function atualizarAbasFluxo(data){
+    const novos = data.filter(i => clienteNoFluxo(i,'novos')).length;
+    const aprovados = data.filter(i => clienteNoFluxo(i,'aprovados')).length;
+    const entrada = data.filter(i => clienteNoFluxo(i,'entrada')).length;
+
+    const elNovos = document.getElementById('qtdNovos');
+    const elAprovados = document.getElementById('qtdAprovados');
+    const elEntrada = document.getElementById('qtdEntradaPaga');
+
+    if(elNovos) elNovos.innerText = novos;
+    if(elAprovados) elAprovados.innerText = aprovados;
+    if(elEntrada) elEntrada.innerText = entrada;
+}
+
+function obterWhatsApp(item){
+    return somenteNumeros(
+        item?.whatsapp ||
+        item?.telefone ||
+        item?.celular ||
+        item?.fone ||
+        ''
+    );
+}
+
+function parcelaTemStatus(item, tipo){
+    const calc = calcularFinanciamento(
+        item.valor_desejado,
+        item.valor_entrada,
+        item.juros_mensal,
+        item.quantidade_parcelas
+    );
+    const pagas = Math.min(
+        Math.max(0, Number(item.parcelas_pagas) || 0),
+        calc.quantidade
+    );
+    const datas = Array.isArray(item.datas_parcelas) ? item.datas_parcelas : [];
+
+    if(tipo === 'pagas') return pagas > 0;
+
+    return datas.some((dt,index) => {
+        if(index < pagas) return false;
+        const analise = analisarVencimento(dt);
+        if(tipo === 'vencidas'){
+            return analise.status === 'vencida' || analise.status === 'hoje';
+        }
+        if(tipo === 'proximas'){
+            return analise.status === 'proximo';
+        }
+        return true;
+    });
+}
+
+function filtrarResumo(tipo){
+    filtroResumoAtual = filtroResumoAtual === tipo ? 'todos' : tipo;
+
+    document.querySelectorAll('.item-resumo.clicavel').forEach(el =>
+        el.classList.remove('ativo')
+    );
+
+    if(filtroResumoAtual !== 'todos'){
+        const alvo = document.getElementById(
+            filtroResumoAtual === 'pagas' ? 'resumoPagas' :
+            filtroResumoAtual === 'vencidas' ? 'resumoVencidas' :
+            'resumoProximas'
+        );
+        if(alvo) alvo.classList.add('ativo');
+    }
+
+    renderizarListaFiltrada();
+}
+
+function renderizarListaFiltrada(){
+    const lista = document.getElementById('listaPropostas');
+    if(!lista) return;
+
+    const base = propostasCache.filter(item => clienteNoFluxo(item, filtroFluxoAtual));
+    const dados = filtroResumoAtual === 'todos'
+        ? base
+        : base.filter(item => parcelaTemStatus(item, filtroResumoAtual));
+
+    if(!dados.length){
+        lista.innerHTML = `
+            <div class="cartao estado">
+                <i class="fas fa-filter"></i>
+                <p>Nenhum cliente encontrado neste filtro.</p>
+            </div>
+        `;
+        return;
+    }
+
+    const titulo = {
+        pagas:'Parcelas pagas',
+        vencidas:'Parcelas vencidas',
+        proximas:'Próximas parcelas'
+    }[filtroResumoAtual];
+
+    lista.innerHTML = `
+        ${filtroResumoAtual !== 'todos' ? `
+            <div class="filtro-aviso">
+                <span>🔎 ${titulo} — ${dados.length} cliente(s)</span>
+                <button class="botao botao-cinza" onclick="filtrarResumo('todos')">✖ Limpar filtro</button>
+            </div>
+        ` : ''}
+        ${dados.map(renderizarProposta).join('')}
+    `;
+
+    if(filtroResumoAtual !== 'todos'){
+        setTimeout(() => {
+            lista.querySelectorAll('.linha-proposta').forEach(card => {
+                const id = card.id.replace('proposta_','');
+                const corpo = document.getElementById(`cron_${id}`);
+                if(corpo) corpo.classList.add('aberto');
+                const seta = document.getElementById(`seta_cron_${id}`);
+                if(seta) seta.classList.replace('fa-chevron-down','fa-chevron-up');
+            });
+            const primeiro = lista.querySelector('.linha-proposta');
+            if(primeiro) primeiro.scrollIntoView({behavior:'smooth', block:'start'});
+        }, 50);
+    }
+}
+
 async function carregarPropostas(){
 
     if(carregando){
@@ -2140,9 +2427,11 @@ async function carregarPropostas(){
             return;
         }
 
-        renderizarResumo(data || []);
+        propostasCache = data || [];
+        renderizarResumo(propostasCache);
+        atualizarAbasFluxo(propostasCache);
 
-        if(!data || data.length === 0){
+        if(!propostasCache.length){
 
             lista.innerHTML = `
                 <div class="cartao estado">
@@ -2154,10 +2443,7 @@ async function carregarPropostas(){
             return;
         }
 
-        lista.innerHTML =
-            data
-            .map(renderizarProposta)
-            .join('');
+        renderizarListaFiltrada();
 
     }catch(erro){
 
@@ -2440,24 +2726,43 @@ function renderizarProposta(i){
 
                         </div>
 
-                        <button
-                            onclick="marcarParcela(
-                                '${escapeHTML(String(i.id))}',
-                                ${numero},
-                                ${!pago}
-                            )"
-                            class="botao ${
-                                pago
-                                ? 'botao-alerta'
-                                : 'botao-sucesso'
-                            }"
-                        >
-                            ${
-                                pago
-                                ? '↩️ Reabrir'
-                                : '✅ Marcar Paga'
-                            }
-                        </button>
+                        <div class="botoes-acao">
+                            <button
+                                onclick="marcarParcela(
+                                    '${escapeHTML(String(i.id))}',
+                                    ${numero},
+                                    ${!pago}
+                                )"
+                                class="botao ${
+                                    pago
+                                    ? 'botao-alerta'
+                                    : 'botao-sucesso'
+                                }"
+                            >
+                                ${
+                                    pago
+                                    ? '↩️ Reabrir'
+                                    : '✅ Marcar Paga'
+                                }
+                            </button>
+
+                            ${!pago ? `
+                                <button
+                                    onclick="cobrarParcelaWpp(
+                                        '${escapeHTML(obterWhatsApp(i))}',
+                                        '${escapeHTML(i.nome || '')}',
+                                        ${numero},
+                                        ${Number(calc.parcela) || 0},
+                                        '${escapeHTML(dt)}',
+                                        '${escapeHTML(analise.status)}'
+                                    )"
+                                    class="botao botao-wpp"
+                                    title="Enviar cobrança pelo WhatsApp"
+                                >
+                                    <i class="fab fa-whatsapp"></i> Cobrar
+                                </button>
+                            ` : ''}
+                        </div>
 
                     </div>
                 `;
@@ -2484,18 +2789,22 @@ function renderizarProposta(i){
 
                         <p>
                             <strong>CPF:</strong>
-                            ${escapeHTML(i.cpf)}
+                            ${escapeHTML(i.cpf || 'Não informado')}
+                            <button type="button" class="botao-copiar-campo" onclick='copiarTexto(${JSON.stringify(String(i.cpf || ""))}, "CPF")' title="Copiar CPF">📋</button>
                             |
                             <strong>WhatsApp:</strong>
-                            ${escapeHTML(i.whatsapp || 'Não informado')}
+                            ${escapeHTML(obterWhatsApp(i) || 'Não informado')}
+                            <button type="button" class="botao-copiar-campo" onclick='copiarTexto(${JSON.stringify(String(obterWhatsApp(i) || ""))}, "WhatsApp")' title="Copiar WhatsApp">📋</button>
                         </p>
 
                         <p>
                             <strong>Endereço:</strong>
                             ${escapeHTML(i.endereco || 'Não informado')}
+                            <button type="button" class="botao-copiar-campo" onclick='copiarTexto(${JSON.stringify(String(i.endereco || ""))}, "Endereço")' title="Copiar endereço">📋</button>
                             |
                             <strong>CEP:</strong>
                             ${escapeHTML(i.cep || '-')}
+                            <button type="button" class="botao-copiar-campo" onclick='copiarTexto(${JSON.stringify(String(i.cep || ""))}, "CEP")' title="Copiar CEP">📋</button>
                         </p>
 
                         <p>
@@ -2627,7 +2936,7 @@ function renderizarProposta(i){
                     <button
                         onclick="
                             enviarWpp(
-                                '${escapeHTML(i.whatsapp || '')}',
+                                '${escapeHTML(obterWhatsApp(i))}',
                                 '${escapeHTML(i.nome || '')}',
                                 '${escapeHTML(i.cpf || '')}'
                             )
@@ -2830,7 +3139,7 @@ function renderizarProposta(i){
                         <input
                             type="text"
                             id="edit_whatsapp_${escapeHTML(String(i.id))}"
-                            value="${escapeHTML(i.whatsapp || '')}"
+                            value="${escapeHTML(obterWhatsApp(i))}"
                             class="campo"
                             maxlength="15"
                             oninput="formatarTelefone(this)"
@@ -3226,7 +3535,14 @@ async function alternarEntradaPaga(
         return;
     }
 
+    if(Boolean(status)){
+        filtroFluxoAtual = 'entrada';
+    }else{
+        filtroFluxoAtual = 'aprovados';
+    }
+
     await carregarPropostas();
+    filtrarFluxo(filtroFluxoAtual);
 }
 
 
@@ -3716,6 +4032,26 @@ function toggleCronograma(id){
 
 
 /* ============================================================
+   COPIAR DADOS
+============================================================ */
+
+async function copiarTexto(texto, campo){
+
+    if(!texto){
+        alert(`${campo} não informado.`);
+        return;
+    }
+
+    try{
+        await navigator.clipboard.writeText(texto);
+        alert(`✅ ${campo} copiado!`);
+    }catch(erro){
+        prompt(`Copie o ${campo}:`, texto);
+    }
+}
+
+
+/* ============================================================
    LINK DE CONSULTA
 ============================================================ */
 
@@ -3764,6 +4100,40 @@ async function copiarLink(cpf){
    WHATSAPP
 ============================================================ */
 
+function cobrarParcelaWpp(
+    tel,
+    nome,
+    numeroParcela,
+    valorParcela,
+    dataVencimento,
+    status
+){
+    const numero = somenteNumeros(tel);
+
+    if(!numero || numero.length < 10){
+        alert('Cliente sem WhatsApp válido cadastrado. Edite o cadastro e informe o número com DDD.');
+        return;
+    }
+
+    const valor = Number(valorParcela || 0).toLocaleString('pt-BR',{
+        minimumFractionDigits:2,
+        maximumFractionDigits:2
+    });
+    const vencimento = formatarData(dataVencimento);
+
+    let texto;
+    if(status === 'vencida' || status === 'hoje'){
+        texto = `Olá ${nome}, tudo bem? 😊\n\nIdentificamos que a ${numeroParcela}ª parcela da sua proposta na FlashCred, no valor de R$ ${valor}, está ${status === 'hoje' ? 'vencendo hoje' : 'vencida'} (vencimento: ${vencimento}).\n\nPedimos, por favor, que regularize o pagamento. Se já realizou o pagamento, desconsidere esta mensagem.\n\nEm caso de dúvida, estamos à disposição.`;
+    }else{
+        texto = `Olá ${nome}, tudo bem? 😊\n\nPassando para lembrar que a ${numeroParcela}ª parcela da sua proposta na FlashCred, no valor de R$ ${valor}, vence em ${vencimento}.\n\nPedimos que se programe para realizar o pagamento na data. Se precisar de alguma informação, estamos à disposição.`;
+    }
+
+    window.open(
+        `https://wa.me/55${numero}?text=${encodeURIComponent(texto)}`,
+        '_blank'
+    );
+}
+
 function enviarWpp(
     tel,
     nome,
@@ -3771,7 +4141,7 @@ function enviarWpp(
 ){
 
     const numero =
-        somenteNumeros(tel);
+        obterWhatsApp({whatsapp:tel});
 
     if(
         !numero ||
