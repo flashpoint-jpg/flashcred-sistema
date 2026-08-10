@@ -1,14 +1,15 @@
 const express = require('express');
 const app = express();
 
-// Necessário para o servidor conseguir ler dados enviados em JSON no corpo da requisição (req.body)
+// 1. Necessário para ler dados em JSON
 app.use(express.json());
 
-// Sua rota que estava gerando o erro na linha 2 (ajustada abaixo)
+// 2. ADICIONE ESTA LINHA: Diz ao Express para servir todos os arquivos estáticos da pasta atual (ou troque 'public' se estiver usando uma pasta específica)
+app.use(express.static(__dirname));
+
+// Sua rota de Pix
 app.post('/api/gerar-pix', async (req, res) => {
     try {
-        // Seu código de geração de Pix aqui...
-        
         return res.status(200).json({ sucesso: true, mensagem: "Pix gerado com sucesso!" });
     } catch (error) {
         console.error("Erro ao gerar Pix:", error);
@@ -16,7 +17,6 @@ app.post('/api/gerar-pix', async (req, res) => {
     }
 });
 
-// Defina a porta e coloque o servidor para rodar (geralmente porta 3000 ou process.env.PORT para o Render)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
