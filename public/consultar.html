@@ -140,13 +140,11 @@ body {
     display: none !important;
 }
 
-/* ETAPAS */
-
 .stepper {
     display: flex;
     justify-content: space-between;
     position: relative;
-    margin: 5px 0 5px;
+    margin: 5px 0;
 }
 
 .stepper:before {
@@ -201,8 +199,6 @@ body {
     color: white;
 }
 
-/* INFORMAÇÕES */
-
 .row {
     display: flex;
     justify-content: space-between;
@@ -250,8 +246,6 @@ body {
     background: #FEF2F2;
     border: 1px solid #FECACA;
 }
-
-/* PARCELAS */
 
 .parcela {
     border: 1px solid #DCE3EC;
@@ -350,8 +344,6 @@ body {
     font-weight: 600;
 }
 
-/* CONTRATO */
-
 .contrato {
     background: #FCFCFD;
     border: 1px solid #CBD5E1;
@@ -394,8 +386,6 @@ body {
     color: #0A2463;
 }
 
-/* ENTREGA */
-
 .entrega {
     background: #FFFBEB;
     border: 2px solid #F59E0B;
@@ -426,8 +416,6 @@ body {
     color: #64748B;
 }
 
-/* PIX */
-
 .pix-box {
     background: #ECFDF5;
     border: 2px solid #32BCAD;
@@ -445,8 +433,6 @@ body {
     font-weight: 700;
     cursor: pointer;
 }
-
-/* ASSINATURA */
 
 .assinatura-area {
     margin-top: 15px;
@@ -471,8 +457,6 @@ video,
     flex: 1;
 }
 
-/* SUCESSO */
-
 .sucesso {
     background: #ECFDF5;
     border: 2px solid #10B981;
@@ -487,8 +471,6 @@ video,
     font-size: 42px;
     margin-bottom: 10px;
 }
-
-/* BADGE */
 
 .badge {
     display: inline-flex;
@@ -505,17 +487,8 @@ video,
     color: #166534;
 }
 
-.badge-yellow {
-    background: #FEF3C7;
-    color: #92400E;
-}
-
-.badge-red {
-    background: #FEE2E2;
-    color: #991B1B;
-}
-
 @media(max-width:480px) {
+
     .app {
         padding: 10px;
     }
@@ -538,10 +511,6 @@ video,
 <body>
 
 <div class="app">
-
-<!-- ======================================================
-     CONSULTA
-====================================================== -->
 
 <section id="telaConsulta">
 
@@ -598,10 +567,6 @@ video,
 </section>
 
 
-<!-- ======================================================
-     PROPOSTA
-====================================================== -->
-
 <section id="telaProposta" class="hidden">
 
     <div class="header">
@@ -609,6 +574,7 @@ video,
         <div class="flex items-center justify-between">
 
             <div>
+
                 <div class="text-xs opacity-70">
                     FLASHCRED
                 </div>
@@ -616,6 +582,7 @@ video,
                 <h1 class="text-2xl font-bold">
                     Minha Proposta
                 </h1>
+
             </div>
 
             <i class="fas fa-file-contract text-3xl opacity-80"></i>
@@ -624,15 +591,11 @@ video,
 
     </div>
 
-    <!-- ETAPAS -->
-
     <div class="card">
 
         <div id="barraEtapas" class="stepper"></div>
 
     </div>
-
-    <!-- CONTEÚDO -->
 
     <div id="conteudoProposta"></div>
 
@@ -720,10 +683,6 @@ async function iniciar() {
     );
 
 
-    /*
-     * Recupera a proposta depois do F5.
-     */
-
     if(id) {
 
         await carregarPorId(id);
@@ -810,9 +769,7 @@ async function executarConsulta(cpfInformado = null) {
 
         salvarSessao();
 
-
         abrirProposta();
-
 
         configurarRealtime();
 
@@ -856,6 +813,7 @@ async function carregarPorId(id) {
 
 
         if(error) {
+
             throw new Error(
                 error.message
             );
@@ -879,12 +837,9 @@ async function carregarPorId(id) {
         propostaAtual =
             data;
 
-
         salvarSessao();
 
-
         abrirProposta();
-
 
         configurarRealtime();
 
@@ -909,7 +864,7 @@ async function carregarPorId(id) {
 
 
 /* ==========================================================
-   SALVAR SESSÃO
+   SESSÃO
 ========================================================== */
 
 function salvarSessao() {
@@ -938,6 +893,40 @@ function salvarSessao() {
 
 
 /* ==========================================================
+   VERIFICAR BOOLEANO
+========================================================== */
+
+function booleano(valor) {
+
+    if(
+        valor === true ||
+        valor === 1
+    ) {
+        return true;
+    }
+
+
+    if(
+        typeof valor === 'string'
+    ) {
+
+        const v =
+            valor.trim().toLowerCase();
+
+        return (
+            v === 'true' ||
+            v === '1' ||
+            v === 'sim' ||
+            v === 'pago'
+        );
+    }
+
+
+    return false;
+}
+
+
+/* ==========================================================
    REALTIME
 ========================================================== */
 
@@ -952,6 +941,8 @@ function configurarRealtime() {
         supabase.removeChannel(
             canalRealtime
         );
+
+        canalRealtime = null;
     }
 
 
@@ -959,12 +950,14 @@ function configurarRealtime() {
         supabase
         .channel(
             'flashcred_' +
-            String(propostaAtual.id)
+            String(propostaAtual.id) +
+            '_' +
+            Date.now()
         )
         .on(
             'postgres_changes',
             {
-                event: '*',
+                event: 'UPDATE',
                 schema: 'public',
                 table: 'propostas',
                 filter:
@@ -972,24 +965,60 @@ function configurarRealtime() {
             },
             function(payload) {
 
-                if(
-                    payload.eventType === 'UPDATE' ||
-                    payload.eventType === 'INSERT'
-                ) {
+                console.log(
+                    'Atualização recebida:',
+                    payload.new
+                );
 
-                    propostaAtual =
-                        payload.new;
+
+                if(payload.new) {
+
+                    propostaAtual = {
+                        ...propostaAtual,
+                        ...payload.new
+                    };
+
 
                     salvarSessao();
+
+
+                    /*
+                     * IMPORTANTE:
+                     * redesenha a tela usando
+                     * os dados novos do painel.
+                     */
 
                     mostrarProposta(
                         propostaAtual
                     );
+
+
+                    /*
+                     * Se a entrada foi paga,
+                     * a tela imediatamente
+                     * passa para parcelas.
+                     */
+
+                    if(
+                        booleano(
+                            propostaAtual.entrada_paga
+                        )
+                    ) {
+
+                        pararCamera();
+                    }
                 }
 
             }
         )
-        .subscribe();
+        .subscribe(function(status) {
+
+            console.log(
+                'Realtime:',
+                status
+            );
+
+        });
 }
 
 
@@ -1032,7 +1061,6 @@ function voltarInicio() {
 
 
     pararCamera();
-
 
     propostaAtual = null;
 
@@ -1092,11 +1120,30 @@ function determinarEtapa(p) {
 
 
     const assinado =
-        p.contrato_assinado === true;
+        booleano(
+            p.contrato_assinado
+        );
 
 
     const entradaPaga =
-        p.entrada_paga === true;
+        booleano(
+            p.entrada_paga
+        );
+
+
+    /*
+     * REGRA PRINCIPAL:
+     *
+     * Se a entrada foi paga,
+     * a proposta está na última etapa.
+     *
+     * Isso impede que o cliente
+     * volte para contrato.
+     */
+
+    if(entradaPaga) {
+        return 5;
+    }
 
 
     if(!aprovado)
@@ -1111,11 +1158,7 @@ function determinarEtapa(p) {
         return 3;
 
 
-    if(!entradaPaga)
-        return 4;
-
-
-    return 5;
+    return 4;
 }
 
 
@@ -1196,7 +1239,7 @@ function moeda(valor) {
 function escapar(valor) {
 
     return String(
-        valor || ''
+        valor ?? ''
     )
     .replace(/&/g,'&amp;')
     .replace(/</g,'&lt;')
@@ -1285,11 +1328,9 @@ function adicionarMeses(
     const d =
         new Date(data);
 
-
     d.setMonth(
         d.getMonth() + meses
     );
-
 
     return d;
 }
@@ -1314,6 +1355,10 @@ function dataBR(data) {
     );
 }
 
+
+/* ==========================================================
+   DIAS ÚTEIS
+========================================================== */
 
 function calcularDiasUteis(
     inicio,
@@ -1431,6 +1476,36 @@ function mostrarProposta(p) {
         return;
 
 
+    /*
+     * =====================================================
+     * IMPORTANTE
+     * =====================================================
+     *
+     * A entrada paga é verificada PRIMEIRO.
+     *
+     * Portanto:
+     *
+     * entrada_paga = true
+     *
+     * SEMPRE leva para:
+     *
+     * ENTREGA + PARCELAS
+     *
+     * mesmo que:
+     *
+     * contrato_assinado = false
+     *
+     * contrato_assinado = true
+     *
+     * ou qualquer outro estado.
+     */
+
+    const entradaPaga =
+        booleano(
+            p.entrada_paga
+        );
+
+
     const etapa =
         determinarEtapa(p);
 
@@ -1519,11 +1594,9 @@ function mostrarProposta(p) {
 
 
     const assinado =
-        p.contrato_assinado === true;
-
-
-    const entradaPaga =
-        p.entrada_paga === true;
+        booleano(
+            p.contrato_assinado
+        );
 
 
     let html = `
@@ -1552,14 +1625,20 @@ function mostrarProposta(p) {
             </div>
 
             <div class="row">
-                <span class="label">CPF</span>
-                <span class="value">${cpf}</span>
+                <span class="label">
+                    CPF
+                </span>
+
+                <span class="value">
+                    ${cpf}
+                </span>
             </div>
 
             ${
                 telefone
                 ? `
                     <div class="row">
+
                         <span class="label">
                             WhatsApp
                         </span>
@@ -1567,12 +1646,14 @@ function mostrarProposta(p) {
                         <span class="value">
                             ${escapar(telefone)}
                         </span>
+
                     </div>
                 `
                 : ''
             }
 
             <div class="row">
+
                 <span class="label">
                     Valor solicitado
                 </span>
@@ -1580,9 +1661,11 @@ function mostrarProposta(p) {
                 <span class="value">
                     R$ ${moeda(valor)}
                 </span>
+
             </div>
 
             <div class="row">
+
                 <span class="label">
                     Entrada
                 </span>
@@ -1590,9 +1673,11 @@ function mostrarProposta(p) {
                 <span class="value">
                     R$ ${moeda(entrada)}
                 </span>
+
             </div>
 
             <div class="row">
+
                 <span class="label">
                     Juros
                 </span>
@@ -1600,10 +1685,64 @@ function mostrarProposta(p) {
                 <span class="value">
                     ${numero(juros)}% a.m.
                 </span>
+
             </div>
 
         </div>
     `;
+
+
+    /* ======================================================
+       PRIORIDADE ABSOLUTA — ENTRADA PAGA
+    ====================================================== */
+
+    if(entradaPaga) {
+
+        html += `
+
+            <div class="sucesso">
+
+                <i class="fas fa-circle-check"></i>
+
+                <h3 class="text-xl font-bold">
+                    ENTRADA CONFIRMADA
+                </h3>
+
+                <p class="text-sm text-slate-600 mt-2">
+                    O pagamento da entrada foi confirmado.
+                </p>
+
+                <p class="text-sm text-slate-600 mt-1">
+                    Sua proposta avançou para a etapa de
+                    parcelas e entrega.
+                </p>
+
+            </div>
+
+        `;
+
+
+        /*
+         * Mostra diretamente a entrega.
+         */
+
+        html += montarEntrega(p);
+
+
+        /*
+         * Mostra diretamente as parcelas.
+         */
+
+        html += montarParcelas(p);
+
+
+        document.getElementById(
+            'conteudoProposta'
+        ).innerHTML = html;
+
+
+        return;
+    }
 
 
     /* ======================================================
@@ -1635,9 +1774,11 @@ function mostrarProposta(p) {
 
         `;
 
+
         document.getElementById(
             'conteudoProposta'
         ).innerHTML = html;
+
 
         return;
     }
@@ -1674,6 +1815,7 @@ function mostrarProposta(p) {
         } else {
 
             html += `
+
                 <div class="card">
 
                     <div class="info info-green">
@@ -1697,31 +1839,51 @@ function mostrarProposta(p) {
                     <div class="resumo">
 
                         <div class="resumo-item">
-                            <span>Valor solicitado</span>
+
+                            <span>
+                                Valor solicitado
+                            </span>
+
                             <strong>
                                 R$ ${moeda(valor)}
                             </strong>
+
                         </div>
 
                         <div class="resumo-item">
-                            <span>Entrada</span>
+
+                            <span>
+                                Entrada
+                            </span>
+
                             <strong>
                                 R$ ${moeda(entrada)}
                             </strong>
+
                         </div>
 
                         <div class="resumo-item">
-                            <span>Juros mensais</span>
+
+                            <span>
+                                Juros mensais
+                            </span>
+
                             <strong>
                                 ${numero(juros)}%
                             </strong>
+
                         </div>
 
                         <div class="resumo-item">
-                            <span>Parcelamento máximo</span>
+
+                            <span>
+                                Parcelamento máximo
+                            </span>
+
                             <strong>
                                 ${limiteParcelas}x
                             </strong>
+
                         </div>
 
                     </div>
@@ -1736,10 +1898,14 @@ function mostrarProposta(p) {
                     >
 
                         ${Array.from(
-                            {length: limiteParcelas},
+                            {
+                                length:
+                                    limiteParcelas
+                            },
                             function(_,i) {
 
-                                const n = i + 1;
+                                const n =
+                                    i + 1;
 
                                 const parcela =
                                     calcularParcela(
@@ -1763,24 +1929,30 @@ function mostrarProposta(p) {
                         onclick="confirmarParcelas()"
                         class="btn btn-success"
                     >
+
                         <i class="fas fa-arrow-right"></i>
+
                         Continuar para o contrato
+
                     </button>
 
                 </div>
+
             `;
         }
+
 
         document.getElementById(
             'conteudoProposta'
         ).innerHTML = html;
+
 
         return;
     }
 
 
     /* ======================================================
-       CONTRATO — AINDA NÃO ASSINADO
+       CONTRATO — NÃO ASSINADO
     ====================================================== */
 
     if(
@@ -1825,39 +1997,64 @@ function mostrarProposta(p) {
                 <div class="resumo">
 
                     <div class="resumo-item">
-                        <span>Valor total</span>
+
+                        <span>
+                            Valor total
+                        </span>
+
                         <strong>
                             R$ ${moeda(total)}
                         </strong>
+
                     </div>
 
                     <div class="resumo-item">
-                        <span>Entrada</span>
+
+                        <span>
+                            Entrada
+                        </span>
+
                         <strong>
                             R$ ${moeda(entrada)}
                         </strong>
+
                     </div>
 
                     <div class="resumo-item">
-                        <span>Parcelamento</span>
+
+                        <span>
+                            Parcelamento
+                        </span>
+
                         <strong>
                             ${escolhida}x de
                             R$ ${moeda(valorParcela)}
                         </strong>
+
                     </div>
 
                     <div class="resumo-item">
-                        <span>Juros</span>
+
+                        <span>
+                            Juros
+                        </span>
+
                         <strong>
                             ${numero(juros)}% a.m.
                         </strong>
+
                     </div>
 
                     <div class="resumo-item">
-                        <span>Prazo de entrega</span>
+
+                        <span>
+                            Prazo de entrega
+                        </span>
+
                         <strong>
                             ${dias || '--'} dias úteis
                         </strong>
+
                     </div>
 
                 </div>
@@ -1876,11 +2073,13 @@ function mostrarProposta(p) {
                     </p>
 
                     <p>
-                        <strong>Cliente:</strong> ${nome}
+                        <strong>Cliente:</strong>
+                        ${nome}
                     </p>
 
                     <p>
-                        <strong>CPF:</strong> ${cpf}
+                        <strong>CPF:</strong>
+                        ${cpf}
                     </p>
 
                     <p>
@@ -1949,8 +2148,11 @@ function mostrarProposta(p) {
                         id="btnModoTexto"
                         class="btn btn-primary"
                     >
+
                         <i class="fas fa-signature"></i>
+
                         Assinar com nome
+
                     </button>
 
                     <button
@@ -1959,8 +2161,11 @@ function mostrarProposta(p) {
                         id="btnModoSelfie"
                         class="btn btn-secondary"
                     >
+
                         <i class="fas fa-camera"></i>
+
                         Selfie
+
                     </button>
 
                 </div>
@@ -1999,8 +2204,11 @@ function mostrarProposta(p) {
                         onclick="tirarFoto()"
                         class="btn btn-primary mt-3"
                     >
+
                         <i class="fas fa-camera"></i>
+
                         Capturar foto
+
                     </button>
 
                     <div
@@ -2018,7 +2226,9 @@ function mostrarProposta(p) {
                             onclick="refazerFoto()"
                             class="btn btn-secondary mt-3"
                         >
+
                             Refazer foto
+
                         </button>
 
                     </div>
@@ -2030,23 +2240,29 @@ function mostrarProposta(p) {
                     onclick="assinarContrato()"
                     class="btn btn-success mt-4"
                 >
+
                     <i class="fas fa-file-signature"></i>
+
                     Assinar contrato
+
                 </button>
 
             </div>
+
         `;
+
 
         document.getElementById(
             'conteudoProposta'
         ).innerHTML = html;
+
 
         return;
     }
 
 
     /* ======================================================
-       ASSINADO — PIX DA ENTRADA
+       CONTRATO ASSINADO — ENTRADA NÃO PAGA
     ====================================================== */
 
     if(
@@ -2080,25 +2296,40 @@ function mostrarProposta(p) {
                 <div class="resumo">
 
                     <div class="resumo-item">
-                        <span>Entrada</span>
+
+                        <span>
+                            Entrada
+                        </span>
+
                         <strong>
                             R$ ${moeda(entrada)}
                         </strong>
+
                     </div>
 
                     <div class="resumo-item">
-                        <span>Valor total</span>
+
+                        <span>
+                            Valor total
+                        </span>
+
                         <strong>
                             R$ ${moeda(total)}
                         </strong>
+
                     </div>
 
                     <div class="resumo-item">
-                        <span>Parcelamento</span>
+
+                        <span>
+                            Parcelamento
+                        </span>
+
                         <strong>
                             ${escolhida}x de
                             R$ ${moeda(valorParcela)}
                         </strong>
+
                     </div>
 
                 </div>
@@ -2106,50 +2337,45 @@ function mostrarProposta(p) {
                 ${
                     entrada > 0
                     ? `
+
                         <button
                             onclick="gerarPixEntrada(${entrada})"
                             class="btn btn-pix"
                         >
+
                             <i class="fas fa-qrcode"></i>
+
                             Gerar Pix da entrada
+
                         </button>
 
                         <div
                             id="areaPixEntrada"
                             class="hidden mt-4"
                         ></div>
+
                     `
                     : `
+
                         <div class="info info-green">
-                            Entrada configurada como R$ 0,00.
+
+                            Entrada configurada como
+                            R$ 0,00.
+
                         </div>
+
                     `
                 }
 
             </div>
+
         `;
 
-        document.getElementById(
-            'conteudoProposta'
-        ).innerHTML = html;
-
-        return;
-    }
-
-
-    /* ======================================================
-       PAGAMENTO CONFIRMADO — ENTREGA + PARCELAS
-    ====================================================== */
-
-    if(entradaPaga) {
-
-        html += montarEntrega(p);
-
-        html += montarParcelas(p);
 
         document.getElementById(
             'conteudoProposta'
         ).innerHTML = html;
+
 
         return;
     }
@@ -2252,6 +2478,7 @@ async function confirmarParcelas() {
             'Não foi possível salvar a quantidade de parcelas.\n\n' +
             error.message
         );
+
 
         botao.disabled = false;
 
@@ -2387,6 +2614,8 @@ async function iniciarCamera() {
             'Você pode usar a assinatura por nome.'
         );
 
+
+        modoAssinatura = 'texto';
 
         alternarModo(
             'texto'
@@ -2609,12 +2838,6 @@ async function assinarContrato() {
             '<i class="fas fa-spinner fa-spin"></i> Salvando assinatura...';
 
 
-        /*
-         * IMPORTANTE:
-         * contrato_assinado só recebe TRUE
-         * depois que o UPDATE for confirmado.
-         */
-
         const { data, error } =
             await supabase
                 .from('propostas')
@@ -2664,13 +2887,8 @@ async function assinarContrato() {
 
         salvarSessao();
 
-
         pararCamera();
 
-
-        /*
-         * Atualiza a tela imediatamente.
-         */
 
         mostrarProposta(
             propostaAtual
@@ -2710,7 +2928,7 @@ async function assinarContrato() {
 
 
 /* ==========================================================
-   PIX
+   PIX — MANTIDO VIA API
 ========================================================== */
 
 async function buscarPix(
@@ -2730,12 +2948,14 @@ async function buscarPix(
                 },
 
                 body: JSON.stringify({
+
                     valor:
                         Number(valor)
                         .toFixed(2),
 
                     descricao:
                         descricao
+
                 })
             }
         );
@@ -2825,6 +3045,7 @@ async function gerarPixEntrada(
             </p>
 
         </div>
+
     `;
 
 
@@ -2846,10 +3067,13 @@ async function gerarPixEntrada(
                 </h3>
 
                 <p class="text-sm text-slate-500 mt-1">
+
                     Valor:
+
                     <strong>
                         R$ ${moeda(valor)}
                     </strong>
+
                 </p>
 
                 <div
@@ -2865,11 +3089,15 @@ async function gerarPixEntrada(
                     onclick="copiarPix(${JSON.stringify(codigo)})"
                     class="btn-copy mt-3"
                 >
+
                     <i class="fas fa-copy"></i>
+
                     Copiar Pix
+
                 </button>
 
             </div>
+
         `;
 
 
@@ -2920,10 +3148,13 @@ async function gerarPixEntrada(
                     onclick="gerarPixEntrada(${Number(valor)})"
                     class="btn btn-danger mt-3"
                 >
+
                     Tentar novamente
+
                 </button>
 
             </div>
+
         `;
     }
 }
@@ -2964,6 +3195,7 @@ async function gerarPixParcela(
             </span>
 
         </div>
+
     `;
 
 
@@ -2993,11 +3225,15 @@ async function gerarPixParcela(
                     onclick="copiarPix(${JSON.stringify(codigo)})"
                     class="btn-copy mt-2"
                 >
+
                     <i class="fas fa-copy"></i>
+
                     Copiar Pix
+
                 </button>
 
             </div>
+
         `;
 
 
@@ -3045,6 +3281,7 @@ async function gerarPixParcela(
                 </p>
 
             </div>
+
         `;
     }
 }
@@ -3090,11 +3327,6 @@ function montarEntrega(p) {
         );
 
 
-    /*
-     * Usa a data de pagamento da entrada
-     * quando existir.
-     */
-
     const inicio =
         p.data_pagamento_entrada ||
         p.entrada_pago_em ||
@@ -3131,17 +3363,24 @@ function montarEntrega(p) {
                     ${
                         dias > 0
                         ? `
+
                             <p class="text-sm text-slate-600 mt-2">
+
                                 Prazo previsto:
+
                                 <strong>
                                     ${dias} dias úteis
                                 </strong>
+
                             </p>
+
                         `
                         : `
+
                             <p class="text-sm text-slate-600 mt-2">
                                 Prazo de entrega ainda não informado.
                             </p>
+
                         `
                     }
 
@@ -3150,6 +3389,7 @@ function montarEntrega(p) {
                 ${
                     dias > 0
                     ? `
+
                         <div class="barra-progresso">
 
                             <div
@@ -3171,6 +3411,7 @@ function montarEntrega(p) {
                             </span>
 
                         </div>
+
                     `
                     : ''
                 }
@@ -3178,6 +3419,7 @@ function montarEntrega(p) {
             </div>
 
         </div>
+
     `;
 }
 
@@ -3209,6 +3451,7 @@ function montarParcelas(p) {
                 </div>
 
             </div>
+
         `;
     }
 
@@ -3263,7 +3506,9 @@ function montarParcelas(p) {
     let datas = [];
 
 
-    if(datasSalvas.length >= quantidade) {
+    if(
+        datasSalvas.length >= quantidade
+    ) {
 
         datas =
             datasSalvas.slice(
@@ -3272,12 +3517,6 @@ function montarParcelas(p) {
             );
 
     } else {
-
-        /*
-         * Caso o painel ainda não tenha
-         * gravado as datas, cria automaticamente
-         * uma parcela por mês.
-         */
 
         const base =
             p.data_pagamento_entrada ||
@@ -3370,31 +3609,47 @@ function montarParcelas(p) {
 
         let statusHTML = '';
 
+
         if(paga) {
 
             statusHTML = `
+
                 <span class="status status-pago">
+
                     <i class="fas fa-check"></i>
+
                     PAGO
+
                 </span>
+
             `;
 
         } else if(atrasada) {
 
             statusHTML = `
+
                 <span class="status status-atrasado">
+
                     <i class="fas fa-triangle-exclamation"></i>
+
                     ATRASADA
+
                 </span>
+
             `;
 
         } else {
 
             statusHTML = `
+
                 <span class="status status-pendente">
+
                     <i class="fas fa-clock"></i>
+
                     PENDENTE
+
                 </span>
+
             `;
         }
 
@@ -3412,8 +3667,10 @@ function montarParcelas(p) {
                         </div>
 
                         <div class="text-xs text-slate-500 mt-1">
+
                             Vencimento:
                             ${dataBR(vencimento)}
+
                         </div>
 
                     </div>
@@ -3463,6 +3720,7 @@ function montarParcelas(p) {
                 ${
                     !paga
                     ? `
+
                         <button
                             onclick="gerarPixParcela(
                                 ${Number(valorParcela.toFixed(2))},
@@ -3470,16 +3728,21 @@ function montarParcelas(p) {
                             )"
                             class="btn btn-pix"
                         >
+
                             <i class="fas fa-qrcode"></i>
+
                             Gerar Pix para pagar
+
                         </button>
 
                         <div
                             id="pixParcela${numeroParcela}"
                             class="hidden"
                         ></div>
+
                     `
                     : `
+
                         <div class="info info-green mb-0">
 
                             <i class="fas fa-circle-check"></i>
@@ -3488,10 +3751,12 @@ function montarParcelas(p) {
                             como paga.
 
                         </div>
+
                     `
                 }
 
             </div>
+
         `;
     }
 
@@ -3499,6 +3764,7 @@ function montarParcelas(p) {
     html += `
 
         </div>
+
     `;
 
 
