@@ -61,7 +61,7 @@
         .oculto { display: none !important; }
         .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
         .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
-        canvas.assinatura-pad { border: 2px dashed #CBD5E1; border-radius: 8px; background: white; width: 100%; cursor: crosshair; }
+        canvas.assinatura-pad { border: 2px dashed #CBD5E1; border-radius: 8px; background: white; width: 100%; cursor: crosshair; touch-action: none; }
     </style>
 </head>
 <body>
@@ -85,7 +85,7 @@
 <script>
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let propostaAtual = null;
 let inscricaoTempoReal = null;
@@ -98,14 +98,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const inputCpf = document.getElementById('cpfConsulta');
     const formConsulta = document.getElementById('formConsulta');
 
-    // Força a digitação apenas de números
     if (inputCpf) {
         inputCpf.addEventListener('input', (e) => {
             e.target.value = e.target.value.replace(/\D/g, '');
         });
     }
 
-    // Gerencia o envio do formulário/botão consultar
     if (formConsulta) {
         formConsulta.addEventListener('submit', (e) => {
             e.preventDefault();
@@ -113,7 +111,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Consulta automática se houver parâmetro ?cpf= na URL
     const params = new URLSearchParams(window.location.search);
     const cpfUrl = params.get('cpf');
     if (cpfUrl) {
@@ -129,7 +126,8 @@ function voltarInicio() {
     pararCamera();
     if (inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
     propostaAtual = null;
-    document.getElementById('cpfConsulta').value = '';
+    const inputCpf = document.getElementById('cpfConsulta');
+    if (inputCpf) inputCpf.value = '';
     document.getElementById('telaProposta').classList.remove('visivel');
     document.getElementById('telaConsulta').classList.add('visivel');
 }
@@ -159,7 +157,6 @@ async function consultar() {
         propostaAtual = data[0];
         mostrarProposta(propostaAtual);
         
-        // Atualização em tempo real via Supabase Realtime
         if (inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
         inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'propostas', filter: `id=eq.${propostaAtual.id}` }, (res) => {
@@ -223,7 +220,7 @@ function mostrarProposta(p) {
     const diasTotal = p.dias_entrega || 7;
     const diasRestantes = entradaPaga ? calcularDiasUteisRestantes(p.data_aprovacao_entrada || p.updated_at, diasTotal) : diasTotal;
 
-    let html = `<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
+    let html = `<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome || 'Cliente'}!</h2>`;
 
     if (p.status === 'Nova') {
         html += `<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação da proposta...</p></div>`;
@@ -354,168 +351,4 @@ function mostrarProposta(p) {
         <div class="bloco-entrega" style="background: #ECFDF5; border-color: #10B981;">
             <i class="fas fa-box-open text-sucesso text-2xl mb-2"></i>
             <p class="font-bold text-lg text-sucesso">PROCESSO DE ENTREGA EM ANDAMENTO</p>
-            <p class="text-sm mt-1">Seu pedido está sendo preparado. Prazo estimado restante: <strong>${diasRestantes} dias úteis</strong>.</p>
-        </div>
-
-        <div class="resumo-contrato">
-            <h4 class="font-bold text-lg mb-2">📝 DADOS DO CONTRATO</h4>
-            <p><strong>Valor Total:</strong> R$ ${formatarValor(total)}</p>
-            <p><strong>Entrada Paga:</strong> R$ ${formatarValor(e)}</p>
-            <p><strong>Total Restante:</strong> R$ ${formatarValor(total - e)}</p>
-            <p><strong>Quantidade de Parcelas:</strong> ${q}x</p>
-            <p><strong>Valor de Cada Parcela:</strong> R$ ${formatarValor(valorParcela)}</p>
-            <p><strong>Juros:</strong> ${j}% ao mês</p>
-        </div>
-
-        <h3 class="font-bold text-lg mt-4 mb-2">📅 SUAS PARCELAS A PAGAR</h3>
-        ${datasParcelas.map((dt, idx) => {
-            const valor = Number(valorParcela);
-            const pg = idx + 1 <= (p.parcelas_pagas || 0);
-            const hoje = new Date();
-            const vencto = new Date(dt + 'T00:00:00');
-            let cor = 'luz-amarela';
-            if (pg) cor = 'luz-verde';
-            else if (vencto < hoje) cor = 'luz-vermelha';
-
-            return `<div class="item-parcela">
-                <div><span class="luz ${cor}"></span>${idx + 1}ª Parcela: R$ ${formatarValor(valor)} <br> Venc: ${vencto.toLocaleDateString('pt-BR')}</div>
-                ${pg ? '<span class="text-sucesso font-bold">PAGO</span>' : `<button onclick="gerarPixParcela('${dt}',${valor})" class="botao botao-pequeno botao-pix">Pagar</button>`}
-            </div>`;
-        }).join('')}
-
-        <a href="https://wa.me/5511973294235?text=Olá, preciso de ajuda com minha proposta ${propostaAtual.id}" target="_blank" class="botao botao-wpp text-center block">💬 Falar com o Suporte</a>`;
-    }
-
-    document.getElementById('conteudoProposta').innerHTML = html;
-}
-
-async function confirmarParcelas() {
-    const qtd = parseInt(document.getElementById('qtdEscolhida').value);
-    if (!qtd) return alert('Escolha a quantidade de parcelas!');
-
-    const { error } = await supabase.from('propostas').update({ qtd_parcelas_escolhida: qtd }).eq('id', propostaAtual.id);
-    if (error) return alert('Erro ao confirmar: ' + error.message);
-}
-
-function alternarModoAssinatura(modo) {
-    modoAssinatura = modo;
-    document.getElementById('blocoSelfie').classList.toggle('oculto', modo !== 'selfie');
-    document.getElementById('blocoManual').classList.toggle('oculto', modo !== 'manual');
-    document.getElementById('btnModoSelfie').classList.toggle('bg-primary', modo === 'selfie');
-    document.getElementById('btnModoSelfie').classList.toggle('bg-slate-200', modo !== 'selfie');
-    document.getElementById('btnModoManual').classList.toggle('bg-primary', modo === 'manual');
-    document.getElementById('btnModoManual').classList.toggle('bg-slate-200', modo !== 'manual');
-    if (modo === 'selfie') iniciarCamera();
-    else pararCamera();
-}
-
-async function iniciarCamera() {
-    try {
-        webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        document.getElementById('videoCamera').srcObject = webcamStream;
-    } catch (e) {
-        alert('Permita o acesso à câmera para assinar com selfie!');
-        alternarModoAssinatura('manual');
-    }
-}
-
-function pararCamera() {
-    if (webcamStream) webcamStream.getTracks().forEach(t => t.stop());
-}
-
-function tirarSelfie() {
-    const video = document.getElementById('videoCamera');
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    document.getElementById('imgSelfie').src = canvas.toDataURL('image/png');
-    document.getElementById('areaCamera').classList.add('oculto');
-    document.getElementById('areaPreviewSelfie').classList.remove('oculto');
-    pararCamera();
-}
-
-function refazerSelfie() {
-    document.getElementById('areaPreviewSelfie').classList.add('oculto');
-    document.getElementById('areaCamera').classList.remove('oculto');
-    iniciarCamera();
-}
-
-function inicializarCanvas() {
-    const canvas = document.getElementById('canvasAssinatura');
-    if (!canvas) return;
-    canvas.width = canvas.offsetWidth;
-    canvasContext = canvas.getContext('2d');
-    canvasContext.lineWidth = 2;
-    canvasContext.lineCap = 'round';
-    canvasContext.strokeStyle = '#000';
-
-    const desenhar = (e) => {
-        if (!desenhando) return;
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
-        const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
-        canvasContext.lineTo(x, y);
-        canvasContext.stroke();
-    };
-
-    canvas.onmousedown = canvas.ontouchstart = () => desenhando = true;
-    canvas.onmousemove = canvas.ontouchmove = desenhar;
-    canvas.onmouseup = canvas.ontouchend = canvas.onmouseout = () => desenhando = false;
-}
-
-function limparCanvas() {
-    if (canvasContext) canvasContext.clearRect(0, 0, canvasContext.canvas.width, canvasContext.canvas.height);
-}
-
-async function assinarContrato() {
-    const aceito = document.getElementById('aceitoContrato').checked;
-    if (!aceito) return alert('Você precisa concordar com o contrato!');
-
-    let assinatura = null;
-    if (modoAssinatura === 'selfie') {
-        assinatura = document.getElementById('imgSelfie').src;
-        if (!assinatura || assinatura === window.location.href) return alert('Capture sua selfie primeiro!');
-    } else {
-        assinatura = document.getElementById('canvasAssinatura').toDataURL('image/png');
-    }
-
-    const { error } = await supabase.from('propostas').update({
-        contrato_assinado: true,
-        assinatura: assinatura
-    }).eq('id', propostaAtual.id);
-
-    if (error) return alert('Erro ao assinar: ' + error.message);
-}
-
-async function gerarPix(valor) {
-    const area = document.getElementById('areaPix');
-    area.classList.remove('oculto');
-    area.innerHTML = `<div class="carregando text-center p-4"><i class="fas fa-spinner fa-spin mr-2"></i> Gerando Pix...</div>`;
-
-    try {
-        const res = await fetch('/api/gerar-pix', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ valor: valor, descricao: `Entrada proposta ${propostaAtual.id}` })
-        });
-
-        const ret = await res.json();
-        if (!ret.sucesso) throw ret.mensagem;
-
-        area.innerHTML = `
-        <div class="qrcode-area" id="qrcode"></div>
-        <div class="codigo-pix">${ret.qr_code}</div>`;
-        new QRCode(document.getElementById('qrcode'), ret.qr_code);
-
-    } catch (e) {
-        area.innerHTML = `<p class="text-perigo text-center mt-2">Erro: ${e}</p>`;
-    }
-}
-
-async function gerarPixParcela(data, valor) {
-    alert(`Gerando Pix para parcela de R$ ${formatarValor(valor)} vencimento ${new Date(data + 'T00:00:00').toLocaleDateString('pt-BR')}`);
-}
-</script>
-</body>
-</html>
+            <p cla
