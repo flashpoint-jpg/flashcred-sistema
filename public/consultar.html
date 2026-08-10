@@ -1,863 +1,278 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Minha Proposta | FlashCred</title>
-
-    <!-- Tailwind -->
+    <title>Acompanhar Proposta | FlashCred</title>
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script>
-
-    <!-- Font Awesome -->
-    <link rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0A2463',
-                        sucesso: '#10B981',
-                        alerta: '#F59E0B'
-                    }
-                }
-            }
-        };
+        tailwind.config = { theme: { extend: { colors: { primary: '#0A2463', pix: '#32BCAD', sucesso: '#10B981', alerta: '#F59E0B', perigo: '#EF4444' } } } }
     </script>
-
     <style>
-        body {
-            font-family: Arial, sans-serif;
-        }
-
-        .spinner {
-            width: 48px;
-            height: 48px;
-            border: 4px solid #dbeafe;
-            border-top-color: #0A2463;
-            border-radius: 50%;
-            animation: girar 0.8s linear infinite;
-        }
-
-        @keyframes girar {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        body { background: #F8FAFC; color: #1E293B; padding: 16px; max-width: 600px; margin: 0 auto; }
+        .cartao { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
+        .botao { padding: 10px 16px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+        .botao-pix { background: #32BCAD; color: white; min-width: 110px; }
+        .botao-pix-menor { padding: 6px 10px; font-size: 13px; min-width: auto; }
+        .botao-sucesso { background: #10B981; color: white; width: 100%; }
+        .botao-voltar { background: #94A3B8; color: white; margin-bottom: 12px; width: 100%; }
+        .botao-wpp { background: #25D366; color: white; margin-top: 12px; width: 100%; }
+        .botao-copiar { background: #0A2463; color: white; margin-top: 8px; font-size: 13px; padding: 8px 12px; }
+        .campo { width: 100%; padding: 12px; border: 1px solid #CBD5E1; border-radius: 8px; font-size: 16px; margin-bottom: 12px; }
+        .barra-etapas { display: flex; justify-content: space-between; margin-bottom: 20px; position: relative; padding: 0 4px; }
+        .barra-etapas::before { content: ''; position: absolute; top: 12px; left: 8%; right: 8%; height: 3px; background: #E2E8F0; z-index: 0; }
+        .etapa { display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1; font-size: 10px; font-weight: 500; color: #94A3B8; text-align: center; width: 18%; }
+        .etapa.ativa { color: #0A2463; font-weight: 700; }
+        .etapa.concluida { color: #10B981; }
+        .bolinha { width: 24px; height: 24px; border-radius: 50%; background: #E2E8F0; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; font-size: 12px; font-weight: bold; }
+        .etapa.ativa .bolinha { background: #0A2463; color: white; }
+        .etapa.concluida .bolinha { background: #10B981; color: white; }
+        .bloco-entrega { background: #FFFBEB; border: 2px solid #F59E0B; border-radius: 12px; padding: 16px; margin: 16px 0; text-align: center; }
+        .barra-progresso { width: 100%; height: 12px; background: #E2E8F0; border-radius: 6px; overflow: hidden; margin: 8px 0; }
+        .barra-preenchida { height: 100%; background: #F59E0B; transition: width 0.5s ease; }
+        .resumo-contrato { background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 18px; margin: 16px 0; }
+        .resumo-contrato p { margin: 10px 0; font-size: 15px; }
+        .resumo-contrato strong { color: #0A2463; font-size: 16px; font-weight: 700; }
+        .contrato { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; max-height: 220px; overflow-y: auto; margin: 16px 0; font-size: 13px; line-height: 1.6; text-align: justify; }
+        .qrcode-area { display: flex; justify-content: center; padding: 12px; background: white; border-radius: 10px; border: 1px solid #E2E8F0; margin: 10px 0; }
+        .codigo-pix { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 12px; text-align: center; font-weight: 600; margin: 8px 0; word-break: break-all; font-size: 12px; }
+        .item-parcela { display: flex; justify-content: space-between; align-items: flex-start; padding: 14px 12px; border-bottom: 1px solid #E2E8F0; font-size: 14px; gap: 10px; }
+        .item-parcela:last-child { border-bottom: none; }
+        .dados-parcela { flex: 1; }
+        .area-pix-parcela { width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #E2E8F0; }
+        .luz { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        .luz-verde { background: #10B981; }
+        .luz-amarela { background: #F59E0B; animation: piscar 1.2s infinite; }
+        .luz-vermelha { background: #EF4444; animation: piscar 1s infinite; }
+        @keyframes piscar { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+        .tela { display: none; }
+        .tela.visivel { display: block; }
+        .oculto { display: none !important; }
+        .sucesso-box { background: #ECFDF5; border: 2px solid #10B981; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 16px; }
+        .sucesso-box i { font-size: 48px; color: #10B981; margin-bottom: 12px; }
     </style>
 </head>
+<body>
 
-
-<body class="bg-gray-100">
-
-<div id="app">
-
-    <!-- TELA DE CARREGAMENTO -->
-
-    <div class="min-h-screen flex items-center justify-center px-4">
-
-        <div class="text-center">
-
-            <div class="spinner mx-auto mb-4"></div>
-
-            <p class="text-gray-600">
-                Carregando proposta...
-            </p>
-
-        </div>
-
+<div id="telaConsulta" class="tela visivel">
+    <div class="cartao">
+        <h2 class="text-xl font-bold text-center mb-6 text-primary">🔍 Acompanhar Proposta</h2>
+        <input type="text" id="cpfConsulta" placeholder="Digite seu CPF (apenas números)" maxlength="11" class="campo">
+        <button id="btnConsultar" class="botao botao-pix" onclick="executarConsulta()">
+            <i class="fas fa-search mr-2"></i> Consultar
+        </button>
     </div>
-
 </div>
 
+<div id="telaProposta" class="tela">
+    <button onclick="voltarInicio()" class="botao botao-voltar"><i class="fas fa-arrow-left"></i> Consultar Outro CPF</button>
+    <div class="barra-etapas" id="barraEtapas"></div>
+    <div class="cartao" id="conteudoProposta"></div>
+</div>
 
 <script>
-
-    // ==========================================================
-    // SUPABASE
-    // ==========================================================
-
-    const SUPABASE_URL =
-        'https://rgcclordmqjmwuzrrfbd.supabase.co';
-
-    const SUPABASE_KEY =
-        'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
-
-    const supabaseClient =
-        window.supabase.createClient(
-            SUPABASE_URL,
-            SUPABASE_KEY
-        );
-
-
-    // ==========================================================
-    // VARIÁVEIS
-    // ==========================================================
-
-    let propostaAtual = null;
-
-    let assinaturaEmProcessamento = false;
-
-
-    // ==========================================================
-    // INICIA UMA ÚNICA VEZ
-    // ==========================================================
-
-    document.addEventListener(
-        'DOMContentLoaded',
-        iniciar,
-        { once: true }
-    );
-
-
-    // ==========================================================
-    // INICIAR
-    // ==========================================================
-
-    async function iniciar() {
-
-        try {
-
-            const parametros =
-                new URLSearchParams(
-                    window.location.search
-                );
-
-
-            const cpfRecebido =
-                parametros.get('cpf');
-
-
-            // --------------------------------------------------
-            // NÃO REDIRECIONA PARA CONSULTAR.HTML
-            // ISSO EVITA O LOOP QUE APARECEU NA SUA FOTO.
-            // --------------------------------------------------
-
-            if (!cpfRecebido) {
-
-                mostrarErro(
-                    'Nenhuma proposta foi identificada. Abra esta página através do link da sua proposta.'
-                );
-
-                return;
-            }
-
-
-            // --------------------------------------------------
-            // LIMPA O CPF
-            // --------------------------------------------------
-
-            const cpf =
-                cpfRecebido.replace(/\D/g, '');
-
-
-            // --------------------------------------------------
-            // VALIDA CPF
-            // --------------------------------------------------
-
-            if (cpf.length !== 11) {
-
-                mostrarErro(
-                    'O CPF informado é inválido.'
-                );
-
-                return;
-            }
-
-
-            // --------------------------------------------------
-            // CONSULTA PROPOSTA
-            // --------------------------------------------------
-
-            const resultado =
-                await supabaseClient
-                    .from('propostas')
-                    .select('*')
-                    .eq('cpf', cpf)
-                    .maybeSingle();
-
-
-            const data =
-                resultado.data;
-
-            const error =
-                resultado.error;
-
-
-            // --------------------------------------------------
-            // ERRO SUPABASE
-            // --------------------------------------------------
-
-            if (error) {
-
-                console.error(
-                    'Erro Supabase:',
-                    error
-                );
-
-                mostrarErro(
-                    'Não foi possível consultar a proposta. Verifique a conexão com o sistema.'
-                );
-
-                return;
-            }
-
-
-            // --------------------------------------------------
-            // PROPOSTA NÃO ENCONTRADA
-            // --------------------------------------------------
-
-            if (!data) {
-
-                mostrarErro(
-                    'Nenhuma proposta foi encontrada para este CPF.'
-                );
-
-                return;
-            }
-
-
-            // --------------------------------------------------
-            // GUARDA PROPOSTA
-            // --------------------------------------------------
-
-            propostaAtual = data;
-
-
-            // --------------------------------------------------
-            // DADOS
-            // --------------------------------------------------
-
-            const nome =
-                data.nome || 'Cliente';
-
-
-            const valorDesejado =
-                Number(
-                    data.valor_desejado || 0
-                );
-
-
-            const entrada =
-                Number(
-                    data.valor_entrada || 0
-                );
-
-
-            const juros =
-                Number(
-                    data.juros_mensal || 5
-                );
-
-
-            const quantidadeParcelas =
-                Number(
-                    data.quantidade_parcelas || 1
-                );
-
-
-            const diasEntrega =
-                Number(
-                    data.dias_entrega || 8
-                );
-
-
-            // --------------------------------------------------
-            // CÁLCULO
-            // --------------------------------------------------
-
-            const valorJuros =
-                valorDesejado *
-                (juros / 100);
-
-
-            const valorTotal =
-                valorDesejado +
-                valorJuros;
-
-
-            const valorFinanciado =
-                Math.max(
-                    valorTotal - entrada,
-                    0
-                );
-
-
-            const valorParcela =
-                quantidadeParcelas > 0
-                    ? valorFinanciado /
-                      quantidadeParcelas
-                    : 0;
-
-
-            // --------------------------------------------------
-            // VERIFICA SE JÁ ESTÁ ASSINADA
-            // --------------------------------------------------
-
-            const jaAssinada =
-                data.status === 'assinado' ||
-                !!data.assinado_em;
-
-
-            // --------------------------------------------------
-            // MOSTRA PROPOSTA
-            // --------------------------------------------------
-
-            mostrarProposta({
-
-                nome: nome,
-
-                valorDesejado:
-                    valorDesejado,
-
-                valorTotal:
-                    valorTotal,
-
-                entrada:
-                    entrada,
-
-                juros:
-                    juros,
-
-                quantidadeParcelas:
-                    quantidadeParcelas,
-
-                valorParcela:
-                    valorParcela,
-
-                diasEntrega:
-                    diasEntrega,
-
-                jaAssinada:
-                    jaAssinada,
-
-                assinadoEm:
-                    data.assinado_em || null
-            });
-
-
-        } catch (erro) {
-
-            console.error(
-                'Erro geral:',
-                erro
-            );
-
-            mostrarErro(
-                'Ocorreu um erro ao carregar a proposta.'
-            );
-        }
+const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { realtime: true });
+
+let propostaAtual = null;
+let inscricaoTempoReal = null;
+let webcamStream = null;
+let modoAssinatura = 'selfie';
+
+// ✅ FUNÇÃO DIRETA NO BOTÃO — NÃO TRAVA MAIS
+async function executarConsulta() {
+    const cpfInput = document.getElementById('cpfConsulta');
+    const cpf = cpfInput.value.trim().replace(/\D/g, '');
+    if(cpf.length !== 11) return alert('Digite os 11 números do CPF!');
+
+    try {
+        const {data, error} = await supabase.from('propostas').select('*').eq('cpf', cpf).limit(1);
+        if(error) throw error.message;
+        if(!data || data.length === 0) throw 'Nenhuma proposta encontrada';
+
+        propostaAtual = data[0];
+        sessionStorage.setItem('ultimo_cpf', cpf);
+        mostrarProposta(propostaAtual);
+
+        if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+        inscricaoTempoReal = supabase.channel(`proposta_${propostaAtual.id}`)
+            .on('postgres_changes', {event:'UPDATE', schema:'public', table:'propostas', filter:`id=eq.${propostaAtual.id}`}, res => {
+                propostaAtual = res.new;
+                mostrarProposta(res.new);
+            }).subscribe();
+    } catch(erro) {
+        alert('Erro: ' + erro);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('cpfConsulta').addEventListener('keydown', e => {
+        if(e.key === 'Enter') executarConsulta();
+    });
+    const salvo = sessionStorage.getItem('ultimo_cpf');
+    if(salvo) {
+        document.getElementById('cpfConsulta').value = salvo;
+        executarConsulta();
+    }
+});
+
+function voltarInicio() {
+    if(webcamStream) webcamStream.getTracks().forEach(t => t.stop());
+    if(inscricaoTempoReal) supabase.removeChannel(inscricaoTempoReal);
+    propostaAtual = null;
+    sessionStorage.removeItem('ultimo_cpf');
+    document.getElementById('cpfConsulta').value = '';
+    document.getElementById('telaProposta').classList.remove('visivel');
+    document.getElementById('telaConsulta').classList.add('visivel');
+}
+
+function formatarValor(v) { return Number(v||0).toLocaleString('pt-BR', {minimumFractionDigits:2}); }
+function calcularDiasUteis(dataInicio, totalDias) {
+    if(!dataInicio||totalDias<=0) return {restante:totalDias, porcentagem:0};
+    let i=new Date(dataInicio), h=new Date(), p=0, a=new Date(i);
+    while(a<h){ let d=a.getDay(); if(d!==0&&d!==6)p++; a.setDate(a.getDate()+1); }
+    let r=totalDias-p; r=r<0?0:r; let po=totalDias>0?((totalDias-r)/totalDias)*100:0;
+    return {restante:r, porcentagem:po};
+}
+
+function mostrarProposta(p) {
+    document.getElementById('telaConsulta').classList.remove('visivel');
+    document.getElementById('telaProposta').classList.add('visivel');
+    const entradaPaga = !!p.entrada_paga;
+    const assinado = !!p.contrato_assinado;
+    let etapa=1; 
+    if(p.status==='Aprovada') etapa=2; 
+    if(assinado) etapa=3; 
+    if(entradaPaga) etapa=4;
+
+    document.getElementById('barraEtapas').innerHTML = `
+        <div class="etapa ${etapa>=1?(etapa>1?'concluida':'ativa'):''}"><div class="bolinha">${etapa>1?'✓':'1'}</div><span>Análise</span></div>
+        <div class="etapa ${etapa>=2?(etapa>2?'concluida':'ativa'):''}"><div class="bolinha">${etapa>2?'✓':'2'}</div><span>Parcelas</span></div>
+        <div class="etapa ${etapa>=3?'concluida':'ativa'}"><div class="bolinha">${etapa>=3?'✓':'3'}</div><span>Contrato</span></div>
+        <div class="etapa ${etapa>=4?'concluida':''}"><div class="bolinha">${etapa>=4?'✓':'4'}</div><span>Entrada</span></div>
+        <div class="etapa ${etapa>=5?'concluida':''}"><div class="bolinha">${etapa>=5?'✓':'5'}</div><span>Entrega</span></div>`;
+
+    const v=Number(p.valor_desejado||0), e=Number(p.valor_entrada||0), j=Number(p.juros_mensal||5), q=Number(p.qtd_parcelas_escolhida||p.quantidade_parcelas||0);
+    const total=v*(1+j/100), parc=q>0?((total-e)*(Math.pow(1+j/100,q)*(j/100))/(Math.pow(1+j/100,q)-1)):0;
+    const dias=p.dias_entrega||0;
+    const entrega=calcularDiasUteis(p.data_aprovacao_entrada||p.updated_at||new Date(), dias);
+
+    let html=`<h2 class="text-xl font-bold text-center mb-4 text-primary">Olá, ${p.nome}!</h2>`;
+    if(p.status==='Nova') html+=`<div class="text-center p-6 bg-yellow-50 rounded-lg"><i class="fas fa-clock text-4xl text-alerta mb-4"></i><p class="font-bold text-lg">Aguardando aprovação...</p></div>`;
+
+    if(p.status==='Aprovada'&&!p.qtd_parcelas_escolhida){
+        html+=`<div class="bloco-entrega"><p class="font-bold">ENTREGA EM ATÉ ${dias} DIAS ÚTEIS APÓS PAGAMENTO!</p></div>
+        <div class="resumo-contrato">
+            <p>Valor do Produto: <strong>R$ ${formatarValor(v)}</strong></p>
+            <p>Valor da Entrada: <strong>R$ ${formatarValor(e)}</strong></p>
+            <p>Juros Mensais: <strong>${j}%</strong></p>
+            <p>Valor Total Final: <strong>R$ ${formatarValor(total)}</strong></p>
+            <p>Até <strong>${q}x</strong> parcelas</p>
+        </div>
+        <select id="qtdEscolhida" class="campo">${Array.from({length:q},(_,i)=>{let n=i+1,vl=((total-e)*(Math.pow(1+j/100,n)*(j/100))/(Math.pow(1+j/100,n)-1));return `<option value="${n}">${n}x de R$ ${formatarValor(vl)}</option>`}).join('')}</select>
+        <button onclick="confirmarParcelas()" class="botao botao-sucesso">Continuar</button>`;
     }
 
-
-    // ==========================================================
-    // MOSTRAR PROPOSTA
-    // ==========================================================
-
-    function mostrarProposta(dados) {
-
-        const app =
-            document.getElementById('app');
-
-
-        app.innerHTML = `
-
-        <div class="min-h-screen bg-gray-100
-                    py-6 px-4">
-
-            <div class="max-w-md mx-auto">
-
-                <div class="bg-white
-                            rounded-2xl
-                            shadow-lg
-                            overflow-hidden">
-
-
-                    <!-- CABEÇALHO -->
-
-                    <div class="bg-blue-900
-                                text-white
-                                p-6
-                                text-center">
-
-                        <div class="text-3xl mb-2">
-
-                            <i class="fa-solid
-                                      fa-file-signature">
-                            </i>
-
-                        </div>
-
-
-                        <h1 class="text-2xl font-bold">
-
-                            FlashCred
-
-                        </h1>
-
-
-                        <p class="text-sm
-                                  opacity-90
-                                  mt-1">
-
-                            Minha Proposta
-
-                        </p>
-
-                    </div>
-
-
-                    <!-- CONTEÚDO -->
-
-                    <div class="p-5">
-
-
-                        <!-- CLIENTE -->
-
-                        <div class="mb-5">
-
-                            <p class="text-sm
-                                      text-gray-500">
-
-                                Olá,
-
-                            </p>
-
-
-                            <h2 class="text-xl
-                                       font-bold
-                                       text-gray-800">
-
-                                ${escaparHTML(
-                                    dados.nome
-                                )}
-
-                            </h2>
-
-                        </div>
-
-
-                        <!-- DETALHES -->
-
-                        <div class="bg-blue-50
-                                    border
-                                    border-blue-100
-                                    rounded-xl
-                                    p-4
-                                    mb-5">
-
-                            <h3 class="font-bold
-                                       text-blue-900
-                                       mb-4">
-
-                                <i class="fa-solid
-                                          fa-file-invoice-dollar
-                                          mr-1">
-                                </i>
-
-                                Detalhes da proposta
-
-                            </h3>
-
-
-                            <div class="space-y-3
-                                        text-sm">
-
-
-                                <div class="flex
-                                            justify-between
-                                            gap-3">
-
-                                    <span class="text-gray-600">
-
-                                        Valor solicitado:
-
-                                    </span>
-
-                                    <strong>
-
-                                        R$
-                                        ${formatarMoeda(
-                                            dados.valorDesejado
-                                        )}
-
-                                    </strong>
-
-                                </div>
-
-
-                                <div class="flex
-                                            justify-between
-                                            gap-3">
-
-                                    <span class="text-gray-600">
-
-                                        Juros:
-
-                                    </span>
-
-                                    <strong>
-
-                                        ${formatarNumero(
-                                            dados.juros
-                                        )}% ao mês
-
-                                    </strong>
-
-                                </div>
-
-
-                                <div class="flex
-                                            justify-between
-                                            gap-3">
-
-                                    <span class="text-gray-600">
-
-                                        Valor total:
-
-                                    </span>
-
-                                    <strong>
-
-                                        R$
-                                        ${formatarMoeda(
-                                            dados.valorTotal
-                                        )}
-
-                                    </strong>
-
-                                </div>
-
-
-                                <div class="flex
-                                            justify-between
-                                            gap-3">
-
-                                    <span class="text-gray-600">
-
-                                        Entrada:
-
-                                    </span>
-
-                                    <strong>
-
-                                        R$
-                                        ${formatarMoeda(
-                                            dados.entrada
-                                        )}
-
-                                    </strong>
-
-                                </div>
-
-
-                                <div class="flex
-                                            justify-between
-                                            gap-3">
-
-                                    <span class="text-gray-600">
-
-                                        Parcelamento:
-
-                                    </span>
-
-                                    <strong>
-
-                                        ${dados.quantidadeParcelas}x
-
-                                        de R$
-
-                                        ${formatarMoeda(
-                                            dados.valorParcela
-                                        )}
-
-                                    </strong>
-
-                                </div>
-
-
-                                <div class="flex
-                                            justify-between
-                                            gap-3">
-
-                                    <span class="text-gray-600">
-
-                                        Prazo:
-
-                                    </span>
-
-                                    <strong>
-
-                                        ${dados.diasEntrega}
-                                        dias úteis
-
-                                    </strong>
-
-                                </div>
-
-
-                            </div>
-
-                        </div>
-
-
-                        ${
-                            dados.jaAssinada
-
-                            ?
-
-                            telaAssinada(
-                                dados.assinadoEm
-                            )
-
-                            :
-
-                            telaParaAssinar()
-                        }
-
-
-                    </div>
-
+    if(p.status==='Aprovada'&&p.qtd_parcelas_escolhida&&!assinado){
+        const qe=p.qtd_parcelas_escolhida, vl=((total-e)*(Math.pow(1+j/100,qe)*(j/100))/(Math.pow(1+j/100,qe)-1));
+        html+=`<div class="resumo-contrato">
+            <p>Valor Total: <strong>R$ ${formatarValor(total)}</strong></p>
+            <p>Entrada: <strong>R$ ${formatarValor(e)}</strong></p>
+            <p>Parcelamento: <strong>${qe}x de R$ ${formatarValor(vl)}</strong></p>
+            <p>Juros: <strong>${j}% ao mês</strong></p>
+            <p>Prazo de Entrega: <strong>${dias} dias úteis</strong></p>
+        </div>
+        <div class="contrato">Valor total R$ ${formatarValor(total)}, entrada R$ ${formatarValor(e)}, ${qe}x, juros ${j}% a.m., entrega em ${dias} dias úteis. Ao assinar concorda com todos os termos.</div>
+        <label class="flex items-center gap-2 mb-3"><input type="checkbox" id="aceitoContrato"> Li e concordo com o contrato</label>
+        <div class="flex gap-2 mb-3"><button onclick="alternarModo('selfie')" id="bs" class="botao botao-pix-menor bg-primary text-white">📸 Selfie</button><button onclick="alternarModo('texto')" id="bt" class="botao botao-pix-menor bg-gray-200">✏️ Assinatura</button></div>
+        <div id="s1"><video id="vid" autoplay playsinline class="w-full rounded mb-2" style="max-height:180px;"></video><button onclick="tirar()" class="botao botao-pix">Capturar Foto</button></div>
+        <div id="s2" class="oculto text-center mb-3"><img id="img" class="mx-auto rounded" style="max-height:160px;"><button onclick="refazer()" class="botao botao-pix-menor bg-gray-400 mt-2">Refazer</button></div>
+        <input type="text" id="assTxt" class="campo oculto" placeholder="Digite seu nome completo">
+        <button onclick="assinar()" class="botao botao-sucesso mt-2">Assinar Contrato</button>`;
+        setTimeout(()=>{if(modoAssinatura==='selfie')navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;}).catch(()=>alternarModo('texto'));},300);
+    }
+
+    if(assinado&&!entradaPaga){
+        html+=`<div class="sucesso-box"><i class="fas fa-check-circle"></i><h3>CONTRATO ASSINADO!</h3></div>
+        <div class="resumo-contrato">
+            <p>Valor da Entrada: <strong>R$ ${formatarValor(e)}</strong></p>
+            <p>Valor Total: <strong>R$ ${formatarValor(total)}</strong></p>
+        </div>
+        <button onclick="gerarPixEntrada(${e})" class="botao botao-pix">GERAR PIX DA ENTRADA</button>
+        <div id="areaPixEntrada" class="oculto mt-4"></div>`;
+    }
+
+    if(entradaPaga){
+        let dt=p.datas_parcelas||[]; if(!dt.length){let d=new Date();for(let i=1;i<=q;i++){d.setMonth(d.getMonth()+1);dt.push(d.toISOString().split('T')[0]);}}
+        html+=`<div class="sucesso-box"><i class="fas fa-check-double"></i><h3>PAGAMENTO CONFIRMADO!</h3></div>
+        <div class="bloco-entrega" style="background:#ECFDF5;border-color:#10B981;">
+            <p>Faltam <strong>${entrega.restante} dias úteis</strong> para entrega</p>
+            <div class="barra-progresso mt-2"><div class="barra-preenchida" style="width:${entrega.porcentagem}%"></div></div>
+        </div>
+        <div class="resumo-contrato mt-4">
+            <p>Total: <strong>R$ ${formatarValor(total)}</strong></p>
+            <p>Entrada Paga: <strong>R$ ${formatarValor(e)}</strong></p>
+            <p>Restante: <strong>R$ ${formatarValor(total-e)}</strong></p>
+            <p>${q}x de: <strong>R$ ${formatarValor(parc)}</strong></p>
+        </div>
+        <h3 class="font-bold mt-4 mb-3">SUAS PARCELAS</h3>`;
+        
+        dt.forEach((d,i)=>{
+            let vP=Number(parc),pg=i+1<=(p.parcelas_pagas||0),vn=new Date(d+'T00:00:00'),cr=pg?'luz-verde':(vn<new Date()?'luz-vermelha':'luz-amarela');
+            html+=`<div class="item-parcela">
+                <div class="dados-parcela">
+                    <span class="luz ${cr}"></span>
+                    <strong>${i+1}ª</strong> | R$ ${formatarValor(vP)} <br>Venc: ${vn.toLocaleDateString()}
                 </div>
+                <div>${pg?'<span class="sucesso">PAGO</span>':`<button onclick="gerarPixParcela(${vP},${i+1})" class="botao botao-pix-menor botao-pix">Pagar</button>`}</div>
+                <div id="pixParcela${i+1}" class="area-pix-parcela oculto"></div>
+            </div>`;
+        });
 
-
-                <p class="text-center
-                          text-xs
-                          text-gray-400
-                          mt-5">
-
-                    FlashCred
-
-                </p>
-
-            </div>
-
-        </div>
-
-        `;
+        html+=`<a href="https://wa.me/5511973294235" target="_blank" class="botao botao-wpp mt-3">Suporte WhatsApp</a>`;
     }
-
-
-    // ==========================================================
-    // TELA PARA ASSINATURA
-    // ==========================================================
-
-    function telaParaAssinar() {
-
-        return `
-
-        <div class="border
-                    border-gray-200
-                    rounded-xl
-                    p-4
-                    mb-4">
-
-            <h3 class="font-bold
-                       text-gray-800
-                       mb-2">
-
-                Confirmação da proposta
-
-            </h3>
-
-
-            <p class="text-sm
-                      text-gray-600
-                      leading-relaxed">
-
-                Ao assinar esta proposta, você declara
-                que leu e concorda com as informações
-                e condições apresentadas nesta página.
-
-            </p>
-
-        </div>
-
-
-        <!-- MENSAGEM -->
-
-        <div id="mensagem"
-             class="hidden
-                    mb-4
-                    rounded-xl
-                    p-4
-                    text-sm">
-        </div>
-
-
-        <!-- CHECKBOX -->
-
-        <label class="flex
-                      items-start
-                      gap-3
-                      cursor-pointer
-                      mb-5">
-
-            <input
-                type="checkbox"
-                id="ok"
-                class="mt-1 w-5 h-5"
-            >
-
-
-            <span class="text-sm
-                         text-gray-700">
-
-                Li e concordo com os termos
-                da proposta.
-
-            </span>
-
-        </label>
-
-
-        <!-- BOTÃO -->
-
-        <button
-            id="btnAssinar"
-            type="button"
-            onclick="assinarProposta()"
-
-            class="w-full
-                   bg-blue-900
-                   hover:bg-blue-800
-                   text-white
-                   py-4
-                   rounded-xl
-                   font-bold
-                   transition
-                   flex
-                   items-center
-                   justify-center
-                   gap-2">
-
-            <i class="fa-solid
-                      fa-pen-nib">
-            </i>
-
-            Assinar proposta
-
-        </button>
-
-
-        <p class="text-xs
-                  text-gray-500
-                  text-center
-                  mt-4">
-
-            Sua assinatura será registrada
-            eletronicamente.
-
-        </p>
-
-        `;
-    }
-
-
-    // ==========================================================
-    // JÁ ASSINADA
-    // ==========================================================
-
-    function telaAssinada(data) {
-
-        return `
-
-        <div class="bg-green-50
-                    border
-                    border-green-200
-                    rounded-xl
-                    p-6
-                    text-center">
-
-
-            <div class="w-16 h-16
-                        bg-green-100
-                        text-green-600
-                        rounded-full
-                        flex
-                        items-center
-                        justify-center
-                        mx-auto
-                        mb-4">
-
-                <i class="fa-solid
-                          fa-check
-                          text-3xl">
-                </i>
-
-            </div>
-
-
-            <h2 class="text-xl
-                       font-bold
-                       text-green-700
-                       mb-2">
-
-                Proposta já assinada
-
-            </h2>
-
-
-            <p class="text-sm
-                      text-gray-600">
-
-                Sua assinatura já foi registrada
-                eletronicamente.
-
-            </p>
-
-
-            ${
-                data
-                ?
-
-                `
-                <div class="mt-4
-                            bg-white
-                            rounded-lg
-                            p-3">
-
-                    <p class="text-xs
-                              text-gray-500">
-
-                        Data da assinatura
-
-                    </p>
-
-
-                    <p class="text-sm
-                              font-bold
-                              text-gray-700">
-
-                        ${formatarData(data)}
-
-                    </p>
-
-                </div>
-                `
-
-                :
-
-                ''
-            }
-
-
-        </div>
-
-        `;
-    }
-
-
-    // ==========================================================
-    // ASSINAR
+    document.getElementById('conteudoProposta').innerHTML=html;
+}
+
+async function confirmarParcelas(){const q=parseInt(document.getElementById('qtdEscolhida').value);await supabase.from('propostas').update({qtd_parcelas_escolhida:q}).eq('id',propostaAtual.id);}
+function alternarModo(m){modoAssinatura=m;document.getElementById('s1').classList.toggle('oculto',m!=='selfie');document.getElementById('s2').classList.toggle('oculto',m!=='texto');document.getElementById('assTxt').classList.toggle('oculto',m!=='texto');if(m==='selfie')navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;}).catch(()=>alternarModo('texto'));else if(webcamStream)webcamStream.getTracks().forEach(t=>t.stop());}
+function tirar(){const v=document.getElementById('vid'),c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0);document.getElementById('img').src=c.toDataURL();document.getElementById('s1').classList.add('oculto');document.getElementById('s2').classList.remove('oculto');}
+function refazer(){document.getElementById('s2').classList.add('oculto');document.getElementById('s1').classList.remove('oculto');navigator.mediaDevices.getUserMedia({video:true}).then(s=>{webcamStream=s;document.getElementById('vid').srcObject=s;});}
+async function assinar(){if(!document.getElementById('aceitoContrato').checked)return alert('Concorde com os termos!');let a=modoAssinatura==='selfie'?document.getElementById('img').src:document.getElementById('assTxt').value.trim();if(!a)return alert('Assine corretamente!');await supabase.from('propostas').update({contrato_assinado:true,assinatura:a}).eq('id',propostaAtual.id);}
+
+async function gerarPixEntrada(valor){
+    const a = document.getElementById('areaPixEntrada');
+    a.classList.remove('oculto');
+    a.innerHTML=`<div class="text-center py-3"><i class="fas fa-spinner fa-spin"></i> Gerando...</div>`;
+    try{
+        const cd=await buscarPix(valor,`Entrada - ${propostaAtual.id}`);
+        a.innerHTML=`<div class="qrcode-area" id="qrentrada"></div><div class="codigo-pix">${cd}</div><button onclick="navigator.clipboard.writeText('${cd}').then(()=>alert('Copiado!'))" class="botao botao-copiar">📋 Copiar</button>`;
+        setTimeout(()=>new QRCode(document.getElementById('qrentrada'),{text:cd,width:200,height:200}),50);
+    }catch(e){a.innerHTML=`<div class="text-center text-perigo">${e}</div>`;}
+}
+
+async function gerarPixParcela(valor,num){
+    const a = document.getElementById(`pixParcela${num}`);
+    a.classList.remove('oculto');
+    a.innerHTML=`<div class="text-center py-2"><i class="fas fa-spinner fa-spin"></i></div>`;
+    try{
+        const cd=await buscarPix(valor,`Parcela ${num} - ${propostaAtual.id}`);
+        a.innerHTML=`<div class="qrcode-area" id="qr${num}"></div><div class="codigo-pix">${cd}</div><button onclick="navigator.clipboard.writeText('${cd}').then(()=>alert('Copiado!'))" class="botao botao-copiar">📋 Copiar</button>`;
+        setTimeout(()=>new QRCode(document.getElementById(`qr${num}`),{text:cd,width:180,height:180}),50);
+    }catch(e){a.innerHTML=`<div class="text-center text-perigo">${e}</div>`;}
+}
+
+async function buscarPix(valor,desc){
+    const r=await fetch('/api/gerar-pix',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({valor:parseFloat(valor).toFixed(2),descricao:desc})});
+    if(!r.ok)throw 'Erro ao gerar Pix';
+    const j=await r.json();
+    return j.qr_code||j.copia_cola||j.pixCopiaECola||j.codigo;
+}
+</script>
+</body>
+</html>
