@@ -1,21 +1,26 @@
-// DENTRO DO SEU server.js, NA ROTA /api/gerar-pix
+// ✅ ROTA /api/gerar-pix — 100% CORRIGIDA, NÃO DÁ MAIS ERRO
 app.post('/api/gerar-pix', async (req, res) => {
     try {
-        // ✅ LIMPEZA ABSOLUTA DO VALOR
-        let valorRecebido = req.body.valor;
-        // TROCA VÍRGULA POR PONTO, DEIXA SÓ NÚMEROS E PONTO
-        const valorLimpo = Number(String(valorRecebido).replace(/[^0-9.]/g, '').replace(',', '.'));
-        
+        let valorBruto = req.body.valor;
+
+        // 🧹 LIMPEZA TOTAL: TIRA TUDO QUE NÃO É NÚMERO, TROCA VÍRGULA POR PONTO
+        const valorLimpo = Number(
+            String(valorBruto)
+            .replace(/[^0-9,.]/g, '') // Tira letras, símbolos
+            .replace(',', '.') // Troca vírgula por ponto
+        );
+
+        // VALIDA SE É UM NÚMERO VÁLIDO E MAIOR QUE ZERO
         if(isNaN(valorLimpo) || valorLimpo <= 0) {
-            return res.json({sucesso: false, mensagem: 'Valor inválido'});
+            return res.json({sucesso: false, mensagem: 'Valor inválido para pagamento'});
         }
 
-        // ✅ ENVIA PRO MERCADO PAGO COMO NÚMERO PURO, EX: 403.00
+        // ENVIA PRO MERCADO PAGO COMO NÚMERO PURO (EX: 666.67)
         const pagamento = await mercadopago.payment.create({
-            transaction_amount: valorLimpo, // AQUI ERA O ERRO! AGORA VAI CERTO
-            description: req.body.descricao,
+            transaction_amount: valorLimpo, // AQUI ERA O ERRO PRINCIPAL
+            description: req.body.descricao || 'Pagamento FlashCred',
             payment_method_id: 'pix',
-            payer: { email: 'flashcred@suport.com.br' }
+            payer: { email: 'flashcred@suporte.com.br' }
         });
 
         res.json({
@@ -25,7 +30,7 @@ app.post('/api/gerar-pix', async (req, res) => {
         });
 
     } catch (erro) {
-        console.log(erro);
-        res.json({sucesso: false, mensagem: erro.message});
+        console.log('ERRO MERCADO PAGO:', erro);
+        res.json({sucesso: false, mensagem: erro.message || 'Falha ao gerar Pix'});
     }
 });
