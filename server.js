@@ -1,16 +1,18 @@
 const express = require('express');
 const { MercadoPagoConfig, Payment } = require('mercadopago');
+const path = require('path');
+
 const app = express();
 
-// Configuração básica do Express
+// Configurações básicas
 app.use(express.json());
-app.use(express.static(__dirname)); // Serve os arquivos HTML/JS da pasta
+app.use(express.static(path.join(__dirname)));
 
 // 🔑 CONFIGURAÇÃO DO MERCADO PAGO
-// Substitua 'SEU_ACCESS_TOKEN_AQUI' pelo seu Access Token real do Mercado Pago (produção ou teste)
+// Substitua pelo seu Access Token de produção ou teste
 const client = new MercadoPagoConfig({ accessToken: 'SEU_ACCESS_TOKEN_AQUI' });
 
-// Rota POST para gerar o Pix que o seu front-end está chamando
+// Rota POST para gerar o Pix
 app.post('/api/gerar-pix', async (req, res) => {
     try {
         const { valor, descricao, referencia } = req.body;
@@ -21,23 +23,24 @@ app.post('/api/gerar-pix', async (req, res) => {
 
         const payment = new Payment(client);
         
-        // Dados da cobrança Pix para o Mercado Pago
         const body = {
             transaction_amount: Number(valor),
             description: descricao || "Pagamento FlashCred",
             payment_method_id: 'pix',
             payer: {
-                email: 'cliente@email.com', // Pode ser ajustado se tiver o e-mail do cliente
+                email: 'cliente@flashcred.com',
             },
             external_reference: referencia || 'ref_proposta'
         };
 
         const response = await payment.create({ body });
 
-        // Extrai o código "Copia e Cola" do Pix gerado pelo Mercado Pago
-        const qrCode = response.point_of_interaction.transaction_data.qr_code;
+        const qrCode = response.point_of_interaction?.transaction_data?.qr_code;
 
-        // Retorna sempre em formato JSON válido para o front-end
+        if (!qrCode) {
+            throw new Error("O Mercado Pago não retornou o código QR Code.");
+        }
+
         return res.status(200).json({
             sucesso: true,
             qr_code: qrCode,
@@ -53,7 +56,7 @@ app.post('/api/gerar-pix', async (req, res) => {
     }
 });
 
-// Porta padrão para o Render ou ambiente local
+// Porta dinâmica para o Render ou ambiente local
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Servidor rodando na porta ${PORT}`);
