@@ -783,7 +783,33 @@ button{
         margin-top:50px;
     }
 }
-</style>
+
+        .bloco-assinatura {
+            margin-top: 18px;
+            padding: 18px;
+            border-radius: 18px;
+            border: 1px solid #DDE7F0;
+            background: linear-gradient(135deg,#F8FAFC 0%,#FFFFFF 100%);
+        }
+        .titulo-assinatura {
+            display:flex; align-items:center; gap:8px;
+            font-size:15px; font-weight:800; color:#0A2463; margin-bottom:12px;
+        }
+        .selfie-painel {
+            width:120px; height:120px; object-fit:cover; border-radius:16px;
+            border:3px solid #10B981; display:block; box-shadow:0 8px 20px rgba(10,36,99,.12);
+            cursor:pointer; background:#E2E8F0;
+        }
+        .assinatura-texto-painel {
+            padding:12px 14px; border-radius:12px; background:#F1F5F9;
+            color:#334155; font-weight:700; word-break:break-word;
+        }
+        .badge-assinatura {
+            display:inline-flex; align-items:center; gap:6px; margin-top:10px;
+            padding:6px 10px; border-radius:999px; background:#ECFDF5; color:#047857;
+            font-size:12px; font-weight:800;
+        }
+    </style>
 </head>
 
 <body>
@@ -1286,6 +1312,68 @@ function somenteNumeros(valor){
 
     return String(valor || '')
         .replace(/\D/g,'');
+}
+
+
+/*
+ * A coluna contrato_assinado do banco está como TEXT.
+ * Por isso não podemos usar simplesmente Boolean("false"),
+ * pois qualquer texto não vazio seria considerado true.
+ */
+function valorBooleano(valor){
+
+    if(valor === true){
+        return true;
+    }
+
+    if(valor === false || valor === null || valor === undefined){
+        return false;
+    }
+
+    const normalizado =
+        String(valor)
+        .trim()
+        .toLowerCase();
+
+    return [
+        'true',
+        '1',
+        'sim',
+        'yes',
+        'signed',
+        'assinado'
+    ].includes(normalizado);
+}
+
+
+/*
+ * data_inicio_entrega não existe na tabela atual.
+ * Quando não houver essa coluna, usamos a data de criação
+ * da proposta como início do prazo.
+ */
+function obterDataInicioEntrega(proposta){
+
+    const informada =
+        proposta &&
+        proposta.data_inicio_entrega
+            ? String(proposta.data_inicio_entrega).slice(0,10)
+            : '';
+
+    if(/^\d{4}-\d{2}-\d{2}$/.test(informada)){
+        return informada;
+    }
+
+    const criada =
+        proposta &&
+        proposta.created_at
+            ? String(proposta.created_at).slice(0,10)
+            : '';
+
+    if(/^\d{4}-\d{2}-\d{2}$/.test(criada)){
+        return criada;
+    }
+
+    return new Date().toISOString().slice(0,10);
 }
 
 
@@ -2205,7 +2293,6 @@ async function salvarNovo(){
             quantidade_parcelas,
 
             dias_entrega,
-            data_inicio_entrega: document.getElementById('data_inicio_entrega').value || new Date().toISOString().slice(0,10),
 
             datas_parcelas,
 
@@ -2784,8 +2871,8 @@ function renderizarProposta(i){
     const entrega =
         calcularProgressoEntrega(
             i.dias_entrega || 7,
-            Boolean(i.entrega_concluida),
-            i.data_inicio_entrega || null
+            valorBooleano(i.entrega_concluida),
+            obterDataInicioEntrega(i)
         );
 
 
@@ -2978,12 +3065,35 @@ function renderizarProposta(i){
                             <strong>Contrato:</strong>
 
                             ${
-                                i.contrato_assinado
+                                valorBooleano(i.contrato_assinado)
                                 ? '✅ Assinado'
                                 : '❌ Não assinado'
                             }
 
                         </p>
+
+                        ${
+                            valorBooleano(i.contrato_assinado) && i.assinatura
+                            ? `
+                                <div class="bloco-assinatura">
+                                    <div class="titulo-assinatura">📸 Registro da assinatura</div>
+                                    ${
+                                        String(i.assinatura).trim().toLowerCase().startsWith('data:image/')
+                                        ? `
+                                            <a href="${escapeHTML(i.assinatura)}" target="_blank" rel="noopener" title="Abrir selfie em tamanho maior">
+                                                <img src="${escapeHTML(i.assinatura)}" class="selfie-painel" alt="Selfie do cliente no momento da assinatura">
+                                            </a>
+                                            <div class="badge-assinatura">✅ Selfie registrada</div>
+                                          `
+                                        : `
+                                            <div class="assinatura-texto-painel">✍️ ${escapeHTML(i.assinatura)}</div>
+                                            <div class="badge-assinatura">✅ Assinatura por nome registrada</div>
+                                          `
+                                    }
+                                </div>
+                              `
+                            : ''
+                        }
 
                     </div>
 
@@ -3011,7 +3121,7 @@ function renderizarProposta(i){
                         onclick="
                             alternarEntradaPaga(
                                 '${escapeHTML(String(i.id))}',
-                                ${!Boolean(i.entrada_paga)}
+                                ${!valorBooleano(i.entrada_paga)}
                             )
                         "
                         class="botao ${
@@ -3144,7 +3254,7 @@ function renderizarProposta(i){
                     onclick="
                         alternarEntregaConcluida(
                             '${escapeHTML(String(i.id))}',
-                            ${!Boolean(i.entrega_concluida)}
+                            ${!valorBooleano(i.entrega_concluida)}
                         )
                     "
                     class="botao ${
@@ -3446,7 +3556,7 @@ function renderizarProposta(i){
                         <input
                             type="date"
                             id="edit_data_inicio_${escapeHTML(String(i.id))}"
-                            value="${escapeHTML(i.data_inicio_entrega || '')}"
+                            value="${escapeHTML(obterDataInicioEntrega(i))}"
                             class="campo"
                             oninput="atualizarResumoEntregaEdicao(document.getElementById('edicao_${escapeHTML(String(i.id))}'))"
                         >
@@ -3518,7 +3628,7 @@ function renderizarProposta(i){
                                 type="checkbox"
                                 id="edit_contrato_assinado_${escapeHTML(String(i.id))}"
                                 ${
-                                    i.contrato_assinado
+                                    valorBooleano(i.contrato_assinado)
                                     ? 'checked'
                                     : ''
                                 }
@@ -4012,11 +4122,6 @@ async function salvarEdicao(id){
                 .value
             ) || 7;
 
-        const data_inicio_entrega =
-            document
-            .getElementById(`edit_data_inicio_${id}`)
-            .value || new Date().toISOString().slice(0,10);
-
         let parcelas_pagas =
             Number(
                 document
@@ -4032,7 +4137,9 @@ async function salvarEdicao(id){
         const contrato_assinado =
             document
             .getElementById(`edit_contrato_assinado_${id}`)
-            .checked;
+            .checked
+                ? 'true'
+                : 'false';
 
 
         if(!nome){
@@ -4141,7 +4248,6 @@ async function salvarEdicao(id){
                 quantidade_parcelas,
 
                 dias_entrega,
-                data_inicio_entrega,
 
                 parcelas_pagas,
 
