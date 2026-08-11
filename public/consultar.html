@@ -1108,14 +1108,14 @@ async function executarConsulta(cpfInformado = null) {
     const campo = document.getElementById('cpfConsulta');
     const botao = document.getElementById('btnConsultar');
 
-    let cpf = somenteNumeros(
+    const cpf = somenteNumeros(
         cpfInformado !== null
             ? cpfInformado
             : (campo ? campo.value : '')
     );
 
     if (cpf.length !== 11) {
-        alert('Digite os 11 números do CPF.');
+        mostrarErroConsulta('Digite os 11 números do CPF.');
         if (campo) campo.focus();
         return;
     }
@@ -1127,40 +1127,53 @@ async function executarConsulta(cpfInformado = null) {
     }
 
     try {
+        // Confirma que a biblioteca e o cliente foram carregados.
         if (!window.supabase || typeof window.supabase.createClient !== 'function') {
             throw new Error(
-                'Não foi possível carregar o sistema de consulta. Verifique sua conexão com a internet e recarregue a página.'
+                'A conexão com o sistema de consulta não foi carregada. Recarregue a página e tente novamente.'
             );
         }
 
-        // Aceita CPF salvo no banco com ou sem máscara.
-        let resultado = await supabase
-            .from('propostas')
-            .select('*')
-            .eq('cpf', cpf)
-            .limit(1);
-
-        if (
-            !resultado.error &&
-            (!resultado.data || resultado.data.length === 0)
-        ) {
-            resultado = await supabase
-                .from('propostas')
-                .select('*')
-                .eq('cpf', formatarCPF(cpf))
-                .limit(1);
+        if (!supabase || typeof supabase.from !== 'function') {
+            throw new Error(
+                'O banco de dados não foi inicializado corretamente.'
+            );
         }
 
+        // Faz uma única consulta usando OR para aceitar CPF com ou sem máscara.
+        const cpfFormatado = formatarCPF(cpf);
+        const resultado = await supabase
+            .from('propostas')
+            .select('*')
+            .or(`cpf.eq.${cpf},cpf.eq.${cpfFormatado}`)
+            .limit(1);
+
         if (resultado.error) {
+            console.error('Erro retornado pelo Supabase:', resultado.error);
+
+            const msg = String(resultado.error.message || '');
+            const code = String(resultado.error.code || '');
+
+            if (code === '42501' || /permission|policy|row-level security|rls/i.test(msg)) {
+                throw new Error(
+                    'O banco de dados está bloqueando a consulta pública desta página. É necessário liberar a leitura da tabela "propostas" para o acesso público (RLS/policy no Supabase).'
+                );
+            }
+
+            if (/relation .*propostas|does not exist/i.test(msg)) {
+                throw new Error(
+                    'A tabela "propostas" não foi encontrada no banco de dados configurado.'
+                );
+            }
+
             throw new Error(
-                'Erro ao consultar o banco de dados: ' +
-                resultado.error.message
+                'Erro ao consultar o banco de dados: ' + (msg || code || 'erro desconhecido')
             );
         }
 
         if (!resultado.data || resultado.data.length === 0) {
             throw new Error(
-                'Nenhuma proposta encontrada para este CPF.'
+                'Nenhuma proposta encontrada para este CPF. Confira os 11 números digitados.'
             );
         }
 
@@ -1172,60 +1185,11 @@ async function executarConsulta(cpfInformado = null) {
 
     } catch (error) {
         console.error('Erro consulta CPF:', error);
-
-        alert(
+        mostrarErroConsulta(
             error && error.message
                 ? error.message
                 : 'Não foi possível consultar a proposta.'
         );
-
     } finally {
         if (botao) {
-            botao.disabled = false;
-            botao.innerHTML =
-                '<i class="fas fa-search"></i> Consultar proposta';
-        }
-    }
-}
-
-/* ==========================================================
-   CARREGAR PROPOSTA POR ID
-========================================================== */
-
-async function carregarPorId(id) {
-
-    try {
-
-        if(!id) {
-
-            throw new Error(
-                'ID da proposta não informado.'
-            );
-        }
-
-
-        const { data, error } =
-            await supabase
-                .from('propostas')
-                .select('*')
-                .eq('id', id)
-                .maybeSingle();
-
-
-        if(error) {
-
-            throw new Error(
-                error.message
-            );
-        }
-
-
-        if(!data) {
-
-            throw new Error(
-                'Proposta não encontrada.'
-            );
-        }
-
-
-        prop
+            botao.disabled
