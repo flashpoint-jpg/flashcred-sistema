@@ -1458,10 +1458,109 @@ function booleano(valor) {
 
 
 let fcPolling=null;
+
+/*
+ * O polling não pode apagar um Pix que o cliente acabou de gerar.
+ * Guardamos o código Pix por proposta e restauramos a caixa depois
+ * que a tela for redesenhada pelo Realtime/polling.
+ */
+function chavePixEntrada(){
+    return propostaAtual && propostaAtual.id
+        ? 'flashcred_pix_entrada_' + propostaAtual.id
+        : null;
+}
+
+function salvarPixEntrada(codigo, valor){
+    const chave = chavePixEntrada();
+    if(!chave || !codigo) return;
+    try {
+        localStorage.setItem(chave, JSON.stringify({
+            codigo: codigo,
+            valor: Number(valor || 0),
+            atualizado_em: Date.now()
+        }));
+    } catch(e) {}
+}
+
+function recuperarPixEntrada(){
+    const chave = chavePixEntrada();
+    if(!chave) return null;
+    try {
+        const salvo = JSON.parse(localStorage.getItem(chave) || 'null');
+        return salvo && salvo.codigo ? salvo : null;
+    } catch(e) {
+        return null;
+    }
+}
+
+function restaurarPixEntrada(){
+    const salvo = recuperarPixEntrada();
+    if(!salvo) return;
+    const area = document.getElementById('areaPixEntrada');
+    if(!area) return;
+
+    area.classList.remove('hidden');
+    area.innerHTML = `
+        <div class="pix-box">
+            <h3 class="font-bold text-lg">Pix da entrada</h3>
+            <p class="text-sm text-slate-500 mt-1">Valor: <strong>R$ ${moeda(salvo.valor)}</strong></p>
+            <div id="qrEntrada" class="qrcode-area"></div>
+            <div class="codigo-pix">${escapar(salvo.codigo)}</div>
+            <button onclick='copiarPix(${JSON.stringify(salvo.codigo)})' class="btn-copy mt-3">
+                <i class="fas fa-copy"></i> Copiar Pix
+            </button>
+        </div>`;
+
+    setTimeout(() => {
+        const qr = document.getElementById('qrEntrada');
+        if(qr && typeof QRCode !== 'undefined') {
+            try { new QRCode(qr, { text: salvo.codigo, width: 220, height: 220 }); } catch(e) {}
+        }
+    }, 0);
+}
+
 async function atualizarPropostaAutomaticamente(){
- if(!propostaAtual||!propostaAtual.id||fcAnimacaoEmExecucao)return;
- try{const {data,error}=await supabase.from('propostas').select('*').eq('id',propostaAtual.id).maybeSingle();if(error||!data)return;const anterior={...propostaAtual};const as=String(anterior.status||'').trim().toLowerCase(),ns=String(data.status||'').trim().toLowerCase();const aa=as==='aprovada'||as==='aprovado',na=ns==='aprovada'||ns==='aprovado';const ae=booleano(anterior.entrada_paga),ne=booleano(data.entrada_paga);propostaAtual=data;salvarSessao();mostrarProposta(propostaAtual);if(ne)pararCamera();if(!aa&&na)executarAnimacaoAtualizacao('Proposta aprovada!','Sua proposta foi aprovada. Estamos preparando a próxima etapa.');else if(!ae&&ne)executarAnimacaoAtualizacao('Pagamento da entrada confirmado!','O pagamento foi confirmado. Agora estamos preparando suas parcelas e o contrato.');}catch(e){console.warn('Atualização automática:',e)}}
-function iniciarPollingProposta(){if(fcPolling)clearInterval(fcPolling);fcPolling=setInterval(atualizarPropostaAutomaticamente,5000)}
+    if(!propostaAtual || !propostaAtual.id || fcAnimacaoEmExecucao) return;
+    try {
+        const {data,error} = await supabase
+            .from('propostas')
+            .select('*')
+            .eq('id',propostaAtual.id)
+            .maybeSingle();
+        if(error || !data) return;
+
+        const anterior = {...propostaAtual};
+        const as = String(anterior.status||'').trim().toLowerCase();
+        const ns = String(data.status||'').trim().toLowerCase();
+        const aa = as==='aprovada'||as==='aprovado';
+        const na = ns==='aprovada'||ns==='aprovado';
+        const ae = booleano(anterior.entrada_paga);
+        const ne = booleano(data.entrada_paga);
+
+        /* Só redesenha se realmente houve alteração no registro.
+           Assim o Pix não é destruído a cada consulta de 5 segundos. */
+        const houveMudanca = JSON.stringify(anterior) !== JSON.stringify(data);
+        propostaAtual = data;
+        salvarSessao();
+
+        if(houveMudanca) mostrarProposta(propostaAtual);
+        restaurarPixEntrada();
+
+        if(ne) pararCamera();
+        if(!aa && na) {
+            executarAnimacaoAtualizacao('Proposta aprovada!','Sua proposta foi aprovada. Estamos preparando a próxima etapa.');
+        } else if(!ae && ne) {
+            executarAnimacaoAtualizacao('Pagamento da entrada confirmado!','O pagamento foi confirmado. Agora estamos preparando suas parcelas e o contrato.');
+        }
+    } catch(e) {
+        console.warn('Atualização automática:',e);
+    }
+}
+
+function iniciarPollingProposta(){
+    if(fcPolling) clearInterval(fcPolling);
+    fcPolling=setInterval(atualizarPropostaAutomaticamente,5000);
+}
 
 function configurarRealtime() {
 
@@ -1519,6 +1618,7 @@ function configurarRealtime() {
                         propostaAtual={...propostaAtual,...nova};
                         salvarSessao();
                         mostrarProposta(propostaAtual);
+                        restaurarPixEntrada();
                         if(novaEntrada) pararCamera();
                         if(!antesAprovada&&novaAprovada){
                             executarAnimacaoAtualizacao('Proposta aprovada!','Sua proposta foi aprovada. Estamos preparando a próxima etapa.');
@@ -4063,6 +4163,7 @@ async function gerarPixEntrada(
                 `Entrada - Proposta ${propostaAtual.id}`
             );
 
+        salvarPixEntrada(codigo, valor);
 
         area.innerHTML = `
 
