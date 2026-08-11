@@ -1742,9 +1742,7 @@ function determinarEtapa(p) {
 
 
     const assinado =
-        booleano(
-            p.contrato_assinado
-        );
+        contratoRealmenteAssinado(p);
 
 
     const entradaPaga =
@@ -1918,249 +1916,74 @@ function numero(valor) {
    CÁLCULO PARCELA
 ========================================================== */
 
+function arredondarCentavos(valor){
+    return Math.round((Number(valor)||0) * 100) / 100;
+}
+
 function calcularParcela(
     principal,
     juros,
     quantidade
 ) {
+    principal = arredondarCentavos(Number(principal || 0));
+    juros = Number(juros || 0) / 100;
+    quantidade = Math.max(1, Math.floor(Number(quantidade || 0)));
 
-    principal =
-        Number(
-            principal || 0
-        );
+    if(principal <= 0) return 0;
 
-
-    juros =
-        Number(
-            juros || 0
-        ) / 100;
-
-
-    quantidade =
-        Number(
-            quantidade || 0
-        );
-
-
-    if(
-        principal <= 0 ||
-        quantidade <= 0
-    ) {
-
-        return 0;
+    if(juros <= 0){
+        return arredondarCentavos(principal / quantidade);
     }
 
-
-    if(juros <= 0) {
-
-        return principal /
-            quantidade;
-    }
-
-
-    return (
-        principal *
+    const valorBruto =
         (
-            juros *
-            Math.pow(
-                1 + juros,
-                quantidade
+            principal *
+            (
+                juros * Math.pow(1 + juros, quantidade)
             )
         )
-    )
-    /
-    (
-        Math.pow(
-            1 + juros,
-            quantidade
-        ) - 1
-    );
+        /
+        (
+            Math.pow(1 + juros, quantidade) - 1
+        );
+
+    return arredondarCentavos(valorBruto);
 }
 
+function contratoRealmenteAssinado(p){
+    return !!(
+        p &&
+        booleano(p.contrato_assinado) &&
+        String(p.assinatura || '').trim() &&
+        p.data_assinatura
+    );
+}
 
 /* ==========================================================
    DATAS
 ========================================================== */
 
-function adicionarMeses(
-    data,
-    meses
-) {
-
-    const d =
-        new Date(data);
-
-
-    d.setMonth(
-        d.getMonth() + meses
+function adicionarMeses(data, meses) {
+    const origem = new Date(data);
+    const d = new Date(
+        origem.getFullYear(),
+        origem.getMonth(),
+        origem.getDate()
     );
 
+    const diaOriginal = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + Number(meses || 0));
 
+    const ultimoDia = new Date(
+        d.getFullYear(),
+        d.getMonth() + 1,
+        0
+    ).getDate();
+
+    d.setDate(Math.min(diaOriginal, ultimoDia));
     return d;
 }
-
-
-function dataBR(data) {
-
-    if(!data)
-        return '--';
-
-
-    const d =
-        new Date(data);
-
-
-    if(
-        isNaN(
-            d.getTime()
-        )
-    ) {
-
-        return '--';
-    }
-
-
-    return d.toLocaleDateString(
-        'pt-BR'
-    );
-}
-
-
-/* ==========================================================
-   DIAS ÚTEIS
-========================================================== */
-
-function calcularDiasUteis(
-    inicio,
-    totalDias
-) {
-
-    totalDias =
-        Number(
-            totalDias || 0
-        );
-
-
-    if(
-        !inicio ||
-        totalDias <= 0
-    ) {
-
-        return {
-
-            decorridos: 0,
-
-            restantes:
-                totalDias,
-
-            porcentagem: 0
-        };
-    }
-
-
-    const inicioData =
-        new Date(inicio);
-
-
-    const hoje =
-        new Date();
-
-
-    inicioData.setHours(
-        0,0,0,0
-    );
-
-
-    hoje.setHours(
-        0,0,0,0
-    );
-
-
-    if(
-        hoje <= inicioData
-    ) {
-
-        return {
-
-            decorridos: 0,
-
-            restantes:
-                totalDias,
-
-            porcentagem: 0
-        };
-    }
-
-
-    let decorridos = 0;
-
-
-    let atual =
-        new Date(
-            inicioData
-        );
-
-
-    while(
-        atual < hoje
-    ) {
-
-        const dia =
-            atual.getDay();
-
-
-        if(
-            dia !== 0 &&
-            dia !== 6
-        ) {
-
-            decorridos++;
-        }
-
-
-        atual.setDate(
-            atual.getDate() + 1
-        );
-    }
-
-
-    decorridos =
-        Math.min(
-            decorridos,
-            totalDias
-        );
-
-
-    const restantes =
-        Math.max(
-            totalDias -
-            decorridos,
-            0
-        );
-
-
-    const porcentagem =
-        Math.min(
-            100,
-            Math.round(
-                (
-                    decorridos /
-                    totalDias
-                ) * 100
-            )
-        );
-
-
-    return {
-
-        decorridos,
-
-        restantes,
-
-        porcentagem
-    };
-}
-
 
 /* ==========================================================
    MOSTRAR PROPOSTA
@@ -2275,9 +2098,7 @@ function mostrarProposta(p) {
 
 
     const assinado =
-        booleano(
-            p.contrato_assinado
-        );
+        contratoRealmenteAssinado(p);
 
 
     let html = `
@@ -4442,9 +4263,7 @@ function imprimirContrato() {
 
 
     const assinado =
-        booleano(
-            p.contrato_assinado
-        );
+        contratoRealmenteAssinado(p);
 
 
     if(
@@ -4929,9 +4748,7 @@ function montarEntrega(p) {
 
 
     const contratoAssinado =
-        booleano(
-            p.contrato_assinado
-        );
+        contratoRealmenteAssinado(p);
 
 
     if(
