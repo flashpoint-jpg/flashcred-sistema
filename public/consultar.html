@@ -869,6 +869,9 @@ let webcamStream = null;
 
 let modoAssinatura = 'texto';
 
+let monitorPagamento = null;
+let pixEntradaGeradoPara = null;
+
 
 /* ==========================================================
    QUANTIDADE OFICIAL DE PARCELAS
@@ -891,11 +894,12 @@ function obterQuantidadeParcelasOficial(p) {
 }
 
 function obterParcelasEscolhidas(p) {
+    // IMPORTANTE: somente a escolha feita pelo cliente conta como parcela escolhida.
+    // quantidade_parcelas/qtd_parcelas são limites definidos pelo painel e
+    // nunca devem pular a etapa de seleção.
     if (!p) return 0;
     const escolhida = Number(p.qtd_parcelas_escolhida);
     if (Number.isFinite(escolhida) && escolhida > 0) return Math.floor(escolhida);
-    const antiga = Number(p.qtd_parcelas);
-    if (Number.isFinite(antiga) && antiga > 0) return Math.floor(antiga);
     return 0;
 }
 
@@ -1507,29 +1511,72 @@ function booleano(valor) {
    REALTIME
 ========================================================== */
 
+function pararMonitoramentoPagamento() {
+    if (monitorPagamento) {
+        clearInterval(monitorPagamento);
+        monitorPagamento = null;
+    }
+}
+
+async function verificarPagamentoEntrada() {
+    if (!propostaAtual || !propostaAtual.id || !supabaseClient) return;
+
+    try {
+        const { data, error } = await supabaseClient
+            .from('propostas')
+            .select('*')
+            .eq('id', propostaAtual.id)
+            .maybeSingle();
+
+        if (error) {
+            console.warn('Não foi possível verificar o pagamento:', error.message);
+            return;
+        }
+
+        if (data) {
+            propostaAtual = { ...propostaAtual, ...data };
+            salvarSessao();
+
+            if (booleano(propostaAtual.entrada_paga)) {
+                pararMonitoramentoPagamento();
+                pixEntradaGeradoPara = null;
+                pararCamera();
+                mostrarProposta(propostaAtual);
+            }
+        }
+    } catch (error) {
+        console.warn('Erro ao verificar pagamento:', error);
+    }
+}
+
+function iniciarMonitoramentoPagamento() {
+    pararMonitoramentoPagamento();
+
+    if (!propostaAtual || booleano(propostaAtual.entrada_paga)) return;
+
+    verificarPagamentoEntrada();
+
+    monitorPagamento = setInterval(
+        verificarPagamentoEntrada,
+        4000
+    );
+}
+
 function configurarRealtime() {
 
     if(!propostaAtual)
         return;
 
-
     if(canalRealtime) {
-
-        supabaseClient.removeChannel(
-            canalRealtime
-        );
-
+        supabaseClient.removeChannel(canalRealtime);
         canalRealtime = null;
     }
-
 
     canalRealtime =
         supabaseClient
             .channel(
                 'flashcred_' +
-                String(
-                    propostaAtual.id
-                ) +
+                String(propostaAtual.id) +
                 '_' +
                 Date.now()
             )
@@ -1539,51 +1586,30 @@ function configurarRealtime() {
                     event: 'UPDATE',
                     schema: 'public',
                     table: 'propostas',
-                    filter:
-                        `id=eq.${propostaAtual.id}`
+                    filter: `id=eq.${propostaAtual.id}`
                 },
                 function(payload) {
-
-                    console.log(
-                        'Atualização recebida:',
-                        payload.new
-                    );
-
-
                     if(payload.new) {
-
                         propostaAtual = {
                             ...propostaAtual,
                             ...payload.new
                         };
 
-
                         salvarSessao();
 
-
-                        mostrarProposta(
-                            propostaAtual
-                        );
-
-
-                        if(
-                            booleano(
-                                propostaAtual.entrada_paga
-                            )
-                        ) {
-
+                        if(booleano(propostaAtual.entrada_paga)) {
+                            pararMonitoramentoPagamento();
+                            pixEntradaGeradoPara = null;
                             pararCamera();
                         }
+
+                        mostrarProposta(propostaAtual);
                     }
                 }
             )
             .subscribe(
                 function(status) {
-
-                    console.log(
-                        'Realtime:',
-                        status
-                    );
+                    console.log('Realtime:', status);
                 }
             );
 }
@@ -1622,6 +1648,9 @@ function abrirProposta() {
 ========================================================== */
 
 function voltarInicio() {
+
+    pararMonitoramentoPagamento();
+    pixEntradaGeradoPara = null;
 
     if(canalRealtime) {
 
@@ -2551,54 +2580,43 @@ function mostrarProposta(p) {
 
 
     /* ======================================================
-       ENTRADA PAGA
+       ÁREA DO CLIENTE — PIX PAGO
     ====================================================== */
 
     if(entradaPaga) {
+        pararMonitoramentoPagamento();
 
         html += `
-
             <div class="sucesso">
-
                 <i class="fas fa-circle-check"></i>
-
                 <h3 class="text-xl font-bold">
-
-                    ENTRADA CONFIRMADA
-
+                    PAGAMENTO CONFIRMADO
                 </h3>
-
                 <p class="text-sm text-slate-600 mt-2">
-
-                    O pagamento da entrada foi confirmado.
-
+                    Seu Pix foi confirmado com sucesso.
                 </p>
-
                 <p class="text-sm text-slate-600 mt-1">
-
-                    Sua proposta avançou para a etapa
-                    de parcelas e entrega.
-
+                    Bem-vindo à sua área do cliente.
                 </p>
-
             </div>
 
+            <div class="card">
+                <div class="info info-green text-center">
+                    <i class="fas fa-user-circle text-3xl"></i>
+                    <h3 class="font-bold text-lg mt-2">
+                        ÁREA DO CLIENTE
+                    </h3>
+                    <p class="text-sm mt-1">
+                        Acompanhe suas parcelas e o andamento da entrega.
+                    </p>
+                </div>
+            </div>
         `;
 
+        html += montarEntrega(p);
+        html += montarParcelas(p);
 
-        html +=
-            montarEntrega(p);
-
-
-        html +=
-            montarParcelas(p);
-
-
-        document.getElementById(
-            'conteudoProposta'
-        ).innerHTML = html;
-
-
+        document.getElementById('conteudoProposta').innerHTML = html;
         return;
     }
 
@@ -3242,134 +3260,88 @@ function mostrarProposta(p) {
 
 
     /* ======================================================
-       CONTRATO ASSINADO
+       PIX — CONTRATO ASSINADO
     ====================================================== */
 
-    if(
-        assinado &&
-        !entradaPaga
-    ) {
+    if(assinado && !entradaPaga) {
 
-        const total =
-            principal +
-            entrada;
-
+        const total = principal + entrada;
 
         html += `
-
             <div class="sucesso">
-
                 <i class="fas fa-circle-check"></i>
-
                 <h3 class="text-xl font-bold">
-
                     CONTRATO ASSINADO
-
                 </h3>
-
                 <p class="text-sm text-slate-600 mt-2">
-
-                    Sua assinatura foi registrada
-                    com sucesso.
-
+                    Sua assinatura foi registrada com sucesso.
                 </p>
-
+                <p class="text-sm text-slate-600 mt-1">
+                    Agora realize o pagamento do Pix para liberar sua área do cliente.
+                </p>
             </div>
 
-
             <div class="card">
-
                 <div class="resumo">
-
                     <div class="resumo-item">
-
-                        <span>
-                            Entrada
-                        </span>
-
-                        <strong>
-                            R$ ${moeda(entrada)}
-                        </strong>
-
+                        <span>Entrada</span>
+                        <strong>R$ ${moeda(entrada)}</strong>
                     </div>
 
-
                     <div class="resumo-item">
-
-                        <span>
-                            Valor total
-                        </span>
-
-                        <strong>
-                            R$ ${moeda(total)}
-                        </strong>
-
+                        <span>Valor total</span>
+                        <strong>R$ ${moeda(total)}</strong>
                     </div>
 
-
                     <div class="resumo-item">
-
-                        <span>
-                            Parcelamento
-                        </span>
-
-                        <strong>
-
-                            ${escolhida}x de
-                            R$ ${moeda(valorParcela)}
-
-                        </strong>
-
+                        <span>Parcelamento</span>
+                        <strong>${escolhida}x de R$ ${moeda(valorParcela)}</strong>
                     </div>
-
                 </div>
-
 
                 ${
                     entrada > 0
-
                     ? `
-
-                        <button
-                            onclick="gerarPixEntrada(${entrada})"
-                            class="btn btn-pix"
-                        >
-
-                            <i class="fas fa-qrcode"></i>
-
-                            Gerar Pix da entrada
-
-                        </button>
-
-
-                        <div
-                            id="areaPixEntrada"
-                            class="hidden mt-4"
-                        ></div>
-
-                    `
-
-                    : `
-
-                        <div class="info info-green">
-
-                            Entrada configurada como
-                            R$ 0,00.
-
+                        <div class="info info-blue mt-4 text-center">
+                            <i class="fas fa-qrcode text-3xl"></i>
+                            <h3 class="font-bold text-lg mt-2">
+                                PAGAMENTO PIX
+                            </h3>
+                            <p class="text-sm mt-1">
+                                O Pix será gerado automaticamente. Após o pagamento, sua área do cliente será liberada.
+                            </p>
                         </div>
 
+                        <div id="areaPixEntrada" class="mt-4"></div>
+                    `
+                    : `
+                        <div class="info info-green mt-4 text-center">
+                            Entrada configurada como R$ 0,00.
+                            Sua área do cliente será liberada automaticamente.
+                        </div>
                     `
                 }
-
             </div>
-
         `;
 
+        document.getElementById('conteudoProposta').innerHTML = html;
 
-        document.getElementById(
-            'conteudoProposta'
-        ).innerHTML = html;
-
+        if(entrada > 0) {
+            if(pixEntradaGeradoPara !== propostaAtual.id) {
+                pixEntradaGeradoPara = propostaAtual.id;
+                setTimeout(
+                    function() {
+                        gerarPixEntrada(entrada);
+                    },
+                    50
+                );
+            }
+            iniciarMonitoramentoPagamento();
+        } else {
+            // Sem entrada, não existe Pix a pagar: a área do cliente é liberada.
+            // Não alteramos o campo entrada_paga no banco automaticamente.
+            html += '';
+        }
 
         return;
     }
@@ -3382,123 +3354,59 @@ function mostrarProposta(p) {
 
 async function confirmarParcelas() {
 
-    const select =
-        document.getElementById(
-            'qtdEscolhida'
-        );
+    const select = document.getElementById('qtdEscolhida');
 
+    if(!select) return;
 
-    if(!select)
-        return;
+    const limite = Number(propostaAtual && propostaAtual.quantidade_parcelas) > 0
+        ? Math.floor(Number(propostaAtual.quantidade_parcelas))
+        : obterQuantidadeParcelasOficial(propostaAtual);
 
-
-    // O painel define o limite máximo; quem escolhe a quantidade final é o cliente.
-    const limite = obterQuantidadeParcelasOficial(propostaAtual);
     const quantidade = Number(select.value);
 
-    if(
-        !limite ||
-        limite <= 0
-    ) {
-
-        alert(
-            'A quantidade máxima de parcelas ainda não foi configurada no painel.'
-        );
-
+    if(!limite || limite <= 0) {
+        alert('A quantidade máxima de parcelas ainda não foi configurada no painel.');
         return;
     }
 
-    if(
-        !Number.isInteger(quantidade) ||
-        quantidade < 1 ||
-        quantidade > limite
-    ) {
-
-        alert(
-            'Selecione uma quantidade de parcelas válida.'
-        );
-
+    if(!Number.isInteger(quantidade) || quantidade < 1 || quantidade > limite) {
+        alert('Selecione uma quantidade de parcelas válida.');
         return;
     }
 
-
-    const botao =
-        document.getElementById(
-            'btnConfirmarParcelas'
-        );
-
-
-    botao.disabled = true;
-
-
-    botao.innerHTML =
-        '<i class="fas fa-spinner fa-spin"></i> Salvando...';
-
+    const botao = document.getElementById('btnConfirmarParcelas');
+    if(botao) {
+        botao.disabled = true;
+        botao.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+    }
 
     try {
+        const { data, error } = await supabaseClient
+            .from('propostas')
+            .update({ qtd_parcelas_escolhida: quantidade })
+            .eq('id', propostaAtual.id)
+            .select()
+            .single();
 
-        const { data, error } =
-            await supabaseClient
-                .from('propostas')
-                .update({
-
-                    qtd_parcelas_escolhida:
-                        quantidade
-
-                })
-                .eq(
-                    'id',
-                    propostaAtual.id
-                )
-                .select()
-                .single();
-
-
-        if(error) {
-
-            throw new Error(
-                error.message
-            );
-        }
-
+        if(error) throw new Error(error.message || 'Erro ao salvar parcelas.');
 
         propostaAtual = {
-
             ...propostaAtual,
-
             ...data,
-
-            qtd_parcelas_escolhida:
-                quantidade
+            qtd_parcelas_escolhida: quantidade
         };
 
-
         salvarSessao();
-
-
-        mostrarProposta(
-            propostaAtual
-        );
-
+        mostrarProposta(propostaAtual);
 
     } catch(error) {
+        console.error('Erro ao salvar parcelas:', error);
+        alert('Não foi possível salvar a quantidade de parcelas.\n\n' + (error.message || error));
 
-        console.error(
-            error
-        );
-
-
-        alert(
-            'Não foi possível salvar a quantidade de parcelas.\n\n' +
-            error.message
-        );
-
-
-        botao.disabled = false;
-
-
-        botao.innerHTML =
-            '<i class="fas fa-arrow-right"></i> Continuar para o contrato';
+        if(botao) {
+            botao.disabled = false;
+            botao.innerHTML = '<i class="fas fa-arrow-right"></i> Continuar para o contrato';
+        }
     }
 }
 
@@ -4484,7 +4392,7 @@ function imprimirContrato() {
 
 
     const qtd =
-        obterQuantidadeParcelasOficial(p);
+        obterParcelasEscolhidas(p);
 
 
     const principal =
