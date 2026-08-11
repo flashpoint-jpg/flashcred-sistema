@@ -836,6 +836,13 @@ button{
             </span>
         </div>
 
+        <div class="item-resumo clicavel" id="resumoReceberEntrada" onclick="filtrarResumo('receberEntrada')" title="Ver somente parcelas a receber de clientes aprovados com entrada paga">
+            <span>💳 A Receber — Entrada Paga</span>
+            <span id="totalReceberEntrada" class="texto-alerta">
+                R$ 0,00
+            </span>
+        </div>
+
         <div class="item-resumo clicavel" id="resumoPagas" onclick="filtrarResumo('pagas')" title="Ver clientes com parcelas pagas">
             <span>🧾 Parcelas Pagas</span>
             <span id="qtdPagas">0</span>
@@ -2377,6 +2384,11 @@ function parcelaTemStatus(item, tipo){
         if(tipo === 'proximas'){
             return analise.status === 'proximo';
         }
+        if(tipo === 'receberEntrada'){
+            return item.status === 'Aprovada' &&
+                   Boolean(item.entrada_paga) &&
+                   pagas < calc.quantidade;
+        }
         return true;
     });
 }
@@ -2392,7 +2404,8 @@ function filtrarResumo(tipo){
         const alvo = document.getElementById(
             filtroResumoAtual === 'pagas' ? 'resumoPagas' :
             filtroResumoAtual === 'vencidas' ? 'resumoVencidas' :
-            'resumoProximas'
+            filtroResumoAtual === 'proximas' ? 'resumoProximas' :
+            'resumoReceberEntrada'
         );
         if(alvo) alvo.classList.add('ativo');
     }
@@ -2422,7 +2435,8 @@ function renderizarListaFiltrada(){
     const titulo = {
         pagas:'Parcelas pagas',
         vencidas:'Parcelas vencidas',
-        proximas:'Próximas parcelas'
+        proximas:'Próximas parcelas',
+        receberEntrada:'A receber — clientes aprovados com entrada paga'
     }[filtroResumoAtual];
 
     lista.innerHTML = `
@@ -2536,6 +2550,7 @@ function renderizarResumo(data){
 
     let totalRecebido = 0;
     let totalReceber = 0;
+    let totalReceberEntrada = 0;
 
     let qtdPagas = 0;
     let qtdPendentes = 0;
@@ -2547,12 +2562,23 @@ function renderizarResumo(data){
 
     data.forEach(item => {
 
+        const quantidadeOficial =
+            Math.max(
+                1,
+                Math.floor(
+                    Number(
+                        item.qtd_parcelas_escolhida ||
+                        item.quantidade_parcelas
+                    ) || 1
+                )
+            );
+
         const calc =
             calcularFinanciamento(
                 item.valor_desejado,
                 item.valor_entrada,
                 item.juros_mensal,
-                item.quantidade_parcelas
+                quantidadeOficial
             );
 
         const pagas =
@@ -2585,6 +2611,17 @@ function renderizarResumo(data){
         totalReceber +=
             restanteParcelas *
             calc.parcela;
+
+        // Novo indicador: somente clientes APROVADOS que já pagaram a ENTRADA.
+        // Soma exclusivamente as parcelas que ainda faltam receber.
+        if(
+            item.status === 'Aprovada' &&
+            Boolean(item.entrada_paga)
+        ){
+            totalReceberEntrada +=
+                restanteParcelas *
+                calc.parcela;
+        }
 
         qtdPagas += pagas;
 
@@ -2637,6 +2674,14 @@ function renderizarResumo(data){
         'totalReceber'
     ).innerText =
         `R$ ${dinheiro(totalReceber)}`;
+
+    const totalReceberEntradaEl =
+        document.getElementById('totalReceberEntrada');
+
+    if(totalReceberEntradaEl){
+        totalReceberEntradaEl.innerText =
+            `R$ ${dinheiro(totalReceberEntrada)}`;
+    }
 
     document.getElementById(
         'qtdPagas'
