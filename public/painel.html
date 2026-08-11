@@ -1945,7 +1945,7 @@ function mostrarPainel(){
     }
     intervaloAtualizacao = setInterval(() => {
         if(!document.getElementById('telaPrincipal').classList.contains('oculto')){
-            carregarPropostas();
+            carregarPropostas({silenciosa:true});
         }
     }, 5000);
 }
@@ -2281,6 +2281,7 @@ function limparFormulario(){
 ============================================================ */
 
 let propostasCache = [];
+let assinaturaDadosPainel = '';
 let filtroResumoAtual = 'todos';
 let filtroFluxoAtual = 'novos';
 
@@ -2445,79 +2446,64 @@ function renderizarListaFiltrada(){
     }
 }
 
-async function carregarPropostas(){
+function capturarEstadoVisualPainel(){
+    const estado = {abertos: [], edicoes: [], scroll: window.scrollY || 0};
+    document.querySelectorAll('.linha-proposta').forEach(card => {
+        const id = card.id.replace('proposta_','');
+        const cron = document.getElementById(`cron_${id}`);
+        const edit = document.getElementById(`edicao_${id}`);
+        if(cron && cron.classList.contains('aberto')) estado.abertos.push(id);
+        if(edit && edit.classList.contains('ativa')) estado.edicoes.push(id);
+    });
+    return estado;
+}
 
-    if(carregando){
-        return;
-    }
+function restaurarEstadoVisualPainel(estado){
+    if(!estado) return;
+    estado.abertos.forEach(id => {
+        const cron = document.getElementById(`cron_${id}`);
+        const seta = document.getElementById(`seta_cron_${id}`);
+        if(cron) cron.classList.add('aberto');
+        if(seta) seta.classList.replace('fa-chevron-down','fa-chevron-up');
+    });
+    estado.edicoes.forEach(id => {
+        const edit = document.getElementById(`edicao_${id}`);
+        if(edit) edit.classList.add('ativa');
+    });
+    window.scrollTo(0, estado.scroll);
+}
 
+async function carregarPropostas(opcoes = {}){
+    if(carregando) return;
     carregando = true;
-
-    const lista =
-        document.getElementById(
-            'listaPropostas'
-        );
-
+    const silenciosa = opcoes.silenciosa === true;
+    const lista = document.getElementById('listaPropostas');
+    const estadoVisual = silenciosa ? capturarEstadoVisualPainel() : null;
     try{
-
-        const {
-            data,
-            error
-        } =
-            await supabaseClient
-            .from('propostas')
-            .select('*')
-            .order(
-                'created_at',
-                {
-                    ascending:false
-                }
-            );
-
+        const {data,error} = await supabaseClient
+            .from('propostas').select('*').order('created_at',{ascending:false});
         if(error){
-
             console.error(error);
-
-            lista.innerHTML = `
-                <div class="alerta">
-                    ❌ Erro ao carregar propostas:
-                    ${escapeHTML(error.message)}
-                </div>
-            `;
-
+            if(!silenciosa) lista.innerHTML = `<div class="alerta">❌ Erro ao carregar propostas: ${escapeHTML(error.message)}</div>`;
             return;
         }
-
-        propostasCache = data || [];
+        const novasPropostas = data || [];
+        const novaAssinatura = JSON.stringify(novasPropostas);
+        if(silenciosa && novaAssinatura === assinaturaDadosPainel) return;
+        propostasCache = novasPropostas;
+        assinaturaDadosPainel = novaAssinatura;
         renderizarResumo(propostasCache);
         atualizarAbasFluxo(propostasCache);
-
         if(!propostasCache.length){
-
-            lista.innerHTML = `
-                <div class="cartao estado">
-                    <i class="fas fa-folder-open"></i>
-                    <p>Nenhuma proposta cadastrada.</p>
-                </div>
-            `;
-
+            lista.innerHTML = `<div class="cartao estado"><i class="fas fa-folder-open"></i><p>Nenhuma proposta cadastrada.</p></div>`;
             return;
         }
-
         renderizarListaFiltrada();
-
+        if(estadoVisual) requestAnimationFrame(() => restaurarEstadoVisualPainel(estadoVisual));
     }catch(erro){
-
         console.error(erro);
-
-        lista.innerHTML = `
-            <div class="alerta">
-                ❌ Não foi possível carregar os dados.
-            </div>
-        `;
-
+        if(!silenciosa) lista.innerHTML = `<div class="alerta">❌ Não foi possível carregar os dados.</div>`;
     }finally{
-
         carregando = false;
     }
 }
@@ -4385,7 +4371,7 @@ function ativarTempoReal(){
             },
             function(){
 
-                carregarPropostas();
+                carregarPropostas({silenciosa:true});
 
             }
         )
