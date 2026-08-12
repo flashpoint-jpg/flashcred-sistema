@@ -2269,6 +2269,41 @@ function mostrarAbaPainel(aba){
     }
 }
 
+function cobrarParcelaWhatsApp(id, numeroParcela, valorParcela, vencimento){
+    const item = (window.propostasCache || []).find(x => String(x.id) === String(id));
+    if(!item){
+        alert('Proposta não encontrada.');
+        return;
+    }
+
+    const numero = somenteNumeros(item.whatsapp || '');
+    if(!numero || numero.length < 10){
+        alert('Cliente sem WhatsApp válido cadastrado.');
+        return;
+    }
+
+    const nome = item.nome || 'Cliente';
+    const proposta = item.id || '-';
+    const valor = dinheiro(valorParcela);
+    const venc = vencimento ? formatarData(vencimento) : 'data de vencimento';
+
+    const texto =
+        `Olá ${nome}, tudo bem?\n\n` +
+        `🔔 *Lembrete de pagamento – FlashCred*\n` +
+        `Proposta: ${proposta}\n` +
+        `📄 Parcela: ${numeroParcela}\n` +
+        `💰 Valor: R$ ${valor}\n` +
+        `📅 Vencimento: ${venc}\n\n` +
+        `💠 Forma de pagamento: *Pix*\n` +
+        `Se precisar da chave Pix ou de outra opção de pagamento, responda esta mensagem.\n\n` +
+        `Obrigado!`;
+
+    window.open(
+        `https://wa.me/55${numero}?text=${encodeURIComponent(texto)}`,
+        '_blank'
+    );
+}
+
 function renderizarRecebidos(data){
 
     const lista = document.getElementById('listaRecebidos');
@@ -2304,6 +2339,16 @@ function renderizarRecebidos(data){
         totalRecebido += jaRecebido;
         totalAReceber += aReceber;
 
+        const datas = Array.isArray(item.datas_parcelas) ? item.datas_parcelas : [];
+        let botoesCobranca = '';
+        for(let n = pagas + 1; n <= calc.quantidade; n++){
+            const vencimento = datas[n - 1] || '';
+            botoesCobranca += `
+                <button type="button" class="botao botao-wpp botao-cobrar-parcela" onclick="event.stopPropagation(); cobrarParcelaWhatsApp('${escapeHTML(String(item.id))}', ${n}, ${calc.parcela}, '${escapeHTML(vencimento)}')">
+                    <i class="fab fa-whatsapp"></i> Cobrar parcela ${n}${vencimento ? ' • ' + formatarData(vencimento) : ''}
+                </button>`;
+        }
+
         return `
             <div class="recebido-card" onclick="abrirRecebido('${escapeHTML(String(item.id))}')" title="Clique para abrir a proposta">
                 <h3>👤 ${escapeHTML(item.nome || 'Cliente')}</h3>
@@ -2314,6 +2359,7 @@ function renderizarRecebidos(data){
                 <div class="recebido-linha"><span>Parcelas restantes</span><strong>${restantes}</strong></div>
                 <div class="recebido-linha"><span>Total já recebido</span><strong class="recebido-total">R$ ${dinheiro(jaRecebido)}</strong></div>
                 <div class="recebido-linha"><span>Valor a receber</span><strong class="recebido-a-receber">R$ ${dinheiro(aReceber)}</strong></div>
+                ${botoesCobranca ? `<div class="cobrancas-parcelas" onclick="event.stopPropagation()"><div style="margin-top:12px;margin-bottom:7px;font-size:12px;font-weight:900;color:#166534">📲 COBRAR PARCELA VIA WHATSAPP</div>${botoesCobranca}</div>` : `<div style="margin-top:10px;color:#166534;font-weight:800">✅ Todas as parcelas pagas</div>`}
                 <div style="margin-top:10px;font-size:12px;color:#2563eb;font-weight:800">👆 Clique para abrir a proposta</div>
             </div>
         `;
