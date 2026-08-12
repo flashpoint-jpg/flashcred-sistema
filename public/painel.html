@@ -2418,29 +2418,12 @@ function renderizarRecebidos(data){
                 ${alertaCliente ? `<div style="margin:8px 0;padding:9px 11px;border-radius:9px;background:${alertaCliente.status === 'proximo' ? '#fef3c7' : '#fee2e2'};color:${alertaCliente.status === 'proximo' ? '#92400e' : '#991b1b'};font-weight:900">${alertaCliente.status === 'vencida' ? '🚨 PARCELA VENCIDA' : alertaCliente.status === 'hoje' ? '🔴 PARCELA VENCE HOJE' : '🟡 PARCELA PRÓXIMA DO VENCIMENTO'} — Parcela ${alertaCliente.numero}${alertaCliente.data ? ' • ' + formatarData(alertaCliente.data) : ''}</div>` : ''}
                 <div style="font-size:12px;color:#6b7280;margin-bottom:6px">CPF: ${escapeHTML(item.cpf || '-')}</div>
                 ${item.created_at ? `<div style="font-size:12px;color:#6b7280;margin-bottom:8px">📅 Entrada: ${new Date(item.created_at).toLocaleDateString('pt-BR')} às ${new Date(item.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</div>` : ''}
-                ${item.created_at && (Date.now()-new Date(item.created_at).getTime()) >= 3*24*60*60*1000 ? `<div style="margin:8px 0;padding:9px 11px;border-radius:9px;background:#fee2e2;color:#991b1b;font-weight:900">⚠️ Esta proposta está há mais de 3 dias. Avalie excluir.</div>` : ''}
                 <div class="recebido-linha"><span>Entrada recebida</span><strong>R$ ${dinheiro(entrada)}</strong></div>
                 <div class="recebido-linha"><span>Total de parcelas</span><strong>${calc.quantidade} parcelas</strong></div>
                 <div class="recebido-linha"><span>Parcelas pagas</span><strong>${pagas} de ${calc.quantidade} x R$ ${dinheiro(calc.parcela)}</strong></div>
                 <div class="recebido-linha"><span>Parcelas restantes</span><strong>${restantes}</strong></div>
                 <div class="recebido-linha"><span>Total já recebido</span><strong class="recebido-total">R$ ${dinheiro(jaRecebido)}</strong></div>
                 <div class="recebido-linha"><span>Valor a receber</span><strong class="recebido-a-receber">R$ ${dinheiro(aReceber)}</strong></div>
-                ${(() => {
-                    const e = calcularProgressoEntrega(item.dias_entrega || 7, Boolean(item.entrega_concluida), item.created_at);
-                    return `<div class="prazo-entrega ${e.concluido ? 'concluido' : ''}" style="margin-top:12px">
-                        <div class="prazo-topo"><span>🚚 Prazo: ${Number(item.dias_entrega)||7} dias úteis</span><span>${e.concluido ? '✅ ENTREGA CONCLUÍDA' : `Restam aproximadamente ${e.restante} dia(s)`}</span></div>
-                        <div class="info-entrega"><span>Progresso</span><span>${e.perc}%</span></div>
-                        <div class="fundo-barra-entrega"><div class="preenchimento-entrega ${e.concluido ? 'preenchimento-concluido' : ''}" style="width:${e.perc}%"></div></div>
-                    </div>`;
-                })()}
-                ${(() => {
-                    const e = calcularProgressoEntrega(item.dias_entrega || 7, Boolean(item.entrega_concluida), item.created_at);
-                    return `<div class="prazo-entrega ${e.concluido ? 'concluido' : ''}" style="margin-top:12px">
-                        <div class="prazo-topo"><span>🚚 Prazo: ${Number(item.dias_entrega)||7} dias úteis</span><span>${e.concluido ? '✅ ENTREGA CONCLUÍDA' : `Restam aproximadamente ${e.restante} dia(s)`}</span></div>
-                        <div class="info-entrega"><span>Progresso</span><span>${e.perc}%</span></div>
-                        <div class="fundo-barra-entrega"><div class="preenchimento-entrega ${e.concluido ? 'preenchimento-concluido' : ''}" style="width:${e.perc}%"></div></div>
-                    </div>`;
-                })()}
                 ${botoesCobranca ? `<div class="cobrancas-parcelas" onclick="event.stopPropagation()"><div style="margin-top:12px;margin-bottom:7px;font-size:12px;font-weight:900;color:#166534">📲 COBRAR PARCELA VIA WHATSAPP</div>${botoesCobranca}</div>` : `<div style="margin-top:10px;color:#166534;font-weight:800">✅ Todas as parcelas pagas</div>`}
                 <div style="margin-top:10px;font-size:12px;color:#2563eb;font-weight:800">👆 Clique para abrir a proposta</div>
             </div>
@@ -2895,6 +2878,19 @@ function renderizarProposta(i){
                             }
 
                         </p>
+
+                        ${i.created_at ? `
+                            <p>
+                                <strong>📅 Entrada da proposta:</strong>
+                                ${new Date(i.created_at).toLocaleDateString('pt-BR')} às ${new Date(i.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
+                            </p>
+                        ` : ''}
+
+                        ${i.status === 'Aprovada' && !i.entrada_paga && i.created_at && (Date.now() - new Date(i.created_at).getTime()) >= 3*24*60*60*1000 ? `
+                            <div style="margin:10px 0;padding:10px 12px;border-radius:9px;background:#fee2e2;color:#991b1b;font-weight:900">
+                                ⚠️ ATENÇÃO: esta proposta foi aprovada há mais de 3 dias e a entrada ainda não foi paga. Avalie excluir a proposta.
+                            </div>
+                        ` : ''}
 
                     </div>
 
@@ -4288,6 +4284,11 @@ function ativarTempoReal(){
 /* ============================================================
    ENTER
 ============================================================ */
+
+// Atualiza o painel a cada minuto para manter prazo e alerta de 3 dias sincronizados.
+setInterval(() => {
+    if (!document.hidden) carregarPropostas();
+}, 60000);
 
 document
     .getElementById('senha')
