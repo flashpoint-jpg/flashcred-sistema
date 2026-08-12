@@ -614,6 +614,23 @@ button{
         margin-top:50px;
     }
 }
+
+/* ============================================================
+   ABA RECEBIDOS
+============================================================ */
+.abas-painel{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 15px}
+.aba-painel{border:0;border-radius:10px;padding:12px 18px;font-weight:800;cursor:pointer;background:#e5e7eb;color:#374151}
+.aba-painel.ativa{background:var(--primaria);color:#fff}
+.recebidos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.recebido-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.06);transition:.2s}
+.recebido-card:hover{transform:translateY(-2px);box-shadow:0 7px 18px rgba(0,0,0,.10)}
+.recebido-card h3{margin:0 0 6px;font-size:17px}
+.recebido-linha{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #eee}
+.recebido-linha:last-child{border-bottom:0}
+.recebido-total{font-size:19px;font-weight:900;color:var(--sucesso)}
+.recebido-a-receber{font-size:18px;font-weight:900;color:var(--alerta)}
+.recebidos-resumo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:15px}
+@media(max-width:700px){.recebidos-resumo{grid-template-columns:1fr}}
 </style>
 </head>
 
@@ -743,6 +760,19 @@ button{
 
     </div>
 
+
+    <!-- ABAS -->
+    <div class="abas-painel">
+        <button id="abaPropostas" class="aba-painel ativa" onclick="mostrarAbaPainel('propostas')">
+            📋 Propostas
+        </button>
+        <button id="abaRecebidos" class="aba-painel" onclick="mostrarAbaPainel('recebidos')">
+            💰 Recebidos
+        </button>
+    </div>
+
+
+    <div id="conteudoPropostas">
 
     <!-- NOVA PROPOSTA -->
     <button
@@ -989,6 +1019,14 @@ button{
             <p>Carregando propostas...</p>
         </div>
 
+    </div>
+
+    </div>
+
+    <!-- RECEBIDOS -->
+    <div id="conteudoRecebidos" class="oculto">
+        <div id="resumoRecebidos" class="recebidos-resumo"></div>
+        <div id="listaRecebidos"></div>
     </div>
 
 </div>
@@ -2132,7 +2170,9 @@ async function carregarPropostas(){
             return;
         }
 
+        window.propostasCache = data || [];
         renderizarResumo(data || []);
+        renderizarRecebidos(data || []);
 
         if(!data || data.length === 0){
 
@@ -2164,6 +2204,108 @@ async function carregarPropostas(){
     }finally{
 
         carregando = false;
+    }
+}
+
+
+/* ============================================================
+   ABA RECEBIDOS
+============================================================ */
+
+function mostrarAbaPainel(aba){
+
+    const propostas = document.getElementById('conteudoPropostas');
+    const recebidos = document.getElementById('conteudoRecebidos');
+    const btnPropostas = document.getElementById('abaPropostas');
+    const btnRecebidos = document.getElementById('abaRecebidos');
+
+    const mostrarRecebidos = aba === 'recebidos';
+
+    propostas.classList.toggle('oculto', mostrarRecebidos);
+    recebidos.classList.toggle('oculto', !mostrarRecebidos);
+    btnPropostas.classList.toggle('ativa', !mostrarRecebidos);
+    btnRecebidos.classList.toggle('ativa', mostrarRecebidos);
+
+    if(mostrarRecebidos){
+        renderizarRecebidos(window.propostasCache || []);
+    }
+}
+
+function renderizarRecebidos(data){
+
+    const lista = document.getElementById('listaRecebidos');
+    const resumo = document.getElementById('resumoRecebidos');
+
+    if(!lista || !resumo){ return; }
+
+    // Somente clientes que JÁ PAGARAM A ENTRADA.
+    const recebidos = (data || []).filter(item => Boolean(item.entrada_paga));
+
+    let totalRecebido = 0;
+    let totalAReceber = 0;
+
+    const cards = recebidos.map(item => {
+        const calc = calcularFinanciamento(
+            item.valor_desejado,
+            item.valor_entrada,
+            item.juros_mensal,
+            item.quantidade_parcelas
+        );
+
+        const pagas = Math.min(
+            Math.max(0, Number(item.parcelas_pagas) || 0),
+            calc.quantidade
+        );
+
+        const entrada = calc.entrada;
+        const parcelasRecebidas = pagas * calc.parcela;
+        const jaRecebido = entrada + parcelasRecebidas;
+        const restantes = Math.max(0, calc.quantidade - pagas);
+        const aReceber = restantes * calc.parcela;
+
+        totalRecebido += jaRecebido;
+        totalAReceber += aReceber;
+
+        return `
+            <div class="recebido-card" onclick="abrirRecebido('${escapeHTML(String(item.id))}')" title="Clique para abrir a proposta">
+                <h3>👤 ${escapeHTML(item.nome || 'Cliente')}</h3>
+                <div style="font-size:12px;color:#6b7280;margin-bottom:8px">CPF: ${escapeHTML(item.cpf || '-')}</div>
+                <div class="recebido-linha"><span>Entrada recebida</span><strong>R$ ${dinheiro(entrada)}</strong></div>
+                <div class="recebido-linha"><span>Parcelas pagas</span><strong>${pagas} x R$ ${dinheiro(calc.parcela)}</strong></div>
+                <div class="recebido-linha"><span>Total já recebido</span><strong class="recebido-total">R$ ${dinheiro(jaRecebido)}</strong></div>
+                <div class="recebido-linha"><span>Valor a receber</span><strong class="recebido-a-receber">R$ ${dinheiro(aReceber)}</strong></div>
+                <div style="margin-top:10px;font-size:12px;color:#2563eb;font-weight:800">👆 Clique para abrir a proposta</div>
+            </div>
+        `;
+    }).join('');
+
+    resumo.innerHTML = `
+        <div class="item-resumo"><span>👥 Clientes com entrada</span><strong>${recebidos.length}</strong></div>
+        <div class="item-resumo"><span>💰 Já recebido</span><strong class="texto-sucesso">R$ ${dinheiro(totalRecebido)}</strong></div>
+        <div class="item-resumo"><span>⏳ Ainda a receber</span><strong class="texto-alerta">R$ ${dinheiro(totalAReceber)}</strong></div>
+    `;
+
+    if(!recebidos.length){
+        lista.innerHTML = `
+            <div class="cartao estado">
+                <i class="fas fa-wallet"></i>
+                <p>Nenhum cliente com entrada paga ainda.</p>
+            </div>
+        `;
+        return;
+    }
+
+    lista.innerHTML = `<div class="recebidos-grid">${cards}</div>`;
+}
+
+function abrirRecebido(id){
+    mostrarAbaPainel('propostas');
+
+    const el = document.getElementById(`proposta_${id}`);
+    if(el){
+        el.scrollIntoView({behavior:'smooth', block:'center'});
+        el.style.outline = '3px solid var(--sucesso)';
+        setTimeout(() => { el.style.outline = ''; }, 1800);
     }
 }
 
