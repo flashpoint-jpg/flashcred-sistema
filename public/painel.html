@@ -3716,13 +3716,17 @@ async function carregarIndicacoes(){
     const lista=document.getElementById('listaIndicacoes');
     if(!lista) return;
     try{
-        const {data,error}=await supabaseClient.from('indicacoes').select('*').order('created_at',{ascending:false});
+        const {data,error}=await supabaseClient.from('indicacoes').select('*');
         if(error){
             console.error(error);
             lista.innerHTML=`<div class="alerta">❌ Erro ao carregar indicações: ${escapeHTML(error.message)}</div>`;
             return;
         }
-        indicacoesCache=data||[];
+        indicacoesCache=(data||[]).sort((a,b)=>{
+            const da=a?.created_at?new Date(a.created_at).getTime():0;
+            const db=b?.created_at?new Date(b.created_at).getTime():0;
+            return db-da;
+        });
         renderizarIndicacoes();
     }catch(e){
         console.error(e);
@@ -4573,6 +4577,17 @@ function ativarTempoReal(){
 
                 carregarPropostas();
 
+            }
+        )
+        .on(
+            'postgres_changes',
+            {
+                event:'*',
+                schema:'public',
+                table:'indicacoes'
+            },
+            function(){
+                carregarIndicacoes();
             }
         )
 
