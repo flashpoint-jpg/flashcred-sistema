@@ -153,29 +153,6 @@ button{
     color:#fff;
 }
 
-/* Cobrança individual: botão compacto */
-.botao-cobrar-parcela{
-    width:auto !important;
-    display:inline-flex !important;
-    align-items:center;
-    justify-content:center;
-    gap:5px;
-    padding:6px 9px !important;
-    margin:3px 4px 3px 0 !important;
-    min-height:32px !important;
-    font-size:12px !important;
-    border-radius:7px !important;
-    line-height:1.15 !important;
-}
-.cobrancas-parcelas{
-    display:flex;
-    flex-wrap:wrap;
-    align-items:center;
-}
-.cobrancas-parcelas > div:first-child{
-    width:100%;
-}
-
 .botao-pdf{
     background:var(--info);
     color:#fff;
@@ -677,6 +654,18 @@ button{
     .recebido-card h3{font-size:16px!important}.recebido-linha{padding:5px 0!important}
     @page{size:A4;margin:14mm}
 }
+
+/* ALERTA VISUAL DE PARCELAS */
+@keyframes piscarVencimento {
+  0%,100% { box-shadow:0 0 0 0 rgba(220,38,38,.0); border-color:#ef4444; }
+  50% { box-shadow:0 0 0 7px rgba(220,38,38,.18); border-color:#b91c1c; }
+}
+.recebido-card.cliente-vencido { animation:piscarVencimento 1.1s infinite; border:2px solid #ef4444!important; background:#fff7f7!important; }
+.recebido-card.cliente-hoje { animation:piscarVencimento 1.1s infinite; border:2px solid #ef4444!important; background:#fff7f7!important; }
+.recebido-card.cliente-proximo { border:2px solid #f59e0b!important; background:#fffbeb!important; }
+.alerta-geral-vencimentos { margin:0 0 16px; padding:16px 18px; border-radius:14px; background:#7f1d1d; color:#fff; font-weight:800; box-shadow:0 8px 22px rgba(127,29,29,.25); animation:piscarVencimento 1.1s infinite; }
+.alerta-geral-vencimentos .linha-alerta { margin-top:7px; padding:8px 10px; border-radius:9px; background:rgba(255,255,255,.12); font-weight:700; }
+
 </style>
 </head>
 
@@ -2306,16 +2295,9 @@ function cobrarParcelaWhatsApp(id, numeroParcela, valorParcela, vencimento){
     }
 
     const nome = item.nome || 'Cliente';
-    const cpf = somenteNumeros(item.cpf || '');
     const proposta = item.id || '-';
     const valor = dinheiro(valorParcela);
     const venc = vencimento ? formatarData(vencimento) : 'data de vencimento';
-
-    // Link individual: CPF identifica a proposta e "parcela" informa qual parcela
-    // deve ser destacada no fluxo da página de consulta.
-    const url = new URL(LINK_CONSULTA);
-    if(cpf) url.searchParams.set('cpf', cpf);
-    url.searchParams.set('parcela', String(numeroParcela));
 
     const texto =
         `Olá ${nome}, tudo bem?\n\n` +
@@ -2324,10 +2306,9 @@ function cobrarParcelaWhatsApp(id, numeroParcela, valorParcela, vencimento){
         `📄 Parcela: ${numeroParcela}\n` +
         `💰 Valor: R$ ${valor}\n` +
         `📅 Vencimento: ${venc}\n\n` +
-        `💠 *Pagamento via Pix*\n` +
-        `Acesse o link abaixo para abrir diretamente sua proposta e consultar esta parcela:\n` +
-        `${url.href}\n\n` +
-        `Obrigado! FlashCred`;
+        `💠 Forma de pagamento: *Pix*\n` +
+        `Se precisar da chave Pix ou de outra opção de pagamento, responda esta mensagem.\n\n` +
+        `Obrigado!`;
 
     window.open(
         `https://wa.me/55${numero}?text=${encodeURIComponent(texto)}`,
@@ -2347,6 +2328,8 @@ function renderizarRecebidos(data){
 
     let totalRecebido = 0;
     let totalAReceber = 0;
+
+    const alertasClientes = [];
 
     const cards = recebidos.map(item => {
         const calc = calcularFinanciamento(
@@ -2371,6 +2354,23 @@ function renderizarRecebidos(data){
         totalAReceber += aReceber;
 
         const datas = Array.isArray(item.datas_parcelas) ? item.datas_parcelas : [];
+
+        // Encontra a próxima parcela pendente e cria destaque no cliente.
+        let alertaCliente = null;
+        for(let idx = pagas; idx < calc.quantidade; idx++){
+            const av = analisarVencimento(datas[idx] || '');
+            if(av.status === 'vencida' || av.status === 'hoje' || av.status === 'proximo'){
+                alertaCliente = { ...av, numero: idx + 1, data: datas[idx] || '' };
+                break;
+            }
+        }
+
+        let classeCliente = '';
+        if(alertaCliente){
+            classeCliente = alertaCliente.status === 'proximo' ? 'cliente-proximo' : 'cliente-vencido';
+            alertasClientes.push({item, alerta:alertaCliente, parcela:calc.parcela});
+        }
+
         let botoesCobranca = '';
         for(let n = pagas + 1; n <= calc.quantidade; n++){
             const vencimento = datas[n - 1] || '';
@@ -2381,8 +2381,9 @@ function renderizarRecebidos(data){
         }
 
         return `
-            <div class="recebido-card" onclick="abrirRecebido('${escapeHTML(String(item.id))}')" title="Clique para abrir a proposta">
-                <h3>👤 ${escapeHTML(item.nome || 'Cliente')}</h3>
+            <div class="recebido-card ${classeCliente}" onclick="abrirRecebido('${escapeHTML(String(item.id))}')" title="Clique para abrir a proposta">
+                <h3>👤 ${escapeHTML(item.nome || 'Cliente')} ${alertaCliente ? alertaCliente.aviso : ''}</h3>
+                ${alertaCliente ? `<div style="margin:8px 0;padding:9px 11px;border-radius:9px;background:${alertaCliente.status === 'proximo' ? '#fef3c7' : '#fee2e2'};color:${alertaCliente.status === 'proximo' ? '#92400e' : '#991b1b'};font-weight:900">${alertaCliente.status === 'vencida' ? '🚨 PARCELA VENCIDA' : alertaCliente.status === 'hoje' ? '🔴 PARCELA VENCE HOJE' : '🟡 PARCELA PRÓXIMA DO VENCIMENTO'} — Parcela ${alertaCliente.numero}${alertaCliente.data ? ' • ' + formatarData(alertaCliente.data) : ''}</div>` : ''}
                 <div style="font-size:12px;color:#6b7280;margin-bottom:8px">CPF: ${escapeHTML(item.cpf || '-')}</div>
                 <div class="recebido-linha"><span>Entrada recebida</span><strong>R$ ${dinheiro(entrada)}</strong></div>
                 <div class="recebido-linha"><span>Total de parcelas</span><strong>${calc.quantidade} parcelas</strong></div>
@@ -2401,6 +2402,25 @@ function renderizarRecebidos(data){
         <div class="item-resumo"><span>💰 Já recebido</span><strong class="texto-sucesso">R$ ${dinheiro(totalRecebido)}</strong></div>
         <div class="item-resumo"><span>⏳ Ainda a receber</span><strong class="texto-alerta">R$ ${dinheiro(totalAReceber)}</strong></div>
     `;
+
+    const alertaGeral = alertasClientes.filter(x => x.alerta.status === 'vencida' || x.alerta.status === 'hoje');
+    const avisoAnterior = document.getElementById('avisoVencimentosVisivel');
+    if(avisoAnterior) avisoAnterior.remove();
+    if(alertaGeral.length){
+        const bloco = document.createElement('div');
+        bloco.id = 'avisoVencimentosVisivel';
+        bloco.className = 'alerta-geral-vencimentos';
+        bloco.innerHTML = `<div style="font-size:18px">🚨 ATENÇÃO: ${alertaGeral.length} CLIENTE(S) COM PARCELA VENCIDA OU VENCENDO HOJE</div>` + alertaGeral.map(x => `<div class="linha-alerta">👤 ${escapeHTML(x.item.nome || 'Cliente')} — Parcela ${x.alerta.numero} ${x.alerta.status === 'vencida' ? x.alerta.texto : 'VENCE HOJE'} — R$ ${dinheiro(x.parcela)}</div>`).join('');
+        lista.parentNode.insertBefore(bloco, lista);
+        try{
+            if(window.speechSynthesis && !window.__falouVencimento){
+                window.__falouVencimento = true;
+                const msg = new SpeechSynthesisUtterance(`Atenção. Existem ${alertaGeral.length} clientes com parcela vencida ou vencendo hoje.`);
+                msg.lang='pt-BR'; msg.rate=.95; window.speechSynthesis.speak(msg);
+                setTimeout(()=>window.__falouVencimento=false, 120000);
+            }
+        }catch(e){}
+    }
 
     if(!recebidos.length){
         lista.innerHTML = `
