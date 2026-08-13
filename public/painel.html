@@ -3362,7 +3362,8 @@ function renderizarProposta(i){
                                     document.getElementById(
                                         'edicao_${escapeHTML(String(i.id))}'
                                     )
-                                )
+                                );
+                                sincronizarDatasEdicao('${escapeHTML(String(i.id))}')
                             "
                         >
 
@@ -3474,6 +3475,7 @@ function renderizarProposta(i){
                             id="edit_intervalo_${escapeHTML(String(i.id))}"
                             class="campo"
                             style="max-width:280px"
+                            onchange="sincronizarDatasEdicao('${escapeHTML(String(i.id))}')"
                         >
 
                             <option value="30">
@@ -3830,6 +3832,53 @@ function toggleEditar(id){
 }
 
 
+/*
+   Mantém a quantidade de datas exatamente igual à quantidade de parcelas.
+   Ao alterar parcelas ou intervalo, recria o cronograma no editor.
+*/
+function sincronizarDatasEdicao(id){
+
+    const qtdInput = document.getElementById(`edit_qtd_${id}`);
+    const intervaloInput = document.getElementById(`edit_intervalo_${id}`);
+    const lista = document.getElementById(`edit_lista_datas_${id}`);
+
+    if(!qtdInput || !intervaloInput || !lista){
+        return;
+    }
+
+    const qtd = Math.min(48, Math.max(1, Number(qtdInput.value) || 1));
+    qtdInput.value = qtd;
+
+    const intervalo = Math.max(1, Number(intervaloInput.value) || 30);
+    const atuais = Array.from(lista.querySelectorAll('input[name="data_parcela"]'))
+        .map(input => input.value)
+        .filter(Boolean);
+
+    // Mantém as datas já digitadas quando possível e só completa/remove o necessário.
+    const datas = atuais.slice(0, qtd);
+
+    if(datas.length === 0){
+        const primeira = adicionarDias(new Date(), intervalo);
+        datas.push(dataLocalISO(primeira));
+    }
+
+    while(datas.length < qtd){
+        const base = new Date(datas[datas.length - 1] + 'T00:00:00');
+        const proxima = adicionarDias(base, intervalo);
+        datas.push(dataLocalISO(proxima));
+    }
+
+    lista.innerHTML = datas.map(dt => `
+        <input
+            type="date"
+            name="data_parcela"
+            value="${escapeHTML(dt)}"
+            class="campo"
+        >
+    `).join('');
+}
+
+
 async function salvarEdicao(id){
 
     try{
@@ -3914,10 +3963,12 @@ async function salvarEdicao(id){
             .getElementById(`edit_entrada_paga_${id}`)
             .checked;
 
-        const contrato_assinado =
-            document
-            .getElementById(`edit_contrato_assinado_${id}`)
-            .checked;
+        const contratoCheckbox =
+            document.getElementById(`edit_contrato_assinado_${id}`);
+
+        const contrato_assinado = Boolean(
+            contratoCheckbox && contratoCheckbox.checked
+        );
 
 
         if(!nome){
@@ -3983,26 +4034,31 @@ async function salvarEdicao(id){
             );
 
 
+        // Corrige automaticamente qualquer divergência antes de salvar.
+        sincronizarDatasEdicao(id);
+
         const inputs =
             document.querySelectorAll(
                 `#edit_lista_datas_${id} input[name="data_parcela"]`
             );
 
-        const datas_parcelas =
+        let datas_parcelas =
             Array.from(inputs)
             .map(input => input.value)
             .filter(Boolean);
 
+        // Última garantia: quantidade e datas sempre ficam iguais.
+        if(datas_parcelas.length !== quantidade_parcelas){
+            sincronizarDatasEdicao(id);
+            datas_parcelas = Array.from(
+                document.querySelectorAll(
+                    `#edit_lista_datas_${id} input[name="data_parcela"]`
+                )
+            ).map(input => input.value).filter(Boolean);
+        }
 
-        if(
-            datas_parcelas.length !==
-            quantidade_parcelas
-        ){
-
-            alert(
-                'A quantidade de datas deve ser igual ao número de parcelas.'
-            );
-
+        if(datas_parcelas.length !== quantidade_parcelas){
+            alert('Não foi possível sincronizar as datas com a quantidade de parcelas.');
             return;
         }
 
