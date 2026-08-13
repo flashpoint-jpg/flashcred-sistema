@@ -2039,136 +2039,53 @@ function dataBR(data) {
    DIAS ÚTEIS
 ========================================================== */
 
-function calcularDiasUteis(
-    inicio,
-    totalDias
-) {
+function dataLocalEntrega(valor){
+    if(!valor) return null;
+    const texto = String(valor).trim();
+    const base = texto.length >= 10 ? texto.slice(0,10) : texto;
+    const m = base.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!m) return null;
+    const d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+    d.setHours(0,0,0,0);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
 
-    totalDias =
-        Number(
-            totalDias || 0
-        );
-
-
-    if(
-        !inicio ||
-        totalDias <= 0
-    ) {
-
-        return {
-
-            decorridos: 0,
-
-            restantes:
-                totalDias,
-
-            porcentagem: 0
-        };
+function adicionarDiasUteisEntrega(inicio, totalDias){
+    const d = dataLocalEntrega(inicio);
+    const total = Math.max(0, Number(totalDias)||0);
+    if(!d) return null;
+    let contados = 0;
+    while(contados < total){
+        d.setDate(d.getDate()+1);
+        const dia = d.getDay();
+        if(dia !== 0 && dia !== 6) contados++;
     }
+    return d;
+}
 
+function calcularDiasUteis(inicio, totalDias){
+    const total = Math.max(0, Number(totalDias)||0);
+    const inicioData = dataLocalEntrega(inicio);
+    if(!inicioData || total <= 0) return {decorridos:0, restantes:total, porcentagem:0};
 
-    const inicioData =
-        new Date(inicio);
-
-
-    const hoje =
-        new Date();
-
-
-    inicioData.setHours(
-        0,0,0,0
-    );
-
-
-    hoje.setHours(
-        0,0,0,0
-    );
-
-
-    if(
-        hoje <= inicioData
-    ) {
-
-        return {
-
-            decorridos: 0,
-
-            restantes:
-                totalDias,
-
-            porcentagem: 0
-        };
-    }
-
+    const hoje = new Date();
+    hoje.setHours(0,0,0,0);
+    if(hoje <= inicioData) return {decorridos:0, restantes:total, porcentagem:0};
 
     let decorridos = 0;
-
-
-    let atual =
-        new Date(
-            inicioData
-        );
-
-
-    while(
-        atual < hoje
-    ) {
-
-        const dia =
-            atual.getDay();
-
-
-        if(
-            dia !== 0 &&
-            dia !== 6
-        ) {
-
-            decorridos++;
-        }
-
-
-        atual.setDate(
-            atual.getDate() + 1
-        );
+    const atual = new Date(inicioData);
+    while(atual < hoje && decorridos < total){
+        const dia = atual.getDay();
+        if(dia !== 0 && dia !== 6) decorridos++;
+        atual.setDate(atual.getDate()+1);
     }
-
-
-    decorridos =
-        Math.min(
-            decorridos,
-            totalDias
-        );
-
-
-    const restantes =
-        Math.max(
-            totalDias -
-            decorridos,
-            0
-        );
-
-
-    const porcentagem =
-        Math.min(
-            100,
-            Math.round(
-                (
-                    decorridos /
-                    totalDias
-                ) * 100
-            )
-        );
-
-
     return {
-
         decorridos,
-
-        restantes,
-
-        porcentagem
+        restantes: Math.max(total-decorridos,0),
+        porcentagem: Math.min(100, Math.round((decorridos/total)*100))
     };
 }
+
 
 
 /* ==========================================================
@@ -4431,7 +4348,8 @@ function imprimirContrato() {
     const inicio =
         p.data_pagamento_entrada ||
         p.entrada_pago_em ||
-        p.data_entrada_paga;
+        p.data_entrada_paga ||
+        null;
 
 
     const previsao =
@@ -4911,7 +4829,8 @@ function montarEntrega(p) {
     const inicio =
         p.data_pagamento_entrada ||
         p.entrada_pago_em ||
-        p.data_entrada_paga;
+        p.data_entrada_paga ||
+        null;
 
 
     const progresso =
@@ -5074,57 +4993,8 @@ function montarEntrega(p) {
    DATA ENTREGA
 ========================================================== */
 
-function calcularDataEntregaUtil(
-    inicio,
-    totalDias
-) {
-
-    if(
-        !inicio ||
-        Number(totalDias || 0) <= 0
-    ) {
-
-        return null;
-    }
-
-
-    const d =
-        new Date(inicio);
-
-
-    d.setHours(
-        0,0,0,0
-    );
-
-
-    let contados = 0;
-
-
-    while(
-        contados <
-        Number(totalDias)
-    ) {
-
-        d.setDate(
-            d.getDate() + 1
-        );
-
-
-        const dia =
-            d.getDay();
-
-
-        if(
-            dia !== 0 &&
-            dia !== 6
-        ) {
-
-            contados++;
-        }
-    }
-
-
-    return d;
+function calcularDataEntregaUtil(inicio, totalDias){
+    return adicionarDiasUteisEntrega(inicio, totalDias);
 }
 
 
