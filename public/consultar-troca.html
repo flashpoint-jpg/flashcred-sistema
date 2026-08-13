@@ -1,0 +1,64 @@
+-- FLASH TROCAS - estrutura para o Supabase
+-- Execute no SQL Editor do projeto antes de usar o formulário.
+
+create extension if not exists pgcrypto;
+
+create table if not exists public.flash_trocas (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  nome text not null,
+  telefone text not null,
+  cidade text not null,
+  tipo_equipamento text not null,
+  marca_modelo text not null,
+  ano integer,
+  estado_conservacao text not null,
+  valor_estimado numeric(12,2) default 0,
+  fotos text[] default '{}',
+  moveis_interesse text not null,
+  status text not null default 'Nova',
+  valor_avaliado numeric(12,2),
+  observacoes text
+);
+
+alter table public.flash_trocas enable row level security;
+
+-- O formulário público precisa conseguir cadastrar a solicitação.
+drop policy if exists "flash_trocas_public_insert" on public.flash_trocas;
+create policy "flash_trocas_public_insert"
+on public.flash_trocas
+for insert to anon, authenticated
+with check (true);
+
+-- O painel atual usa a chave pública e um login próprio no HTML.
+-- Por isso a leitura precisa estar disponível para a aplicação.
+drop policy if exists "flash_trocas_public_select" on public.flash_trocas;
+create policy "flash_trocas_public_select"
+on public.flash_trocas
+for select to anon, authenticated
+using (true);
+
+-- Necessário para o seletor de status do painel atual.
+drop policy if exists "flash_trocas_public_update" on public.flash_trocas;
+create policy "flash_trocas_public_update"
+on public.flash_trocas
+for update to anon, authenticated
+using (true)
+with check (true);
+
+-- Bucket público para as fotos.
+insert into storage.buckets (id, name, public)
+values ('flash-trocas', 'flash-trocas', true)
+on conflict (id) do update set public = true;
+
+drop policy if exists "flash_trocas_storage_insert" on storage.objects;
+create policy "flash_trocas_storage_insert"
+on storage.objects
+for insert to anon, authenticated
+with check (bucket_id = 'flash-trocas');
+
+drop policy if exists "flash_trocas_storage_select" on storage.objects;
+create policy "flash_trocas_storage_select"
+on storage.objects
+for select to anon, authenticated
+using (bucket_id = 'flash-trocas');
