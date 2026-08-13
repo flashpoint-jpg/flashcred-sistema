@@ -17,9 +17,73 @@ const SUPABASE_KEY='sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let token=null,state=null;
 const brl=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-async function entrar(){const u=document.getElementById('usuario').value.trim(),s=document.getElementById('senha').value;document.getElementById('erro').textContent='';if(!u||!s){document.getElementById('erro').textContent='Digite o usuário e a senha.';return}try{const {data,error}=await db.rpc('funcionario_login',{p_usuario:u,p_senha:s});if(error)throw error;if(!data||!data.token)throw new Error('Usuário ou senha inválidos.');token=data.token;sessionStorage.setItem('fc_func_token',token);localStorage.setItem('fc_func_token',token);await carregar();}catch(e){document.getElementById('erro').textContent=e.message||'Não foi possível entrar.'}}
-async function carregar(){try{const {data,error}=await db.rpc('funcionario_dashboard',{p_token:token});if(error)throw error;if(!data)throw new Error('Não foi possível carregar o painel.');state=data;document.getElementById('login').classList.add('hidden');document.getElementById('app').classList.remove('hidden');const nome=data.funcionario?.nome||data.funcionario?.nome_completo||'Funcionário';document.getElementById('boasVindas').textContent='Olá, '+nome+'!';aplicarConfig();render();atualizarSimulador();}catch(e){document.getElementById('erro').textContent=e.message||'Não foi possível carregar o painel.'}}
+const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;N'[m]}));
+
+// Função de renderização básica para evitar erros ao carregar o dashboard
+function render() {
+    if(state?.indicacoes) {
+        document.getElementById('indicacoes').innerHTML = state.indicacoes.length ? 'Tabela carregada' : 'Nenhuma indicação encontrada.';
+    }
+    if(state?.comissoes) {
+        document.getElementById('comissoes').innerHTML = state.comissoes.length ? 'Comissões carregadas' : 'Nenhuma comissão encontrada.';
+    }
+    if(state?.saques) {
+        document.getElementById('saques').innerHTML = state.saques.length ? 'Saques carregados' : 'Nenhum saque encontrado.';
+    }
+    if(state?.resumo) {
+        document.getElementById('disponivel').textContent = brl(state.resumo.disponivel);
+        document.getElementById('pendente').textContent = brl(state.resumo.pendente);
+        document.getElementById('recebido').textContent = brl(state.resumo.recebido);
+    }
+}
+
+async function entrar(){
+    const u=document.getElementById('usuario').value.trim();
+    const s=document.getElementById('senha').value;
+    document.getElementById('erro').textContent='';
+    if(!u||!s){
+        document.getElementById('erro').textContent='Digite o usuário e a senha.';
+        return;
+    }
+    try{
+        const {data,error}=await db.rpc('funcionario_login',{p_usuario:u,p_senha:s});
+        if(error)throw error;
+        
+        // Trata o retorno caso venha dentro de um array ou objeto direto
+        const resData = Array.isArray(data) ? data[0] : data;
+        const tokenVal = resData?.token || resData?.access_token || (typeof data === 'string' ? data : null);
+        
+        if(!tokenVal)throw new Error('Usuário ou senha inválidos.');
+        
+        token=tokenVal;
+        sessionStorage.setItem('fc_func_token',token);
+        localStorage.setItem('fc_func_token',token);
+        await carregar();
+    }catch(e){
+        document.getElementById('erro').textContent=e.message||'Não foi possível entrar.';
+    }
+}
+
+async function carregar(){
+    try{
+        const {data,error}=await db.rpc('funcionario_dashboard',{p_token:token});
+        if(error)throw error;
+        if(!data)throw new Error('Não foi possível carregar o painel.');
+        state=data;
+        document.getElementById('login').classList.add('hidden');
+        document.getElementById('app').classList.remove('hidden');
+        const nome=data.funcionario?.nome||data.funcionario?.nome_completo||'Funcionário';
+        document.getElementById('boasVindas').textContent='Olá, '+nome+'!';
+        aplicarConfig();
+        render();
+        atualizarSimulador();
+    }catch(e){
+        document.getElementById('erro').textContent=e.message||'Não foi possível carregar o painel.';
+        // Se houver falha ao carregar com o token salvo, limpa e mostra o login novamente
+        sair();
+    }
+}
+
 function cfgNum(keys,fallback){const objs=[state?.configuracao,state?.config,state?.parametros,state?.regras,state?.funcionario,state||{}];for(const o of objs)for(const k of keys){if(o&&o[k]!==undefined&&o[k]!==null&&o[k]!==''){const n=Number(o[k]);if(Number.isFinite(n))return n}}return fallback}
 function config(){return{entrada:Math.max(0,cfgNum(['percentual_entrada','entrada_percentual','entrada_padrao','percentualEntrada'],40)),juros:Math.max(10,cfgNum(['juros_mensal','juros','taxa_juros','juros_padrao'],10)),parcelas:Math.min(12,Math.max(1,Math.round(cfgNum(['parcelas_padrao','parcelas','quantidade_parcelas'],12)))),dias:Math.max(1,Math.round(cfgNum(['dias_entrega','prazo_entrega','diasEntrega'],7))),comissao:Math.max(0,cfgNum(['percentual_comissao','comissao_percentual','comissao','percentualComissao'],0))}}
 function aplicarConfig(){const c=config();document.getElementById('juros').value=c.juros.toFixed(c.juros%1?2:0)+'%';document.getElementById('dias').value=c.dias;const p=document.getElementById('parcelas');if(!p.value||Number(p.value)>12)p.value=c.parcelas;atualizarSimulador()}
@@ -27,6 +91,6 @@ function price(principal,j,n){if(principal<=0||n<=0)return 0;const i=j/100;retur
 function atualizarSimulador(){const c=config(),v=Number(document.getElementById('valor').value)||0,n=Math.min(12,Math.max(1,Number(document.getElementById('parcelas').value)||c.parcelas)),entrada=v*c.entrada/100,fin=Math.max(0,v-entrada),par=price(fin,c.juros,n),nome=state?.funcionario?.nome||state?.funcionario?.nome_completo||'Funcionário';document.getElementById('entrada').value=brl(entrada);document.getElementById('simEntrada').textContent=brl(entrada);document.getElementById('simParcela').textContent=brl(par);document.getElementById('simTotal').textContent=brl(par*n);document.getElementById('comissaoNome').textContent='Comissão de '+nome;const com=v*c.comissao/100;document.getElementById('comissaoValor').textContent=brl(com);document.getElementById('comissaoTexto').textContent=com?`Por esta venda, ${nome} vai receber aproximadamente ${brl(com)} de comissão.`:`Por esta venda, a comissão será exibida quando o percentual estiver configurado no Painel Administrativo.`}
 async function novaIndicacao(){const msg=document.getElementById('msgIndicacao'),btn=document.getElementById('btnEnviarIndicacao');const nome=document.getElementById('nome').value.trim(),cpf=document.getElementById('cpf').value.trim(),nasc=document.getElementById('nascimento').value,wa=document.getElementById('whatsapp').value.trim(),cep=document.getElementById('cep').value.trim(),end=document.getElementById('endereco').value.trim(),v=Number(document.getElementById('valor').value)||0,c=config(),q=Math.min(12,Math.max(1,Number(document.getElementById('parcelas').value)||c.parcelas));msg.textContent='';if(!nome||!cpf||!nasc||!wa||!cep||!end||v<=0){msg.textContent='❌ Preencha todos os dados do cliente e o valor desejado.';return}const n=new Date(nasc+'T00:00:00'),hoje=new Date();let idade=hoje.getFullYear()-n.getFullYear();if(hoje.getMonth()<n.getMonth()||(hoje.getMonth()===n.getMonth()&&hoje.getDate()<n.getDate()))idade--;if(!Number.isFinite(n.getTime())||idade<18){msg.textContent='❌ O cliente precisa ter 18 anos ou mais para solicitar o crédito.';return}const entrada=v*c.entrada/100,datas=[];let d=new Date();for(let i=0;i<q;i++){d=new Date(d.getTime()+30*86400000);datas.push(d.toISOString().slice(0,10))}const nomeFunc=state?.funcionario?.nome||state?.funcionario?.nome_completo||'Funcionário';btn.disabled=true;btn.textContent='⏳ Enviando...';document.getElementById('sendText').textContent=`${nomeFunc}, aguarde enquanto sua proposta é enviada para análise.`;document.getElementById('sendOverlay').classList.remove('hidden');try{await new Promise(r=>setTimeout(r,500));const {data,error}=await db.rpc('funcionario_criar_indicacao',{p_token:token,p_nome:nome,p_cpf:cpf,p_whatsapp:wa,p_cep:cep,p_endereco:end,p_valor:v,p_entrada:entrada,p_juros:c.juros,p_parcelas:q,p_dias_entrega:c.dias,p_datas_parcelas:datas});if(error)throw error;document.getElementById('sendTitle').textContent='✅ Proposta enviada!';document.getElementById('sendText').textContent=`${nomeFunc}, sua indicação foi enviada com sucesso.`;await new Promise(r=>setTimeout(r,900));document.getElementById('sendOverlay').classList.add('hidden');msg.textContent='✅ Indicação enviada. Nº da proposta: '+data;document.querySelectorAll('#nome,#cpf,#nascimento,#whatsapp,#cep,#endereco,#valor').forEach(x=>x.value='');document.getElementById('parcelas').value=c.parcelas;aplicarConfig();await carregar();}catch(e){document.getElementById('sendOverlay').classList.add('hidden');msg.textContent='❌ '+(e.message||'Erro ao enviar indicação.')}finally{btn.disabled=false;btn.textContent='🚀 Enviar indicação'}}
 async function solicitarSaque(){const msg=document.getElementById('msgSaque');try{const {data,error}=await db.rpc('funcionario_solicitar_saque',{p_token:token,p_valor:Number(valorSaque.value),p_chave_pix:pixSaque.value.trim()});if(error)throw error;msg.textContent='✅ Saque solicitado com sucesso.';valorSaque.value='';pixSaque.value='';await carregar();}catch(e){msg.textContent='❌ '+(e.message||'Erro ao solicitar saque.')}}
-function sair(){sessionStorage.removeItem('fc_func_token');localStorage.removeItem('fc_func_token');location.reload()}
+function sair(){sessionStorage.removeItem('fc_func_token');localStorage.removeItem('fc_func_token');document.getElementById('app').classList.add('hidden');document.getElementById('login').classList.remove('hidden');}
 document.getElementById('valor').addEventListener('input',atualizarSimulador);document.getElementById('parcelas').addEventListener('change',atualizarSimulador);token=localStorage.getItem('fc_func_token')||sessionStorage.getItem('fc_func_token');if(token)carregar();
 </script></body></html>
