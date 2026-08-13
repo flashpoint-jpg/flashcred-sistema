@@ -770,7 +770,7 @@ video,
         <button
             id="btnConsultar"
             class="btn btn-primary"
-            onclick="window.executarConsulta()"
+            onclick="executarConsulta()"
         >
             <i class="fas fa-search"></i>
             Consultar proposta
@@ -838,23 +838,14 @@ const SUPABASE_URL =
 const SUPABASE_KEY =
     'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 
-let supabaseClient = null;
-
-function inicializarSupabase() {
-    if (supabaseClient) return supabaseClient;
-
-    if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-        return null;
-    }
-
-    supabaseClient = window.supabase.createClient(
+const supabase =
+    window.supabase.createClient(
         SUPABASE_URL,
         SUPABASE_KEY,
-        { realtime: true }
+        {
+            realtime: true
+        }
     );
-
-    return supabaseClient;
-}
 
 
 /* ==========================================================
@@ -869,46 +860,6 @@ let webcamStream = null;
 
 let modoAssinatura = 'texto';
 
-let monitorPagamento = null;
-let pixEntradaGeradoPara = null;
-
-
-/* ==========================================================
-   QUANTIDADE OFICIAL DE PARCELAS
-   A quantidade definida no painel é a fonte principal.
-   qtd_parcelas_escolhida fica apenas como compatibilidade.
-========================================================== */
-function obterQuantidadeParcelasOficial(p) {
-    if (!p) return 0;
-
-    const oficial = Number(p.quantidade_parcelas);
-    if (Number.isFinite(oficial) && oficial > 0) return Math.floor(oficial);
-
-    const escolhida = Number(p.qtd_parcelas_escolhida);
-    if (Number.isFinite(escolhida) && escolhida > 0) return Math.floor(escolhida);
-
-    const antiga = Number(p.qtd_parcelas);
-    if (Number.isFinite(antiga) && antiga > 0) return Math.floor(antiga);
-
-    return 0;
-}
-
-function obterParcelasEscolhidas(p) {
-    // IMPORTANTE: somente a escolha feita pelo cliente conta como parcela escolhida.
-    // quantidade_parcelas/qtd_parcelas são limites definidos pelo painel e
-    // nunca devem pular a etapa de seleção.
-    if (!p) return 0;
-    const escolhida = Number(p.qtd_parcelas_escolhida);
-    if (Number.isFinite(escolhida) && escolhida > 0) return Math.floor(escolhida);
-    return 0;
-}
-
-async function sincronizarQuantidadeParcelas(p) {
-    // quantidade_parcelas é apenas o limite definido no painel.
-    // A escolha do cliente permanece em qtd_parcelas_escolhida.
-    if (!p || !p.id) return;
-}
-
 
 /* ==========================================================
    INICIALIZAÇÃO
@@ -921,8 +872,6 @@ document.addEventListener(
 
 
 async function iniciar() {
-
-    inicializarSupabase();
 
     const campo =
         document.getElementById(
@@ -1009,18 +958,6 @@ async function iniciar() {
     const id =
         parametros.get('id');
 
-    const cpfParam =
-        parametros.get('cpf');
-
-    if(cpfParam) {
-        campo.value = formatarCPF(cpfParam);
-
-        // Se o link vier com ?cpf=..., consulta automaticamente.
-        // O botão continua disponível para uma nova consulta manual.
-        await executarConsulta(cpfParam);
-        return;
-    }
-
 
     if(id) {
 
@@ -1059,7 +996,9 @@ async function iniciar() {
 
 
     if(cpfSalvo) {
-        campo.value = formatarCPF(cpfSalvo);
+
+        campo.value =
+            formatarCPF(cpfSalvo);
     }
 }
 
@@ -1119,137 +1058,139 @@ function formatarCPF(cpf) {
    CONSULTA CPF
 ========================================================== */
 
-async function executarConsulta(cpfInformado = null) {
-    const campo = document.getElementById('cpfConsulta');
+async function executarConsulta(
+    cpfInformado = null
+) {
 
-    if (!inicializarSupabase()) {
-        mostrarErroConsulta('Não foi possível carregar o sistema de consulta. Verifique sua conexão com a internet e se o navegador está bloqueando o carregamento do Supabase.');
+    let cpf =
+        cpfInformado ||
+        document
+            .getElementById('cpfConsulta')
+            .value;
+
+
+    cpf =
+        somenteNumeros(cpf);
+
+
+    if(cpf.length !== 11) {
+
+        alert(
+            'Digite os 11 números do CPF.'
+        );
+
         return;
     }
-    const botao = document.getElementById('btnConsultar');
 
-    const cpf = somenteNumeros(
-        cpfInformado !== null
-            ? cpfInformado
-            : (campo ? campo.value : '')
-    );
 
-    if (cpf.length !== 11) {
-        mostrarErroConsulta('Digite os 11 números do CPF.');
-        if (campo) campo.focus();
-        return;
-    }
+    const botao =
+        document.getElementById(
+            'btnConsultar'
+        );
 
-    if (botao) {
-        botao.disabled = true;
-        botao.innerHTML =
-            '<i class="fas fa-spinner fa-spin"></i> Consultando...';
-    }
+
+    botao.disabled = true;
+
+    botao.innerHTML =
+        '<i class="fas fa-spinner fa-spin"></i> Consultando...';
+
 
     try {
-        // Confirma que a biblioteca e o cliente foram carregados.
-        if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+
+        /*
+         * Primeira tentativa:
+         * CPF somente números.
+         */
+        let resultado =
+            await supabase
+                .from('propostas')
+                .select('*')
+                .eq('cpf', cpf)
+                .limit(1);
+
+
+        /*
+         * Se não encontrou,
+         * tenta CPF formatado.
+         */
+        if(
+            !resultado.error &&
+            (!resultado.data ||
+             resultado.data.length === 0)
+        ) {
+
+            const cpfFormatado =
+                formatarCPF(cpf);
+
+
+            resultado =
+                await supabase
+                    .from('propostas')
+                    .select('*')
+                    .eq(
+                        'cpf',
+                        cpfFormatado
+                    )
+                    .limit(1);
+        }
+
+
+        if(resultado.error) {
+
             throw new Error(
-                'A conexão com o sistema de consulta não foi carregada. Recarregue a página e tente novamente.'
+                resultado.error.message
             );
         }
 
-        if (!supabaseClient || typeof supabaseClient.from !== 'function') {
+
+        if(
+            !resultado.data ||
+            resultado.data.length === 0
+        ) {
+
             throw new Error(
-                'O banco de dados não foi inicializado corretamente.'
+                'Nenhuma proposta encontrada para este CPF.'
             );
         }
 
-        // Faz uma única consulta usando OR para aceitar CPF com ou sem máscara.
-        const cpfFormatado = formatarCPF(cpf);
-        const resultado = await supabaseClient
-            .from('propostas')
-            .select('*')
-            .or(`cpf.eq.${cpf},cpf.eq.${cpfFormatado}`)
-            .limit(1);
 
-        if (resultado.error) {
-            console.error('Erro retornado pelo Supabase:', resultado.error);
+        /*
+         * Se existir mais de uma proposta
+         * para o CPF, atualmente pegamos
+         * a primeira.
+         */
+        propostaAtual =
+            resultado.data[0];
 
-            const msg = String(resultado.error.message || '');
-            const code = String(resultado.error.code || '');
-
-            if (code === '42501' || /permission|policy|row-level security|rls/i.test(msg)) {
-                throw new Error(
-                    'O banco de dados está bloqueando a consulta pública desta página. É necessário liberar a leitura da tabela "propostas" para o acesso público (RLS/policy no Supabase).'
-                );
-            }
-
-            if (/relation .*propostas|does not exist/i.test(msg)) {
-                throw new Error(
-                    'A tabela "propostas" não foi encontrada no banco de dados configurado.'
-                );
-            }
-
-            throw new Error(
-                'Erro ao consultar o banco de dados: ' + (msg || code || 'erro desconhecido')
-            );
-        }
-
-        if (!resultado.data || resultado.data.length === 0) {
-            throw new Error(
-                'Nenhuma proposta encontrada para este CPF. Confira os 11 números digitados.'
-            );
-        }
-
-        propostaAtual = resultado.data[0];
 
         salvarSessao();
+
         abrirProposta();
+
         configurarRealtime();
 
-    } catch (error) {
-        console.error('Erro consulta CPF:', error);
-        mostrarErroConsulta(
-            error && error.message
-                ? error.message
-                : 'Não foi possível consultar a proposta.'
+
+    } catch(error) {
+
+        console.error(
+            'Erro consulta CPF:',
+            error
         );
+
+
+        alert(
+            error.message ||
+            'Não foi possível consultar a proposta.'
+        );
+
+
     } finally {
-        if (botao) {
-            botao.disabled = false;
-            botao.innerHTML =
-                '<i class="fas fa-search"></i> Consultar proposta';
-        }
+
+        botao.disabled = false;
+
+        botao.innerHTML =
+            '<i class="fas fa-search"></i> Consultar proposta';
     }
-}
-
-// Disponibiliza explicitamente a função para o onclick="window.executarConsulta()"
-// mesmo quando o navegador/servidor tratar o script fora do escopo global.
-window.executarConsulta = executarConsulta;
-
-function mostrarErroConsulta(mensagem) {
-    const existente = document.getElementById('erroConsulta');
-    if (existente) existente.remove();
-
-    const area = document.createElement('div');
-    area.id = 'erroConsulta';
-    area.className = 'info info-red';
-    area.style.marginTop = '12px';
-    area.innerHTML =
-        '<strong><i class="fas fa-circle-exclamation"></i> Não foi possível consultar</strong>' +
-        '<div style="margin-top:6px;line-height:1.5;">' +
-        escapeHtmlConsulta(mensagem) +
-        '</div>';
-
-    const botao = document.getElementById('btnConsultar');
-    if (botao && botao.parentNode) {
-        botao.parentNode.insertBefore(area, botao.nextSibling);
-    }
-}
-
-function escapeHtmlConsulta(valor) {
-    return String(valor || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
 }
 
 
@@ -1270,7 +1211,7 @@ async function carregarPorId(id) {
 
 
         const { data, error } =
-            await supabaseClient
+            await supabase
                 .from('propostas')
                 .select('*')
                 .eq('id', id)
@@ -1511,72 +1452,29 @@ function booleano(valor) {
    REALTIME
 ========================================================== */
 
-function pararMonitoramentoPagamento() {
-    if (monitorPagamento) {
-        clearInterval(monitorPagamento);
-        monitorPagamento = null;
-    }
-}
-
-async function verificarPagamentoEntrada() {
-    if (!propostaAtual || !propostaAtual.id || !supabaseClient) return;
-
-    try {
-        const { data, error } = await supabaseClient
-            .from('propostas')
-            .select('*')
-            .eq('id', propostaAtual.id)
-            .maybeSingle();
-
-        if (error) {
-            console.warn('Não foi possível verificar o pagamento:', error.message);
-            return;
-        }
-
-        if (data) {
-            propostaAtual = { ...propostaAtual, ...data };
-            salvarSessao();
-
-            if (booleano(propostaAtual.entrada_paga)) {
-                pararMonitoramentoPagamento();
-                pixEntradaGeradoPara = null;
-                pararCamera();
-                mostrarProposta(propostaAtual);
-            }
-        }
-    } catch (error) {
-        console.warn('Erro ao verificar pagamento:', error);
-    }
-}
-
-function iniciarMonitoramentoPagamento() {
-    pararMonitoramentoPagamento();
-
-    if (!propostaAtual || booleano(propostaAtual.entrada_paga)) return;
-
-    verificarPagamentoEntrada();
-
-    monitorPagamento = setInterval(
-        verificarPagamentoEntrada,
-        4000
-    );
-}
-
 function configurarRealtime() {
 
     if(!propostaAtual)
         return;
 
+
     if(canalRealtime) {
-        supabaseClient.removeChannel(canalRealtime);
+
+        supabase.removeChannel(
+            canalRealtime
+        );
+
         canalRealtime = null;
     }
 
+
     canalRealtime =
-        supabaseClient
+        supabase
             .channel(
                 'flashcred_' +
-                String(propostaAtual.id) +
+                String(
+                    propostaAtual.id
+                ) +
                 '_' +
                 Date.now()
             )
@@ -1586,30 +1484,51 @@ function configurarRealtime() {
                     event: 'UPDATE',
                     schema: 'public',
                     table: 'propostas',
-                    filter: `id=eq.${propostaAtual.id}`
+                    filter:
+                        `id=eq.${propostaAtual.id}`
                 },
                 function(payload) {
+
+                    console.log(
+                        'Atualização recebida:',
+                        payload.new
+                    );
+
+
                     if(payload.new) {
+
                         propostaAtual = {
                             ...propostaAtual,
                             ...payload.new
                         };
 
+
                         salvarSessao();
 
-                        if(booleano(propostaAtual.entrada_paga)) {
-                            pararMonitoramentoPagamento();
-                            pixEntradaGeradoPara = null;
+
+                        mostrarProposta(
+                            propostaAtual
+                        );
+
+
+                        if(
+                            booleano(
+                                propostaAtual.entrada_paga
+                            )
+                        ) {
+
                             pararCamera();
                         }
-
-                        mostrarProposta(propostaAtual);
                     }
                 }
             )
             .subscribe(
                 function(status) {
-                    console.log('Realtime:', status);
+
+                    console.log(
+                        'Realtime:',
+                        status
+                    );
                 }
             );
 }
@@ -1649,12 +1568,9 @@ function abrirProposta() {
 
 function voltarInicio() {
 
-    pararMonitoramentoPagamento();
-    pixEntradaGeradoPara = null;
-
     if(canalRealtime) {
 
-        supabaseClient.removeChannel(
+        supabase.removeChannel(
             canalRealtime
         );
 
@@ -1747,7 +1663,9 @@ function determinarEtapa(p) {
 
 
     const parcelas =
-        obterParcelasEscolhidas(p);
+        Number(
+            p.qtd_parcelas_escolhida || 0
+        );
 
 
     const assinado =
@@ -2039,58 +1957,149 @@ function dataBR(data) {
    DIAS ÚTEIS
 ========================================================== */
 
-function dataLocalEntrega(valor){
-    if(!valor) return null;
-    const texto = String(valor).trim();
-    const base = texto.length >= 10 ? texto.slice(0,10) : texto;
-    const m = base.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if(!m) return null;
-    const d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
-    d.setHours(0,0,0,0);
-    return Number.isNaN(d.getTime()) ? null : d;
-}
+function calcularDiasUteis(
+    inicio,
+    totalDias
+) {
 
-function adicionarDiasUteisEntrega(inicio, totalDias){
-    const d = dataLocalEntrega(inicio);
-    const total = Math.max(0, Number(totalDias)||0);
-    if(!d) return null;
-    let contados = 0;
-    while(contados < total){
-        d.setDate(d.getDate()+1);
-        const dia = d.getDay();
-        if(dia !== 0 && dia !== 6) contados++;
+    totalDias =
+        Number(
+            totalDias || 0
+        );
+
+
+    if(
+        !inicio ||
+        totalDias <= 0
+    ) {
+
+        return {
+
+            decorridos: 0,
+
+            restantes:
+                totalDias,
+
+            porcentagem: 0
+        };
     }
-    return d;
-}
 
-function calcularDiasUteis(inicio, totalDias){
-    const total = Math.max(0, Number(totalDias)||0);
-    const inicioData = dataLocalEntrega(inicio);
-    if(!inicioData || total <= 0) return {decorridos:0, restantes:total, porcentagem:0};
 
-    const hoje = new Date();
-    hoje.setHours(0,0,0,0);
-    if(hoje <= inicioData) return {decorridos:0, restantes:total, porcentagem:0};
+    const inicioData =
+        new Date(inicio);
+
+
+    const hoje =
+        new Date();
+
+
+    inicioData.setHours(
+        0,0,0,0
+    );
+
+
+    hoje.setHours(
+        0,0,0,0
+    );
+
+
+    if(
+        hoje <= inicioData
+    ) {
+
+        return {
+
+            decorridos: 0,
+
+            restantes:
+                totalDias,
+
+            porcentagem: 0
+        };
+    }
+
 
     let decorridos = 0;
-    const atual = new Date(inicioData);
-    while(atual < hoje && decorridos < total){
-        const dia = atual.getDay();
-        if(dia !== 0 && dia !== 6) decorridos++;
-        atual.setDate(atual.getDate()+1);
+
+
+    let atual =
+        new Date(
+            inicioData
+        );
+
+
+    while(
+        atual < hoje
+    ) {
+
+        const dia =
+            atual.getDay();
+
+
+        if(
+            dia !== 0 &&
+            dia !== 6
+        ) {
+
+            decorridos++;
+        }
+
+
+        atual.setDate(
+            atual.getDate() + 1
+        );
     }
+
+
+    decorridos =
+        Math.min(
+            decorridos,
+            totalDias
+        );
+
+
+    const restantes =
+        Math.max(
+            totalDias -
+            decorridos,
+            0
+        );
+
+
+    const porcentagem =
+        Math.min(
+            100,
+            Math.round(
+                (
+                    decorridos /
+                    totalDias
+                ) * 100
+            )
+        );
+
+
     return {
+
         decorridos,
-        restantes: Math.max(total-decorridos,0),
-        porcentagem: Math.min(100, Math.round((decorridos/total)*100))
+
+        restantes,
+
+        porcentagem
     };
 }
-
 
 
 /* ==========================================================
    MOSTRAR PROPOSTA
 ========================================================== */
+
+function obterQuantidadeParcelasOficial(p) {
+    return Math.max(0, Number(
+        p?.quantidade_parcelas ||
+        p?.qtd_parcelas ||
+        0
+    ));
+}
 
 function mostrarProposta(p) {
 
@@ -2158,14 +2167,12 @@ function mostrarProposta(p) {
         );
 
 
-    const limiteParcelas = Number(p.quantidade_parcelas) > 0
-        ? Math.floor(Number(p.quantidade_parcelas))
-        : obterQuantidadeParcelasOficial(p);
+    const quantidadeOficial =
+        obterQuantidadeParcelasOficial(p);
 
-    // Antes da confirmação, não existe parcela escolhida.
-    const escolhida = obterParcelasEscolhidas(p);
+    const limiteParcelas = quantidadeOficial;
 
-    sincronizarQuantidadeParcelas(p);
+    const escolhida = Math.max(0, Number(p.qtd_parcelas_escolhida || 0));
 
 
     const principal =
@@ -2497,43 +2504,54 @@ function mostrarProposta(p) {
 
 
     /* ======================================================
-       ÁREA DO CLIENTE — PIX PAGO
+       ENTRADA PAGA
     ====================================================== */
 
     if(entradaPaga) {
-        pararMonitoramentoPagamento();
 
         html += `
+
             <div class="sucesso">
+
                 <i class="fas fa-circle-check"></i>
+
                 <h3 class="text-xl font-bold">
-                    PAGAMENTO CONFIRMADO
+
+                    ENTRADA CONFIRMADA
+
                 </h3>
+
                 <p class="text-sm text-slate-600 mt-2">
-                    Seu Pix foi confirmado com sucesso.
+
+                    O pagamento da entrada foi confirmado.
+
                 </p>
+
                 <p class="text-sm text-slate-600 mt-1">
-                    Bem-vindo à sua área do cliente.
+
+                    Sua proposta avançou para a etapa
+                    de parcelas e entrega.
+
                 </p>
+
             </div>
 
-            <div class="card">
-                <div class="info info-green text-center">
-                    <i class="fas fa-user-circle text-3xl"></i>
-                    <h3 class="font-bold text-lg mt-2">
-                        ÁREA DO CLIENTE
-                    </h3>
-                    <p class="text-sm mt-1">
-                        Acompanhe suas parcelas e o andamento da entrega.
-                    </p>
-                </div>
-            </div>
         `;
 
-        html += montarEntrega(p);
-        html += montarParcelas(p);
 
-        document.getElementById('conteudoProposta').innerHTML = html;
+        html +=
+            montarEntrega(p);
+
+
+        html +=
+            montarParcelas(p);
+
+
+        document.getElementById(
+            'conteudoProposta'
+        ).innerHTML = html;
+
+
         return;
     }
 
@@ -2708,6 +2726,7 @@ function mostrarProposta(p) {
                     <select
                         id="qtdEscolhida"
                         class="select mb-4"
+                        onchange="mostrarPreviewParcelasCliente()"
                     >
 
                         ${
@@ -2748,6 +2767,7 @@ function mostrarProposta(p) {
 
                     </select>
 
+                    <div id="previewParcelasCliente" class="card" style="margin-top:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0"></div>
 
                     <button
                         id="btnConfirmarParcelas"
@@ -2772,6 +2792,7 @@ function mostrarProposta(p) {
             'conteudoProposta'
         ).innerHTML = html;
 
+        mostrarPreviewParcelasCliente();
 
         return;
     }
@@ -3177,88 +3198,134 @@ function mostrarProposta(p) {
 
 
     /* ======================================================
-       PIX — CONTRATO ASSINADO
+       CONTRATO ASSINADO
     ====================================================== */
 
-    if(assinado && !entradaPaga) {
+    if(
+        assinado &&
+        !entradaPaga
+    ) {
 
-        const total = principal + entrada;
+        const total =
+            principal +
+            entrada;
+
 
         html += `
+
             <div class="sucesso">
+
                 <i class="fas fa-circle-check"></i>
+
                 <h3 class="text-xl font-bold">
+
                     CONTRATO ASSINADO
+
                 </h3>
+
                 <p class="text-sm text-slate-600 mt-2">
-                    Sua assinatura foi registrada com sucesso.
+
+                    Sua assinatura foi registrada
+                    com sucesso.
+
                 </p>
-                <p class="text-sm text-slate-600 mt-1">
-                    Agora realize o pagamento do Pix para liberar sua área do cliente.
-                </p>
+
             </div>
 
+
             <div class="card">
+
                 <div class="resumo">
-                    <div class="resumo-item">
-                        <span>Entrada</span>
-                        <strong>R$ ${moeda(entrada)}</strong>
-                    </div>
 
                     <div class="resumo-item">
-                        <span>Valor total</span>
-                        <strong>R$ ${moeda(total)}</strong>
+
+                        <span>
+                            Entrada
+                        </span>
+
+                        <strong>
+                            R$ ${moeda(entrada)}
+                        </strong>
+
                     </div>
 
+
                     <div class="resumo-item">
-                        <span>Parcelamento</span>
-                        <strong>${escolhida}x de R$ ${moeda(valorParcela)}</strong>
+
+                        <span>
+                            Valor total
+                        </span>
+
+                        <strong>
+                            R$ ${moeda(total)}
+                        </strong>
+
                     </div>
+
+
+                    <div class="resumo-item">
+
+                        <span>
+                            Parcelamento
+                        </span>
+
+                        <strong>
+
+                            ${escolhida}x de
+                            R$ ${moeda(valorParcela)}
+
+                        </strong>
+
+                    </div>
+
                 </div>
+
 
                 ${
                     entrada > 0
+
                     ? `
-                        <div class="info info-blue mt-4 text-center">
-                            <i class="fas fa-qrcode text-3xl"></i>
-                            <h3 class="font-bold text-lg mt-2">
-                                PAGAMENTO PIX
-                            </h3>
-                            <p class="text-sm mt-1">
-                                O Pix será gerado automaticamente. Após o pagamento, sua área do cliente será liberada.
-                            </p>
+
+                        <button
+                            onclick="gerarPixEntrada(${entrada})"
+                            class="btn btn-pix"
+                        >
+
+                            <i class="fas fa-qrcode"></i>
+
+                            Gerar Pix da entrada
+
+                        </button>
+
+
+                        <div
+                            id="areaPixEntrada"
+                            class="hidden mt-4"
+                        ></div>
+
+                    `
+
+                    : `
+
+                        <div class="info info-green">
+
+                            Entrada configurada como
+                            R$ 0,00.
+
                         </div>
 
-                        <div id="areaPixEntrada" class="mt-4"></div>
-                    `
-                    : `
-                        <div class="info info-green mt-4 text-center">
-                            Entrada configurada como R$ 0,00.
-                            Sua área do cliente será liberada automaticamente.
-                        </div>
                     `
                 }
+
             </div>
+
         `;
 
-        document.getElementById('conteudoProposta').innerHTML = html;
 
-        if(entrada > 0) {
-            if(pixEntradaGeradoPara !== propostaAtual.id) {
-                pixEntradaGeradoPara = propostaAtual.id;
-                setTimeout(
-                    function() {
-                        gerarPixEntrada(entrada);
-                    },
-                    50
-                );
-            }
-            iniciarMonitoramentoPagamento();
-        } else {
-            // Sem entrada, não existe Pix a pagar: a área do cliente é liberada.
-            // Não alteramos o campo entrada_paga no banco automaticamente.
-            html += '';
-        }
+        document.getElementById(
+            'conteudoProposta'
+        ).innerHTML = html;
+
 
         return;
     }
@@ -3269,61 +3336,135 @@ function mostrarProposta(p) {
    CONFIRMAR PARCELAS
 ========================================================== */
 
+function mostrarPreviewParcelasCliente() {
+    const select = document.getElementById('qtdEscolhida');
+    const area = document.getElementById('previewParcelasCliente');
+    if(!select || !area || !propostaAtual) return;
+
+    const quantidade = Number(select.value) || 0;
+    const principal = Math.max(Number(propostaAtual.valor_desejado || 0) - Number(propostaAtual.valor_entrada || 0), 0);
+    const juros = Number(propostaAtual.juros_mensal || 0);
+    const parcela = calcularParcela(principal, juros, quantidade);
+    const datas = Array.isArray(propostaAtual.datas_parcelas) ? propostaAtual.datas_parcelas : [];
+
+    if(!quantidade){
+        area.innerHTML = '<strong>Escolha a quantidade de parcelas para visualizar o cronograma.</strong>';
+        return;
+    }
+
+    let html = '<div style="font-weight:800;margin-bottom:8px">📅 Cronograma das parcelas antes do contrato</div>';
+    for(let i=0;i<quantidade;i++){
+        const data = datas[i] || '';
+        html += `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #e2e8f0"><span>${i+1}ª parcela</span><strong>R$ ${moeda(parcela)}${data ? ' • ' + dataBR(data) : ''}</strong></div>`;
+    }
+    area.innerHTML = html;
+}
+
 async function confirmarParcelas() {
 
-    const select = document.getElementById('qtdEscolhida');
+    const select =
+        document.getElementById(
+            'qtdEscolhida'
+        );
 
-    if(!select) return;
 
-    const limite = Number(propostaAtual && propostaAtual.quantidade_parcelas) > 0
-        ? Math.floor(Number(propostaAtual.quantidade_parcelas))
-        : obterQuantidadeParcelasOficial(propostaAtual);
+    if(!select)
+        return;
 
-    const quantidade = Number(select.value);
 
-    if(!limite || limite <= 0) {
-        alert('A quantidade máxima de parcelas ainda não foi configurada no painel.');
+    const quantidade = obterQuantidadeParcelasOficial(propostaAtual);
+
+
+    if(
+        !quantidade ||
+        quantidade <= 0
+    ) {
+
+        alert(
+            'A quantidade de parcelas ainda não foi configurada no painel.'
+        );
+
         return;
     }
 
-    if(!Number.isInteger(quantidade) || quantidade < 1 || quantidade > limite) {
-        alert('Selecione uma quantidade de parcelas válida.');
-        return;
-    }
 
-    const botao = document.getElementById('btnConfirmarParcelas');
-    if(botao) {
-        botao.disabled = true;
-        botao.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
-    }
+    const botao =
+        document.getElementById(
+            'btnConfirmarParcelas'
+        );
+
+
+    botao.disabled = true;
+
+
+    botao.innerHTML =
+        '<i class="fas fa-spinner fa-spin"></i> Salvando...';
+
 
     try {
-        const { data, error } = await supabaseClient
-            .from('propostas')
-            .update({ qtd_parcelas_escolhida: quantidade })
-            .eq('id', propostaAtual.id)
-            .select()
-            .single();
 
-        if(error) throw new Error(error.message || 'Erro ao salvar parcelas.');
+        const { data, error } =
+            await supabase
+                .from('propostas')
+                .update({
+
+                    qtd_parcelas_escolhida:
+                        quantidade
+
+                })
+                .eq(
+                    'id',
+                    propostaAtual.id
+                )
+                .select()
+                .single();
+
+
+        if(error) {
+
+            throw new Error(
+                error.message
+            );
+        }
+
 
         propostaAtual = {
+
             ...propostaAtual,
+
             ...data,
-            qtd_parcelas_escolhida: quantidade
+
+            qtd_parcelas_escolhida:
+                quantidade
         };
 
+
         salvarSessao();
-        mostrarProposta(propostaAtual);
+
+
+        mostrarProposta(
+            propostaAtual
+        );
+
 
     } catch(error) {
-        console.error('Erro ao salvar parcelas:', error);
-        alert('Não foi possível salvar a quantidade de parcelas.\n\n' + (error.message || error));
 
-        if(botao) {
-            botao.disabled = false;
-            botao.innerHTML = '<i class="fas fa-arrow-right"></i> Continuar para o contrato';
-        }
+        console.error(
+            error
+        );
+
+
+        alert(
+            'Não foi possível salvar a quantidade de parcelas.\n\n' +
+            error.message
+        );
+
+
+        botao.disabled = false;
+
+
+        botao.innerHTML =
+            '<i class="fas fa-arrow-right"></i> Continuar para o contrato';
     }
 }
 
@@ -3703,7 +3844,7 @@ async function assinarContrato() {
 
 
         const { data, error } =
-            await supabaseClient
+            await supabase
                 .from('propostas')
                 .update({
 
@@ -4309,7 +4450,10 @@ function imprimirContrato() {
 
 
     const qtd =
-        obterParcelasEscolhidas(p);
+        Number(
+            p.qtd_parcelas_escolhida ||
+            0
+        );
 
 
     const principal =
@@ -4348,8 +4492,7 @@ function imprimirContrato() {
     const inicio =
         p.data_pagamento_entrada ||
         p.entrada_pago_em ||
-        p.data_entrada_paga ||
-        null;
+        p.data_entrada_paga;
 
 
     const previsao =
@@ -4711,6 +4854,20 @@ function imprimirContrato() {
             </div>
 
 
+            <script>
+
+                window.onload = function() {
+
+                    setTimeout(
+                        function() {
+                            window.print();
+                        },
+                        300
+                    );
+
+                }
+
+            <\/script>
 
         </body>
 
@@ -4829,8 +4986,7 @@ function montarEntrega(p) {
     const inicio =
         p.data_pagamento_entrada ||
         p.entrada_pago_em ||
-        p.data_entrada_paga ||
-        null;
+        p.data_entrada_paga;
 
 
     const progresso =
@@ -4993,8 +5149,57 @@ function montarEntrega(p) {
    DATA ENTREGA
 ========================================================== */
 
-function calcularDataEntregaUtil(inicio, totalDias){
-    return adicionarDiasUteisEntrega(inicio, totalDias);
+function calcularDataEntregaUtil(
+    inicio,
+    totalDias
+) {
+
+    if(
+        !inicio ||
+        Number(totalDias || 0) <= 0
+    ) {
+
+        return null;
+    }
+
+
+    const d =
+        new Date(inicio);
+
+
+    d.setHours(
+        0,0,0,0
+    );
+
+
+    let contados = 0;
+
+
+    while(
+        contados <
+        Number(totalDias)
+    ) {
+
+        d.setDate(
+            d.getDate() + 1
+        );
+
+
+        const dia =
+            d.getDay();
+
+
+        if(
+            dia !== 0 &&
+            dia !== 6
+        ) {
+
+            contados++;
+        }
+    }
+
+
+    return d;
 }
 
 
@@ -5005,7 +5210,10 @@ function calcularDataEntregaUtil(inicio, totalDias){
 function montarParcelas(p) {
 
     const quantidade =
-        obterQuantidadeParcelasOficial(p);
+        Number(
+            p.qtd_parcelas_escolhida ||
+            0
+        );
 
 
     if(
