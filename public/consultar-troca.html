@@ -1,64 +1,20 @@
--- FLASH TROCAS - estrutura para o Supabase
--- Execute no SQL Editor do projeto antes de usar o formulário.
-
-create extension if not exists pgcrypto;
-
-create table if not exists public.flash_trocas (
-  id uuid primary key default gen_random_uuid(),
-  created_at timestamptz not null default now(),
-  nome text not null,
-  telefone text not null,
-  cidade text not null,
-  tipo_equipamento text not null,
-  marca_modelo text not null,
-  ano integer,
-  estado_conservacao text not null,
-  valor_estimado numeric(12,2) default 0,
-  fotos text[] default '{}',
-  moveis_interesse text not null,
-  status text not null default 'Nova',
-  valor_avaliado numeric(12,2),
-  observacoes text
-);
-
-alter table public.flash_trocas enable row level security;
-
--- O formulário público precisa conseguir cadastrar a solicitação.
-drop policy if exists "flash_trocas_public_insert" on public.flash_trocas;
-create policy "flash_trocas_public_insert"
-on public.flash_trocas
-for insert to anon, authenticated
-with check (true);
-
--- O painel atual usa a chave pública e um login próprio no HTML.
--- Por isso a leitura precisa estar disponível para a aplicação.
-drop policy if exists "flash_trocas_public_select" on public.flash_trocas;
-create policy "flash_trocas_public_select"
-on public.flash_trocas
-for select to anon, authenticated
-using (true);
-
--- Necessário para o seletor de status do painel atual.
-drop policy if exists "flash_trocas_public_update" on public.flash_trocas;
-create policy "flash_trocas_public_update"
-on public.flash_trocas
-for update to anon, authenticated
-using (true)
-with check (true);
-
--- Bucket público para as fotos.
-insert into storage.buckets (id, name, public)
-values ('flash-trocas', 'flash-trocas', true)
-on conflict (id) do update set public = true;
-
-drop policy if exists "flash_trocas_storage_insert" on storage.objects;
-create policy "flash_trocas_storage_insert"
-on storage.objects
-for insert to anon, authenticated
-with check (bucket_id = 'flash-trocas');
-
-drop policy if exists "flash_trocas_storage_select" on storage.objects;
-create policy "flash_trocas_storage_select"
-on storage.objects
-for select to anon, authenticated
-using (bucket_id = 'flash-trocas');
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acompanhar Flash Trocas</title><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.1"></script><style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,Arial;background:linear-gradient(180deg,#f7fbff,#eef4fb);color:#172033}.wrap{max-width:900px;margin:auto;padding:24px 16px 50px}.brand{text-align:center;font-size:30px;font-weight:900;color:#0a2463}.brand span{color:#2563eb}.sub{text-align:center;color:#64748b;margin:4px 0 24px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:24px;box-shadow:0 18px 50px rgba(15,23,42,.08);padding:24px;margin-bottom:18px}.input{width:100%;padding:13px;border:1px solid #cbd5e1;border-radius:12px;font-size:16px}.btn{width:100%;padding:14px;border:0;border-radius:12px;background:#0a2463;color:white;font-weight:900;font-size:16px;margin-top:10px;cursor:pointer}.muted{color:#64748b}.hidden{display:none}.top{display:flex;justify-content:space-between;gap:12px;align-items:start}.badge{padding:7px 12px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-weight:800;font-size:13px}.progress{height:11px;background:#e2e8f0;border-radius:20px;overflow:hidden}.progress>div{height:100%;background:linear-gradient(90deg,#2563eb,#10b981);transition:width .8s}.step{display:flex;position:relative;gap:14px;padding-bottom:29px}.step:last-child{padding-bottom:0}.dot{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#e2e8f0;color:#64748b;font-weight:900;z-index:2;flex:none}.step.done .dot{background:#10b981;color:#fff}.step.active .dot{background:#2563eb;color:#fff;box-shadow:0 0 0 8px #dbeafe;animation:pulse 1.6s infinite}.line{position:absolute;left:17px;top:38px;width:4px;height:calc(100% - 15px);background:#e2e8f0}.step.done .line{background:#10b981}@keyframes pulse{50%{box-shadow:0 0 0 13px rgba(37,99,235,.04)}}.loading{text-align:center}.spinner{width:46px;height:46px;border:5px solid #dbeafe;border-top-color:#2563eb;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto}@keyframes spin{to{transform:rotate(360deg)}}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.box{background:#f8fafc;border-radius:15px;padding:15px}.box small{color:#64748b}.box b{display:block;margin-top:4px}.how{background:linear-gradient(145deg,#071b4d,#123f9b);color:#fff}.how h3{margin-top:0}.how li{margin:10px 0}.notice{padding:14px;background:#fffbeb;border:1px solid #fde68a;border-radius:13px;color:#854d0e;margin-top:16px}.wpp{display:block;text-align:center;background:#16a34a;color:#fff;text-decoration:none;font-weight:900;border-radius:12px;padding:14px}.photos{display:flex;gap:10px;flex-wrap:wrap}.photos img{width:110px;height:85px;object-fit:cover;border-radius:12px}.error{color:#b91c1c;margin-top:10px}@media(max-width:650px){.grid{grid-template-columns:1fr}.top{display:block}.badge{display:inline-block;margin-top:10px}}
+</style></head><body><div class="wrap"><div class="brand">FLASH <span>TROCAS</span></div><div class="sub">Acompanhe sua solicitação de avaliação</div>
+<div id="busca" class="card"><h2>📊 Acompanhar minha troca</h2><p class="muted">Informe o CPF usado no cadastro ou o código recebido após o envio.</p><input id="chave" class="input" placeholder="CPF ou código FT-XXXXXXXX"><button class="btn" onclick="buscar()">Consultar minha troca</button><div id="erro" class="error hidden"></div></div>
+<div id="loading" class="card loading hidden"><div class="spinner"></div><h3>🔍 Consultando sua solicitação...</h3><p class="muted">Estamos buscando a evolução da sua troca.</p></div>
+<div id="app" class="hidden"><div class="card"><div class="top"><div><small class="muted">Olá, <b id="nome"></b></small><h2 style="margin:5px 0">Acompanhe a evolução da sua troca</h2></div><span id="status" class="badge"></span></div><div style="margin-top:20px"><div style="display:flex;justify-content:space-between;font-weight:800;font-size:14px;margin-bottom:7px"><span>Progresso</span><span id="pct"></span></div><div class="progress"><div id="bar"></div></div></div></div>
+<div class="card"><h3>🔎 Etapas da análise</h3><div id="steps"></div></div>
+<div class="card"><h3>📦 Dados da sua solicitação</h3><div class="grid"><div class="box"><small>Equipamento</small><b id="equip"></b></div><div class="box"><small>Conservação</small><b id="cons"></b></div><div class="box"><small>Valor avaliado</small><b id="avaliado"></b></div><div class="box"><small>Valor dos móveis</small><b id="moveisval"></b></div><div class="box"><small>Abatimento da troca</small><b id="abat"></b></div><div class="box"><small>Saldo da negociação</small><b id="saldo"></b></div></div><div id="photos" class="photos" style="margin-top:15px"></div><div id="obsbox" class="notice hidden"><b>Mensagem da equipe</b><div id="obs" style="margin-top:5px"></div></div></div>
+<div class="card how"><h3>ℹ️ Como funciona o Flash Trocas?</h3><ol><li><b>Você envia o equipamento</b> — dados, estado de conservação e fotos.</li><li><b>A Flash Point analisa</b> — verificamos modelo, condições e interesse na negociação.</li><li><b>Informamos o valor aprovado</b> — quando houver valor para abatimento, ele aparecerá aqui.</li><li><b>Negociamos seus móveis</b> — o abatimento é aplicado conforme a negociação aprovada.</li><li><b>Finalização</b> — depois que tudo estiver confirmado, você recebe as orientações para concluir a troca.</li></ol><div class="notice">⚠️ A solicitação passa por análise. O envio do formulário não garante aprovação nem define automaticamente o valor do equipamento.</div></div>
+<a class="wpp" id="wpp" target="_blank">💬 Falar com a Flash Point</a></div></div>
+<script>
+const URL='https://rgcclordmqjmwuzrrfbd.supabase.co',KEY='sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi',db=window.supabase.createClient(URL,KEY);let atual=null,timer=null;
+const etapas=[['Solicitação enviada','Seus dados e fotos foram recebidos.'],['Em análise','Nossa equipe está avaliando o equipamento.'],['Avaliação do valor','Definiremos o valor que poderá entrar na negociação.'],['Negociação dos móveis','Conferimos os móveis e o saldo da negociação.'],['Troca aprovada','A negociação foi aprovada para finalização.']];
+const map={'Nova':0,'Em avaliação':1,'Em avaliacao':1,'Aprovada':4,'Negociação':3,'Negociacao':3,'Concluída':4,'Concluida':4,'Recusada':4};
+function money(v){return v==null||v===''||Number(v)===0?'A definir':Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+async function buscar(){const raw=document.getElementById('chave').value.trim(),digits=raw.replace(/\D/g,'');document.getElementById('erro').classList.add('hidden');document.getElementById('loading').classList.remove('hidden');document.getElementById('busca').classList.add('hidden');let q=db.from('flash_trocas').select('*');q=digits.length===11?q.eq('cpf',digits):q.eq('codigo',raw.toUpperCase());const {data,error}=await q.order('created_at',{ascending:false}).limit(1).maybeSingle();document.getElementById('loading').classList.add('hidden');if(error||!data){document.getElementById('busca').classList.remove('hidden');const e=document.getElementById('erro');e.textContent='Não encontramos uma solicitação com esses dados.';e.classList.remove('hidden');return}atual=data;render(data);clearInterval(timer);timer=setInterval(async()=>{const r=await db.from('flash_trocas').select('*').eq('id',atual.id).single();if(r.data){atual=r.data;render(r.data)}},15000)}
+function render(d){document.getElementById('app').classList.remove('hidden');document.getElementById('nome').textContent=d.nome||'';document.getElementById('status').textContent=d.status||'Nova';let ix=map[d.status]??0,p=d.status==='Recusada'?0:Math.round(ix/4*100);document.getElementById('pct').textContent=p+'%';document.getElementById('bar').style.width=p+'%';document.getElementById('equip').textContent=[d.tipo_equipamento,d.marca,d.modelo].filter(Boolean).join(' • ')||'Não informado';document.getElementById('cons').textContent=d.conservacao||'Não informado';document.getElementById('avaliado').textContent=money(d.valor_avaliado);document.getElementById('moveisval').textContent=money(d.valor_moveis);document.getElementById('abat').textContent=money(d.valor_avaliado);document.getElementById('saldo').textContent=money(d.saldo_negociacao);if(d.observacao){document.getElementById('obs').textContent=d.observacao;document.getElementById('obsbox').classList.remove('hidden')}else document.getElementById('obsbox').classList.add('hidden');let ph=[d.foto_1,d.foto_2,d.foto_3].filter(Boolean);document.getElementById('photos').innerHTML=ph.map(u=>'<img src="'+esc(u)+'" alt="Foto do equipamento">').join('');document.getElementById('wpp').href='https://wa.me/5511973294235?text='+encodeURIComponent('Olá, quero falar sobre minha solicitação Flash Trocas. Código: '+(d.codigo||''));document.getElementById('steps').innerHTML=etapas.map((s,i)=>'<div class="step '+(i<ix?'done ':'')+(i===ix?'active':'')+'"><div class="dot">'+(i<ix?'✓':i+1)+'</div>'+(i<4?'<div class="line"></div>':'')+'<div><b>'+s[0]+'</b><div class="muted" style="margin-top:3px">'+(i===ix&&d.observacao?esc(d.observacao):s[1])+'</div></div></div>').join('')}
+const params=new URLSearchParams(location.search);if(params.get('codigo')){document.getElementById('chave').value=params.get('codigo');buscar()}
+</script></body></html>
