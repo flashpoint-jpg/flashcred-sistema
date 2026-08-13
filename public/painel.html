@@ -880,6 +880,13 @@ button{
     </div>
 
 
+    <!-- ABAS PRINCIPAIS (restauradas) -->
+    <div class="abas-painel-restauradas" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px">
+        <button type="button" id="abaAdminPropostas" class="botao botao-primario" onclick="mostrarAbaPainelRestaurada('propostas')">📋 Propostas</button>
+        <button type="button" id="abaAdminRecebidos" class="botao botao-cinza" onclick="mostrarAbaPainelRestaurada('recebidos')">💰 Recebidos</button>
+        <button type="button" id="abaAdminFuncionarios" class="botao botao-cinza" onclick="mostrarAbaPainelRestaurada('funcionarios')">👥 Funcionários</button>
+    </div>
+
     <!-- FLUXO DE CLIENTES -->
     <div class="fluxo-abas">
         <button
@@ -1167,6 +1174,55 @@ button{
 
 </div>
 
+
+
+    <div id="conteudoFuncionariosRestaurado" class="oculto">
+        <div class="cartao">
+            <div class="cabecalho">
+                <div>
+                    <h2>👥 Funcionários e Comissões</h2>
+                    <p>Crie acessos, defina a comissão e controle os pagamentos.</p>
+                </div>
+                <button class="botao botao-primario" onclick="carregarPainelFuncionariosRestaurado()">↻ Atualizar</button>
+            </div>
+
+            <div class="grid">
+                <div>
+                    <span class="label-campo">Nome</span>
+                    <input id="novo_func_nome" class="campo" placeholder="Nome do funcionário">
+                </div>
+                <div>
+                    <span class="label-campo">Usuário</span>
+                    <input id="novo_func_usuario" class="campo" placeholder="Ex.: joao">
+                </div>
+                <div>
+                    <span class="label-campo">Senha inicial</span>
+                    <input id="novo_func_senha" class="campo" type="password" placeholder="Mínimo 6 caracteres">
+                </div>
+                <div>
+                    <span class="label-campo">Comissão (%)</span>
+                    <input id="novo_func_percentual" class="campo" type="number" min="0" step="0.01" value="10">
+                </div>
+                <div class="campo-grande">
+                    <span class="label-campo">Chave Pix do funcionário</span>
+                    <input id="novo_func_pix" class="campo" placeholder="CPF, celular, e-mail ou chave aleatória">
+                </div>
+            </div>
+
+            <button class="botao botao-sucesso" onclick="criarFuncionarioAdminRestaurado()">➕ Criar acesso do funcionário</button>
+            <p style="margin-top:10px;color:var(--texto-claro)">Depois de criado, entregue ao funcionário o usuário e a senha cadastrados.</p>
+        </div>
+
+        <div class="cartao" style="margin-top:16px">
+            <h3>Funcionários cadastrados</h3>
+            <div id="listaFuncionariosAdminRestaurado" class="estado">Carregando...</div>
+        </div>
+
+        <div class="cartao" style="margin-top:16px">
+            <h3>💸 Solicitações de saque</h3>
+            <div id="listaSaquesFuncionariosRestaurado" class="estado">Carregando...</div>
+        </div>
+    </div>
 
 <script>
 
@@ -2195,7 +2251,7 @@ async function salvarNovo(){
             valor_entrada,
             juros_mensal,
             quantidade_parcelas,
-            qtd_parcelas_escolhida:quantidade_parcelas,
+            qtd_parcelas_escolhida:null,
 
             dias_entrega,
 
@@ -4080,7 +4136,6 @@ async function salvarEdicao(id){
                 valor_entrada,
                 juros_mensal,
                 quantidade_parcelas,
-                qtd_parcelas_escolhida:quantidade_parcelas,
 
                 dias_entrega,
 
@@ -4090,9 +4145,9 @@ async function salvarEdicao(id){
 
                 contrato_assinado,
 
-                qtd_parcelas_escolhida: contrato_assinado
-                    ? quantidade_parcelas
-                    : null,
+                // A quantidade configurada no painel NÃO é a escolha do cliente.
+                // Ao editar a proposta, força o cliente a escolher novamente.
+                qtd_parcelas_escolhida: null,
 
                 datas_parcelas
 
@@ -4331,7 +4386,7 @@ async function mostrarNotificacoes(){
         } =
             await supabaseClient
             .from('propostas')
-            .select('nome,cpf,status,created_at')
+            .select('id,nome,cpf,status,created_at,funcionario_id,funcionario_nome,indicado_por')
             .eq('status','Nova')
             .order(
                 'created_at',
@@ -4364,7 +4419,7 @@ async function mostrarNotificacoes(){
             data
             .map(
                 (item,index) =>
-                    `${index+1}. ${item.nome} - CPF ${item.cpf}`
+                    `${index+1}. ${item.nome} - CPF ${item.cpf}${item.funcionario_nome ? ' - Indicado por: '+item.funcionario_nome : (item.indicado_por ? ' - Indicado por: '+item.indicado_por : '')}`
             )
             .join('\n');
 
@@ -4468,6 +4523,123 @@ document
 
         }
     );
+
+
+/* ============================================================
+   FUNCIONÁRIOS — ÁREA RESTAURADA
+============================================================ */
+window.funcionariosAdminCacheRestaurado = [];
+
+function mostrarAbaPainelRestaurada(aba){
+    const funcionario = document.getElementById('conteudoFuncionariosRestaurado');
+    const elementosPropostas = [
+        document.querySelector('.fluxo-abas'),
+        document.querySelector('#formNovo'),
+        document.querySelector('#listaPropostas')
+    ];
+    const novoBtn = document.querySelector('button[onclick="abrirNovo()"]');
+    const ocultarFuncionarios = aba !== 'funcionarios';
+
+    elementosPropostas.forEach(el=>{
+        if(el) el.classList.toggle('oculto', !ocultarFuncionarios);
+    });
+    if(novoBtn) novoBtn.classList.toggle('oculto', !ocultarFuncionarios);
+    if(funcionario) funcionario.classList.toggle('oculto', ocultarFuncionarios);
+
+    const bp=document.getElementById('abaAdminPropostas');
+    const br=document.getElementById('abaAdminRecebidos');
+    const bf=document.getElementById('abaAdminFuncionarios');
+    if(bp) bp.className='botao '+(aba==='propostas'?'botao-primario':'botao-cinza');
+    if(br) br.className='botao '+(aba==='recebidos'?'botao-primario':'botao-cinza');
+    if(bf) bf.className='botao '+(aba==='funcionarios'?'botao-primario':'botao-cinza');
+
+    if(aba==='recebidos'){
+        filtroFluxoAtual='entrada';
+        filtrarFluxo('entrada');
+    }
+    if(aba==='funcionarios') carregarPainelFuncionariosRestaurado();
+}
+
+async function carregarPainelFuncionariosRestaurado(){
+    const lista=document.getElementById('listaFuncionariosAdminRestaurado');
+    if(!lista) return;
+    lista.innerHTML='Carregando...';
+    try{
+        const {data,error}=await supabaseClient.rpc('admin_funcionarios');
+        if(error) throw error;
+        window.funcionariosAdminCacheRestaurado=data||[];
+        lista.innerHTML=window.funcionariosAdminCacheRestaurado.length
+            ? '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:10px">Nome</th><th style="text-align:left;padding:10px">Usuário</th><th style="text-align:left;padding:10px">Comissão</th><th style="text-align:left;padding:10px">Pix</th><th style="text-align:left;padding:10px">Status</th><th style="text-align:left;padding:10px">Ação</th></tr></thead><tbody>'+
+              window.funcionariosAdminCacheRestaurado.map(f=>`<tr>
+                <td style="padding:10px">${escapeHTML(f.nome||'')}</td>
+                <td style="padding:10px">${escapeHTML(f.usuario||'')}</td>
+                <td style="padding:10px">${Number(f.percentual_comissao||0)}%</td>
+                <td style="padding:10px">${escapeHTML(f.chave_pix||'—')}</td>
+                <td style="padding:10px">${f.ativo?'🟢 Ativo':'🔴 Inativo'}</td>
+                <td style="padding:10px"><button class="botao botao-cinza" onclick="editarFuncionarioAdminRestaurado('${String(f.id)}')">✏️ Editar</button></td>
+              </tr>`).join('')+
+              '</tbody></table></div>'
+            : 'Nenhum funcionário cadastrado.';
+
+        const saques=document.getElementById('listaSaquesFuncionariosRestaurado');
+        if(saques){
+            const r=await supabaseClient.rpc('admin_saques_funcionarios');
+            if(r.error) throw r.error;
+            saques.innerHTML=(r.data||[]).length
+                ? '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>Funcionário</th><th>Valor</th><th>Pix</th><th>Status</th><th>Ação</th></tr></thead><tbody>'+
+                  r.data.map(s=>`<tr><td>${escapeHTML(s.funcionario_nome||'')}</td><td>R$ ${dinheiro(s.valor)}</td><td>${escapeHTML(s.chave_pix||'')}</td><td>${escapeHTML(s.status||'')}</td><td>${(s.status==='pendente'||s.status==='reservada')?`<button class="botao botao-sucesso" onclick="pagarSaqueFuncionarioRestaurado('${String(s.id)}')">💸 Marcar pago</button>`:'✅ Pago'}</td></tr>`).join('')+
+                  '</tbody></table></div>'
+                : 'Nenhuma solicitação de saque.';
+        }
+    }catch(e){
+        console.error(e);
+        lista.innerHTML='<div class="alerta">❌ Erro ao carregar funcionários: '+escapeHTML(e.message||e)+'</div>';
+    }
+}
+
+async function criarFuncionarioAdminRestaurado(){
+    const nome=document.getElementById('novo_func_nome').value.trim();
+    const usuario=document.getElementById('novo_func_usuario').value.trim();
+    const senha=document.getElementById('novo_func_senha').value;
+    const percentual=Number(document.getElementById('novo_func_percentual').value)||10;
+    const pix=document.getElementById('novo_func_pix').value.trim();
+    if(!nome||!usuario||senha.length<6){
+        alert('Informe nome, usuário e senha com pelo menos 6 caracteres.');
+        return;
+    }
+    const {error}=await supabaseClient.rpc('admin_criar_funcionario',{
+        p_nome:nome,p_usuario:usuario,p_senha:senha,p_percentual:percentual,p_chave_pix:pix||null
+    });
+    if(error){ alert('Não foi possível criar o funcionário:\n'+error.message); return; }
+    ['novo_func_nome','novo_func_usuario','novo_func_senha','novo_func_pix'].forEach(id=>document.getElementById(id).value='');
+    await carregarPainelFuncionariosRestaurado();
+    alert('✅ Funcionário criado. Entregue a ele o usuário e a senha cadastrados.');
+}
+
+async function editarFuncionarioAdminRestaurado(id){
+    const f=(window.funcionariosAdminCacheRestaurado||[]).find(x=>String(x.id)===String(id));
+    if(!f) return;
+    const nome=prompt('Nome do funcionário:',f.nome); if(nome===null)return;
+    const usuario=prompt('Usuário:',f.usuario); if(usuario===null)return;
+    const percentual=prompt('Percentual de comissão:',f.percentual_comissao); if(percentual===null)return;
+    const pix=prompt('Chave Pix:',f.chave_pix||''); if(pix===null)return;
+    const senha=prompt('Nova senha (deixe vazio para manter a atual):',''); if(senha===null)return;
+    const ativo=confirm('OK = funcionário ATIVO. Cancelar = funcionário INATIVO.');
+    const {error}=await supabaseClient.rpc('admin_alterar_funcionario',{
+        p_id:id,p_nome:nome,p_usuario:usuario,p_percentual:Number(percentual)||0,
+        p_chave_pix:pix,p_ativo:ativo,p_nova_senha:senha||null
+    });
+    if(error){alert('Erro ao editar:\n'+error.message);return;}
+    await carregarPainelFuncionariosRestaurado();
+    alert('✅ Funcionário atualizado.');
+}
+
+async function pagarSaqueFuncionarioRestaurado(id){
+    if(!confirm('Confirmar que este saque foi pago via Pix?')) return;
+    const {error}=await supabaseClient.rpc('admin_pagar_saque',{p_id:id});
+    if(error){alert('Erro ao marcar saque como pago:\n'+error.message);return;}
+    await carregarPainelFuncionariosRestaurado();
+}
 
 </script>
 
