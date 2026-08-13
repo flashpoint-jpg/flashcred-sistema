@@ -653,7 +653,7 @@ button{
 ============================================================ */
 .abas-painel{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 15px}
 .aba-painel{border:0;border-radius:10px;padding:12px 18px;font-weight:800;cursor:pointer;background:#e5e7eb;color:#374151}
-.aba-painel.ativa{background:var(--primaria);color:#fff}
+.aba-painel.ativa{background:var(--primary);color:#fff}
 .recebidos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
 .recebido-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.06);transition:.2s}
 .recebido-card:hover{transform:translateY(-2px);box-shadow:0 7px 18px rgba(0,0,0,.10)}
@@ -836,9 +836,6 @@ button{
         </button>
         <button id="abaRecebidos" class="aba-painel" onclick="mostrarAbaPainel('recebidos')">
             💰 Recebidos
-        </button>
-        <button id="abaTrocas" class="aba-painel" onclick="mostrarAbaPainel('trocas')">
-            🔄 Flash Trocas
         </button>
     </div>
 
@@ -1095,15 +1092,6 @@ button{
     </div>
 
     <!-- RECEBIDOS -->
-    
-<div id="conteudoTrocas" class="oculto">
- <div class="recebidos-cabecalho">
-  <div><h2>🔄 Flash Trocas</h2><p>Solicitações de equipamentos para troca por móveis.</p></div>
-  <button class="botao botao-primario" onclick="carregarTrocas()">↻ Atualizar</button>
- </div>
- <div id="resumoTrocas" class="recebidos-resumo"></div>
- <div id="listaTrocas"><div class="estado">Carregando Flash Trocas...</div></div>
-</div>
 
 <div id="conteudoRecebidos" class="oculto">
         <div class="recebidos-cabecalho">
@@ -1699,119 +1687,78 @@ function analisarVencimento(dataString){
    PRAZO DE ENTREGA
 ============================================================ */
 
-function contarDiasUteis(
-    dataInicio,
-    diasUteis
-){
+function dataLocalEntrega(valor){
+    if(!valor) return null;
+    const texto = String(valor).trim();
+    const base = texto.length >= 10 ? texto.slice(0,10) : texto;
+    const m = base.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!m) return null;
+    const d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+    d.setHours(0,0,0,0);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
 
-    let data =
-        new Date(dataInicio);
+function isoLocalDataEntrega(data){
+    if(!data) return '';
+    const d = new Date(data);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 
+function adicionarDiasUteisEntrega(inicio, diasUteis){
+    const data = dataLocalEntrega(inicio);
+    const total = Math.max(0, Number(diasUteis)||0);
+    if(!data) return null;
     let contados = 0;
-
-    while(contados < diasUteis){
-
-        data.setDate(
-            data.getDate()+1
-        );
-
-        const dia =
-            data.getDay();
-
-        if(
-            dia !== 0 &&
-            dia !== 6
-        ){
-            contados++;
-        }
+    while(contados < total){
+        data.setDate(data.getDate()+1);
+        const dia = data.getDay();
+        if(dia !== 0 && dia !== 6) contados++;
     }
-
     return data;
 }
 
+function calcularProgressoEntrega(diasUteis, concluida, dataInicio){
+    const total = Math.max(1, Number(diasUteis)||7);
+    if(concluida) return {perc:100, restante:0, concluido:true};
 
-function calcularProgressoEntrega(
-    diasUteis,
-    concluida,
-    dataInicio
-){
+    const inicio = dataLocalEntrega(dataInicio);
+    if(!inicio) return {perc:0, restante:total, concluido:false};
 
-    diasUteis =
-        Math.max(
-            1,
-            Number(diasUteis)||7
-        );
-
-    if(concluida){
-
-        return {
-            perc:100,
-            restante:0,
-            concluido:true
-        };
-    }
-
-    const inicio = dataInicio ? new Date(dataInicio) : new Date();
-    inicio.setHours(0,0,0,0);
-
-    const fim =
-        contarDiasUteis(
-            inicio,
-            diasUteis
-        );
-
-    const hoje =
-        new Date();
-
+    const hoje = new Date();
     hoje.setHours(0,0,0,0);
 
+    if(hoje <= inicio) return {perc:0, restante:total, concluido:false};
+
     let passados = 0;
-    let atual =
-        new Date(inicio);
-
-    while(atual < hoje){
-
-        const dia =
-            atual.getDay();
-
-        if(
-            dia !== 0 &&
-            dia !== 6
-        ){
-            passados++;
-        }
-
-        atual.setDate(
-            atual.getDate()+1
-        );
+    const atual = new Date(inicio);
+    while(atual < hoje && passados < total){
+        const dia = atual.getDay();
+        if(dia !== 0 && dia !== 6) passados++;
+        atual.setDate(atual.getDate()+1);
     }
 
-    if(hoje >= fim){
-
-        return {
-            perc:100,
-            restante:0,
-            concluido:false
-        };
-    }
-
-    const perc =
-        Math.min(
-            100,
-            Math.round(
-                (passados/diasUteis)*100
-            )
-        );
+    const fim = adicionarDiasUteisEntrega(inicio, total);
+    if(fim && hoje >= fim) return {perc:100, restante:0, concluido:false};
 
     return {
-        perc,
-        restante:
-            Math.max(
-                0,
-                diasUteis-passados
-            ),
+        perc: Math.min(100, Math.round((passados/total)*100)),
+        restante: Math.max(0, total-passados),
         concluido:false
     };
+}
+
+function obterInicioPrazoEntrega(proposta){
+    if(!proposta) return null;
+    return proposta.data_pagamento_entrada ||
+           proposta.entrada_pago_em ||
+           proposta.data_entrada_paga ||
+           null;
+}
+
+function obterPrevisaoEntrega(proposta){
+    const inicio = obterInicioPrazoEntrega(proposta);
+    const dias = Number(proposta && proposta.dias_entrega) || 7;
+    return adicionarDiasUteisEntrega(inicio, dias);
 }
 
 
@@ -2311,20 +2258,14 @@ function mostrarAbaPainel(aba){
 
     const propostas = document.getElementById('conteudoPropostas');
     const recebidos = document.getElementById('conteudoRecebidos');
-    const trocas = document.getElementById('conteudoTrocas');
     const btnPropostas = document.getElementById('abaPropostas');
     const btnRecebidos = document.getElementById('abaRecebidos');
-    const btnTrocas = document.getElementById('abaTrocas');
     const mostrarRecebidos = aba === 'recebidos';
-    const mostrarTrocas = aba === 'trocas';
-    propostas.classList.toggle('oculto', mostrarRecebidos || mostrarTrocas);
+    propostas.classList.toggle('oculto', mostrarRecebidos);
     recebidos.classList.toggle('oculto', !mostrarRecebidos);
-    trocas.classList.toggle('oculto', !mostrarTrocas);
-    btnPropostas.classList.toggle('ativa', !mostrarRecebidos && !mostrarTrocas);
+    btnPropostas.classList.toggle('ativa', !mostrarRecebidos);
     btnRecebidos.classList.toggle('ativa', mostrarRecebidos);
-    btnTrocas.classList.toggle('ativa', mostrarTrocas);
     if(mostrarRecebidos) renderizarRecebidos(window.propostasCache || []);
-    if(mostrarTrocas) carregarTrocas();
 }
 
 function cobrarParcelaWhatsApp(id, numeroParcela, valorParcela, vencimento){
@@ -2712,12 +2653,23 @@ function renderizarProposta(i){
     );
 
 
+    const prazoIniciado =
+        Boolean(i.entrada_paga) &&
+        Boolean(i.contrato_assinado) &&
+        Boolean(obterInicioPrazoEntrega(i));
+
     const entrega =
         calcularProgressoEntrega(
             i.dias_entrega || 7,
             Boolean(i.entrega_concluida),
-            i.created_at
+            prazoIniciado ? obterInicioPrazoEntrega(i) : null
         );
+
+    const inicioEntrega =
+        prazoIniciado ? dataLocalEntrega(obterInicioPrazoEntrega(i)) : null;
+
+    const previsaoEntrega =
+        prazoIniciado ? obterPrevisaoEntrega(i) : null;
 
 
     const statusCor =
@@ -3017,9 +2969,11 @@ function renderizarProposta(i){
 
                         <span>
                             ${
-                                entrega.concluido
+                                !prazoIniciado
+                                ? '⏳ Aguardando entrada + assinatura'
+                                : entrega.concluido
                                 ? '✅ ENTREGA CONCLUÍDA'
-                                : `Restam aproximadamente ${entrega.restante} dia(s)`
+                                : `Restam ${entrega.restante} dia(s) úteis`
                             }
                         </span>
 
@@ -3564,7 +3518,8 @@ async function alternarEntradaPaga(
         await supabaseClient
         .from('propostas')
         .update({
-            entrada_paga:Boolean(status)
+            entrada_paga:Boolean(status),
+            data_pagamento_entrada: Boolean(status) ? new Date().toISOString() : null
         })
         .eq('id',id);
 
@@ -4249,26 +4204,6 @@ function formatarData(data){
 
 
 
-/* ============================================================
-   FLASH TROCAS
-============================================================ */
-async function carregarTrocas(){
- const lista=document.getElementById('listaTrocas'), resumo=document.getElementById('resumoTrocas');
- if(!lista)return;
- lista.innerHTML='<div class="estado"><i class="fas fa-spinner fa-spin"></i><p>Carregando Flash Trocas...</p></div>';
- try{
-  const {data,error}=await supabaseClient.from('flash_trocas').select('*').order('created_at',{ascending:false});
-  if(error) throw error;
-  const rows=data||[];
-  resumo.innerHTML=`<div><strong>${rows.length}</strong><span>Total de solicitações</span></div><div><strong>${rows.filter(x=>x.status==='Nova').length}</strong><span>Novas</span></div><div><strong>${rows.filter(x=>x.status==='Em avaliação').length}</strong><span>Em avaliação</span></div><div><strong>${rows.filter(x=>x.status==='Aprovada').length}</strong><span>Aprovadas</span></div>`;
-  if(!rows.length){lista.innerHTML='<div class="estado"><p>Nenhuma solicitação de Flash Trocas ainda.</p></div>';return;}
-  lista.innerHTML=rows.map(t=>`<div class="cartao" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><h3 style="font-size:18px;font-weight:800">${escapeHTML(t.nome)}</h3><p style="color:#64748b">${escapeHTML(t.tipo_equipamento)} • ${escapeHTML(t.marca_modelo)} • ${escapeHTML(t.cidade)}</p></div><select class="campo" style="max-width:210px" onchange="atualizarTrocaStatus('${t.id}',this.value)"><option ${t.status==='Nova'?'selected':''}>Nova</option><option ${t.status==='Em avaliação'?'selected':''}>Em avaliação</option><option ${t.status==='Aprovada'?'selected':''}>Aprovada</option><option ${t.status==='Negociação'?'selected':''}>Negociação</option><option ${t.status==='Concluída'?'selected':''}>Concluída</option><option ${t.status==='Recusada'?'selected':''}>Recusada</option></select></div><div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;font-size:14px"><div><b>WhatsApp:</b> ${escapeHTML(t.telefone)}</div><div><b>Estimativa:</b> ${moedaPainel(t.valor_estimado)}</div><div><b>Valor aprovado:</b> ${moedaPainel(t.valor_avaliado)}</div><div><b>Móveis:</b> ${escapeHTML(t.moveis_interesse)}</div></div><div style="margin-top:12px"><input id="tv_${t.id}" class="campo" value="${escapeAttr(t.valor_avaliado??'')}" placeholder="Valor avaliado"><input id="to_${t.id}" class="campo" value="${escapeAttr(t.observacoes??'')}" placeholder="Observação para o cliente"><button class="botao botao-sucesso" onclick="salvarTroca('${t.id}')">💾 Salvar avaliação</button> <a class="botao botao-primario" target="_blank" href="consultar-troca.html?id=${encodeURIComponent(t.id)}">👁️ Ver cliente</a></div></div>`).join('');
- }catch(e){console.error(e);lista.innerHTML='<div class="estado"><p>Erro ao carregar Flash Trocas: '+escapeHTML(e.message)+'</p></div>';}
-}
-function moedaPainel(v){return v===null||v===undefined||v===''?'-':Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
-function escapeAttr(v){return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-async function atualizarTrocaStatus(id,status){const {error}=await supabaseClient.from('flash_trocas').update({status}).eq('id',id);if(error)alert('Erro: '+error.message);else carregarTrocas();}
-async function salvarTroca(id){const valor=document.getElementById('tv_'+id).value;const obs=document.getElementById('to_'+id).value;const {error}=await supabaseClient.from('flash_trocas').update({valor_avaliado:valor?Number(valor):null,observacoes:obs}).eq('id',id);if(error)alert('Erro ao salvar: '+error.message);else{alert('Avaliação salva.');carregarTrocas();}}
 
 /* ============================================================
    TEMPO REAL
@@ -4323,7 +4258,7 @@ function ativarTempoReal(){
 
 // Atualiza o painel a cada minuto para manter prazo e alerta de 3 dias sincronizados.
 setInterval(() => {
-    if (!document.hidden) { carregarPropostas(); if(document.getElementById('conteudoTrocas') && !document.getElementById('conteudoTrocas').classList.contains('oculto')) carregarTrocas(); }
+    if (!document.hidden) carregarPropostas();
 }, 30000);
 
 document
