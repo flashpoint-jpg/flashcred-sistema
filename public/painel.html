@@ -427,12 +427,9 @@ button{
 }
 
 .preenchimento-entrega{
-    display:block;
     height:100%;
-    min-width:0;
     background:var(--alerta);
-    border-radius:10px;
-    transition:width .4s ease;
+    transition:.4s;
 }
 
 .preenchimento-concluido{
@@ -656,7 +653,7 @@ button{
 ============================================================ */
 .abas-painel{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 15px}
 .aba-painel{border:0;border-radius:10px;padding:12px 18px;font-weight:800;cursor:pointer;background:#e5e7eb;color:#374151}
-.aba-painel.ativa{background:var(--primary);color:#fff}
+.aba-painel.ativa{background:var(--primaria);color:#fff}
 .recebidos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
 .recebido-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.06);transition:.2s}
 .recebido-card:hover{transform:translateY(-2px);box-shadow:0 7px 18px rgba(0,0,0,.10)}
@@ -840,6 +837,9 @@ button{
         <button id="abaRecebidos" class="aba-painel" onclick="mostrarAbaPainel('recebidos')">
             💰 Recebidos
         </button>
+        <button id="abaFuncionarios" class="aba-painel" onclick="mostrarAbaPainel('funcionarios')">
+            👥 Funcionários
+        </button>
     </div>
 
 
@@ -873,6 +873,13 @@ button{
                     id="nome"
                     class="campo"
                 >
+            </div>
+
+            <div>
+                <span class="label-campo">👥 Funcionário / Indicador</span>
+                <select id="funcionario_id" class="campo">
+                    <option value="">Sem funcionário</option>
+                </select>
             </div>
 
             <div>
@@ -1095,6 +1102,7 @@ button{
     </div>
 
     <!-- RECEBIDOS -->
+    
 
 <div id="conteudoRecebidos" class="oculto">
         <div class="recebidos-cabecalho">
@@ -1118,6 +1126,50 @@ button{
 
 </div>
 
+
+
+<div id="conteudoFuncionarios" class="oculto">
+  <div class="cartao">
+    <div class="recebidos-cabecalho">
+      <div><h2>👥 Funcionários e Comissões</h2><p>Crie acessos, defina a comissão e controle os pagamentos.</p></div>
+      <button class="botao botao-primario" onclick="carregarPainelFuncionarios()">↻ Atualizar</button>
+    </div>
+    <div class="grid">
+      <div>
+        <span class="label-campo">Nome</span>
+        <input id="novo_func_nome" class="campo" placeholder="Nome do funcionário">
+      </div>
+      <div>
+        <span class="label-campo">Usuário</span>
+        <input id="novo_func_usuario" class="campo" placeholder="Ex.: joao">
+      </div>
+      <div>
+        <span class="label-campo">Senha inicial</span>
+        <input id="novo_func_senha" class="campo" type="password" placeholder="Mínimo 6 caracteres">
+      </div>
+      <div>
+        <span class="label-campo">Comissão (%)</span>
+        <input id="novo_func_percentual" class="campo" type="number" min="0" step="0.01" value="10">
+      </div>
+      <div class="campo-grande">
+        <span class="label-campo">Chave Pix do funcionário</span>
+        <input id="novo_func_pix" class="campo" placeholder="CPF, celular, e-mail ou chave aleatória">
+      </div>
+    </div>
+    <button class="botao botao-sucesso" onclick="criarFuncionarioAdmin()">➕ Criar acesso do funcionário</button>
+    <p class="info" style="margin-top:10px">Depois de criado, entregue ao funcionário o endereço desta página + usuário + senha. A senha é armazenada no banco como hash.</p>
+  </div>
+
+  <div class="cartao" style="margin-top:16px">
+    <h3>Funcionários cadastrados</h3>
+    <div id="listaFuncionariosAdmin" class="estado">Carregando...</div>
+  </div>
+
+  <div class="cartao" style="margin-top:16px">
+    <h3>💸 Solicitações de saque</h3>
+    <div id="listaSaquesFuncionarios" class="estado">Carregando...</div>
+  </div>
+</div>
 
 <script>
 
@@ -1690,79 +1742,119 @@ function analisarVencimento(dataString){
    PRAZO DE ENTREGA
 ============================================================ */
 
-function dataLocalEntrega(valor){
-    if(!valor) return null;
-    const texto = String(valor).trim();
-    const base = texto.length >= 10 ? texto.slice(0,10) : texto;
-    const m = base.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if(!m) return null;
-    const d = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
-    d.setHours(0,0,0,0);
-    return Number.isNaN(d.getTime()) ? null : d;
-}
+function contarDiasUteis(
+    dataInicio,
+    diasUteis
+){
 
-function isoLocalDataEntrega(data){
-    if(!data) return '';
-    const d = new Date(data);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
+    let data =
+        new Date(dataInicio);
 
-function adicionarDiasUteisEntrega(inicio, diasUteis){
-    const data = dataLocalEntrega(inicio);
-    const total = Math.max(0, Number(diasUteis)||0);
-    if(!data) return null;
     let contados = 0;
-    while(contados < total){
-        data.setDate(data.getDate()+1);
-        const dia = data.getDay();
-        if(dia !== 0 && dia !== 6) contados++;
+
+    while(contados < diasUteis){
+
+        data.setDate(
+            data.getDate()+1
+        );
+
+        const dia =
+            data.getDay();
+
+        if(
+            dia !== 0 &&
+            dia !== 6
+        ){
+            contados++;
+        }
     }
+
     return data;
 }
 
-function calcularProgressoEntrega(diasUteis, concluida, dataInicio){
-    const total = Math.max(1, Number(diasUteis)||7);
-    if(concluida) return {perc:100, restante:0, concluido:true};
 
-    const inicio = dataLocalEntrega(dataInicio);
-    if(!inicio) return {perc:0, restante:total, concluido:false};
+function calcularProgressoEntrega(
+    diasUteis,
+    concluida,
+    dataInicio
+){
 
-    const hoje = new Date();
-    hoje.setHours(0,0,0,0);
+    diasUteis =
+        Math.max(
+            1,
+            Number(diasUteis)||7
+        );
 
-    if(hoje <= inicio) return {perc:0, restante:total, concluido:false};
+    if(concluida){
 
-    let passados = 0;
-    const atual = new Date(inicio);
-    while(atual < hoje && passados < total){
-        const dia = atual.getDay();
-        if(dia !== 0 && dia !== 6) passados++;
-        atual.setDate(atual.getDate()+1);
+        return {
+            perc:100,
+            restante:0,
+            concluido:true
+        };
     }
 
-    const fim = adicionarDiasUteisEntrega(inicio, total);
-    if(fim && hoje >= fim) return {perc:100, restante:0, concluido:false};
+    const inicio = dataInicio ? new Date(dataInicio) : new Date();
+    inicio.setHours(0,0,0,0);
 
-    const perc = Math.max(0, Math.min(100, Math.round((passados / total) * 100)));
+    const fim =
+        contarDiasUteis(
+            inicio,
+            diasUteis
+        );
+
+    const hoje =
+        new Date();
+
+    hoje.setHours(0,0,0,0);
+
+    let passados = 0;
+    let atual =
+        new Date(inicio);
+
+    while(atual < hoje){
+
+        const dia =
+            atual.getDay();
+
+        if(
+            dia !== 0 &&
+            dia !== 6
+        ){
+            passados++;
+        }
+
+        atual.setDate(
+            atual.getDate()+1
+        );
+    }
+
+    if(hoje >= fim){
+
+        return {
+            perc:100,
+            restante:0,
+            concluido:false
+        };
+    }
+
+    const perc =
+        Math.min(
+            100,
+            Math.round(
+                (passados/diasUteis)*100
+            )
+        );
+
     return {
         perc,
-        restante: Math.max(0, total-passados),
+        restante:
+            Math.max(
+                0,
+                diasUteis-passados
+            ),
         concluido:false
     };
-}
-
-function obterInicioPrazoEntrega(proposta){
-    if(!proposta) return null;
-    return proposta.data_pagamento_entrada ||
-           proposta.entrada_pago_em ||
-           proposta.data_entrada_paga ||
-           null;
-}
-
-function obterPrevisaoEntrega(proposta){
-    const inicio = obterInicioPrazoEntrega(proposta);
-    const dias = Number(proposta && proposta.dias_entrega) || 7;
-    return adicionarDiasUteisEntrega(inicio, dias);
 }
 
 
@@ -1839,6 +1931,7 @@ function mostrarPainel(){
         .classList.remove('oculto');
 
     carregarPropostas();
+    carregarFuncionariosAdmin();
 
     ativarTempoReal();
 }
@@ -2079,6 +2172,7 @@ async function salvarNovo(){
             whatsapp,
             cep,
             endereco,
+            funcionario_id: document.getElementById('funcionario_id')?.value || null,
 
             valor_desejado,
             valor_entrada,
@@ -2259,17 +2353,22 @@ async function carregarPropostas(){
 ============================================================ */
 
 function mostrarAbaPainel(aba){
-
     const propostas = document.getElementById('conteudoPropostas');
     const recebidos = document.getElementById('conteudoRecebidos');
+    const funcionarios = document.getElementById('conteudoFuncionarios');
     const btnPropostas = document.getElementById('abaPropostas');
     const btnRecebidos = document.getElementById('abaRecebidos');
+    const btnFuncionarios = document.getElementById('abaFuncionarios');
     const mostrarRecebidos = aba === 'recebidos';
-    propostas.classList.toggle('oculto', mostrarRecebidos);
+    const mostrarFuncionarios = aba === 'funcionarios';
+    propostas.classList.toggle('oculto', mostrarRecebidos || mostrarFuncionarios);
     recebidos.classList.toggle('oculto', !mostrarRecebidos);
-    btnPropostas.classList.toggle('ativa', !mostrarRecebidos);
+    funcionarios.classList.toggle('oculto', !mostrarFuncionarios);
+    btnPropostas.classList.toggle('ativa', !mostrarRecebidos && !mostrarFuncionarios);
     btnRecebidos.classList.toggle('ativa', mostrarRecebidos);
+    btnFuncionarios.classList.toggle('ativa', mostrarFuncionarios);
     if(mostrarRecebidos) renderizarRecebidos(window.propostasCache || []);
+    if(mostrarFuncionarios) carregarPainelFuncionarios();
 }
 
 function cobrarParcelaWhatsApp(id, numeroParcela, valorParcela, vencimento){
@@ -2657,23 +2756,12 @@ function renderizarProposta(i){
     );
 
 
-    const prazoIniciado =
-        Boolean(i.entrada_paga) &&
-        Boolean(i.contrato_assinado) &&
-        Boolean(obterInicioPrazoEntrega(i));
-
     const entrega =
         calcularProgressoEntrega(
             i.dias_entrega || 7,
             Boolean(i.entrega_concluida),
-            prazoIniciado ? obterInicioPrazoEntrega(i) : null
+            i.created_at
         );
-
-    const inicioEntrega =
-        prazoIniciado ? dataLocalEntrega(obterInicioPrazoEntrega(i)) : null;
-
-    const previsaoEntrega =
-        prazoIniciado ? obterPrevisaoEntrega(i) : null;
 
 
     const statusCor =
@@ -2973,11 +3061,9 @@ function renderizarProposta(i){
 
                         <span>
                             ${
-                                !prazoIniciado
-                                ? '⏳ Aguardando entrada + assinatura'
-                                : entrega.concluido
+                                entrega.concluido
                                 ? '✅ ENTREGA CONCLUÍDA'
-                                : `Restam ${entrega.restante} dia(s) úteis`
+                                : `Restam aproximadamente ${entrega.restante} dia(s)`
                             }
                         </span>
 
@@ -2995,7 +3081,7 @@ function renderizarProposta(i){
 
                     </div>
 
-                    <div class="fundo-barra-entrega" title="${entrega.perc}% concluído">
+                    <div class="fundo-barra-entrega">
 
                         <div
                             class="
@@ -3006,8 +3092,7 @@ function renderizarProposta(i){
                                     : ''
                                 }
                             "
-                            style="width:${Math.max(0, Math.min(100, Number(entrega.perc)||0))}%;"
-                            aria-valuenow="${Math.max(0, Math.min(100, Number(entrega.perc)||0))}"
+                            style="width:${entrega.perc}%"
                         ></div>
 
                     </div>
@@ -3524,7 +3609,9 @@ async function alternarEntradaPaga(
         .from('propostas')
         .update({
             entrada_paga:Boolean(status),
-            data_pagamento_entrada: Boolean(status) ? new Date().toISOString() : null
+            data_pagamento_entrada: status ? new Date().toISOString() : null,
+            entrada_pago_em: status ? new Date().toISOString() : null,
+            data_entrada_paga: status ? new Date().toISOString() : null
         })
         .eq('id',id);
 
@@ -4209,7 +4296,6 @@ function formatarData(data){
 
 
 
-
 /* ============================================================
    TEMPO REAL
 ============================================================ */
@@ -4263,7 +4349,7 @@ function ativarTempoReal(){
 
 // Atualiza o painel a cada minuto para manter prazo e alerta de 3 dias sincronizados.
 setInterval(() => {
-    if (!document.hidden) carregarPropostas();
+    if (!document.hidden) { carregarPropostas(); if(document.getElementById('conteudoTrocas') && !document.getElementById('conteudoTrocas').classList.contains('oculto')) ; }
 }, 30000);
 
 document
@@ -4278,6 +4364,78 @@ document
 
         }
     );
+
+
+/* ============================================================
+   FUNCIONÁRIOS / COMISSÕES
+============================================================ */
+window.funcionariosAdminCache = [];
+
+async function carregarFuncionariosAdmin(){
+  try{
+    const {data,error}=await supabaseClient.rpc('admin_funcionarios');
+    if(error) throw error;
+    window.funcionariosAdminCache=data||[];
+    const select=document.getElementById('funcionario_id');
+    if(select){
+      const atual=select.value;
+      select.innerHTML='<option value="">Sem funcionário</option>'+(data||[]).filter(f=>f.ativo).map(f=>`<option value="${escapeHTML(String(f.id))}">${escapeHTML(f.nome)} — ${escapeHTML(f.usuario)}</option>`).join('');
+      if(atual) select.value=atual;
+    }
+    renderizarFuncionariosAdmin(data||[]);
+    carregarSaquesFuncionarios();
+  }catch(e){
+    console.error(e);
+    const el=document.getElementById('listaFuncionariosAdmin');
+    if(el) el.innerHTML='<div class="alerta">Erro ao carregar funcionários: '+escapeHTML(e.message||e)+'</div>';
+  }
+}
+
+function renderizarFuncionariosAdmin(lista){
+ const el=document.getElementById('listaFuncionariosAdmin'); if(!el)return;
+ if(!lista.length){el.innerHTML='<div class="estado">Nenhum funcionário cadastrado.</div>';return;}
+ el.innerHTML=`<div style="overflow:auto"><table class="tabela"><thead><tr><th>Nome</th><th>Usuário</th><th>Comissão</th><th>Pix</th><th>Status</th><th>Ação</th></tr></thead><tbody>`+
+ lista.map(f=>`<tr><td>${escapeHTML(f.nome)}</td><td>${escapeHTML(f.usuario)}</td><td>${Number(f.percentual_comissao||0)}%</td><td>${escapeHTML(f.chave_pix||'—')}</td><td>${f.ativo?'🟢 Ativo':'🔴 Inativo'}</td><td><button class="botao botao-secundario" onclick="editarFuncionarioAdmin('${f.id}')">✏️ Editar</button></td></tr>`).join('')+'</tbody></table></div>';
+}
+
+async function criarFuncionarioAdmin(){
+ const nome=document.getElementById('novo_func_nome').value.trim();
+ const usuario=document.getElementById('novo_func_usuario').value.trim();
+ const senha=document.getElementById('novo_func_senha').value;
+ const percentual=Number(document.getElementById('novo_func_percentual').value)||10;
+ const pix=document.getElementById('novo_func_pix').value.trim();
+ if(!nome||!usuario||senha.length<6){alert('Informe nome, usuário e senha com pelo menos 6 caracteres.');return;}
+ const {error}=await supabaseClient.rpc('admin_criar_funcionario',{p_nome:nome,p_usuario:usuario,p_senha:senha,p_percentual:percentual,p_chave_pix:pix||null});
+ if(error){alert('Não foi possível criar o funcionário:\n'+error.message);return;}
+ document.getElementById('novo_func_nome').value='';document.getElementById('novo_func_usuario').value='';document.getElementById('novo_func_senha').value='';document.getElementById('novo_func_pix').value='';
+ await carregarFuncionariosAdmin(); alert('✅ Funcionário criado. Entregue a ele o usuário e a senha cadastrados.');
+}
+
+async function editarFuncionarioAdmin(id){
+ const f=(window.funcionariosAdminCache||[]).find(x=>String(x.id)===String(id)); if(!f)return;
+ const nome=prompt('Nome do funcionário:',f.nome); if(nome===null)return;
+ const usuario=prompt('Usuário:',f.usuario); if(usuario===null)return;
+ const percentual=prompt('Percentual de comissão:',f.percentual_comissao); if(percentual===null)return;
+ const pix=prompt('Chave Pix:',f.chave_pix||''); if(pix===null)return;
+ const senha=prompt('Nova senha (deixe vazio para manter a atual):',''); if(senha===null)return;
+ const ativo=confirm('OK = funcionário ATIVO. Cancelar = funcionário INATIVO.');
+ const {error}=await supabaseClient.rpc('admin_alterar_funcionario',{p_id:id,p_nome:nome,p_usuario:usuario,p_percentual:Number(percentual)||0,p_chave_pix:pix,p_ativo:ativo,p_nova_senha:senha||null});
+ if(error){alert('Erro ao editar:\n'+error.message);return;} await carregarFuncionariosAdmin(); alert('✅ Funcionário atualizado.');
+}
+
+async function carregarSaquesFuncionarios(){
+ const el=document.getElementById('listaSaquesFuncionarios'); if(!el)return;
+ const {data,error}=await supabaseClient.rpc('admin_saques_funcionarios');
+ if(error){el.innerHTML='<div class="alerta">Erro: '+escapeHTML(error.message)+'</div>';return;}
+ if(!data?.length){el.innerHTML='<div class="estado">Nenhuma solicitação de saque.</div>';return;}
+ el.innerHTML='<div style="overflow:auto"><table class="tabela"><thead><tr><th>Funcionário</th><th>Valor</th><th>Pix</th><th>Data</th><th>Status</th><th>Ação</th></tr></thead><tbody>'+data.map(s=>`<tr><td>${escapeHTML(s.funcionario_nome)}</td><td>R$ ${dinheiro(s.valor)}</td><td>${escapeHTML(s.chave_pix)}</td><td>${s.created_at?new Date(s.created_at).toLocaleDateString('pt-BR'):'—'}</td><td>${escapeHTML(s.status)}</td><td>${s.status==='pendente'||s.status==='reservada'?`<button class="botao botao-sucesso" onclick="pagarSaqueFuncionario('${s.id}')">💸 Marcar pago</button>`:'✅ Pago'}</td></tr>`).join('')+'</tbody></table></div>';
+}
+async function pagarSaqueFuncionario(id){
+ if(!confirm('Confirmar que este saque foi pago via Pix?'))return;
+ const {error}=await supabaseClient.rpc('admin_pagar_saque',{p_id:id});
+ if(error){alert('Erro ao marcar saque como pago:\n'+error.message);return;}
+ await carregarSaquesFuncionarios(); alert('✅ Saque marcado como pago.');
+}
 
 </script>
 
