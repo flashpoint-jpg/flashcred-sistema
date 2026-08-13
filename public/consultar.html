@@ -1534,6 +1534,13 @@ function configurarRealtime() {
 }
 
 
+function obterQuantidadeParcelasOficial(p){
+    const n = Number(p?.quantidade_parcelas || p?.qtd_parcelas || 0);
+    return Math.min(48, Math.max(0, Math.floor(n)));
+}
+
+function sincronizarQuantidadeParcelas(p){ return p; }
+
 /* ==========================================================
    ABRIR PROPOSTA
 ========================================================== */
@@ -2093,14 +2100,6 @@ function calcularDiasUteis(
    MOSTRAR PROPOSTA
 ========================================================== */
 
-function obterQuantidadeParcelasOficial(p) {
-    return Math.max(0, Number(
-        p?.quantidade_parcelas ||
-        p?.qtd_parcelas ||
-        0
-    ));
-}
-
 function mostrarProposta(p) {
 
     if(p && p.id){ localStorage.setItem('flashcred_proposta_id', String(p.id)); }
@@ -2172,7 +2171,7 @@ function mostrarProposta(p) {
 
     const limiteParcelas = quantidadeOficial;
 
-    const escolhida = Math.max(0, Number(p.qtd_parcelas_escolhida || 0));
+    const escolhida = Number(p.qtd_parcelas_escolhida || 0);
 
 
     const principal =
@@ -2726,7 +2725,6 @@ function mostrarProposta(p) {
                     <select
                         id="qtdEscolhida"
                         class="select mb-4"
-                        onchange="mostrarPreviewParcelasCliente()"
                     >
 
                         ${
@@ -2767,7 +2765,6 @@ function mostrarProposta(p) {
 
                     </select>
 
-                    <div id="previewParcelasCliente" class="card" style="margin-top:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0"></div>
 
                     <button
                         id="btnConfirmarParcelas"
@@ -2792,7 +2789,6 @@ function mostrarProposta(p) {
             'conteudoProposta'
         ).innerHTML = html;
 
-        mostrarPreviewParcelasCliente();
 
         return;
     }
@@ -3336,30 +3332,6 @@ function mostrarProposta(p) {
    CONFIRMAR PARCELAS
 ========================================================== */
 
-function mostrarPreviewParcelasCliente() {
-    const select = document.getElementById('qtdEscolhida');
-    const area = document.getElementById('previewParcelasCliente');
-    if(!select || !area || !propostaAtual) return;
-
-    const quantidade = Number(select.value) || 0;
-    const principal = Math.max(Number(propostaAtual.valor_desejado || 0) - Number(propostaAtual.valor_entrada || 0), 0);
-    const juros = Number(propostaAtual.juros_mensal || 0);
-    const parcela = calcularParcela(principal, juros, quantidade);
-    const datas = Array.isArray(propostaAtual.datas_parcelas) ? propostaAtual.datas_parcelas : [];
-
-    if(!quantidade){
-        area.innerHTML = '<strong>Escolha a quantidade de parcelas para visualizar o cronograma.</strong>';
-        return;
-    }
-
-    let html = '<div style="font-weight:800;margin-bottom:8px">📅 Cronograma das parcelas antes do contrato</div>';
-    for(let i=0;i<quantidade;i++){
-        const data = datas[i] || '';
-        html += `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #e2e8f0"><span>${i+1}ª parcela</span><strong>R$ ${moeda(parcela)}${data ? ' • ' + dataBR(data) : ''}</strong></div>`;
-    }
-    area.innerHTML = html;
-}
-
 async function confirmarParcelas() {
 
     const select =
@@ -3372,12 +3344,13 @@ async function confirmarParcelas() {
         return;
 
 
-    const quantidade = obterQuantidadeParcelasOficial(propostaAtual);
+    const quantidade = Number(select.value || 0);
 
 
     if(
         !quantidade ||
-        quantidade <= 0
+        quantidade < 1 ||
+        quantidade > obterQuantidadeParcelasOficial(propostaAtual)
     ) {
 
         alert(
@@ -3408,8 +3381,15 @@ async function confirmarParcelas() {
                 .from('propostas')
                 .update({
 
-                    qtd_parcelas_escolhida:
-                        quantidade
+                    qtd_parcelas_escolhida: quantidade,
+                    datas_parcelas: (() => {
+                        const atuais = Array.isArray(propostaAtual.datas_parcelas) ? propostaAtual.datas_parcelas : [];
+                        if(atuais.length >= quantidade) return atuais.slice(0, quantidade);
+                        const base = new Date();
+                        const out = [];
+                        for(let i=1;i<=quantidade;i++){ const d=new Date(base); d.setMonth(d.getMonth()+i); out.push(d.toISOString().slice(0,10)); }
+                        return out;
+                    })()
 
                 })
                 .eq(
