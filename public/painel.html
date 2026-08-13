@@ -2342,6 +2342,8 @@ function limparFormulario(){
 ============================================================ */
 
 let propostasCache = [];
+let intervaloAtualizacaoAdmin = null;
+let estadoEntradaAnterior = new Map();
 let funcionariosCache = [];
 let filtroResumoAtual = 'todos';
 let filtroFluxoAtual = 'novos';
@@ -2552,7 +2554,15 @@ async function carregarPropostas(){
             return;
         }
 
+        const anterior = new Map(propostasCache.map(x=>[String(x.id), Boolean(x.entrada_paga)]));
         propostasCache = data || [];
+        (propostasCache || []).forEach(item=>{
+            const id=String(item.id), atual=Boolean(item.entrada_paga);
+            if(anterior.has(id) && anterior.get(id)===false && atual===true){
+                const nome=item.nome||'Cliente';
+                mostrarAvisoPagamento(`💰 Entrada Pix confirmada: ${nome}`);
+            }
+        });
         try{
             const fr = await supabaseClient.from('funcionarios').select('id,nome,nome_completo');
             if(!fr.error) funcionariosCache = fr.data || [];
@@ -4379,6 +4389,19 @@ function enviarWpp(
 }
 
 
+function mostrarAvisoPagamento(texto){
+    let el=document.getElementById('avisoPagamentoFlashCred');
+    if(!el){
+        el=document.createElement('div');
+        el.id='avisoPagamentoFlashCred';
+        el.style.cssText='position:fixed;top:20px;right:20px;z-index:99999;background:#16a34a;color:#fff;padding:16px 20px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.2);font-weight:700;max-width:360px;';
+        document.body.appendChild(el);
+    }
+    el.textContent=texto;
+    clearTimeout(window.__flashCredAvisoTimer);
+    window.__flashCredAvisoTimer=setTimeout(()=>el.remove(),7000);
+}
+
 /* ============================================================
    NOTIFICAÇÕES
 ============================================================ */
@@ -4511,6 +4534,9 @@ function ativarTempoReal(){
 
             }
         );
+
+    if(intervaloAtualizacaoAdmin) clearInterval(intervaloAtualizacaoAdmin);
+    intervaloAtualizacaoAdmin=setInterval(()=>carregarPropostas(),5000);
 }
 
 
