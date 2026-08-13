@@ -1531,19 +1531,9 @@ function configurarRealtime() {
                 }
             );
 
+    // ✅ Polling de 5s removido — o Realtime acima já cobre a atualização automática
+    // sem re-renderizar a tela toda hora (o que causava o piscar).
     if(intervaloAtualizacaoCliente) clearInterval(intervaloAtualizacaoCliente);
-    intervaloAtualizacaoCliente=setInterval(async function(){
-        if(!propostaAtual?.id) return;
-        try{
-            const {data,error}=await supabase.from('propostas').select('*').eq('id',propostaAtual.id).maybeSingle();
-            if(!error && data){
-                const mudou=JSON.stringify(data)!==JSON.stringify(propostaAtual);
-                propostaAtual={...propostaAtual,...data};
-                salvarSessao();
-                if(mudou) mostrarProposta(propostaAtual);
-            }
-        }catch(e){ console.warn('Atualização automática da proposta:',e); }
-    },5000);
 }
 
 
@@ -3949,7 +3939,8 @@ async function assinarContrato() {
 
 async function buscarPix(
     valor,
-    descricao
+    descricao,
+    dadosExtras
 ) {
 
     const resposta =
@@ -3974,7 +3965,9 @@ async function buscarPix(
                             .toFixed(2),
 
                         descricao:
-                            descricao
+                            descricao,
+
+                        ...(dadosExtras || {})
 
                     })
             }
@@ -4075,7 +4068,11 @@ async function gerarPixEntrada(
         const codigo =
             await buscarPix(
                 valor,
-                `Entrada - Proposta ${propostaAtual.id}`
+                `Entrada - Proposta ${propostaAtual.id}`,
+                {
+                    proposta_id: propostaAtual.id,
+                    tipo: 'entrada'
+                }
             );
 
 
@@ -4245,7 +4242,12 @@ async function gerarPixParcela(
         const codigo =
             await buscarPix(
                 valor,
-                `Parcela ${numeroParcela} - Proposta ${propostaAtual.id}`
+                `Parcela ${numeroParcela} - Proposta ${propostaAtual.id}`,
+                {
+                    proposta_id: propostaAtual.id,
+                    tipo: 'parcela',
+                    numero_parcela: numeroParcela
+                }
             );
 
 
@@ -5639,100 +5641,4 @@ function montarParcelas(p) {
 
                 <div class="parcela-detalhes">
 
-                    <div class="parcela-info">
-
-                        <small>
-                            Parcela
-                        </small>
-
-                        <strong>
-
-                            ${numeroParcela}
-                            de
-                            ${quantidade}
-
-                        </strong>
-
-                    </div>
-
-
-                    <div class="parcela-info">
-
-                        <small>
-                            Vencimento
-                        </small>
-
-                        <strong>
-
-                            ${dataBR(vencimento)}
-
-                        </strong>
-
-                    </div>
-
-                </div>
-
-
-                ${
-                    !paga
-
-                    ? `
-
-                        <button
-                            onclick="gerarPixParcela(
-                                ${Number(
-                                    valorParcela.toFixed(2)
-                                )},
-                                ${numeroParcela}
-                            )"
-                            class="btn btn-pix"
-                        >
-
-                            <i class="fas fa-qrcode"></i>
-
-                            Gerar Pix para pagar
-
-                        </button>
-
-
-                        <div
-                            id="pixParcela${numeroParcela}"
-                            class="hidden"
-                        ></div>
-
-                    `
-
-                    : `
-
-                        <div class="info info-green mb-0">
-
-                            <i class="fas fa-circle-check"></i>
-
-                            Esta parcela já está registrada
-                            como paga.
-
-                        </div>
-
-                    `
-                }
-
-            </div>
-
-        `;
-    }
-
-
-    html += `
-
-        </div>
-
-    `;
-
-
-    return html;
-}
-
-</script>
-
-</body>
-</html>
+       
