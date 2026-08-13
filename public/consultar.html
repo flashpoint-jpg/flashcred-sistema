@@ -855,6 +855,7 @@ const supabase =
 let propostaAtual = null;
 
 let canalRealtime = null;
+let intervaloAtualizacaoCliente = null;
 
 let webcamStream = null;
 
@@ -1458,6 +1459,8 @@ function configurarRealtime() {
         return;
 
 
+    if(intervaloAtualizacaoCliente){ clearInterval(intervaloAtualizacaoCliente); intervaloAtualizacaoCliente=null; }
+
     if(canalRealtime) {
 
         supabase.removeChannel(
@@ -1524,13 +1527,23 @@ function configurarRealtime() {
             )
             .subscribe(
                 function(status) {
-
-                    console.log(
-                        'Realtime:',
-                        status
-                    );
+                    console.log('Realtime:', status);
                 }
             );
+
+    if(intervaloAtualizacaoCliente) clearInterval(intervaloAtualizacaoCliente);
+    intervaloAtualizacaoCliente=setInterval(async function(){
+        if(!propostaAtual?.id) return;
+        try{
+            const {data,error}=await supabase.from('propostas').select('*').eq('id',propostaAtual.id).maybeSingle();
+            if(!error && data){
+                const mudou=JSON.stringify(data)!==JSON.stringify(propostaAtual);
+                propostaAtual={...propostaAtual,...data};
+                salvarSessao();
+                if(mudou) mostrarProposta(propostaAtual);
+            }
+        }catch(e){ console.warn('Atualização automática da proposta:',e); }
+    },5000);
 }
 
 
@@ -3817,6 +3830,8 @@ async function assinarContrato() {
                 'btnAssinar'
             );
 
+
+        if(!botao){ alert('Não foi possível localizar o botão de assinatura. Atualize a página.'); return; }
 
         botao.disabled = true;
 
