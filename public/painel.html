@@ -1208,6 +1208,8 @@ const supabaseClient =
 
 let inscricaoTempoReal = null;
 let carregando = false;
+let funcionariosMapa = {};
+let ultimoTotalNovas = 0;
 
 
 /* ============================================================
@@ -2286,6 +2288,11 @@ async function carregarPropostas(){
 
     try{
 
+        // Carrega os funcionários para identificar quem fez cada indicação.
+        const {data:funcsData} = await supabaseClient.rpc('admin_funcionarios');
+        funcionariosMapa = {};
+        (funcsData||[]).forEach(f => { funcionariosMapa[String(f.id)] = f.nome || f.usuario || 'Funcionário'; });
+
         const {
             data,
             error
@@ -2315,6 +2322,13 @@ async function carregarPropostas(){
         }
 
         window.propostasCache = data || [];
+        const novas = (data || []).filter(x => String(x.status||'').toLowerCase() === 'nova');
+        const contador = document.getElementById('contadorNotif');
+        if(contador) contador.textContent = String(novas.length);
+        if(novas.length > ultimoTotalNovas && ultimoTotalNovas >= 0){
+            if(ultimoTotalNovas !== 0) { try { new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=').play().catch(()=>{}); } catch(e){} }
+        }
+        ultimoTotalNovas = novas.length;
         renderizarResumo(data || []);
         renderizarRecebidos(data || []);
 
@@ -2936,6 +2950,10 @@ function renderizarProposta(i){
                             }
 
                         </p>
+
+                        ${i.funcionario_id ? `
+                            <p><strong>👤 Indicado por:</strong> ${escapeHTML(funcionariosMapa[String(i.funcionario_id)] || 'Funcionário')}</p>
+                        ` : ''}
 
                         ${i.created_at ? `
                             <p>
@@ -4255,66 +4273,14 @@ function enviarWpp(
 ============================================================ */
 
 async function mostrarNotificacoes(){
-
     try{
-
-        const {
-            data,
-            error
-        } =
-            await supabaseClient
-            .from('propostas')
-            .select('nome,cpf,status,created_at')
-            .eq('status','Nova')
-            .order(
-                'created_at',
-                {
-                    ascending:false
-                }
-            );
-
-        if(error){
-
-            alert(
-                'Erro ao carregar notificações.'
-            );
-
-            return;
-        }
-
-
-        if(!data || data.length === 0){
-
-            alert(
-                '🔔 Não há propostas aguardando análise.'
-            );
-
-            return;
-        }
-
-
-        const texto =
-            data
-            .map(
-                (item,index) =>
-                    `${index+1}. ${item.nome} - CPF ${item.cpf}`
-            )
-            .join('\n');
-
-
-        alert(
-            `🔔 PROPOSTAS AGUARDANDO ANÁLISE\n\n${texto}`
-        );
-
-    }catch(erro){
-
-        console.error(erro);
-
-        alert(
-            'Erro ao carregar notificações.'
-        );
-    }
+        const novas=(window.propostasCache||[]).filter(p=>String(p.status||'').toLowerCase()==='nova');
+        if(!novas.length){ alert('🔔 Não há novas indicações aguardando análise.'); return; }
+        const texto=novas.map((item,index)=>`${index+1}. ${item.nome} — Indicado por: ${funcionariosMapa[String(item.funcionario_id)]||'Sem funcionário'} — CPF ${item.cpf}`).join('\n');
+        alert(`🔔 NOVAS INDICAÇÕES\n\n${texto}\n\nAbra a proposta na aba Propostas para editar, aprovar ou reprovar.`);
+    }catch(e){console.error(e);alert('Erro ao carregar notificações.');}
 }
+
 
 
 /* ============================================================
