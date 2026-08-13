@@ -700,8 +700,7 @@ button{
 .alerta-geral-vencimentos .linha-alerta { margin-top:7px; padding:8px 10px; border-radius:9px; background:rgba(255,255,255,.12); font-weight:700; }
 
 </style>
-
-<style id="flashTrocasPanelCSS">.troca-admin-card{background:#fff;border:1px solid var(--borda);border-radius:14px;padding:18px;margin-bottom:12px;box-shadow:var(--sombra)}.troca-admin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.troca-admin-card small{color:var(--texto-claro)}.troca-admin-card input,.troca-admin-card select,.troca-admin-card textarea{width:100%;padding:9px;border:1px solid var(--borda);border-radius:8px}.troca-admin-card textarea{min-height:70px}.troca-admin-fotos{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.troca-admin-fotos img{width:90px;height:70px;object-fit:cover;border-radius:8px}@media(max-width:800px){.troca-admin-grid{grid-template-columns:1fr 1fr}}@media(max-width:520px){.troca-admin-grid{grid-template-columns:1fr}}</style></head>
+</head>
 
 <body>
 
@@ -1095,16 +1094,18 @@ button{
 
     </div>
 
-    <div id="conteudoTrocas" class="oculto">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:15px">
-        <div><h2 style="margin:0;color:var(--primary)">🔄 Flash Trocas</h2><p style="color:var(--texto-claro);margin:3px 0">Avalie equipamentos, aprove o valor e acompanhe a negociação.</p></div>
-        <button class="botao botao-primario" onclick="carregarTrocas()">🔄 Atualizar</button>
-      </div>
-      <div id="listaTrocas"><div class="estado"><i class="fas fa-spinner fa-spin"></i><p>Carregando trocas...</p></div></div>
-    </div>
-
     <!-- RECEBIDOS -->
-    <div id="conteudoRecebidos" class="oculto">
+    
+<div id="conteudoTrocas" class="oculto">
+ <div class="recebidos-cabecalho">
+  <div><h2>🔄 Flash Trocas</h2><p>Solicitações de equipamentos para troca por móveis.</p></div>
+  <button class="botao botao-primario" onclick="carregarTrocas()">↻ Atualizar</button>
+ </div>
+ <div id="resumoTrocas" class="recebidos-resumo"></div>
+ <div id="listaTrocas"><div class="estado">Carregando Flash Trocas...</div></div>
+</div>
+
+<div id="conteudoRecebidos" class="oculto">
         <div class="recebidos-cabecalho">
             <div>
                 <h2>💰 Pessoas a Receber</h2>
@@ -2307,16 +2308,23 @@ async function carregarPropostas(){
 ============================================================ */
 
 function mostrarAbaPainel(aba){
-    const propostas=document.getElementById('conteudoPropostas');
-    const recebidos=document.getElementById('conteudoRecebidos');
-    const trocas=document.getElementById('conteudoTrocas');
-    const bp=document.getElementById('abaPropostas'),br=document.getElementById('abaRecebidos'),bt=document.getElementById('abaTrocas');
-    propostas.classList.toggle('oculto',aba!=='propostas');
-    recebidos.classList.toggle('oculto',aba!=='recebidos');
-    trocas.classList.toggle('oculto',aba!=='trocas');
-    bp.classList.toggle('ativa',aba==='propostas'); br.classList.toggle('ativa',aba==='recebidos'); bt.classList.toggle('ativa',aba==='trocas');
-    if(aba==='recebidos') renderizarRecebidos(window.propostasCache||[]);
-    if(aba==='trocas') carregarTrocas();
+
+    const propostas = document.getElementById('conteudoPropostas');
+    const recebidos = document.getElementById('conteudoRecebidos');
+    const trocas = document.getElementById('conteudoTrocas');
+    const btnPropostas = document.getElementById('abaPropostas');
+    const btnRecebidos = document.getElementById('abaRecebidos');
+    const btnTrocas = document.getElementById('abaTrocas');
+    const mostrarRecebidos = aba === 'recebidos';
+    const mostrarTrocas = aba === 'trocas';
+    propostas.classList.toggle('oculto', mostrarRecebidos || mostrarTrocas);
+    recebidos.classList.toggle('oculto', !mostrarRecebidos);
+    trocas.classList.toggle('oculto', !mostrarTrocas);
+    btnPropostas.classList.toggle('ativa', !mostrarRecebidos && !mostrarTrocas);
+    btnRecebidos.classList.toggle('ativa', mostrarRecebidos);
+    btnTrocas.classList.toggle('ativa', mostrarTrocas);
+    if(mostrarRecebidos) renderizarRecebidos(window.propostasCache || []);
+    if(mostrarTrocas) carregarTrocas();
 }
 
 function cobrarParcelaWhatsApp(id, numeroParcela, valorParcela, vencimento){
@@ -4240,6 +4248,28 @@ function formatarData(data){
 }
 
 
+
+/* ============================================================
+   FLASH TROCAS
+============================================================ */
+async function carregarTrocas(){
+ const lista=document.getElementById('listaTrocas'), resumo=document.getElementById('resumoTrocas');
+ if(!lista)return;
+ lista.innerHTML='<div class="estado"><i class="fas fa-spinner fa-spin"></i><p>Carregando Flash Trocas...</p></div>';
+ try{
+  const {data,error}=await supabaseClient.from('flash_trocas').select('*').order('created_at',{ascending:false});
+  if(error) throw error;
+  const rows=data||[];
+  resumo.innerHTML=`<div><strong>${rows.length}</strong><span>Total de solicitações</span></div><div><strong>${rows.filter(x=>x.status==='Nova').length}</strong><span>Novas</span></div><div><strong>${rows.filter(x=>x.status==='Em avaliação').length}</strong><span>Em avaliação</span></div><div><strong>${rows.filter(x=>x.status==='Aprovada').length}</strong><span>Aprovadas</span></div>`;
+  if(!rows.length){lista.innerHTML='<div class="estado"><p>Nenhuma solicitação de Flash Trocas ainda.</p></div>';return;}
+  lista.innerHTML=rows.map(t=>`<div class="cartao" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap"><div><h3 style="font-size:18px;font-weight:800">${escapeHTML(t.nome)}</h3><p style="color:#64748b">${escapeHTML(t.tipo_equipamento)} • ${escapeHTML(t.marca_modelo)} • ${escapeHTML(t.cidade)}</p></div><select class="campo" style="max-width:210px" onchange="atualizarTrocaStatus('${t.id}',this.value)"><option ${t.status==='Nova'?'selected':''}>Nova</option><option ${t.status==='Em avaliação'?'selected':''}>Em avaliação</option><option ${t.status==='Aprovada'?'selected':''}>Aprovada</option><option ${t.status==='Negociação'?'selected':''}>Negociação</option><option ${t.status==='Concluída'?'selected':''}>Concluída</option><option ${t.status==='Recusada'?'selected':''}>Recusada</option></select></div><div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;font-size:14px"><div><b>WhatsApp:</b> ${escapeHTML(t.telefone)}</div><div><b>Estimativa:</b> ${moedaPainel(t.valor_estimado)}</div><div><b>Valor aprovado:</b> ${moedaPainel(t.valor_avaliado)}</div><div><b>Móveis:</b> ${escapeHTML(t.moveis_interesse)}</div></div><div style="margin-top:12px"><input id="tv_${t.id}" class="campo" value="${escapeAttr(t.valor_avaliado??'')}" placeholder="Valor avaliado"><input id="to_${t.id}" class="campo" value="${escapeAttr(t.observacoes??'')}" placeholder="Observação para o cliente"><button class="botao botao-sucesso" onclick="salvarTroca('${t.id}')">💾 Salvar avaliação</button> <a class="botao botao-primario" target="_blank" href="consultar-troca.html?id=${encodeURIComponent(t.id)}">👁️ Ver cliente</a></div></div>`).join('');
+ }catch(e){console.error(e);lista.innerHTML='<div class="estado"><p>Erro ao carregar Flash Trocas: '+escapeHTML(e.message)+'</p></div>';}
+}
+function moedaPainel(v){return v===null||v===undefined||v===''?'-':Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
+function escapeAttr(v){return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+async function atualizarTrocaStatus(id,status){const {error}=await supabaseClient.from('flash_trocas').update({status}).eq('id',id);if(error)alert('Erro: '+error.message);else carregarTrocas();}
+async function salvarTroca(id){const valor=document.getElementById('tv_'+id).value;const obs=document.getElementById('to_'+id).value;const {error}=await supabaseClient.from('flash_trocas').update({valor_avaliado:valor?Number(valor):null,observacoes:obs}).eq('id',id);if(error)alert('Erro ao salvar: '+error.message);else{alert('Avaliação salva.');carregarTrocas();}}
+
 /* ============================================================
    TEMPO REAL
 ============================================================ */
@@ -4293,8 +4323,8 @@ function ativarTempoReal(){
 
 // Atualiza o painel a cada minuto para manter prazo e alerta de 3 dias sincronizados.
 setInterval(() => {
-    if (!document.hidden) carregarPropostas();
-}, 60000);
+    if (!document.hidden) { carregarPropostas(); if(document.getElementById('conteudoTrocas') && !document.getElementById('conteudoTrocas').classList.contains('oculto')) carregarTrocas(); }
+}, 30000);
 
 document
     .getElementById('senha')
@@ -4308,39 +4338,6 @@ document
 
         }
     );
-
-
-/* ===== FLASH TROCAS ADMIN ===== */
-async function carregarTrocas(){
- const el=document.getElementById('listaTrocas'); if(!el)return; el.innerHTML='<div class="estado"><i class="fas fa-spinner fa-spin"></i><p>Carregando trocas...</p></div>';
- const {data,error}=await supabaseClient.from('flash_trocas').select('*').order('created_at',{ascending:false});
- if(error){el.innerHTML='<div class="estado"><p>Erro ao carregar Flash Trocas: '+escapeHTML(error.message)+'</p></div>';return}
- if(!data||!data.length){el.innerHTML='<div class="estado"><p>Nenhuma solicitação de troca recebida ainda.</p></div>';return}
- el.innerHTML=data.map(t=>`<div class="troca-admin-card">
-  <div style="display:flex;justify-content:space-between;gap:10px;align-items:start;flex-wrap:wrap"><div><h3 style="margin:0;color:var(--primary)">🔄 ${escapeHTML(t.codigo||'Sem código')}</h3><p style="margin:3px 0"><b>${escapeHTML(t.nome||'')}</b> • ${escapeHTML(t.telefone||'')} • ${escapeHTML(t.cidade||'')}</p></div><small>${t.created_at?new Date(t.created_at).toLocaleString('pt-BR'):''}</small></div>
-  <div class="troca-admin-grid" style="margin-top:12px">
-   <div><small>Equipamento</small><div><b>${escapeHTML([t.tipo_equipamento,t.marca,t.modelo].filter(Boolean).join(' • '))}</b></div></div>
-   <div><small>Conservação</small><div><b>${escapeHTML(t.conservacao||'')}</b></div></div>
-   <div><small>Valor estimado</small><div><b>R$ ${Number(t.valor_estimado||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</b></div></div>
-   <div><small>Móveis</small><div><b>${escapeHTML(t.moveis_desejados||'')}</b></div></div>
-  </div>
-  <div class="troca-admin-grid" style="margin-top:12px">
-   <div><label>Status</label><select id="tstatus_${t.id}"><option>Nova</option><option>Em avaliação</option><option>Aprovada</option><option>Negociação</option><option>Concluída</option><option>Recusada</option></select></div>
-   <div><label>Valor avaliado</label><input id="tvalor_${t.id}" type="number" step="0.01" value="${Number(t.valor_avaliado||0)}"></div>
-   <div><label>Valor dos móveis</label><input id="tmoveis_${t.id}" type="number" step="0.01" value="${Number(t.valor_moveis||0)}"></div>
-   <div><label>Saldo da negociação</label><input id="tsaldo_${t.id}" type="number" step="0.01" value="${Number(t.saldo_negociacao||0)}"></div>
-  </div>
-  <div style="margin-top:12px"><label>Observação para o cliente</label><textarea id="tobs_${t.id}">${escapeHTML(t.observacao||'')}</textarea></div>
-  <div class="troca-admin-fotos">${[t.foto_1,t.foto_2,t.foto_3].filter(Boolean).map(u=>`<a href="${escapeHTML(u)}" target="_blank"><img src="${escapeHTML(u)}" alt="Foto"></a>`).join('')}</div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="botao botao-sucesso" onclick="salvarTroca('${t.id}')">💾 Salvar avaliação</button><a class="botao botao-secundario" href="consultar-troca.html?codigo=${encodeURIComponent(t.codigo||'')}" target="_blank">📊 Ver como cliente</a><a class="botao botao-primario" target="_blank" href="https://wa.me/55${String(t.telefone||'').replace(/\D/g,'')}">💬 WhatsApp</a></div>
- </div>`).join('');
- data.forEach(t=>{const s=document.getElementById('tstatus_'+t.id);if(s)s.value=t.status||'Nova'})
-}
-async function salvarTroca(id){
- const status=document.getElementById('tstatus_'+id).value, valor=Number(document.getElementById('tvalor_'+id).value)||0, moveis=Number(document.getElementById('tmoveis_'+id).value)||0, saldo=Number(document.getElementById('tsaldo_'+id).value)||0, obs=document.getElementById('tobs_'+id).value.trim();
- const {error}=await supabaseClient.from('flash_trocas').update({status,valor_avaliado:valor,valor_moveis:moveis,saldo_negociacao:saldo,observacao:obs,updated_at:new Date().toISOString()}).eq('id',id);
- if(error){alert('Erro ao salvar: '+error.message);return} alert('✅ Avaliação atualizada. O cliente verá a nova etapa no acompanhamento.'); carregarTrocas();
-}
 
 </script>
 
