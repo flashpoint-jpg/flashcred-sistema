@@ -953,7 +953,7 @@ button{
                     class="campo"
                     min="0"
                     step="0.01"
-                    oninput="atualizarCalculo(document.getElementById('formNovo'))"
+                    oninput="atualizarCalculo(document.getElementById('formNovo')); gerarDatasAutomaticas(document.getElementById('formNovo'))"
                 >
 
             </div>
@@ -3842,9 +3842,7 @@ function sincronizarDatasEdicao(id){
     const intervaloInput = document.getElementById(`edit_intervalo_${id}`);
     const lista = document.getElementById(`edit_lista_datas_${id}`);
 
-    if(!qtdInput || !intervaloInput || !lista){
-        return;
-    }
+    if(!qtdInput || !intervaloInput || !lista) return;
 
     const qtd = Math.min(48, Math.max(1, Number(qtdInput.value) || 1));
     qtdInput.value = qtd;
@@ -3854,29 +3852,31 @@ function sincronizarDatasEdicao(id){
         .map(input => input.value)
         .filter(Boolean);
 
-    // Mantém as datas já digitadas quando possível e só completa/remove o necessário.
-    const datas = atuais.slice(0, qtd);
+    // Mantém somente a primeira data como ponto inicial e recria o cronograma.
+    // Assim, ao mudar 9 para 8, ficam exatamente 8 datas; ao mudar o intervalo,
+    // todas as datas seguintes são recalculadas.
+    let datas = [];
+    let primeira = atuais[0];
 
-    if(datas.length === 0){
-        const primeira = adicionarDias(new Date(), intervalo);
-        datas.push(dataLocalISO(primeira));
+    if(!primeira){
+        primeira = dataLocalISO(adicionarDias(new Date(), intervalo));
     }
+
+    datas.push(primeira);
 
     while(datas.length < qtd){
         const base = new Date(datas[datas.length - 1] + 'T00:00:00');
-        const proxima = adicionarDias(base, intervalo);
-        datas.push(dataLocalISO(proxima));
+        datas.push(dataLocalISO(adicionarDias(base, intervalo)));
     }
 
-    lista.innerHTML = datas.map(dt => `
-        <input
-            type="date"
-            name="data_parcela"
-            value="${escapeHTML(dt)}"
-            class="campo"
-        >
+    lista.innerHTML = datas.map((dt, index) => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <strong style="min-width:24px">${index + 1}ª</strong>
+            <input type="date" name="data_parcela" value="${escapeHTML(dt)}" class="campo" style="flex:1">
+        </div>
     `).join('');
 }
+
 
 
 async function salvarEdicao(id){
