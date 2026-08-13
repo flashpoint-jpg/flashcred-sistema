@@ -17,7 +17,7 @@ const SUPABASE_KEY='sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 let token=null,state=null;
 const brl=v=>Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;N'[m]}));
+const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
 // Função de renderização básica para evitar erros ao carregar o dashboard
 function render() {
@@ -49,7 +49,7 @@ async function entrar(){
         const {data,error}=await db.rpc('funcionario_login',{p_usuario:u,p_senha:s});
         if(error)throw error;
         
-        // Trata o retorno caso venha dentro de um array ou objeto direto
+        // Trata o retorno caso venha dentro de um array ou objeto direto do Supabase
         const resData = Array.isArray(data) ? data[0] : data;
         const tokenVal = resData?.token || resData?.access_token || (typeof data === 'string' ? data : null);
         
@@ -79,13 +79,12 @@ async function carregar(){
         atualizarSimulador();
     }catch(e){
         document.getElementById('erro').textContent=e.message||'Não foi possível carregar o painel.';
-        // Se houver falha ao carregar com o token salvo, limpa e mostra o login novamente
         sair();
     }
 }
 
 function cfgNum(keys,fallback){const objs=[state?.configuracao,state?.config,state?.parametros,state?.regras,state?.funcionario,state||{}];for(const o of objs)for(const k of keys){if(o&&o[k]!==undefined&&o[k]!==null&&o[k]!==''){const n=Number(o[k]);if(Number.isFinite(n))return n}}return fallback}
-function config(){return{entrada:Math.max(0,cfgNum(['percentual_entrada','entrada_percentual','entrada_padrao','percentualEntrada'],40)),juros:Math.max(10,cfgNum(['juros_mensal','juros','taxa_juros','juros_padrao'],10)),parcelas:Math.min(12,Math.max(1,Math.round(cfgNum(['parcelas_padrao','parcelas','quantidade_parcelas'],12)))),dias:Math.max(1,Math.round(cfgNum(['dias_entrega','prazo_entrega','diasEntrega'],7))),comissao:Math.max(0,cfgNum(['percentual_comissao','comissao_percentual','comissao','percentualComissao'],0))}}
+function config(){return{entrada:Math.max(0,cfgNum(['percentual_entrada','entrada_percentual','entrada_padrao','percentualEntrada'],40)),juros:Math.max(10,cfgNum(['juros_mensal','juros','taxa_juros','juros_padrao'],10)),parcelas:Math.min(12,Math.max(1,Math.round(cfgNum(['parcelas_padrao','parcelas','quantidade_parcelas'],12)))),dias:Math.max(1,Math.round(cfgNum(['dias_entrega','prazo_entrega','diasEntrega'],7)))),comissao:Math.max(0,cfgNum(['percentual_comissao','comissao_percentual','comissao','percentualComissao'],0))}}
 function aplicarConfig(){const c=config();document.getElementById('juros').value=c.juros.toFixed(c.juros%1?2:0)+'%';document.getElementById('dias').value=c.dias;const p=document.getElementById('parcelas');if(!p.value||Number(p.value)>12)p.value=c.parcelas;atualizarSimulador()}
 function price(principal,j,n){if(principal<=0||n<=0)return 0;const i=j/100;return i?principal*(i*Math.pow(1+i,n))/(Math.pow(1+i,n)-1):principal/n}
 function atualizarSimulador(){const c=config(),v=Number(document.getElementById('valor').value)||0,n=Math.min(12,Math.max(1,Number(document.getElementById('parcelas').value)||c.parcelas)),entrada=v*c.entrada/100,fin=Math.max(0,v-entrada),par=price(fin,c.juros,n),nome=state?.funcionario?.nome||state?.funcionario?.nome_completo||'Funcionário';document.getElementById('entrada').value=brl(entrada);document.getElementById('simEntrada').textContent=brl(entrada);document.getElementById('simParcela').textContent=brl(par);document.getElementById('simTotal').textContent=brl(par*n);document.getElementById('comissaoNome').textContent='Comissão de '+nome;const com=v*c.comissao/100;document.getElementById('comissaoValor').textContent=brl(com);document.getElementById('comissaoTexto').textContent=com?`Por esta venda, ${nome} vai receber aproximadamente ${brl(com)} de comissão.`:`Por esta venda, a comissão será exibida quando o percentual estiver configurado no Painel Administrativo.`}
