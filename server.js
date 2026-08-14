@@ -5,27 +5,22 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORTA = process.env.PORT || 3000;
 
-// ✅ CONFIGURAÇÕES GERAIS
 app.use(express.json());
 app.use(express.static(__dirname + '/public'));
 
-// ✅ PÁGINA INICIAL AUTOMÁTICA
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/public/index.html');
 });
 
-// ✅ SUPABASE
 const SUPABASE_URL = 'https://rgcclordmqjmwuzrrfbd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_g5Tcimge2aiMX8JE3ml1dg_6zbR3uXi';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ✅ MERCADO PAGO — VERSÃO NOVA CORRIGIDA
 const mpConfig = new MercadoPagoConfig({
     accessToken: 'APP_USR-8158139097874832-072720-d200da044f05a1dd8eb75f90e0551431-18499471'
 });
 const pagamentoServico = new Payment(mpConfig);
 
-// ✅ ROTA DE GERA PIX — LIMPEZA DE VALOR E TUDO
 app.post('/api/gerar-pix', async (req, res) => {
     try {
         const valorLimpo = Number(
@@ -38,10 +33,8 @@ app.post('/api/gerar-pix', async (req, res) => {
             return res.json({sucesso: false, mensagem: 'Valor inválido'});
         }
 
-        // ✅ Identifica a que proposta/parcela esse Pix pertence.
-        // Isso é o que o webhook vai usar depois para saber o que atualizar no Supabase.
         const propostaId = req.body.proposta_id || null;
-        const tipo = req.body.tipo || 'entrada'; // 'entrada' ou 'parcela'
+        const tipo = req.body.tipo || 'entrada'; 
         const numeroParcela = req.body.numero_parcela || null;
 
         let externalReference = null;
@@ -51,8 +44,6 @@ app.post('/api/gerar-pix', async (req, res) => {
                 : `entrada:${propostaId}`;
         }
 
-        // ✅ URL pública deste servidor, montada a partir da própria requisição.
-        // Assim funciona em qualquer domínio/deploy sem precisar hardcodar nada.
         const notificationUrl = `${req.protocol}://${req.get('host')}/api/webhook-mercadopago`;
 
         const pagamento = await pagamentoServico.create({
@@ -77,11 +68,8 @@ app.post('/api/gerar-pix', async (req, res) => {
     }
 });
 
-// ✅ WEBHOOK DO MERCADO PAGO — recebe a notificação de pagamento e dá baixa na proposta
-// Aceita GET e POST porque o Mercado Pago pode chamar de formas diferentes dependendo da config.
 app.all('/api/webhook-mercadopago', async (req, res) => {
     try {
-        // O ID do pagamento pode vir no corpo (notificação nova) ou na query (formato antigo/IPN)
         const paymentId =
             req.body?.data?.id ||
             req.body?.id ||
@@ -90,16 +78,13 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
 
         const tipoNotificacao = req.body?.type || req.body?.topic || req.query.type || req.query.topic;
 
-        // Só nos interessa notificação de pagamento
         if(!paymentId || (tipoNotificacao && tipoNotificacao !== 'payment')) {
             return res.sendStatus(200);
         }
 
-        // ✅ Busca o pagamento completo direto na API do Mercado Pago (nunca confiar só no payload recebido)
         const pagamento = await pagamentoServico.get({ id: paymentId });
 
         if(pagamento.status !== 'approved') {
-            // Pix pendente, rejeitado, cancelado etc — não faz nada ainda
             return res.sendStatus(200);
         }
 
@@ -115,7 +100,6 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
         }
 
         if(tipo === 'entrada') {
-
             const { error } = await supabase
                 .from('propostas')
                 .update({
@@ -129,10 +113,7 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
             } else {
                 console.log(`✅ Entrada da proposta ${propostaId} confirmada via Pix.`);
             }
-
         } else if(tipo === 'parcela' && numeroParcela) {
-
-            // Busca o valor atual de parcelas_pagas para não sobrescrever com um número menor
             const { data: propostaAtual, error: erroBusca } = await supabase
                 .from('propostas')
                 .select('parcelas_pagas')
@@ -162,13 +143,11 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
         res.sendStatus(200);
 
     } catch (erro) {
-        // Sempre responde 200 para o Mercado Pago não ficar reenviando em loop —
-        // o erro real fica registrado no log do servidor para investigação.
         console.error('ERRO NO WEBHOOK:', erro);
         res.sendStatus(200);
     }
 });
 
 app.listen(PORTA, () => {
-    console.log('✅ FlashCred rodando perfeitamente!');
+    console.log(`✅ FlashCred rodando na porta ${PORTA}!`);
 });
