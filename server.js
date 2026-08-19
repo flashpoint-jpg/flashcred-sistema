@@ -86,6 +86,27 @@ async function enviarPushPara(papel, referencia, titulo, corpo, dadosExtras) {
     }
 }
 
+
+// Registra toda tentativa de webhook do Mercado Pago — mesmo as que não resultam
+// em nada (pagamento ainda pendente, proposta não encontrada, etc). Isso permite
+// diagnosticar de verdade se um pagamento "sumiu" por falha do webhook ou se
+// simplesmente nunca passou pelo Mercado Pago (ex: Pix pago fora do sistema).
+async function registrarLogWebhook({ paymentId, statusMp, referencia, propostaId, tipo, resultado, detalhe }) {
+    try {
+        await supabase.from('log_webhook_pagamentos').insert({
+            payment_id: paymentId ? String(paymentId) : null,
+            status_mercadopago: statusMp || null,
+            external_reference: referencia || null,
+            proposta_id: propostaId ? String(propostaId) : null,
+            tipo: tipo || null,
+            resultado,
+            detalhe: detalhe || null
+        });
+    } catch(erroLog) {
+        console.warn('⚠️ Não foi possível registrar o log do webhook:', erroLog.message);
+    }
+}
+
 // ✅ REGISTRAR/REMOVER INSCRIÇÃO DE NOTIFICAÇÃO PUSH
 app.post('/api/push/registrar', async (req, res) => {
     try {
@@ -235,6 +256,11 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
 
         // Só nos interessa notificação de pagamento
         if(!paymentId || (tipoNotificacao && tipoNotificacao !== 'payment')) {
+            await registrarLogWebhook({
+                paymentId, tipo: tipoNotificacao,
+                resultado: 'ignorado',
+                detalhe: !paymentId ? 'Chamada sem payment id' : `Tipo de notificação irrelevante: ${tipoNotificacao}`
+            });
             return res.sendStatus(200);
         }
 
@@ -243,6 +269,11 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
 
         if(pagamento.status !== 'approved') {
             // Pix pendente, rejeitado, cancelado etc — não faz nada ainda
+            await registrarLogWebhook({
+                paymentId, statusMp: pagamento.status, referencia: pagamento.external_reference,
+                resultado: 'nao_aprovado',
+                detalhe: `Status do pagamento: ${pagamento.status}`
+            });
             return res.sendStatus(200);
         }
 
@@ -254,6 +285,11 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
 
         if(!propostaId) {
             console.warn('⚠️ Pagamento aprovado sem external_reference reconhecível:', paymentId);
+            await registrarLogWebhook({
+                paymentId, statusMp: pagamento.status, referencia,
+                resultado: 'sem_referencia',
+                detalhe: 'Pagamento aprovado mas sem external_reference reconhecível — não veio do QR gerado pelo sistema.'
+            });
             return res.sendStatus(200);
         }
 
@@ -268,6 +304,11 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
 
         if(erroProposta || !proposta) {
             console.error('❌ Não foi possível carregar a proposta', propostaId, erroProposta);
+            await registrarLogWebhook({
+                paymentId, statusMp: pagamento.status, referencia, propostaId, tipo,
+                resultado: 'proposta_nao_encontrada',
+                detalhe: erroProposta?.message || 'Proposta não encontrada no banco.'
+            });
             return res.sendStatus(200);
         }
 
@@ -283,8 +324,19 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
 
             if(error) {
                 console.error('❌ Erro ao atualizar entrada da proposta', propostaId, error);
+                await registrarLogWebhook({
+                    paymentId, statusMp: pagamento.status, referencia, propostaId, tipo,
+                    resultado: 'erro_ao_atualizar',
+                    detalhe: error.message
+                });
             } else {
                 console.log(`✅ Entrada da proposta ${propostaId} confirmada via Pix.`);
+
+                await registrarLogWebhook({
+                    paymentId, statusMp: pagamento.status, referencia, propostaId, tipo,
+                    resultado: 'sucesso',
+                    detalhe: `Entrada confirmada para ${proposta.nome || 'cliente'}.`
+                });
 
                 // Cliente se inscreve pelo CPF — é isso que tem que ser usado aqui, não o ID da proposta.
                 enviarPushPara('cliente', proposta.cpf, '✅ Entrada confirmada!', 'Seu pagamento foi recebido. Acompanhe o andamento pelo app.', { url: '/consultar.html' });
@@ -320,8 +372,19 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
 
             if(erroUpdate) {
                 console.error('❌ Erro ao atualizar parcela da proposta', propostaId, erroUpdate);
+                await registrarLogWebhook({
+                    paymentId, statusMp: pagamento.status, referencia, propostaId, tipo,
+                    resultado: 'erro_ao_atualizar',
+                    detalhe: erroUpdate.message
+                });
             } else {
                 console.log(`✅ Parcela ${numeroParcela} da proposta ${propostaId} confirmada via Pix.`);
+
+                await registrarLogWebhook({
+                    paymentId, statusMp: pagamento.status, referencia, propostaId, tipo,
+                    resultado: 'sucesso',
+                    detalhe: `Parcela ${numeroParcela} confirmada para ${proposta.nome || 'cliente'}.`
+                });
 
                 enviarPushPara('cliente', proposta.cpf, '✅ Parcela paga!', `Sua ${numeroParcela}ª parcela foi confirmada. Seu limite já foi atualizado.`, { url: '/consultar.html' });
                 enviarPushPara('admin', 'admin', '💵 Parcela Pix confirmada', `${proposta.nome || 'Cliente'} — pagou a ${numeroParcela}ª parcela da proposta #${propostaId}.`, { url: '/painel.html' });
@@ -336,6 +399,13 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
                     );
                 }
             }
+        } else {
+            // tipo diferente de 'entrada'/'parcela', ou 'parcela' sem número — não bate com nada tratado.
+            await registrarLogWebhook({
+                paymentId, statusMp: pagamento.status, referencia, propostaId, tipo,
+                resultado: 'tipo_nao_tratado',
+                detalhe: `external_reference não reconhecido pelo webhook: "${referencia}"`
+            });
         }
 
         res.sendStatus(200);
@@ -344,6 +414,12 @@ app.all('/api/webhook-mercadopago', async (req, res) => {
         // Sempre responde 200 para o Mercado Pago não ficar reenviando em loop —
         // o erro real fica registrado no log do servidor para investigação.
         console.error('ERRO NO WEBHOOK:', erro);
+        try {
+            await supabase.from('log_webhook_pagamentos').insert({
+                resultado: 'erro_inesperado',
+                detalhe: erro.message
+            });
+        } catch(_) {}
         res.sendStatus(200);
     }
 });
