@@ -608,16 +608,75 @@ async function checarVencimentosEAvisar() {
     }
 }
 
+// ✅ CHECAGEM DE ENTREGAS PRÓXIMAS (aviso pro admin quando faltam 2 dias)
+// Roda junto da checagem de vencimento de parcelas, mesma lógica de dedupe
+// (não avisa duas vezes no mesmo dia sobre a mesma entrega).
+async function checarEntregasProximasEAvisar() {
+    try {
+        const { data: propostas, error } = await supabase
+            .from('propostas')
+            .select('id, nome, data_preferida_entrega, contrato_assinado, entrada_paga, entrega_concluida')
+            .eq('contrato_assinado', true)
+            .eq('entrada_paga', true)
+            .eq('entrega_concluida', false)
+            .not('data_preferida_entrega', 'is', null);
+
+        if(error) {
+            console.error('❌ Erro ao buscar propostas para checagem de entregas próximas:', error);
+            return;
+        }
+
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+
+        for(const proposta of (propostas || [])) {
+            const dataEntrega = new Date(proposta.data_preferida_entrega + 'T00:00:00');
+            const diasRestantes = Math.round((dataEntrega - hoje) / 86400000);
+
+            // Avisa quando faltam exatamente 2 dias ou menos (inclui hoje/atrasada),
+            // mas não spamma pra entregas muito distantes no futuro.
+            if(diasRestantes > 2) continue;
+
+            const { error: erroLog } = await supabase
+                .from('push_avisos_entrega')
+                .insert({ proposta_id: String(proposta.id) });
+
+            if(erroLog) continue; // já avisado hoje sobre essa entrega — pula
+
+            let titulo, corpo;
+            if(diasRestantes < 0) {
+                titulo = '⚠️ Entrega atrasada';
+                corpo = `${proposta.nome || 'Cliente'} — a data agendada já passou.`;
+            } else if(diasRestantes === 0) {
+                titulo = '🔴 Entrega é hoje!';
+                corpo = `${proposta.nome || 'Cliente'} — entrega agendada para hoje.`;
+            } else {
+                titulo = '⏰ Entrega em breve';
+                corpo = `${proposta.nome || 'Cliente'} — faltam ${diasRestantes} dia(s) para a entrega agendada.`;
+            }
+
+            await enviarPushPara('admin', 'admin', titulo, corpo, { url: '/painel.html' });
+        }
+
+    } catch(erro) {
+        console.error('❌ Erro na checagem de entregas próximas:', erro);
+    }
+}
+
 // Rota que um cron externo pode chamar (ex: cron-job.org, grátis) uma vez por dia.
 // Aceita GET e POST — assim não importa como o serviço de cron está configurado.
 app.all('/api/push/checar-vencimentos', async (req, res) => {
     await checarVencimentosEAvisar();
+    await checarEntregasProximasEAvisar();
     res.json({ sucesso: true });
 });
 
 // Roda sozinho a cada 6h enquanto o servidor estiver ativo (rede de segurança —
 // não substitui o cron externo no plano gratuito, que "dorme" o servidor).
-setInterval(checarVencimentosEAvisar, 6 * 60 * 60 * 1000);
+setInterval(() => {
+    checarVencimentosEAvisar();
+    checarEntregasProximasEAvisar();
+}, 6 * 60 * 60 * 1000);
 
 // Reconciliação também roda sozinha, a cada 1h, além de poder ser chamada
 // manualmente/via cron externo pela rota /api/reconciliar-pagamentos.
