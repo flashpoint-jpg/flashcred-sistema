@@ -45,6 +45,16 @@
   .mensagem-login p{margin:0;font-size:14px;color:#92400E;line-height:1.6;}
   .mensagem-login strong{color:#78350F;}
 
+  .sobre-servico{background:linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%);border:1px solid #6EE7B7;border-radius:14px;padding:18px;margin-bottom:20px;}
+  .sobre-servico h3{margin:0 0 12px;font-size:15px;color:#065F46;text-align:center;font-weight:700;}
+  .sobre-servico p{margin:8px 0;font-size:13px;line-height:1.7;color:#042F2E;}
+  .sobre-servico .destaque{font-weight:600;color:#065F46;}
+  .divisoria{height:1px;background:#6EE7B7;margin:16px 0;opacity:0.5;}
+  .beneficios{margin-top:12px;display:flex;flex-direction:column;gap:10px;}
+  .beneficio-item{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.5;}
+  .beneficio-item span{font-size:16px;flex-shrink:0;}
+  .beneficio-titulo{font-weight:600;margin:14px 0 6px;color:#065F46;font-size:14px;}
+
   .usuario-logado{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.1);border-radius:12px;padding:10px 14px;margin-top:10px;}
   .usuario-logado .dados{text-align:left;}
   .usuario-logado .nome{color:var(--flash-branco);font-weight:600;font-size:14px;}
@@ -68,6 +78,7 @@
   .cartao{background:var(--painel);border:1px solid var(--linha);border-radius:16px;padding:22px;margin-bottom:16px;box-shadow:0 4px 12px rgba(0,0,0,0.05);}
   .cartao h2{font-family:'Archivo Black';font-size:18px;margin:0 0 18px;text-transform:uppercase;letter-spacing:0.5px;color:var(--texto);text-align:center;}
   .cartao h3{font-size:15px;margin:0 0 12px;color:var(--texto);}
+  .opcional{font-size:12px;color:var(--texto-claro);font-style:italic;}
 
   label{display:block;font-size:13px;font-weight:600;color:var(--texto);margin:14px 0 6px;}
   label:first-of-type{margin-top:0;}
@@ -82,7 +93,8 @@
   .btn-secundario:hover{background:var(--painel-alt);}
   .btn-pequeno{width:auto;padding:10px 16px;font-size:13px;margin-top:0;border-radius:10px;}
 
-  .destino-item{background:var(--painel-alt);border-radius:10px;padding:14px;margin-top:10px;position:relative;}
+  .destino-item{background:var(--painel-alt);border-radius:10px;padding:14px;margin-top:10px;position:relative;border:2px solid transparent;}
+  .destino-item.opcional{border-style:dashed;border-color:var(--linha);}
   .destino-item .remover{position:absolute;top:10px;right:10px;background:var(--flash-erro);color:white;border:none;width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
   .adicionar-destino{margin-top:12px;display:flex;gap:8px;}
   .adicionar-destino button{flex:1;}
@@ -92,6 +104,7 @@
   .valor-resumo .linha.total{border-top:1px dashed #FCD34D;margin-top:8px;padding-top:12px;font-weight:bold;font-size:18px;}
   .valor-resumo .rotulo{color:var(--texto-claro);}
   .valor-resumo .preco{font-weight:bold;color:var(--flash-laranja);}
+  .subtotal-destino{margin-top:8px;padding:8px 12px;background:#ECFDF5;border-radius:8px;font-weight:bold;color:#065F46;}
 
   .pedido-item{border:1px solid var(--linha);border-radius:12px;padding:16px;margin-bottom:12px;background:var(--painel);}
   .pedido-item .cabecalho{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
@@ -130,16 +143,18 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const VEICULOS = {
-  bicicleta:{label:'Bicicleta', emoji:'🚲', base:4, km:1.2},
-  moto:{label:'Moto', emoji:'🏍️', base:6, km:2.0},
-  carro:{label:'Carro', emoji:'🚗', base:10, km:3.0},
-  van:{label:'Van', emoji:'🚐', base:18, km:4.5}
+  bicicleta:{label:'Bicicleta', emoji:'🚲', base:4.00, km:1.20},
+  moto:{label:'Moto', emoji:'🏍️', base:6.00, km:2.00},
+  carro:{label:'Carro', emoji:'🚗', base:10.00, km:3.00},
+  van:{label:'Van', emoji:'🚐', base:18.00, km:4.50}
 };
 const TIPOS_ENTREGA = {
   padrao:   { label:'Padrão',    desc:'Entrega no prazo', multiplicador:1.00 },
   agrupado: { label:'Agrupado',  desc:'Mais econômico', multiplicador:0.85 },
   flash:    { label:'⚡ Flash',   desc:'Prioridade máxima', multiplicador:1.60 }
 };
+
+const CIDADE_PADRAO = 'Muzambinho - MG e região';
 
 let estado = {
   tela: 'login',
@@ -148,7 +163,8 @@ let estado = {
   usuarioLogado: null,
   pedido: {
     origem: '',
-    destinos: [],
+    destinoPrincipal: '',
+    destinosExtras: [],
     veiculo: 'moto',
     tipoEntrega: 'padrao',
     valorTotal: 0
@@ -237,7 +253,7 @@ async function fazerLogin(){
 function sair(){
   estado.usuarioLogado = null;
   estado.tela = 'login';
-  estado.pedido.destinos = [];
+  estado.pedido = { origem: '', destinoPrincipal: '', destinosExtras: [], veiculo: 'moto', tipoEntrega: 'padrao', valorTotal: 0 };
   salvarSessao();
   renderizar();
 }
@@ -255,7 +271,7 @@ async function cadastrar(){
     endereco: document.getElementById('cl_endereco')?.value.trim() || null,
     numero: document.getElementById('cl_numero')?.value.trim() || null,
     bairro: document.getElementById('cl_bairro')?.value.trim() || null,
-    cidade: document.getElementById('cl_cidade')?.value.trim() || 'Muzambinho - MG',
+    cidade: document.getElementById('cl_cidade')?.value.trim() || CIDADE_PADRAO,
     cep: document.getElementById('cl_cep')?.value.trim() || null,
     email: document.getElementById('cl_email')?.value.trim() || null,
     login: document.getElementById('cl_login').value.trim(),
@@ -273,21 +289,23 @@ async function cadastrar(){
   renderizar();
 }
 
-function adicionarDestino(){
-  if(estado.pedido.destinos.length >= 20){ alert('⚠️ Limite de 20 destinos atingido!'); return; }
-  estado.pedido.destinos.push({ endereco: '', valor: 0, distancia: 0 });
+function adicionarDestinoExtra(){
+  if(estado.pedido.destinosExtras.length >= 19){
+    alert('⚠️ Limite de 20 destinos no total!'); return;
+  }
+  estado.pedido.destinosExtras.push({ endereco: '', distancia: 0, valor: 0 });
   recalcularValorTotal();
   renderizar();
 }
 
-function removerDestino(indice){
-  estado.pedido.destinos.splice(indice, 1);
+function removerDestinoExtra(indice){
+  estado.pedido.destinosExtras.splice(indice, 1);
   recalcularValorTotal();
   renderizar();
 }
 
-function atualizarDestino(indice, campo, valor){
-  estado.pedido.destinos[indice][campo] = valor;
+function atualizarDestinoExtra(indice, campo, valor){
+  estado.pedido.destinosExtras[indice][campo] = campo === 'distancia' ? (parseFloat(valor) || 0) : valor;
   recalcularValorTotal();
 }
 
@@ -295,25 +313,32 @@ function recalcularValorTotal(){
   const v = VEICULOS[estado.pedido.veiculo];
   const mult = TIPOS_ENTREGA[estado.pedido.tipoEntrega].multiplicador;
   let total = 0;
-  estado.pedido.destinos.forEach(d => {
+
+  estado.pedido.destinosExtras.forEach(d => {
     if(d.distancia > 0){
       d.valor = Math.round((v.base + v.km * d.distancia) * mult * 100) / 100;
       total += d.valor;
     }
   });
+
   estado.pedido.valorTotal = Math.round(total * 100) / 100;
 }
 
 async function solicitarEntrega(){
   if(!estado.usuarioLogado) return alert('Faça login primeiro!');
   if(!estado.pedido.origem.trim()) return alert('⚠️ Informe a origem!');
-  if(estado.pedido.destinos.length === 0) return alert('⚠️ Adicione pelo menos um destino!');
-  if(estado.pedido.valorTotal <= 0) return alert('⚠️ Valor total inválido!');
+  if(!estado.pedido.destinoPrincipal.trim()) return alert('⚠️ Informe o destino principal!');
+  if(estado.pedido.valorTotal <= 0) return alert('⚠️ Preencha a distância para calcular o valor!');
+
+  const todosDestinos = [
+    { endereco: estado.pedido.destinoPrincipal, distancia: 0, valor: 0 },
+    ...estado.pedido.destinosExtras
+  ];
 
   const dados = {
     cliente_id: estado.usuarioLogado.id,
     origem: estado.pedido.origem,
-    destinos: estado.pedido.destinos,
+    destinos: todosDestinos,
     veiculo: estado.pedido.veiculo,
     tipo_entrega: estado.pedido.tipoEntrega,
     valor_total: estado.pedido.valorTotal,
@@ -324,7 +349,7 @@ async function solicitarEntrega(){
   if(error){ return alert('❌ Erro ao solicitar entrega: ' + error.message); }
 
   alert('✅ Entrega solicitada com sucesso! ⚡');
-  estado.pedido = { origem: '', destinos: [], veiculo: 'moto', tipoEntrega: 'padrao', valorTotal: 0 };
+  estado.pedido = { origem: '', destinoPrincipal: '', destinosExtras: [], veiculo: 'moto', tipoEntrega: 'padrao', valorTotal: 0 };
   await carregarDadosUsuario();
 }
 
@@ -393,22 +418,81 @@ function renderizar(){
             <button class="btn btn-primario" onclick="fazerLogin()">Entrar na conta ⚡</button>
           </div>
         ` : `
+          <!-- 📋 ÁREA DE CADASTRO COM APRESENTAÇÃO COMPLETA DO SERVIÇO -->
+          <div class="sobre-servico">
+            <h3>✅ Somos 100% Legalizado e Confiável!</h3>
+            <p>
+              A <span class="destaque">Entrega Flash</span> é uma plataforma de entregas oficial, atuando em 
+              <strong>Muzambinho, MG e toda a região</strong>. Conectamos quem precisa entregar com quem faz a entrega — 
+              tudo dentro da lei, seguro e transparente.
+            </p>
+
+            <p style="font-weight:600;margin-top:14px;">📦 Como funciona?</p>
+            <p>
+              Você está em Muzambinho ou região e precisa de uma entrega? É simples assim: <strong>solicita, e nós procuramos um entregador próximo ao destino</strong> para levar até lá. Rápido, prático e sem complicação!
+            </p>
+
+            <div class="divisoria"></div>
+
+            <p class="beneficio-titulo">🎁 Para Você — Cliente / Pessoa Física:</p>
+            <div class="beneficios">
+              <div class="beneficio-item"><span>🔒</span> <strong>Plataforma legalizada</strong> — seus dados e sua entrega protegidos</div>
+              <div class="beneficio-item"><span>🚴</span> <strong>Entregador próximo</strong> — buscamos quem está perto, entrega mais rápida</div>
+              <div class="beneficio-item"><span>💰</span> <strong>Preço transparente</strong> — vê o valor antes de confirmar, sem pegadinhas</div>
+              <div class="beneficio-item"><span>⚡</span> <strong>Escolha a velocidade</strong> — padrão ou Flash, você decide</div>
+              <div class="beneficio-item"><span>📍</span> <strong>Atendemos toda a região</strong> — Muzambinho e arredores</div>
+              <div class="beneficio-item"><span>📱</span> <strong>Acompanha em tempo real</strong> — sabe onde está seu pedido</div>
+            </div>
+
+            <p class="beneficio-titulo">🏪 Para Lojista e Comércio:</p>
+            <div class="beneficios">
+              <div class="beneficio-item"><span>🚀</span> <strong>Entrega ágil para seus clientes</strong> — vendeu, entregou</div>
+              <div class="beneficio-item"><span>💸</span> <strong>Economia com entrega</strong> — paga menos do que ter frota própria</div>
+              <div class="beneficio-item"><span>⏰</span> <strong>Mais tempo pra vender</strong> — não se preocupa com transporte</div>
+              <div class="beneficio-item"><span>🛒</span> <strong>Atende mais clientes</strong> — entrega rápida = mais venda</div>
+              <div class="beneficio-item"><span>📊</span> <strong>Controle total</strong> — acompanha todas as entregas</div>
+              <div class="beneficio-item"><span>🤝</span> <strong>Parceiro de confiança</strong> — plataforma legalizada</div>
+            </div>
+
+            <p class="beneficio-titulo">🏢 Para Empresário e Empresa:</p>
+            <div class="beneficios">
+              <div class="beneficio-item"><span>✅</span> <strong>100% dentro da lei</strong> — plataforma oficial, sem risco</div>
+              <div class="beneficio-item"><span>📉</span> <strong>Reduz custos operacionais</strong> — sem frota, sem manutenção, sem funcionário fixo</div>
+              <div class="beneficio-item"><span>🔄</span> <strong>Escala conforme demanda</strong> — usa quando precisar</div>
+              <div class="beneficio-item"><span>📋</span> <strong>Gestão profissional</strong> — relatórios e controle de todas as entregas</div>
+              <div class="beneficio-item"><span>🛡️</span> <strong>Segurança jurídica</strong> — tudo registrado e documentado</div>
+              <div class="beneficio-item"><span>🌱</span> <strong>Cresce sem complicação</strong> — foca no seu negócio, a gente cuida da entrega</div>
+            </div>
+
+            <div class="divisoria"></div>
+
+            <p style="text-align:center;font-weight:600;margin-top:8px;">
+              🤝 Cadastre-se gratuitamente e comece a usar hoje mesmo!
+            </p>
+          </div>
+
           <div class="abas-cadastro">
-            <div class="aba-cadastro ${estado.tipoCadastro==='cliente'?'ativa':''}" onclick="trocarTipoCadastro('cliente')">🧑 Cliente</div>
+            <div class="aba-cadastro ${estado.tipoCadastro==='cliente'?'ativa':''}" onclick="trocarTipoCadastro('cliente')">🧑 Cliente / Pessoa</div>
+            <div class="aba-cadastro ${estado.tipoCadastro==='lojista'?'ativa':''}" onclick="trocarTipoCadastro('lojista')">🏪 Lojista</div>
+            <div class="aba-cadastro ${estado.tipoCadastro==='empresario'?'ativa':''}" onclick="trocarTipoCadastro('empresario')">🏢 Empresário</div>
             <div class="aba-cadastro ${estado.tipoCadastro==='entregador'?'ativa':''}" onclick="trocarTipoCadastro('entregador')">🏍️ Entregador</div>
           </div>
           <div class="cartao">
-            <h2>Cadastro — ${estado.tipoCadastro === 'cliente' ? 'Cliente' : 'Entregador'}</h2>
-            <label>Nome Completo *</label>
-            <input type="text" id="cl_nome" placeholder="Seu nome completo">
-            <label>CPF</label>
-            <input type="text" id="cl_cpf" placeholder="000.000.000-00" maxlength="14">
-            <label>WhatsApp</label>
+            <h2>Cadastro — ${
+              estado.tipoCadastro === 'cliente' ? 'Cliente / Pessoa Física' :
+              estado.tipoCadastro === 'lojista' ? 'Lojista / Comércio' :
+              estado.tipoCadastro === 'empresario' ? 'Empresário / Empresa' : 'Entregador'
+            }</h2>
+            <label>Nome Completo / Razão Social *</label>
+            <input type="text" id="cl_nome" placeholder="Seu nome ou nome da empresa">
+            <label>CPF ${estado.tipoCadastro !== 'cliente' ? '/ CNPJ' : ''}</label>
+            <input type="text" id="cl_cpf" placeholder="${estado.tipoCadastro === 'empresario' ? '00.000.000/0000-00' : '000.000.000-00'}" maxlength="${estado.tipoCadastro === 'empresario' ? 18 : 14}">
+            <label>WhatsApp *</label>
             <input type="tel" id="cl_whatsapp" placeholder="(35) 9XXXX-XXXX" maxlength="15">
             <label>Endereço</label>
             <input type="text" id="cl_endereco" placeholder="Rua, número, bairro">
             <label>Cidade / Estado</label>
-            <input type="text" id="cl_cidade" placeholder="Muzambinho - MG" value="Muzambinho - MG">
+            <input type="text" id="cl_cidade" placeholder="${CIDADE_PADRAO}" value="${CIDADE_PADRAO}">
             <label>E-mail</label>
             <input type="email" id="cl_email" placeholder="seu@email.com">
             <label>Login *</label>
@@ -436,7 +520,11 @@ function renderizar(){
         <div class="usuario-logado">
           <div class="dados">
             <div class="nome">👤 ${estado.usuarioLogado?.nome || 'Usuário'}</div>
-            <div class="tipo">${estado.usuarioLogado?.tipo === 'cliente' ? '🧑 Cliente' : '🏍️ Entregador'}</div>
+            <div class="tipo">${
+              estado.usuarioLogado?.tipo === 'cliente' ? '🧑 Cliente' :
+              estado.usuarioLogado?.tipo === 'lojista' ? '🏪 Lojista' :
+              estado.usuarioLogado?.tipo === 'empresario' ? '🏢 Empresário' : '🏍️ Entregador'
+            }</div>
           </div>
           <div class="saldo">R$ ${parseFloat(estado.usuarioLogado?.saldo || 0).toFixed(2)}</div>
           <button class="btn-sair" onclick="sair()">Sair</button>
@@ -467,7 +555,7 @@ function renderizar(){
                 </div>
                 <div class="detalhes">
                   <strong>Origem:</strong> ${p.origem}<br>
-                  <strong>Destinos:</strong> ${Array.isArray(p.destinos) ? p.destinos.length : 0}<br>
+                  <strong>Destinos:</strong> ${Array.isArray(p.destinos) ? p.destinos.length : 1}<br>
                   <strong>Valor:</strong> R$ ${parseFloat(p.valor_total).toFixed(2)}<br>
                   <strong>Data:</strong> ${formatarData(p.criado_em)}
                 </div>
@@ -479,37 +567,61 @@ function renderizar(){
         ${estado.aba === 'solicitar' ? `
           <div class="cartao">
             <h2>Solicitar Entrega ⚡</h2>
-            <label>Origem (de onde sai)</label>
-            <input type="text" id="origem" placeholder="Digite o endereço de origem" value="${estado.pedido.origem}" oninput="estado.pedido.origem = this.value">
 
-            <label>Destinos (até 20)</label>
-            ${estado.pedido.destinos.map((d, i) => `
-              <div class="destino-item">
-                <button class="remover" onclick="removerDestino(${i})">×</button>
-                <strong>Destino ${i+1}</strong>
+            <label>📍 Origem (de onde sai) *</label>
+            <input type="text" id="origem" placeholder="Ex: ${CIDADE_PADRAO}" value="${estado.pedido.origem}" oninput="estado.pedido.origem = this.value">
+
+            <label>🎯 Destino Principal (para onde vai) *</label>
+            <input type="text" id="destinoPrincipal" placeholder="Ex: ${CIDADE_PADRAO}" value="${estado.pedido.destinoPrincipal}" oninput="estado.pedido.destinoPrincipal = this.value">
+
+            <div style="margin:20px 0 10px;">
+              <label style="display:inline;">➕ Destinos Adicionais</label>
+              <span class="opcional"> — Opcional, adicione se precisar</span>
+            </div>
+
+            ${estado.pedido.destinosExtras.map((d, i) => `
+              <div class="destino-item opcional">
+                <button class="remover" onclick="removerDestinoExtra(${i})">×</button>
+                <strong>Destino ${i+2} (adicional)</strong>
                 <label>Endereço</label>
-                <input type="text" placeholder="Endereço de destino" value="${d.endereco}" oninput="atualizarDestino(${i}, 'endereco', this.value)">
-                <label>Distância (km)</label>
-                <input type="number" step="0.1" placeholder="0.0" value="${d.distancia || ''}" oninput="atualizarDestino(${i}, 'distancia', parseFloat(this.value)||0)">
-                ${d.valor ? `<div style="margin-top:8px;font-weight:bold;color:var(--flash-laranja);">Subtotal: R$ ${d.valor.toFixed(2)}</div>` : ''}
+                <input type="text" placeholder="Endereço de destino" value="${d.endereco}" oninput="atualizarDestinoExtra(${i}, 'endereco', this.value)">
+                <label>Distância (km) — digite para calcular o valor</label>
+                <input type="number" step="0.1" placeholder="0.0" value="${d.distancia || ''}" oninput="atualizarDestinoExtra(${i}, 'distancia', this.value)">
+                ${d.valor ? `<div class="subtotal-destino">Subtotal: R$ ${d.valor.toFixed(2)}</div>` : ''}
               </div>
             `).join('')}
 
             <div class="adicionar-destino">
-              <button class="btn btn-secundario" onclick="adicionarDestino()">+ Adicionar Destino</button>
+              <button class="btn btn-secundario" onclick="adicionarDestinoExtra()">+ Adicionar mais um destino</button>
             </div>
 
-            <label style="margin-top:20px;">Veículo</label>
+            <label style="margin-top:20px;">🚗 Veículo</label>
             <select onchange="estado.pedido.veiculo=this.value;recalcularValorTotal();renderizar();">
-              ${Object.entries(VEICULOS).map(([k,v])=>`<option value="${k}" ${estado.pedido.veiculo===k?'selected':''}>${v.emoji} ${v.label}</option>`).join('')}
+              ${Object.entries(VEICULOS).map(([k,v])=>`<option value="${k}" ${estado.pedido.veiculo===k?'selected':''}>${v.emoji} ${v.label} — R$ ${v.base.toFixed(2)} + R$ ${v.km.toFixed(2)}/km</option>`).join('')}
             </select>
 
-            <label>Tipo de Entrega</label>
+            <label>⚡ Tipo de Entrega</label>
             <select onchange="estado.pedido.tipoEntrega=this.value;recalcularValorTotal();renderizar();">
-              ${Object.entries(TIPOS_ENTREGA).map(([k,v])=>`<option value="${k}" ${estado.pedido.tipoEntrega===k?'selected':''}>${v.label} — ${v.desc}</option>`).join('')}
+              ${Object.entries(TIPOS_ENTREGA).map(([k,v])=>`<option value="${k}" ${estado.pedido.tipoEntrega===k?'selected':''}>${v.label} — ${v.desc} (${v.multiplicator===1?'1x':'x'+v.multiplicator})</option>`).join('')}
             </select>
 
             <div class="valor-resumo">
+              <div class="linha">
+                <span class="rotulo">Origem</span>
+                <span>${estado.pedido.origem || 'Não informado'}</span>
+              </div>
+              <div class="linha">
+                <span class="rotulo">Destino Principal</span>
+                <span>${estado.pedido.destinoPrincipal || 'Não informado'}</span>
+              </div>
+              <div class="linha">
+                <span class="rotulo">Destinos Adicionais</span>
+                <span>${estado.pedido.destinosExtras.length}</span>
+              </div>
+              <div class="linha">
+                <span class="rotulo">Veículo</span>
+                <span>${VEICULOS[estado.pedido.veiculo].emoji} ${VEICULOS[estado.pedido.veiculo].label}</span>
+              </div>
               <div class="linha total">
                 <span class="rotulo">VALOR TOTAL</span>
                 <span class="preco">R$ ${estado.pedido.valorTotal.toFixed(2)}</span>
@@ -565,7 +677,7 @@ function renderizar(){
                 </div>
                 <div class="detalhes">
                   Origem: ${p.origem}<br>
-                  Destinos: ${Array.isArray(p.destinos) ? p.destinos.length : 0}<br>
+                  Destinos: ${Array.isArray(p.destinos) ? p.destinos.length : 1}<br>
                   Valor: R$ ${parseFloat(p.valor_total).toFixed(2)}<br>
                   Concluído em: ${formatarData(p.atualizado_em || p.criado_em)}
                 </div>
