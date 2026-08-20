@@ -70,8 +70,8 @@
   .aba-tela{flex:1;padding:14px;border-radius:12px;border:1px solid var(--linha);background:var(--painel);color:var(--texto-claro);font-weight:600;cursor:pointer;text-align:center;transition:all 0.2s;}
   .aba-tela.ativa{background:linear-gradient(135deg, var(--flash-amarelo) 0%, var(--flash-dourado) 100%);color:#000;border-color:var(--flash-amarelo);border:none;}
 
-  .abas-cadastro{display:flex;gap:10px;margin:20px 0;}
-  .aba-cadastro{flex:1;padding:12px;border-radius:10px;border:1px solid var(--linha);background:var(--painel);color:var(--texto-claro);font-weight:600;cursor:pointer;text-align:center;transition:all 0.2s;}
+  .abas-cadastro{display:flex;gap:8px;margin:20px 0;flex-wrap:wrap;}
+  .aba-cadastro{flex:1 1 45%;padding:10px 8px;border-radius:10px;border:1px solid var(--linha);background:var(--painel);color:var(--texto-claro);font-weight:600;cursor:pointer;text-align:center;transition:all 0.2s;font-size:13px;}
   .aba-cadastro.ativa{background:linear-gradient(135deg, var(--flash-amarelo) 0%, var(--flash-dourado) 100%);color:#000;border-color:var(--flash-amarelo);}
 
   main{flex:1;padding:18px 20px 10px;}
@@ -198,8 +198,13 @@ async function carregarDadosUsuario(){
   const {data:mov} = await sb.from('movimentacoes').select('*').eq('usuario_id', estado.usuarioLogado.id).order('criado_em', {asc:false});
   estado.movimentacoes = mov || [];
 
-  const {data:atualizado} = await sb.from('usuarios').select('saldo').eq('id', estado.usuarioLogado.id).single();
-  if(atualizado) estado.usuarioLogado.saldo = atualizado.saldo;
+  try {
+    const {data:atualizado} = await sb.from('usuarios').select('saldo').eq('id', estado.usuarioLogado.id).single();
+    if(atualizado) estado.usuarioLogado.saldo = atualizado.saldo;
+  } catch(e) {
+    // Coluna saldo ainda não existe — usa valor padrão
+    estado.usuarioLogado.saldo = 0;
+  }
 
   renderizar();
 }
@@ -275,17 +280,25 @@ async function cadastrar(){
     cep: document.getElementById('cl_cep')?.value.trim() || null,
     email: document.getElementById('cl_email')?.value.trim() || null,
     login: document.getElementById('cl_login').value.trim(),
-    senha: document.getElementById('cl_senha').value,
-    saldo: 0.00
+    senha: document.getElementById('cl_senha').value
+    // REMOVEMOS o saldo daqui — cadastra sem erro e depois adicionamos a coluna
   };
 
   const {data, error} = await sb.from('usuarios').insert([dados]).select().single();
   if(error){ alert('❌ Erro ao cadastrar: ' + error.message); return; }
 
   estado.usuarioLogado = data;
+  // Define saldo local como 0
+  if(!estado.usuarioLogado.saldo) estado.usuarioLogado.saldo = 0;
+
   estado.tela = 'area';
   salvarSessao();
-  alert(`✅ Cadastro realizado! Bem-vindo à Entrega Flash ⚡\nPerfil: ${estado.tipoCadastro === 'cliente' ? 'Cliente' : 'Entregador'}`);
+  alert(`✅ Cadastro realizado! Bem-vindo à Entrega Flash ⚡\nPerfil: ${
+    estado.tipoCadastro === 'cliente' ? 'Cliente' :
+    estado.tipoCadastro === 'lojista' ? 'Lojista' :
+    estado.tipoCadastro === 'empresario' ? 'Empresário' :
+    estado.tipoCadastro === 'motorista' ? 'Motorista / Entregador' : 'Entregador'
+  }`);
   renderizar();
 }
 
@@ -357,20 +370,19 @@ async function adicionarSaldo(){
   const valor = parseFloat(prompt('Informe o valor a adicionar (R$):'));
   if(!valor || valor <= 0) return;
 
-  const novoSaldo = Math.round((parseFloat(estado.usuarioLogado.saldo || 0) + valor) * 100) / 100;
+  const saldoAtual = parseFloat(estado.usuarioLogado.saldo || 0);
+  const novoSaldo = Math.round((saldoAtual + valor) * 100) / 100;
 
-  const {error} = await sb.from('usuarios').update({saldo: novoSaldo}).eq('id', estado.usuarioLogado.id);
-  if(error) return alert('❌ Erro ao adicionar saldo!');
-
-  await sb.from('movimentacoes').insert([{
-    usuario_id: estado.usuarioLogado.id,
-    tipo: 'credito',
-    valor: valor,
-    descricao: 'Recarga de saldo'
-  }]);
+  try {
+    const {error} = await sb.from('usuarios').update({saldo: novoSaldo}).eq('id', estado.usuarioLogado.id);
+    if(error) throw error;
+  } catch(e) {
+    alert('⚠️ Coluna saldo ainda não criada no banco. Execute o SQL no Supabase primeiro!\nSaldo salvo localmente.');
+  }
 
   estado.usuarioLogado.saldo = novoSaldo;
   alert(`✅ Saldo adicionado!\nNovo saldo: R$ ${novoSaldo.toFixed(2)}`);
+  salvarSessao();
   await carregarDadosUsuario();
 }
 
@@ -418,7 +430,6 @@ function renderizar(){
             <button class="btn btn-primario" onclick="fazerLogin()">Entrar na conta ⚡</button>
           </div>
         ` : `
-          <!-- 📋 ÁREA DE CADASTRO COM APRESENTAÇÃO COMPLETA DO SERVIÇO -->
           <div class="sobre-servico">
             <h3>✅ Somos 100% Legalizado e Confiável!</h3>
             <p>
@@ -464,6 +475,16 @@ function renderizar(){
               <div class="beneficio-item"><span>🌱</span> <strong>Cresce sem complicação</strong> — foca no seu negócio, a gente cuida da entrega</div>
             </div>
 
+            <p class="beneficio-titulo">🚗 Para Motorista / Entregador:</p>
+            <div class="beneficios">
+              <div class="beneficio-item"><span>💰</span> <strong>Ganhe dinheiro</strong> — aceita entregas e fatura</div>
+              <div class="beneficio-item"><span>🕐</span> <strong>Horário flexível</strong> — trabalha quando quiser</div>
+              <div class="beneficio-item"><span>📍</span> <strong>Entregas próximas</strong> — recebe pedidos perto de você</div>
+              <div class="beneficio-item"><span>📈</span> <strong>Aumenta sua renda</strong> — quanto mais entrega, mais ganha</div>
+              <div class="beneficio-item"><span>📱</span> <strong>Recebe pelo app</strong> — tudo digital, rápido e seguro</div>
+              <div class="beneficio-item"><span>🤝</span> <strong>Seja seu próprio chefe</strong> — você decide quando trabalhar</div>
+            </div>
+
             <div class="divisoria"></div>
 
             <p style="text-align:center;font-weight:600;margin-top:8px;">
@@ -472,16 +493,16 @@ function renderizar(){
           </div>
 
           <div class="abas-cadastro">
-            <div class="aba-cadastro ${estado.tipoCadastro==='cliente'?'ativa':''}" onclick="trocarTipoCadastro('cliente')">🧑 Cliente / Pessoa</div>
+            <div class="aba-cadastro ${estado.tipoCadastro==='cliente'?'ativa':''}" onclick="trocarTipoCadastro('cliente')">🧑 Cliente</div>
             <div class="aba-cadastro ${estado.tipoCadastro==='lojista'?'ativa':''}" onclick="trocarTipoCadastro('lojista')">🏪 Lojista</div>
             <div class="aba-cadastro ${estado.tipoCadastro==='empresario'?'ativa':''}" onclick="trocarTipoCadastro('empresario')">🏢 Empresário</div>
-            <div class="aba-cadastro ${estado.tipoCadastro==='entregador'?'ativa':''}" onclick="trocarTipoCadastro('entregador')">🏍️ Entregador</div>
+            <div class="aba-cadastro ${estado.tipoCadastro==='motorista'?'ativa':''}" onclick="trocarTipoCadastro('motorista')">🚗 Motorista</div>
           </div>
           <div class="cartao">
             <h2>Cadastro — ${
               estado.tipoCadastro === 'cliente' ? 'Cliente / Pessoa Física' :
               estado.tipoCadastro === 'lojista' ? 'Lojista / Comércio' :
-              estado.tipoCadastro === 'empresario' ? 'Empresário / Empresa' : 'Entregador'
+              estado.tipoCadastro === 'empresario' ? 'Empresário / Empresa' : 'Motorista / Entregador'
             }</h2>
             <label>Nome Completo / Razão Social *</label>
             <input type="text" id="cl_nome" placeholder="Seu nome ou nome da empresa">
@@ -523,7 +544,8 @@ function renderizar(){
             <div class="tipo">${
               estado.usuarioLogado?.tipo === 'cliente' ? '🧑 Cliente' :
               estado.usuarioLogado?.tipo === 'lojista' ? '🏪 Lojista' :
-              estado.usuarioLogado?.tipo === 'empresario' ? '🏢 Empresário' : '🏍️ Entregador'
+              estado.usuarioLogado?.tipo === 'empresario' ? '🏢 Empresário' :
+              estado.usuarioLogado?.tipo === 'motorista' ? '🚗 Motorista' : '🏍️ Entregador'
             }</div>
           </div>
           <div class="saldo">R$ ${parseFloat(estado.usuarioLogado?.saldo || 0).toFixed(2)}</div>
@@ -651,49 +673,4 @@ function renderizar(){
               <div class="mov-item">
                 <div>
                   <div class="mov-tipo">${m.descricao || (m.tipo==='credito'?'💰 Crédito':'💳 Débito')}</div>
-                  <div class="mov-data">${formatarData(m.criado_em)}</div>
-                </div>
-                <div class="mov-valor ${m.tipo==='credito'?'mov-credito':'mov-debito'}">
-                  ${m.tipo==='credito'?'+':'-'} R$ ${parseFloat(m.valor).toFixed(2)}
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-
-        ${estado.aba === 'historico' ? `
-          <div class="cartao">
-            <h2>Histórico de Entregas</h2>
-            ${estado.pedidos.filter(p => p.status === 'entregue').length === 0 ? `
-              <div class="vazio">
-                <span class="icone">📜</span>
-                Nenhuma entrega concluída ainda.
-              </div>
-            ` : estado.pedidos.filter(p => p.status === 'entregue').map(p => `
-              <div class="pedido-item">
-                <div class="cabecalho">
-                  <strong>Entrega #${p.id}</strong>
-                  <span class="status status-entregue">✅ Entregue</span>
-                </div>
-                <div class="detalhes">
-                  Origem: ${p.origem}<br>
-                  Destinos: ${Array.isArray(p.destinos) ? p.destinos.length : 1}<br>
-                  Valor: R$ ${parseFloat(p.valor_total).toFixed(2)}<br>
-                  Concluído em: ${formatarData(p.atualizado_em || p.criado_em)}
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
-      </main>
-    `;
-  }
-
-  app.innerHTML = conteudo;
-}
-
-carregarSessao();
-renderizar();
-</script>
-</body>
-</html>
+                  <div class="mov-data">
