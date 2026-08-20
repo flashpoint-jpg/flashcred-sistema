@@ -95,7 +95,7 @@
                     <option value="premium">Premium (Pix)</option>
                 </select>
             </div>
-            <button type="submit">Finalizar Cadastro</button>
+            <button type="submit">Continuar</button>
         </form>
         <div class="switch-link">
             Já tem conta? <a onclick="mostrarLogin()">Faça login</a>
@@ -112,8 +112,70 @@
             <hr style="border: 0; border-top: 1px solid #ddd; margin: 15px 0;">
             <p style="font-size: 12px; color: #777;">Escaneie o QR Code no seu aplicativo do banco ou copie a chave acima.</p>
         </div>
-        <button onclick="confirmarPagamentoPix()" style="background: #28a745;">Já fiz o pagamento / Liberar Conta</button>
+        <button onclick="confirmarPagamentoPix()" style="background: #28a745;">Já fiz o pagamento / Ir para Cadastro de Veículo</button>
         <button onclick="mostrarLogin()" style="background: #6c757d; margin-top: 10px;">Voltar ao Login</button>
+    </div>
+
+    <!-- TELA DE CADASTRO DO VEÍCULO E DOCUMENTOS -->
+    <div id="telaVeiculo" class="hidden">
+        <h2>Cadastro do Veículo</h2>
+        <form onsubmit="fazerCadastroVeiculo(event)">
+            <div class="form-group">
+                <label>Tipo de Veículo</label>
+                <select id="tipoVeiculo" required onchange="alternarCamposVeiculo()">
+                    <option value="moto">Moto</option>
+                    <option value="carro">Carro</option>
+                    <option value="caminhao">Caminhão</option>
+                    <option value="bicicleta">Bicicleta</option>
+                </select>
+            </div>
+
+            <!-- Campos gerais / motorizados -->
+            <div id="camposMotorizado">
+                <div class="form-group">
+                    <label>Nome do Motorista</label>
+                    <input type="text" id="nomeMotorista">
+                </div>
+                <div class="form-group">
+                    <label>Foto do Motorista</label>
+                    <input type="file" id="fotoMotorista" accept=".jpg, .png">
+                </div>
+                <div class="form-group">
+                    <label>Foto da CNH</label>
+                    <input type="file" id="fotoCnh" accept=".pdf, .jpg, .png">
+                </div>
+                <div class="form-group">
+                    <label>Foto do Documento do Veículo</label>
+                    <input type="file" id="fotoDocumentoVeiculo" accept=".pdf, .jpg, .png">
+                </div>
+                <div class="form-group">
+                    <label>Foto do Comprovante de Residência</label>
+                    <input type="file" id="fotoComprovanteResidencia" accept=".pdf, .jpg, .png">
+                </div>
+            </div>
+
+            <!-- Campos exclusivos para Bicicleta -->
+            <div id="camposBicicleta" class="hidden">
+                <div class="form-group">
+                    <label>Nome da Pessoa</label>
+                    <input type="text" id="nomeBike">
+                </div>
+                <div class="form-group">
+                    <label>Foto da Pessoa</label>
+                    <input type="file" id="fotoBikePessoa" accept=".jpg, .png">
+                </div>
+                <div class="form-group">
+                    <label>Foto de um Documento (RG ou CPF)</label>
+                    <input type="file" id="fotoBikeDocumento" accept=".pdf, .jpg, .png">
+                </div>
+                <div class="form-group">
+                    <label>Foto da Bicicleta</label>
+                    <input type="file" id="fotoBicicleta" accept=".jpg, .png">
+                </div>
+            </div>
+
+            <button type="submit">Enviar para Aprovação</button>
+        </form>
     </div>
 
     <!-- PAINEL -->
@@ -121,7 +183,7 @@
         <h2>Bem-vindo!</h2>
         <p>Olá, <span id="nomeEntregadorLogado">Entregador</span>!</p>
         <div class="status-badge">Status: Pendente de Aprovação</div>
-        <p style="font-size: 14px; color: #666;">Aguardando validação dos seus documentos.</p>
+        <p style="font-size: 14px; color: #666;">Aguardando validação dos seus documentos e veículo pelo administrador.</p>
         <button onclick="fazerLogout()" style="background: #dc3545; margin-top: 20px;">Sair</button>
     </div>
 
@@ -132,10 +194,12 @@
         document.getElementById('telaLogin').classList.add('hidden');
         document.getElementById('telaCadastro').classList.remove('hidden');
         document.getElementById('telaPix').classList.add('hidden');
+        document.getElementById('telaVeiculo').classList.add('hidden');
     }
     function mostrarLogin() {
         document.getElementById('telaCadastro').classList.add('hidden');
         document.getElementById('telaPix').classList.add('hidden');
+        document.getElementById('telaVeiculo').classList.add('hidden');
         document.getElementById('telaLogin').classList.remove('hidden');
     }
     function mascaraCPF(input) {
@@ -174,28 +238,52 @@
             })
             .catch(() => alert('Erro ao buscar o CEP.'));
     }
+    function alternarCamposVeiculo() {
+        const tipo = document.getElementById('tipoVeiculo').value;
+        const motorizado = document.getElementById('camposMotorizado');
+        const bike = document.getElementById('camposBicicleta');
+
+        const inputsMotorizado = motorizado.querySelectorAll('input');
+        const inputsBike = bike.querySelectorAll('input');
+
+        if (tipo === 'bicicleta') {
+            motorizado.classList.add('hidden');
+            bike.classList.remove('hidden');
+            inputsMotorizado.forEach(i => i.removeAttribute('required'));
+            inputsBike.forEach(i => i.setAttribute('required', 'required'));
+        } else {
+            bike.classList.add('hidden');
+            motorizado.classList.remove('hidden');
+            inputsBike.forEach(i => i.removeAttribute('required'));
+            inputsMotorizado.forEach(i => i.setAttribute('required', 'required'));
+        }
+    }
     function fazerCadastro(event) {
         event.preventDefault();
         if (!validarIdade()) return alert("Cadastro bloqueado: menor de 18 anos.");
         
         const planoEscolhido = document.getElementById('plano').value;
-        const email = document.getElementById('email').value;
-
         document.getElementById('telaCadastro').classList.add('hidden');
 
         if (planoEscolhido === 'premium') {
-            // Se for premium, mostra a tela do Pix
             document.getElementById('telaPix').classList.remove('hidden');
         } else {
-            // Se for free, vai direto para o painel
-            document.getElementById('telaPainel').classList.remove('hidden');
-            document.getElementById('nomeEntregadorLogado').textContent = email;
+            document.getElementById('telaVeiculo').classList.remove('hidden');
+            alternarCamposVeiculo(); // Inicializa os campos corretos
         }
     }
     function confirmarPagamentoPix() {
-        alert("Pagamento confirmado com sucesso!");
-        const email = document.getElementById('email').value;
+        alert("Pagamento confirmado!");
         document.getElementById('telaPix').classList.add('hidden');
+        document.getElementById('telaVeiculo').classList.remove('hidden');
+        alternarCamposVeiculo(); // Inicializa os campos corretos
+    }
+    function fazerCadastroVeiculo(event) {
+        event.preventDefault();
+        alert("Dados e veículo enviados com sucesso! Aguarde a aprovação no painel.");
+        
+        const email = document.getElementById('email').value || document.getElementById('loginEmail').value;
+        document.getElementById('telaVeiculo').classList.add('hidden');
         document.getElementById('telaPainel').classList.remove('hidden');
         document.getElementById('nomeEntregadorLogado').textContent = email;
     }
