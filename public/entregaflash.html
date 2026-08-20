@@ -140,8 +140,9 @@
       font-size: 11px; font-weight: 700; text-transform:uppercase;
     }
     .selo-aguardando{background: rgba(255,90,78,0.15); color: var(--erro);}
-    .selo-andamento{background: rgba(255,182,39,0.15); color: var(--destaque);}
-    .selo-entregue{background: rgba(76,215,135,0.15); color: var(--sucesso);}
+    .selo-buscando{background: rgba(255,182,39,0.15); color: var(--destaque);}
+    .selo-andamento{background: rgba(76,215,135,0.15); color: var(--sucesso);}
+    .selo-entregue{background: rgba(59,130,246,0.15); color: var(--azul);}
 
     .trilha{display:flex; align-items:center; margin: 14px 0 8px;}
     .trilha .ponto{width:10px; height:10px; border-radius:50%; background: var(--borda); flex-shrink:0;}
@@ -161,6 +162,46 @@
       color:var(--texto); padding:12px 20px; border-radius:10px;
       font-weight:600; z-index:200; max-width:90%; text-align:center;
     }
+
+    /* 🎬 ANIMAÇÃO DE BUSCANDO ENTREGADOR */
+    .buscando-box{
+      text-align:center; padding:30px 20px;
+      background: rgba(255,182,39,0.05);
+      border:1px solid rgba(255,182,39,0.3);
+      border-radius:16px; margin:16px 0;
+    }
+    .buscando-icone{
+      font-size:48px; margin-bottom:12px;
+      animation: pulsar 1.2s infinite ease-in-out;
+    }
+    @keyframes pulsar{
+      0%{ transform: scale(1); opacity:1; }
+      50%{ transform: scale(1.15); opacity:0.7; }
+      100%{ transform: scale(1); opacity:1; }
+    }
+    .buscando-texto{
+      font-size:16px; font-weight:600; color:var(--destaque); margin-bottom:4px;
+    }
+    .buscando-sub{ font-size:13px; color:var(--texto-claro); }
+
+    /* 🛵 ANIMAÇÃO DE ENTREGADOR A CAMINHO */
+    .a-caminho-box{
+      text-align:center; padding:24px 20px;
+      background: rgba(76,215,135,0.05);
+      border:1px solid rgba(76,215,135,0.3);
+      border-radius:16px; margin:16px 0;
+    }
+    .a-caminho-icone{
+      font-size:48px; margin-bottom:12px;
+      animation: deslizar 2s infinite ease-in-out;
+    }
+    @keyframes deslizar{
+      0%{ transform: translateX(-8px); }
+      50%{ transform: translateX(8px); }
+      100%{ transform: translateX(-8px); }
+    }
+    .a-caminho-nome{ font-size:16px; font-weight:700; color:var(--sucesso); margin-bottom:4px; }
+    .a-caminho-texto{ font-size:14px; color:var(--texto-claro); }
 
     /* CHAT */
     .modal-fundo{
@@ -230,10 +271,11 @@ const VEICULOS = {
   van: { label: 'Van', emoji: '🚐', base: 18.00, km: 4.00 }
 };
 const TAXA_PLATAFORMA = 0.30;
-const ESTAGIOS = ['aguardando','indo_coletar','coletado','a_caminho','entregue'];
+const ESTAGIOS = ['aguardando','buscando','indo_coletar','coletado','a_caminho','entregue'];
 const ROTULOS_ESTAGIO = {
-  aguardando: 'Aguardando', indo_coletar: 'Indo coletar',
-  coletado: 'Coletado', a_caminho: 'A caminho', entregue: 'Entregue'
+  aguardando: 'Aguardando', buscando: 'Localizando entregador...',
+  indo_coletar: 'Indo coletar', coletado: 'Coletado',
+  a_caminho: 'A caminho da entrega', entregue: 'Entregue'
 };
 
 let estado = {
@@ -375,7 +417,7 @@ async function criarPedido(){
     origem: f.origem, destino: f.destino, veiculo: f.veiculo,
     descricao: f.descricao, distancia: f.distancia,
     precoTotal: precos.total, precoMotorista: precos.motorista,
-    status: 'aguardando', motoristaNome: '', motoristaTelefone: '',
+    status: 'buscando', motoristaNome: '', motoristaTelefone: '',
     criadoEm: agora, atualizadoEm: agora,
     latOrigem: CENTRO_MUZAMBINHO.lat, lngOrigem: CENTRO_MUZAMBINHO.lng,
     latDestino: CENTRO_MUZAMBINHO.lat + (Math.random()-0.5)*0.02,
@@ -383,7 +425,7 @@ async function criarPedido(){
   };
   await salvarPedido(pedido);
   estado.filtroTelefoneCliente = f.telefone;
-  mostrarToast('✅ Pedido criado! Buscando entregador...');
+  mostrarToast('✅ Pedido enviado! Localizando entregador...');
   await carregarPedidos();
 }
 
@@ -395,7 +437,7 @@ async function aceitarPedido(id){
   p.motoristaTelefone = estado.motorista.telefone;
   p.atualizadoEm = Date.now();
   await salvarPedido(p);
-  mostrarToast('✅ Pedido aceito! Vá buscar o produto.');
+  mostrarToast('✅ Pedido aceito! Indo buscar o produto.');
   await carregarPedidos();
 }
 
@@ -411,7 +453,7 @@ async function avancarStatus(id){
       estado.motorista.saldo = (estado.motorista.saldo || 0) + p.precoMotorista;
       mostrarToast(`✅ Entregue! Você recebeu R$ ${p.precoMotorista.toFixed(2)}`);
     } else if(p.status === 'coletado'){
-      mostrarToast('✅ Produto recolhido!');
+      mostrarToast('✅ Produto recolhido! A caminho da entrega.');
     } else if(p.status === 'a_caminho'){
       mostrarToast('✅ A caminho do destino!');
     }
@@ -426,13 +468,34 @@ function trilhaHTML(status){
     pontos += `<div class="ponto ${idx < i ? 'feito' : ''} ${idx === i ? 'atual' : ''}"></div>`;
     if(idx < ESTAGIOS.length - 1) pontos += `<div class="barra ${idx < i ? 'feito' : ''}"></div>`;
   });
-  return `<div class="trilha">${pontos}</div><div class="etiquetas"><span>Pedido</span><span>Coleta</span><span>Recolhido</span><span>Rota</span><span>Entregue</span></div>`;
+  return `<div class="trilha">${pontos}</div><div class="etiquetas"><span>Pedido</span><span>Busca</span><span>Coleta</span><span>Recolhido</span><span>Rota</span><span>Entregue</span></div>`;
 }
 
 function seloHTML(status){
   if(status === 'aguardando') return `<span class="selo selo-aguardando">Aguardando</span>`;
+  if(status === 'buscando') return `<span class="selo selo-buscando">Localizando entregador</span>`;
   if(status === 'entregue') return `<span class="selo selo-entregue">Entregue</span>`;
   return `<span class="selo selo-andamento">${ROTULOS_ESTAGIO[status]}</span>`;
+}
+
+function animacaoStatusHTML(p){
+  if(p.status === 'buscando'){
+    return `
+    <div class="buscando-box">
+      <div class="buscando-icone">🔍</div>
+      <div class="buscando-texto">Localizando entregador...</div>
+      <div class="buscando-sub">Aguarde um momento, estamos procurando o entregador mais próximo</div>
+    </div>`;
+  }
+  if(p.status === 'indo_coletar' || p.status === 'coletado' || p.status === 'a_caminho'){
+    return `
+    <div class="a-caminho-box">
+      <div class="a-caminho-icone">🛵</div>
+      <div class="a-caminho-nome">${p.motoristaNome}</div>
+      <div class="a-caminho-texto">Entregador a caminho! 📍</div>
+    </div>`;
+  }
+  return '';
 }
 
 function cartaoPedidoCliente(p){
@@ -447,7 +510,8 @@ function cartaoPedidoCliente(p){
     </div>
     ${seloHTML(p.status)}
     ${trilhaHTML(p.status)}
-    ${p.motoristaNome ? `
+    ${animacaoStatusHTML(p)}
+    ${(p.status === 'indo_coletar' || p.status === 'coletado' || p.status === 'a_caminho') ? `
       <div style="margin-top:10px;font-size:13px;color:var(--texto-claro)">
         Entregador: <b style="color:var(--texto)">${p.motoristaNome}</b>
       </div>
@@ -457,7 +521,7 @@ function cartaoPedidoCliente(p){
           ${estado.contadorNaoLidas.motorista>0?`<span class="notif-bolinha">${estado.contadorNaoLidas.motorista}</span>`:''}
         </button>
       </div>
-    `:`<div style="margin-top:10px;font-size:13px;color:var(--texto-claro)">Aguardando entregador...</div>`}
+    `:''}
     <div class="grupo-botoes">
       <button class="btn-linha" onclick="abrirChat('suporte','${p.id}')">🛟 Falar com Suporte</button>
     </div>
@@ -588,8 +652,8 @@ function render(){
   const meusPedidos = estado.filtroTelefoneCliente
     ? estado.pedidos.filter(p => p.clienteTelefone === estado.filtroTelefoneCliente)
     : [];
-  const disponiveis = estado.pedidos.filter(p => p.status === 'aguardando');
-  const ativos = estado.pedidos.filter(p => p.status!=='aguardando' && p.status!=='entregue' && p.motoristaTelefone===estado.motorista.telefone);
+  const disponiveis = estado.pedidos.filter(p => p.status === 'buscando' || p.status === 'aguardando');
+  const ativos = estado.pedidos.filter(p => (p.status==='indo_coletar' || p.status==='coletado' || p.status==='a_caminho') && p.motoristaTelefone===estado.motorista.telefone);
 
   let conteudo = '';
   if(estado.modo === 'cliente'){
