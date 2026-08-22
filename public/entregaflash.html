@@ -355,6 +355,7 @@ let PLANOS = {
 let ATRASO_PRIORIDADE_PRO_MS = 45000; // motoristas Free só veem o pedido 45s depois dos Pro
 let RAIO_GEOFENCE_KM = 0.15; // 150m — distância máxima do endereço para poder coletar/finalizar
 let TAXA_PRIORIDADE_VALOR = 12; // R$ acrescidos numa entrega prioritária
+let TAXA_PARADA_EXTRA_VALOR = 5; // R$ acrescidos por cada endereço de entrega extra
 let KM_MANUAL_MAXIMO = 120; // limite de km que o cliente pode digitar manualmente (sítio/roça ou falha no cálculo automático)
 
 // Serviços extras opcionais do pedido — valores padrão, sobrescritos por aplicarConfigGeral()
@@ -393,7 +394,7 @@ let VEICULOS = {
   caminhao:{label:'Caminhão', emoji:'🚚', km:2.50, kmRoca:2.50, minimo:0, veloc:22, confereCarga:true}
 };
 // Região de cobertura: Muzambinho/MG e cidades próximas
-const REGIAO = { minLat:-22.1, maxLat:-20.6, minLon:-47.3, maxLon:-45.7 };
+const REGIAO = { minLat:-22.92, maxLat:-14.23, minLon:-51.28, maxLon:-39.86 };
 
 // ---------- configuração geral (editável no painel administrativo) ----------
 async function carregarConfigGeral(){
@@ -416,6 +417,7 @@ function aplicarConfigGeral(c){
   PLANOS.free.saqueDias = Number(c.free_saque_dias);
   PLANOS.pro.saqueDias = Number(c.pro_saque_dias);
   TAXA_PRIORIDADE_VALOR = Number(c.taxa_prioridade_valor);
+  TAXA_PARADA_EXTRA_VALOR = c.taxa_parada_extra_valor!=null ? Number(c.taxa_parada_extra_valor) : TAXA_PARADA_EXTRA_VALOR;
   RAIO_GEOFENCE_KM = Number(c.raio_geofence_km);
   JANELA_CANCELAMENTO_MS = Number(c.janela_cancelamento_min)*60*1000;
   TAXA_CANCELAMENTO_TARDIO = Number(c.taxa_cancelamento_tardio_pct)/100;
@@ -444,7 +446,7 @@ async function salvarConfigGeralAdmin(){
     free_limite_simultaneo: Number(ler('cfg-free-simultaneo')), pro_limite_simultaneo: Number(ler('cfg-pro-simultaneo')),
     free_limite_cancelamentos_dia: Number(ler('cfg-free-cancel')), pro_limite_cancelamentos_dia: Number(ler('cfg-pro-cancel')),
     free_saque_dias: Number(ler('cfg-free-saque')), pro_saque_dias: Number(ler('cfg-pro-saque')),
-    taxa_prioridade_valor: Number(ler('cfg-taxa-prioridade')), raio_geofence_km: Number(ler('cfg-raio-geofence')),
+    taxa_prioridade_valor: Number(ler('cfg-taxa-prioridade')), taxa_parada_extra_valor: Number(ler('cfg-taxa-parada-extra')), raio_geofence_km: Number(ler('cfg-raio-geofence')),
     janela_cancelamento_min: Number(ler('cfg-janela-cancel')), taxa_cancelamento_tardio_pct: Number(ler('cfg-taxa-cancel-tardio')),
     atraso_prioridade_pro_seg: Number(ler('cfg-atraso-pro')),
     veiculo_bicicleta_km_novo: Number(ler('cfg-bici-km')), veiculo_bicicleta_minimo: Number(ler('cfg-bici-minimo')),
@@ -688,8 +690,15 @@ function selecionarSugestao(campo, idx){
   if(!s) return;
   const inputEl = document.getElementById('c-'+campo);
   if(inputEl) inputEl.value = s.nome;
-  estado.form[campo] = s.nome;
-  estado.form[campo+'Coord'] = { lat:s.lat, lon:s.lon };
+  if(campo.indexOf('parada-')===0){
+    const paradaIdx = parseInt(campo.split('-')[1],10);
+    estado.form.paradas[paradaIdx] = s.nome;
+    if(!estado.form.paradasCoords) estado.form.paradasCoords = [];
+    estado.form.paradasCoords[paradaIdx] = { lat:s.lat, lon:s.lon };
+  } else {
+    estado.form[campo] = s.nome;
+    estado.form[campo+'Coord'] = { lat:s.lat, lon:s.lon };
+  }
   const cont = document.getElementById('sugestoes-'+campo);
   if(cont) cont.innerHTML='';
   estado.sugestoesTemp[campo] = [];
@@ -800,6 +809,8 @@ function paraCamposApp(row){
     motoristaVeiculoTipo: row.motorista_veiculo_tipo || '',
     motoristaMarca: row.motorista_marca || '', motoristaCor: row.motorista_cor || '', motoristaPlaca: row.motorista_placa || '',
     paradas: Array.isArray(row.paradas) ? row.paradas : (row.paradas ? JSON.parse(row.paradas) : []),
+    paradaAtual: row.parada_atual!=null ? Number(row.parada_atual) : 0,
+    paradasCoords: Array.isArray(row.paradas_coords) ? row.paradas_coords : (row.paradas_coords ? JSON.parse(row.paradas_coords) : []),
     tipoRetirada: row.tipo_retirada || 'agora', horarioAgendado: row.horario_agendado || null,
     editado: !!row.editado, canceladoEm: row.cancelado_em!=null?Number(row.cancelado_em):null,
     taxaCancelamento: Number(row.taxa_cancelamento)||0,
@@ -828,7 +839,7 @@ function paraCamposDB(p){
     foto_antes_url:p.fotoAntesUrl||null, foto_depois_url:p.fotoDepoisUrl||null,
     motorista_foto_url:p.motoristaFotoUrl||null, motorista_veiculo_tipo:p.motoristaVeiculoTipo||null,
     motorista_marca:p.motoristaMarca||null, motorista_cor:p.motoristaCor||null, motorista_placa:p.motoristaPlaca||null,
-    paradas: JSON.stringify(p.paradas||[]), tipo_retirada:p.tipoRetirada||'agora', horario_agendado:p.horarioAgendado||null,
+    paradas: JSON.stringify(p.paradas||[]), parada_atual: p.paradaAtual||0, paradas_coords: JSON.stringify(p.paradasCoords||[]), tipo_retirada:p.tipoRetirada||'agora', horario_agendado:p.horarioAgendado||null,
     editado: !!p.editado, cancelado_em:p.canceladoEm||null, taxa_cancelamento:p.taxaCancelamento||0,
     motorista_nota_media: p.motoristaNotaMedia!=null?p.motoristaNotaMedia:null,
     motorista_total_avaliacoes: p.motoristaTotalAvaliacoes!=null?p.motoristaTotalAvaliacoes:null,
@@ -1353,9 +1364,23 @@ async function criarPedido(){
   if(!f.nome||!f.telefone||!f.origem||!f.destino){ mostrarToast('Preenche nome, telefone, recolha e destino.'); return; }
   if(f.distancia==null){ mostrarToast('Calcula a corrida primeiro.'); return; }
   if(f.distancia > KM_MANUAL_MAXIMO){ mostrarToast(`Distância acima do limite permitido (${KM_MANUAL_MAXIMO} km). Ajusta a distância antes de confirmar.`); return; }
-  const paradasValidas = (f.paradas||[]).map(x=>x.trim()).filter(Boolean);
+  const paradasBrutas = (f.paradas||[]).map((texto,idx)=>({ texto:(texto||'').trim(), coord:(f.paradasCoords||[])[idx]||null })).filter(x=>x.texto);
+  estado.calculando = true; render();
+  for(const item of paradasBrutas){
+    if(!item.coord){
+      item.coord = await geocodificar(item.texto);
+    }
+  }
+  estado.calculando = false; render();
+  const foraDaArea = paradasBrutas.find(x=>!x.coord);
+  if(foraDaArea){
+    mostrarToast(`Não consegui confirmar o endereço "${foraDaArea.texto}" dentro da nossa área de atendimento. Ajusta ou escolhe pela sugestão automática.`);
+    return;
+  }
+  const paradasValidas = paradasBrutas.map(x=>x.texto);
+  const paradasCoordsValidas = paradasBrutas.map(x=>x.coord);
   if(f.tipoRetirada==='agendado' && !f.horarioAgendado){ mostrarToast('Escolhe a data e hora da retirada agendada.'); return; }
-  const preco = precoDeDistancia(f.veiculo, f.distancia, f.roca) + (f.prioridade ? TAXA_PRIORIDADE_VALOR : 0) + valorExtras(f.extras);
+  const preco = precoDeDistancia(f.veiculo, f.distancia, f.roca) + (f.prioridade ? TAXA_PRIORIDADE_VALOR : 0) + valorExtras(f.extras) + (paradasValidas.length * TAXA_PARADA_EXTRA_VALOR);
 
   // ---- checagem de saldo: busca o saldo mais atual direto do banco antes de liberar o pedido ----
   const w = estado.cliente.carteira;
@@ -1399,7 +1424,7 @@ async function criarPedido(){
     clienteNome:f.nome, clienteTelefone:f.telefone,
     origem:f.origem, destino:f.destino, origemCoord:f.origemCoord, destinoCoord:f.destinoCoord,
     origemFotoUrl:f.origemFotoUrl||null, origemReferencia:f.origemReferencia||'',
-    paradas:paradasValidas, tipoRetirada:f.tipoRetirada, horarioAgendado:f.tipoRetirada==='agendado'?f.horarioAgendado:null,
+    paradas:paradasValidas, paradasCoords:paradasCoordsValidas, paradaAtual:0, tipoRetirada:f.tipoRetirada, horarioAgendado:f.tipoRetirada==='agendado'?f.horarioAgendado:null,
     editado:false, canceladoEm:null, taxaCancelamento:0, prioridade:!!f.prioridade,
     veiculo:f.veiculo, descricao:f.descricao, distancia:f.distancia, distanciaGPS:f.distanciaGPS, distanciaDivergente:!!f.distanciaDivergente, preco:preco,
     extras: {...f.extras},
@@ -1795,7 +1820,13 @@ async function verificarNoEndereco(coordAlvo){
 async function solicitarFoto(pedidoId, tipo){
   const p = estado.pedidos.find(x=>x.id===pedidoId);
   if(!p) return;
-  const coordAlvo = tipo==='antes' ? p.origemCoord : p.destinoCoord;
+  let coordAlvo;
+  if(tipo==='antes'){
+    coordAlvo = p.origemCoord;
+  } else {
+    const listaParadas = listaDestinosPedido(p);
+    coordAlvo = listaParadas[listaParadas.length-1].coord;
+  }
   mostrarToast('Verificando a tua localização...');
   const resultado = await verificarNoEndereco(coordAlvo);
   if(resultado.semGps){
@@ -1809,6 +1840,29 @@ async function solicitarFoto(pedidoId, tipo){
   }
   fotoPendente = { pedidoId, tipo };
   document.getElementById('input-foto').click();
+}
+async function confirmarParadaIntermediaria(pedidoId){
+  const p = estado.pedidos.find(x=>x.id===pedidoId);
+  if(!p || p.motoristaTelefone!==estado.motorista.telefone || p.status!=='a_caminho') return;
+  const listaParadas = listaDestinosPedido(p);
+  const paradaAtualIdx = Math.min(p.paradaAtual||0, listaParadas.length-1);
+  if(paradaAtualIdx >= listaParadas.length-1) return; // já é a última, deve usar solicitarFoto
+  mostrarToast('Verificando a tua localização...');
+  const resultado = await verificarNoEndereco(listaParadas[paradaAtualIdx].coord);
+  if(resultado.semGps){
+    mostrarToast('Não consegui confirmar a tua localização. Ativa o GPS e tenta novamente.');
+    return;
+  }
+  if(!resultado.dentro){
+    const faltam = resultado.distanciaKm!=null ? ` (faltam ~${resultado.distanciaKm.toFixed(2)} km)` : '';
+    mostrarToast(`Só podes confirmar essa parada quando estiveres no endereço${faltam}.`);
+    return;
+  }
+  const { error } = await sb.from('entrega_pedidos').update({ parada_atual: paradaAtualIdx+1, atualizado_em: Date.now() }).eq('id', pedidoId);
+  if(error){ console.error(error); mostrarToast('Erro ao confirmar a parada.'); return; }
+  estado.ultimoPedidosJSON='';
+  mostrarToast(`Parada ${paradaAtualIdx+1} de ${listaParadas.length} entregue! Segue para a próxima.`);
+  await carregarPedidos();
 }
 async function processarFotoSelecionada(input){
   const file = input.files && input.files[0];
@@ -2008,10 +2062,22 @@ async function compartilharPedido(id){
 }
 
 // ---------- cartões ----------
+function listaDestinosPedido(p){
+  const lista = [{ endereco:p.destino, coord:p.destinoCoord||null }];
+  (p.paradas||[]).forEach((end,idx)=>{
+    lista.push({ endereco:end, coord:(p.paradasCoords||[])[idx]||null });
+  });
+  return lista;
+}
 function paradasHTML(p){
   if(!p.paradas || p.paradas.length===0) return '';
-  return p.paradas.map((end,idx)=>`<div class="parada-linha-info"><b style="color:var(--poeira);font-size:11px;text-transform:uppercase">Entrega +${idx+2}</b><br>${end}</div>`).join('');
+  const atual = p.paradaAtual||0;
+  return p.paradas.map((end,idx)=>{
+    const concluida = (idx+1) < atual; // stop 0 é o destino principal; paradas[idx] é o stop idx+1
+    return `<div class="parada-linha-info">${concluida?'<span style="color:var(--verde)">✅ entregue</span> · ':''}<b style="color:var(--poeira);font-size:11px;text-transform:uppercase">Entrega +${idx+2}</b><br>${end}</div>`;
+  }).join('');
 }
+
 function agendaHTML(p){
   if(p.tipoRetirada!=='agendado' || !p.horarioAgendado) return '';
   const d = new Date(p.horarioAgendado);
@@ -2111,7 +2177,12 @@ function cartaoPedidoDisponivel(p){
 function cartaoPedidoAtivo(p){
   const i = ESTAGIOS.indexOf(p.status);
   const proximo = i<ESTAGIOS.length-1 ? ESTAGIOS[i+1] : null;
-  const enderecoGPS = (p.status==='indo_coletar') ? p.origem : p.destino;
+  const listaParadas = listaDestinosPedido(p);
+  const paradaAtualIdx = Math.min(p.paradaAtual||0, listaParadas.length-1);
+  const temMaisParadas = listaParadas.length>1;
+  const ultimaParada = paradaAtualIdx === listaParadas.length-1;
+  const enderecoAtualEntrega = listaParadas[paradaAtualIdx].endereco;
+  const enderecoGPS = (p.status==='indo_coletar') ? p.origem : enderecoAtualEntrega;
   const mapaId = 'mapa-m-'+p.id;
   const aguardandoInicio = p.status==='indo_coletar' && !p.iniciadoEm;
   let botaoAcao = '';
@@ -2121,8 +2192,10 @@ function cartaoPedidoAtivo(p){
     botaoAcao = `<button class="btn btn-verde btn-pequeno" onclick="solicitarFoto('${p.id}','antes')">📷 Cheguei / tirar foto e recolher (obrigatória)</button>`;
   } else if(p.status==='coletado'){
     botaoAcao = `<button class="btn btn-verde btn-pequeno" onclick="avancarStatus('${p.id}')">Segui viagem</button>`;
+  } else if(p.status==='a_caminho' && temMaisParadas && !ultimaParada){
+    botaoAcao = `<button class="btn btn-verde btn-pequeno" onclick="confirmarParadaIntermediaria('${p.id}')">✅ Confirmar chegada nesta parada (${paradaAtualIdx+1}/${listaParadas.length})</button>`;
   } else if(p.status==='a_caminho'){
-    botaoAcao = `<button class="btn btn-verde btn-pequeno" onclick="solicitarFoto('${p.id}','depois')">📷 Tirar foto e marcar entregue (obrigatória — precisa estar no endereço)</button>`;
+    botaoAcao = `<button class="btn btn-verde btn-pequeno" onclick="solicitarFoto('${p.id}','depois')">📷 ${temMaisParadas?`Tirar foto e finalizar a última parada (${paradaAtualIdx+1}/${listaParadas.length})`:'Tirar foto e marcar entregue'} (obrigatória — precisa estar no endereço)</button>`;
   }
   const plano = PLANOS[estado.motorista.plano] || PLANOS.free;
   const usados = estado.motorista.cancelamentosHoje||0;
@@ -2133,6 +2206,7 @@ function cartaoPedidoAtivo(p){
       <div class="end"><b>Recolha</b>${p.origem}<b style="margin-top:8px">Entrega</b>${p.destino}</div>
       <div class="preco">R$ ${p.preco.toFixed(2)}<span class="ganho">você recebe R$ ${ganhoMotorista(p.preco).toFixed(2)}</span></div>
     </div>
+    ${p.status==='a_caminho' && temMaisParadas ? `<div class="subtitulo" style="margin-top:6px;background:var(--painel-alt);border-radius:8px;padding:8px 10px">📍 Parada atual (${paradaAtualIdx+1} de ${listaParadas.length}): <b style="color:var(--osso)">${enderecoAtualEntrega}</b></div>` : ''}
     ${p.prioridade ? `<span class="selo selo-prioridade">🚀 Entrega prioritária</span>` : ''}
     ${extrasHTML(p)}
     ${seloHTML(p.status)}
@@ -2220,7 +2294,8 @@ function telaCadastroCliente(){
 }
 function telaCliente(){
   const f = estado.form;
-  const preco = f.distancia!=null ? precoDeDistancia(f.veiculo, f.distancia, f.roca) + (f.prioridade ? TAXA_PRIORIDADE_VALOR : 0) + valorExtras(f.extras) : null;
+  const paradasValidasPreco = (f.paradas||[]).map(x=>x.trim()).filter(Boolean).length;
+  const preco = f.distancia!=null ? precoDeDistancia(f.veiculo, f.distancia, f.roca) + (f.prioridade ? TAXA_PRIORIDADE_VALOR : 0) + valorExtras(f.extras) + (paradasValidasPreco * TAXA_PARADA_EXTRA_VALOR) : null;
   const todosMeusPedidos = estado.filtroTelefoneCliente ? estado.pedidos.filter(p=>p.clienteTelefone===estado.filtroTelefoneCliente) : [];
   const pedidosAtivos = todosMeusPedidos.filter(p=>p.status!=='entregue' && p.status!=='cancelado');
   const pedidosHistorico = todosMeusPedidos.filter(p=>p.status==='entregue' || p.status==='cancelado');
@@ -2261,8 +2336,10 @@ function telaCliente(){
         <button type="button" class="btn-mover-parada" ${idx===f.paradas.length-1?'disabled':''} onclick="moverParada(${idx},1)" title="Mover para baixo">▼</button>
       </div>
       <button type="button" class="btn-remover-parada" onclick="removerParada(${idx})">&times;</button>
-    </div>`).join('')}
+    </div>
+    <div class="sugestoes" id="sugestoes-parada-${idx}"></div>`).join('')}
     ${(f.paradas||[]).length < MAX_PARADAS_EXTRA ? `<button type="button" class="btn-add-parada" onclick="adicionarParada()">+ Adicionar mais um endereço de entrega (até 10 no total)</button>` : ''}
+    ${(f.paradas||[]).length > 0 ? `<div class="cf-nota" style="margin-top:6px">Cada endereço de entrega extra soma +R$ ${TAXA_PARADA_EXTRA_VALOR.toFixed(2)} ao valor da corrida.</div>` : ''}
 
     <label>Retirada</label>
     <div class="aba-mini">
@@ -2847,8 +2924,12 @@ function render(){
   bind('c-destino','form.destino'); bind('c-descricao','form.descricao');
   bind('c-horario-agendado','form.horarioAgendado');
   (estado.form.paradas||[]).forEach((_,idx)=>{
-    const el = document.getElementById('c-parada-'+idx);
-    if(el) el.addEventListener('input',(e)=>{ estado.form.paradas[idx]=e.target.value; });
+    const campo = 'parada-'+idx;
+    const el = document.getElementById('c-'+campo);
+    if(el){
+      el.addEventListener('input',(e)=>{ estado.form.paradas[idx]=e.target.value; debounce(campo, ()=>buscarSugestoes(campo)); });
+      el.addEventListener('blur', ()=> setTimeout(()=>{ const c=document.getElementById('sugestoes-'+campo); if(c) c.innerHTML=''; }, 200));
+    }
   });
   if(estado.edicaoPedido){
     const eo = document.getElementById('ed-origem'); if(eo) eo.addEventListener('input',(e)=>{ estado.edicaoPedido.origem=e.target.value; });
@@ -3473,6 +3554,8 @@ function adminAbaConfigHTML(){
   <div class="cf-titulo-secao">🚀 Prioridade e cancelamento (cliente)</div>
   <label>Valor extra da entrega prioritária (R$)</label>
   <input type="number" id="cfg-taxa-prioridade" value="${TAXA_PRIORIDADE_VALOR}" step="0.01">
+  <label>Valor extra por endereço de entrega adicional (R$)</label>
+  <input type="number" id="cfg-taxa-parada-extra" value="${TAXA_PARADA_EXTRA_VALOR}" step="0.01">
   <label>Segundos de vantagem do Pro para ver pedidos novos</label>
   <input type="number" id="cfg-atraso-pro" value="${ATRASO_PRIORIDADE_PRO_MS/1000}">
   <label>Janela de cancelamento grátis pro cliente (minutos)</label>
@@ -3977,7 +4060,7 @@ window.abrirGPS=abrirGPS; window.abrirChat=abrirChat; window.fecharChat=fecharCh
 window.abrirSemEndereco=abrirSemEndereco; window.fecharSemEndereco=fecharSemEndereco; window.usarGPSOrigemCliente=usarGPSOrigemCliente;
 window.usarLinkMapsOrigem=usarLinkMapsOrigem; window.usarPlusCodeOrigem=usarPlusCodeOrigem; window.focarReferenciaOrigem=focarReferenciaOrigem;
 window.processarFotoOrigemSelecionado=processarFotoOrigemSelecionado;
-window.solicitarFoto=solicitarFoto; window.processarFotoSelecionada=processarFotoSelecionada; window.usarDistanciaManual=usarDistanciaManual;
+window.solicitarFoto=solicitarFoto; window.processarFotoSelecionada=processarFotoSelecionada; window.usarDistanciaManual=usarDistanciaManual; window.confirmarParadaIntermediaria=confirmarParadaIntermediaria;
 window.buscarSugestoes=buscarSugestoes; window.selecionarSugestao=selecionarSugestao;
 window.ampliarFoto=ampliarFoto; window.fecharFotoAmpliada=fecharFotoAmpliada; window.fecharAlertaMotorista=fecharAlertaMotorista;
 window.irParaCadastro=irParaCadastro; window.irParaLogin=irParaLogin; window.loginMotorista=loginMotorista;
