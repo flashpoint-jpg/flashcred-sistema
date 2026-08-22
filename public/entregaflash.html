@@ -635,8 +635,11 @@ async function restaurarSessao(){
         };
         if(estado.motorista.disponivel) iniciarRastreioMotorista();
         atualizarDisponibilidadeDB(estado.motorista.telefone, estado.motorista.disponivel);
+        assinarMotoristaLogadoRealtime(estado.motorista.telefone);
       } else { removerLocal('ef_motorista_telefone'); removerLocal('ef_motorista_disponivel'); }
     }
+
+    if(estado.cliente.logado) assinarCarteiraClienteRealtime(estado.cliente.telefone);
 
     if(localStorage.getItem('ef_admin_logado')==='true'){
       const senhaSalva = sessionStorage.getItem('ef_admin_senha');
@@ -644,6 +647,7 @@ async function restaurarSessao(){
         estado.admin.logado = true;
         estado.admin.senhaDigitada = senhaSalva;
         assinarSuporteAdminGlobal();
+        assinarAdminRealtime();
       } else {
         removerLocal('ef_admin_logado');
       }
@@ -702,7 +706,7 @@ async function buscarSugestoes(campo){
     // o campo pode ter mudado enquanto a busca corria - confere se ainda é o texto atual
     if(document.getElementById('c-'+campo).value.trim() !== texto) return;
     dados = (dados||[]).filter(cidadeEhPermitida);
-    if(!dados || dados.length===0){ cont.innerHTML = `<div class="sugestao-vazia">Nenhum endereço encontrado nas cidades atendidas.</div>`; return; }
+    if(!dados || dados.length===0){ cont.innerHTML = `<div class="sugestao-vazia">Não achei sugestões prontas pra "${texto}" (isso é comum em ruas ainda não catalogadas no mapa). Pode continuar digitando o endereço completo normalmente — ao calcular, se não achar automaticamente, dá pra informar a distância manualmente ou usar "Sítio/roça sem endereço certo?" abaixo.</div>`; return; }
     estado.sugestoesTemp[campo] = dados.slice(0,5).map(d=>({
       lat: parseFloat(d.lat), lon: parseFloat(d.lon),
       nome: d.display_name.split(',').slice(0,4).join(',').trim()
@@ -955,6 +959,42 @@ function assinarMotoristasOnlineRealtime(){
   canalMotoristasOnlineRealtime = sb.channel('motoristas-online-realtime')
     .on('postgres_changes', {event:'UPDATE', schema:'public', table:'entrega_motoristas'}, ()=>{ carregarMotoristasOnline(); })
     .subscribe();
+}
+
+// ---------- carteira do cliente (tempo real) ----------
+let canalCarteiraClienteRealtime = null;
+function assinarCarteiraClienteRealtime(telefone){
+  encerrarCarteiraClienteRealtime();
+  if(!telefone) return;
+  canalCarteiraClienteRealtime = sb.channel('carteira-cliente-realtime:'+telefone)
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_clientes_saldos', filter:'telefone=eq.'+telefone}, ()=>{
+      debounce('carteira-cliente', carregarCarteiraCliente);
+    })
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_carteira_pix', filter:'telefone=eq.'+telefone}, ()=>{
+      debounce('carteira-cliente', carregarCarteiraCliente);
+    })
+    .subscribe();
+}
+function encerrarCarteiraClienteRealtime(){
+  if(canalCarteiraClienteRealtime){ sb.removeChannel(canalCarteiraClienteRealtime); canalCarteiraClienteRealtime=null; }
+}
+
+// ---------- estado do motorista logado (tempo real) ----------
+let canalMotoristaLogadoRealtime = null;
+function assinarMotoristaLogadoRealtime(telefone){
+  encerrarMotoristaLogadoRealtime();
+  if(!telefone) return;
+  canalMotoristaLogadoRealtime = sb.channel('motorista-logado-realtime:'+telefone)
+    .on('postgres_changes', {event:'UPDATE', schema:'public', table:'entrega_motoristas', filter:'telefone=eq.'+telefone}, ()=>{
+      debounce('motorista-logado', verificarBloqueioAtivo);
+    })
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_saldos', filter:'telefone=eq.'+telefone}, ()=>{
+      debounce('motorista-logado-saldo', carregarSaldoMotorista);
+    })
+    .subscribe();
+}
+function encerrarMotoristaLogadoRealtime(){
+  if(canalMotoristaLogadoRealtime){ sb.removeChannel(canalMotoristaLogadoRealtime); canalMotoristaLogadoRealtime=null; }
 }
 
 // ---------- chat ----------
@@ -2822,8 +2862,34 @@ function comoFuncionaMotoristaHTML(){
 }
 
 // ---------- render ----------
+// ---------- preserva rolagem e digitação entre re-renderizações (evita "piscar") ----------
+function capturarFocoAtivo(){
+  const el = document.activeElement;
+  if(!el || !el.id || !(el.tagName==='INPUT'||el.tagName==='TEXTAREA')) return null;
+  return { id: el.id, value: el.value, selStart: el.selectionStart, selEnd: el.selectionEnd };
+}
+function restaurarFocoAtivo(foco){
+  if(!foco) return;
+  const el = document.getElementById(foco.id);
+  if(!el || !(el.tagName==='INPUT'||el.tagName==='TEXTAREA')) return;
+  if((el.value===''||el.value==null) && foco.value){ el.value = foco.value; }
+  el.focus();
+  try{ if(typeof foco.selStart==='number') el.setSelectionRange(foco.selStart, foco.selEnd); }catch(e){}
+}
+function capturarScroll(){
+  const adminConteudo = document.querySelector('.admin-conteudo');
+  return { janela: window.scrollY, admin: adminConteudo?adminConteudo.scrollTop:null };
+}
+function restaurarScroll(s){
+  if(!s) return;
+  window.scrollTo(0, s.janela);
+  if(s.admin!=null){ const el = document.querySelector('.admin-conteudo'); if(el) el.scrollTop = s.admin; }
+}
+
 function render(){
   const app = document.getElementById('app');
+  const _foco = capturarFocoAtivo();
+  const _scroll = capturarScroll();
   app.innerHTML = `
     <header class="topo">
       ${!estado.appInstalado ? `<button class="btn-instalar-topo" title="Instalar app" onclick="${estado.podeInstalar ? 'instalarApp()' : 'abrirComoInstalar()'}">📲</button>` : ''}
@@ -2991,6 +3057,8 @@ function render(){
   if(estado.chatAberto) renderChat();
   if(estado.suporteAberto) renderSuporteChat();
   if(estado.admin.suporteAbertoTelefone) renderSuporteAdminChat();
+  restaurarScroll(_scroll);
+  restaurarFocoAtivo(_foco);
 }
 
 function setDeep(path,value){
@@ -3027,7 +3095,7 @@ async function entrarComoMotorista(){
   await carregarPedidos();
   render();
 }
-function sairMotorista(){ pararRastreioMotorista(); if(estado.motorista.telefone) atualizarDisponibilidadeDB(estado.motorista.telefone,false); estado.motorista={nome:'',telefone:'',ativo:false,plano:null,disponivel:false,veiculo:'',marca:'',placa:'',cor:'',fotoMotoristaUrl:null,fotoVeiculoUrl:null,saldo:0,notaMedia:5,totalAvaliacoes:0,cancelamentosHoje:0}; removerLocal('ef_motorista_telefone'); removerLocal('ef_motorista_disponivel'); render(); }
+function sairMotorista(){ pararRastreioMotorista(); encerrarMotoristaLogadoRealtime(); if(estado.motorista.telefone) atualizarDisponibilidadeDB(estado.motorista.telefone,false); estado.motorista={nome:'',telefone:'',ativo:false,plano:null,disponivel:false,veiculo:'',marca:'',placa:'',cor:'',fotoMotoristaUrl:null,fotoVeiculoUrl:null,saldo:0,notaMedia:5,totalAvaliacoes:0,cancelamentosHoje:0}; removerLocal('ef_motorista_telefone'); removerLocal('ef_motorista_disponivel'); render(); }
 async function atualizarDisponibilidadeDB(telefone, disponivel){
   try{ await sb.from('entrega_motoristas').update({ disponivel, disponivel_atualizado_em: Date.now() }).eq('telefone', telefone); }
   catch(e){ console.error(e); }
@@ -3104,12 +3172,14 @@ async function loginCliente(){
   salvarLocal('ef_cliente_telefone', data.telefone); salvarLocal('ef_modo','cliente');
   await carregarPedidos();
   await carregarCarteiraCliente();
+  assinarCarteiraClienteRealtime(data.telefone);
   if(estado.notificacoesStatus==='granted') inscreverPushReal();
   render();
 }
 
 function sairCliente(){
   if(pixPollTimer){ clearInterval(pixPollTimer); pixPollTimer=null; }
+  encerrarCarteiraClienteRealtime();
   estado.cliente = { nome:'', telefone:'', logado:false, carteira:{ saldo:0, carregando:false, adicionando:false, valorInput:'10', pix:{ qrCode:null, copiaCola:null, status:'pendente', gerando:false, erro:'', id:null } } };
   estado.filtroTelefoneCliente = '';
   removerLocal('ef_cliente_telefone');
@@ -3149,6 +3219,7 @@ async function loginMotorista(){
   render();
   carregarCancelamentosMotorista();
   carregarSaldoMotorista();
+  assinarMotoristaLogadoRealtime(data.telefone);
   if(estado.notificacoesStatus==='granted') inscreverPushReal();
 }
 
@@ -3969,6 +4040,36 @@ function saqueCardHTML(s){
 }
 
 // =================== PAINEL ADMINISTRATIVO ===================
+let canalAdminRealtime = null;
+function assinarAdminRealtime(){
+  if(canalAdminRealtime) return;
+  canalAdminRealtime = sb.channel('admin-realtime')
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_motoristas'}, ()=>{
+      debounce('admin-motoristas', carregarMotoristasAdmin);
+    })
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_pedidos'}, ()=>{
+      debounce('admin-pedidos', ()=>{ carregarTodosPedidosAdmin(); carregarPedidosEntreguesAdmin(); });
+    })
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_clientes'}, ()=>{
+      debounce('admin-clientes', carregarClientesAdmin);
+    })
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_saques'}, ()=>{
+      debounce('admin-saques', carregarSaquesAdmin);
+    })
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_alertas_admin'}, ()=>{
+      debounce('admin-alertas', carregarAlertasAdmin);
+    })
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_suporte'}, ()=>{
+      debounce('admin-suporte', carregarSuporteAdmin);
+    })
+    .on('postgres_changes', {event:'*', schema:'public', table:'entrega_suporte_status'}, ()=>{
+      debounce('admin-suporte', carregarSuporteAdmin);
+    })
+    .subscribe();
+}
+function encerrarAdminRealtime(){
+  if(canalAdminRealtime){ sb.removeChannel(canalAdminRealtime); canalAdminRealtime=null; }
+}
 function abrirAdmin(){ estado.admin.aberto=true; render(); }
 function fecharAdmin(){ estado.admin.aberto=false; render(); }
 function digitarSenhaAdmin(v){ estado.admin.senhaDigitada=v; }
@@ -3984,6 +4085,7 @@ async function entrarAdmin(){
   await Promise.all([carregarMotoristasAdmin(), carregarPedidosEntreguesAdmin(), carregarSaquesAdmin(), carregarTodosPedidosAdmin(), carregarClientesAdmin(), carregarAlertasAdmin()]);
   await carregarSuporteAdmin();
   assinarSuporteAdminGlobal();
+  assinarAdminRealtime();
   render();
 }
 async function carregarAlertasAdmin(){
@@ -4005,6 +4107,7 @@ async function marcarTodosAlertasLidos(){
 function sairAdmin(){
   estado.admin.logado=false; estado.admin.aberto=false; estado.admin.senhaDigitada='';
   encerrarSuporteAdminGlobal();
+  encerrarAdminRealtime();
   removerLocal('ef_admin_logado');
   try{ sessionStorage.removeItem('ef_admin_senha'); }catch(e){}
   render();
