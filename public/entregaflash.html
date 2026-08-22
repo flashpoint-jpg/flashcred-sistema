@@ -90,7 +90,25 @@
   .btn-comecar-agora{display:block;width:100%;text-align:center;background:var(--mango);color:#171d4a;font-family:'Rajdhani';font-weight:700;font-size:19px;text-transform:none;padding:16px;border:none;border-radius:16px;cursor:pointer;letter-spacing:0.2px;margin-bottom:14px;}
   .bv-planos-toggle{text-align:center;font-size:13.5px;color:rgba(255,255,255,0.75);margin:2px 0 16px;}
   .bv-planos-toggle a{color:var(--mango);font-weight:700;cursor:pointer;}
+  .bv-prep-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;text-align:center;padding:20px;}
+  .bv-prep-icone{font-size:64px;margin-bottom:22px;animation:bv-prep-bounce 1.2s ease-in-out infinite;}
+  @keyframes bv-prep-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-16px)}}
+  .bv-prep-titulo{font-family:'Rajdhani';font-weight:700;font-size:24px;color:#fff;margin-bottom:8px;}
+  .bv-prep-sub{font-size:15px;color:rgba(255,255,255,0.8);margin-bottom:28px;}
+  .bv-prep-barra{width:100%;max-width:280px;height:8px;background:rgba(255,255,255,0.15);border-radius:6px;overflow:hidden;margin-bottom:14px;}
+  .bv-prep-barra-fill{height:100%;background:var(--mango);width:0%;animation:bv-prep-progresso 10s linear forwards;}
+  @keyframes bv-prep-progresso{from{width:0%}to{width:100%}}
+  .bv-prep-msg{font-size:13px;color:rgba(255,255,255,0.65);}
+  .radar-busca{position:relative;width:110px;height:110px;margin:16px auto 10px;display:flex;align-items:center;justify-content:center;}
+  .radar-anel{position:absolute;border:2px solid var(--mango);border-radius:50%;opacity:0;animation:radar-pulso 2.4s ease-out infinite;}
+  .radar-anel:nth-child(2){animation-delay:0.8s;}
+  .radar-anel:nth-child(3){animation-delay:1.6s;}
+  @keyframes radar-pulso{0%{width:16px;height:16px;opacity:0.9;}100%{width:110px;height:110px;opacity:0;}}
+  .radar-centro{font-size:28px;z-index:1;}
+  .radar-raio-texto{text-align:center;font-size:14px;color:var(--osso);font-weight:700;margin-top:4px;}
+  .radar-raio-sub{text-align:center;font-size:12.5px;color:var(--poeira);margin-top:2px;}
   .toggle-modo button.ativo{background:var(--mango);color:var(--escuro);}
+  .btn-voltar-modo{width:100%;padding:11px 0;border:none;background:transparent;color:var(--osso);font-family:'Karla';font-weight:700;font-size:15px;border-radius:4px;cursor:pointer;letter-spacing:0.3px;text-align:left;}
 
   /* ---------- splash de abertura ---------- */
   #splash{
@@ -593,8 +611,22 @@ async function salvarConfigGeralAdmin(){
 }
 
 let bvPapelSelecionado = 'cliente';
+let bvPreparando = null;
+let planoAnimando = null;
+let clienteBemVindoAnimando = false;
 function selecionarPapelBV(papel){ bvPapelSelecionado = papel; render(); }
-function comecarAgoraBV(){ escolherBoasVindas(bvPapelSelecionado); }
+function comecarAgoraBV(){ iniciarPreparacaoBV(bvPapelSelecionado); }
+function iniciarPreparacaoBV(papel){
+  bvPapelSelecionado = papel;
+  bvPreparando = papel;
+  render();
+  setTimeout(()=>{ bvPreparando = null; escolherBoasVindas(papel); }, 10000);
+}
+function dispararAnimacaoPlano(chave){
+  planoAnimando = chave;
+  render();
+  setTimeout(()=>{ planoAnimando = null; render(); }, 4000);
+}
 
 let estado = {
   modo:'cliente',
@@ -2419,6 +2451,9 @@ function cartaoPedidoCliente(p){
   }
   if(p.status==='buscando'){
     const foiCanceladoPeloMotorista = p.canceladoPor==='motorista';
+    const minutosBuscando = (Date.now() - p.criadoEm) / 60000;
+    const buscaAmpliada = minutosBuscando >= 2;
+    const raioKm = Math.min(15, 3 + Math.floor(minutosBuscando-2)*2);
     return `
     <div class="pedido">
       <div class="linha-topo">
@@ -2430,11 +2465,20 @@ function cartaoPedidoCliente(p){
       ${paradasHTML(p)}
       ${agendaHTML(p)}
       ${foiCanceladoPeloMotorista ? `<div class="subtitulo" style="color:var(--chama);margin-bottom:6px">O motorista cancelou a corrida.</div>` : ''}
+      ${buscaAmpliada ? `
+      <div class="buscando-box">
+        <div class="radar-busca">
+          <span class="radar-anel"></span><span class="radar-anel"></span><span class="radar-anel"></span>
+          <span class="radar-centro">📡</span>
+        </div>
+        <div class="radar-raio-texto">Ampliando a área de busca — ${raioKm} km</div>
+        <div class="radar-raio-sub">Ainda a procurar um entregador disponível perto de você...</div>
+      </div>` : `
       <div class="buscando-box">
         <div class="buscando-pista"><span class="buscando-moto">🏍️</span></div>
         <div class="buscando-texto">${foiCanceladoPeloMotorista ? 'Buscando outro motorista...' : 'Buscando um entregador...'}</div>
         <div class="buscando-sub">${foiCanceladoPeloMotorista ? 'Estamos a buscar o entregador disponível mais próximo de ti' : 'Isto pode levar alguns minutos'}</div>
-      </div>
+      </div>`}
       ${pedidoIdLinhaHTML(p)}
       ${acoesPedidoHTML(p)}
     </div>`;
@@ -2570,6 +2614,45 @@ function fotosHTML(p){
 }
 
 // ---------- telas ----------
+function telaPreparandoBV(){
+  const papel = bvPreparando;
+  const titulo = papel==='cliente' ? 'Legal! Deixa com a gente 🙌' : 'Boa! Deixa com a gente 🙌';
+  const sub = papel==='cliente' ? 'Vamos preparar tudo pro seu cadastro de cliente...' : 'Vamos preparar tudo pro seu cadastro de motorista...';
+  const icone = papel==='cliente' ? '📦' : '🏍️';
+  return `
+  <div class="bv-prep-wrap">
+    <div class="bv-prep-icone">${icone}</div>
+    <div class="bv-prep-titulo">${titulo}</div>
+    <div class="bv-prep-sub">${sub}</div>
+    <div class="bv-prep-barra"><div class="bv-prep-barra-fill"></div></div>
+    <div class="bv-prep-msg">Só um instante...</div>
+  </div>`;
+}
+function telaPlanoConfirmadoBV(chave){
+  const p = PLANOS[chave];
+  const titulo = chave==='pro' ? 'Plano Pro ativado! ⭐' : 'Plano Free ativado! ✅';
+  const sub = chave==='pro'
+    ? 'Prioridade nas entregas garantida — pode continuar o seu cadastro.'
+    : 'Já pode continuar o seu cadastro e começar a receber pedidos.';
+  return `
+  <div class="bv-prep-wrap">
+    <div class="bv-prep-icone">${chave==='pro'?'⭐':'✅'}</div>
+    <div class="bv-prep-titulo">${titulo}</div>
+    <div class="bv-prep-sub">${sub}</div>
+    <div class="bv-prep-barra"><div class="bv-prep-barra-fill" style="animation-duration:4s"></div></div>
+    <div class="bv-prep-msg">Você fica com ${Math.round((1-p.taxaPlataforma)*100)}% de cada entrega</div>
+  </div>`;
+}
+function telaClienteBemVindoBV(nome){
+  return `
+  <div class="bv-prep-wrap">
+    <div class="bv-prep-icone">🎉</div>
+    <div class="bv-prep-titulo">Conta criada, ${nome}!</div>
+    <div class="bv-prep-sub">Obrigado por se cadastrar na Entrega Flash. Desejamos que você tenha uma ótima experiência! 💛</div>
+    <div class="bv-prep-barra"><div class="bv-prep-barra-fill" style="animation-duration:4s"></div></div>
+    <div class="bv-prep-msg">Preparando o seu painel...</div>
+  </div>`;
+}
 function telaBoasVindas(){
   const papel = bvPapelSelecionado;
   return `
@@ -2585,12 +2668,12 @@ function telaBoasVindas(){
     <div class="bv-escolha-card">
       <div class="bv-escolha-ilustracao"><span>🏍️</span><span>🚲</span><span>📦</span><span>🚚</span><span>🚐</span></div>
       <div class="bv-escolha-colunas">
-        <div class="bv-escolha-col ${papel==='cliente'?'selecionada':''}" onclick="selecionarPapelBV('cliente')">
+        <div class="bv-escolha-col ${papel==='cliente'?'selecionada':''}" onclick="iniciarPreparacaoBV('cliente')">
           <div class="bv-escolha-marcador ${papel==='cliente'?'check':'x'}">${papel==='cliente'?'✓':'✕'}</div>
           <div class="bv-escolha-titulo">SOU CLIENTE — Quero pedir entrega</div>
           <div class="bv-escolha-desc">Cliente: receba onde você estiver</div>
         </div>
-        <div class="bv-escolha-col ${papel==='entregador'?'selecionada':''}" onclick="selecionarPapelBV('entregador')">
+        <div class="bv-escolha-col ${papel==='entregador'?'selecionada':''}" onclick="iniciarPreparacaoBV('entregador')">
           <div class="bv-escolha-marcador ${papel==='entregador'?'check':'x'}">${papel==='entregador'?'✓':'✕'}</div>
           <div class="bv-escolha-titulo">SOU ENTREGADOR — Quero trabalhar entregando</div>
           <div class="bv-escolha-desc">Entregador: comece a ganhar hoje</div>
@@ -2607,7 +2690,7 @@ function telaBoasVindas(){
         <li>Paga no PIX ou saldo na carteira</li>
         <li>Sem burocracia, rápido e seguro</li>
       </ul>
-      <button class="btn btn-primario" onclick="escolherBoasVindas('cliente')">Cadastrar como cliente</button>
+      <button class="btn btn-primario" onclick="iniciarPreparacaoBV('cliente')">Cadastrar como cliente</button>
       <div class="bv-entrar">Já tem conta? <a onclick="entrarBoasVindas('cliente')">Entre aqui</a></div>
     </div>
 
@@ -2632,7 +2715,7 @@ function telaBoasVindas(){
           <li>Vaga garantida</li>
         </ul>
       </div>
-      <button class="btn btn-primario" onclick="escolherBoasVindas('entregador')">Cadastrar como motorista</button>
+      <button class="btn btn-primario" onclick="iniciarPreparacaoBV('entregador')">Cadastrar como motorista</button>
       <div class="bv-entrar">Já tem conta? <a onclick="entrarBoasVindas('entregador')">Entre aqui</a></div>
     </div>
     <div class="bv-rodape">📍 Atendemos cidade, zona rural, sítios e fazendas</div>
@@ -3309,7 +3392,19 @@ function render(){
   const _foco = capturarFocoAtivo();
   const _scroll = capturarScroll();
   if(estado.telaBoasVindas && !estado.sessaoCarregando){
-    app.innerHTML = telaBoasVindas();
+    app.innerHTML = bvPreparando ? telaPreparandoBV() : telaBoasVindas();
+    restaurarFocoAtivo(_foco);
+    restaurarScroll(_scroll);
+    return;
+  }
+  if(planoAnimando){
+    app.innerHTML = telaPlanoConfirmadoBV(planoAnimando);
+    restaurarFocoAtivo(_foco);
+    restaurarScroll(_scroll);
+    return;
+  }
+  if(clienteBemVindoAnimando){
+    app.innerHTML = telaClienteBemVindoBV(estado.cliente.nome||'');
     restaurarFocoAtivo(_foco);
     restaurarScroll(_scroll);
     return;
@@ -3322,8 +3417,7 @@ function render(){
     </header>
     ${(!estado.cliente.logado && !estado.motorista.ativo) ? `
     <div class="toggle-modo">
-      <button class="${estado.modo==='cliente'?'ativo':''}" onclick="mudarModo('cliente')">Sou cliente</button>
-      <button class="${estado.modo==='entregador'?'ativo':''}" onclick="mudarModo('entregador')">Sou entregador</button>
+      <button class="btn-voltar-modo" onclick="voltarParaEscolhaModo()">← Voltar</button>
     </div>` : ''}
     <div class="botao-como-funciona" onclick="abrirComoFunciona('${estado.modo==='cliente'?'cliente':'motorista'}')">
       <span class="icone">❓</span>
@@ -3488,6 +3582,7 @@ function mudarVeiculo(k){
 }
 function alternarRoca(){ estado.form.roca = !estado.form.roca; render(); }
 function mudarModo(m){ estado.modo=m; estado.ultimoPedidosJSON=''; salvarLocal('ef_modo', m); render(); carregarPedidos(); }
+function voltarParaEscolhaModo(){ estado.telaBoasVindas = true; bvPreparando = null; render(); }
 function irParaCadastroEntregadorViaBanner(){
   estado.modo='entregador';
   salvarLocal('ef_modo','entregador');
@@ -3560,11 +3655,12 @@ async function cadastrarCliente(){
   estado.form.nome = c.nome; estado.form.telefone = c.telefone;
   estado.ultimoPedidosJSON='';
   salvarLocal('ef_cliente_telefone', c.telefone); salvarLocal('ef_modo','cliente');
-  mostrarToast('Conta criada! Bem-vindo(a), '+c.nome+'.');
+  clienteBemVindoAnimando = true;
+  render();
   await carregarPedidos();
   await carregarCarteiraCliente();
   if(estado.notificacoesStatus==='granted') inscreverPushReal();
-  render();
+  setTimeout(()=>{ clienteBemVindoAnimando = false; render(); }, 4000);
 }
 
 async function loginCliente(){
@@ -3743,6 +3839,7 @@ async function escolherPlano(chave){
   if(pixPollTimer){ clearInterval(pixPollTimer); pixPollTimer=null; }
   const p = PLANOS[chave];
   await salvarEtapaCadastro({ plano:chave, taxa_valor:p.preco, taxa_status: p.preco>0 ? 'pendente' : 'pago' });
+  if(chave==='free'){ dispararAnimacaoPlano('free'); return; }
   render();
   if(chave==='pro'){ criarCobrancaPix(); }
 }
@@ -3773,7 +3870,8 @@ function iniciarPollingPix(){
     if(!c.id || c.pix.status==='pago'){ clearInterval(pixPollTimer); pixPollTimer=null; return; }
     const { data } = await sb.from('entrega_motoristas').select('taxa_status').eq('id', c.id).maybeSingle();
     if(data && data.taxa_status==='pago'){
-      c.pix.status='pago'; clearInterval(pixPollTimer); pixPollTimer=null; render();
+      c.pix.status='pago'; clearInterval(pixPollTimer); pixPollTimer=null;
+      dispararAnimacaoPlano('pro');
     }
   }, 4000);
 }
