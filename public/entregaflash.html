@@ -687,7 +687,7 @@ function precoDeDistancia(veiculo, km, roca){
   const taxaKm = (roca && v.kmRoca!=null) ? v.kmRoca : v.km;
   return Math.round(Math.max(v.minimo||0, taxaKm*km)*100)/100;
 }
-function ganhoMotorista(preco){ const plano = PLANOS[estado.motorista.plano] || PLANOS.pro; return Math.round(preco*(1-plano.taxaPlataforma)*100)/100; }
+function ganhoMotorista(preco){ const plano = PLANOS[estado.motorista.plano] || PLANOS.free; return Math.round(preco*(1-plano.taxaPlataforma)*100)/100; }
 
 // ---------- preenchimento automático de endereço ----------
 async function buscarSugestoes(campo){
@@ -2371,17 +2371,51 @@ function telaCliente(){
   return `
   <div class="cartao">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <h2 style="margin:0">Pedir entrega</h2>
-      <div style="text-align:right">
-        <div style="font-size:12px;color:var(--poeira)">Olá, <b style="color:var(--osso)">${estado.cliente.nome}</b></div>
-        <a onclick="sairCliente()" style="font-size:12px;cursor:pointer;color:var(--poeira);text-decoration:underline">Sair</a>
+      <div style="font-size:12px;color:var(--poeira)">Olá, <b style="color:var(--osso);font-size:14px">${estado.cliente.nome}</b></div>
+      <a onclick="sairCliente()" style="font-size:12px;cursor:pointer;color:var(--poeira);text-decoration:underline">Sair</a>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;background:var(--painel-alt);border:1px solid var(--linha);border-radius:12px;padding:14px 16px">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.4px;color:var(--poeira)">Saldo na carteira</div>
+        <div style="font-family:'Archivo Black';font-size:24px;color:var(--osso);margin-top:2px">R$ ${w.saldo.toFixed(2)}</div>
       </div>
+      ${!w.adicionando ? `<button class="btn btn-primario btn-pequeno" style="margin-top:0;white-space:nowrap" onclick="abrirAdicionarSaldo()">💳 Adicionar via Pix</button>` : `<button class="btn btn-secundario btn-pequeno" style="margin-top:0;white-space:nowrap" onclick="fecharAdicionarSaldo()">Fechar</button>`}
+    </div>
+    ${w.adicionando ? `
+    <div class="pix-box" style="margin-top:12px">
+      ${!w.pix.qrCode && !w.pix.gerando && !w.pix.erro ? `
+      <label>Valor a adicionar</label>
+      <input type="number" id="carteira-valor" value="${w.valorInput}" placeholder="Ex: 20" min="1" step="0.01">
+      <button class="btn btn-primario" style="margin-top:0" onclick="confirmarValorCarteira()">Gerar Pix</button>
+      ` : ''}
+      ${w.pix.gerando ? `<div class="subtitulo" style="margin-top:10px"><span class="spin">⏳</span> Gerando cobrança Pix...</div>` : ''}
+      ${w.pix.erro ? `<div class="erro-campo">${w.pix.erro}</div><button class="btn btn-secundario btn-pequeno" style="margin-top:10px" onclick="confirmarValorCarteira()">Tentar novamente</button>` : ''}
+      ${w.pix.qrCode ? `
+      <img class="pix-qr" src="data:image/png;base64,${w.pix.qrCode}">
+      <div class="pix-copia"><input type="text" readonly value="${w.pix.copiaCola}"><button class="btn btn-secundario btn-pequeno" onclick="copiarPixCarteira()">Copiar</button></div>
+      <div class="pix-status ${w.pix.status==='pago'?'pago':'aguardando'}">${w.pix.status==='pago'?'✅ Pagamento confirmado!':'⏳ Aguardando pagamento...'}</div>
+      ` : ''}
+    </div>` : `
+    <div style="margin-top:14px;padding:14px;border-radius:12px;background:var(--painel-alt);border:1px solid var(--linha);display:flex;gap:10px;align-items:flex-start">
+      <div style="font-size:24px;line-height:1">🚲</div>
+      <div style="flex:1">
+        <div style="font-weight:700;color:var(--osso);font-size:14px">Tens bicicleta? Também podes entregar!</div>
+        <div style="font-size:12.5px;color:var(--poeira);margin-top:3px">Aproveita e já te cadastra como entregador — sem precisar de moto ou carro.</div>
+        <button class="btn btn-primario btn-pequeno" style="margin-top:10px" onclick="irParaCadastroEntregadorViaBanner()">Cadastrar-me agora</button>
+      </div>
+    </div>`}
+  </div>
+
+  <div class="cartao">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <h2 style="margin:0">Pedir entrega</h2>
     </div>
     <div style="font-size:12px;color:var(--osso);display:flex;align-items:center;gap:6px;margin-top:2px">
       <span style="width:8px;height:8px;border-radius:50%;background:${estado.motoristasOnline>0?'#3ECF8E':'#8D93A6'};display:inline-block"></span>
       ${estado.motoristasOnline>0 ? `${estado.motoristasOnline} motorista${estado.motoristasOnline>1?'s':''} online agora` : 'Nenhum motorista online no momento'}
     </div>
     <label>Endereço de recolha</label>
+
     <input type="text" id="c-origem" value="${f.origem}" placeholder="Rua, número, bairro, cidade" autocomplete="off">
     <div class="sugestoes" id="sugestoes-origem"></div>
     <div style="font-size:12px;margin-top:-4px;margin-bottom:10px">
@@ -2467,39 +2501,6 @@ function telaCliente(){
     ${preco!=null ? `
     <button class="btn btn-primario" style="margin-top:16px" onclick="criarPedido()">${f.tipoRetirada==='agendado'?'Agendar pedido':'Confirmar pedido'}</button>
     ` : `<div class="subtitulo" style="margin-top:12px">Cobrimos Muzambinho/MG e cidades próximas.</div>`}
-  </div>
-
-  <div class="cartao">
-    <h2>Carteira</h2>
-    <div class="saldo-card">
-      <div class="valor-saldo">R$ ${w.saldo.toFixed(2)}</div>
-      <div class="rotulo-saldo">Saldo disponível</div>
-    </div>
-    ${!w.adicionando ? `<button class="btn btn-secundario" onclick="abrirAdicionarSaldo()">💳 Adicionar saldo via Pix</button>
-    <div style="margin-top:14px;padding:14px;border-radius:12px;background:linear-gradient(135deg,#1d2b1f,#16321f);border:1px solid var(--verde);display:flex;gap:10px;align-items:flex-start">
-      <div style="font-size:26px;line-height:1">🚲</div>
-      <div style="flex:1">
-        <div style="font-weight:700;color:var(--osso);font-size:14px">Tens bicicleta? Também podes entregar!</div>
-        <div style="font-size:12.5px;color:var(--poeira);margin-top:3px">Aproveita e já te cadastra como entregador — sem precisar de moto ou carro.</div>
-        <button class="btn btn-primario btn-pequeno" style="margin-top:10px" onclick="irParaCadastroEntregadorViaBanner()">Cadastrar-me agora</button>
-      </div>
-    </div>` : `
-    <div class="pix-box">
-      ${!w.pix.qrCode && !w.pix.gerando && !w.pix.erro ? `
-      <label>Valor a adicionar</label>
-      <input type="number" id="carteira-valor" value="${w.valorInput}" placeholder="Ex: 20" min="1" step="0.01">
-      <button class="btn btn-primario" style="margin-top:0" onclick="confirmarValorCarteira()">Gerar Pix</button>
-      <button class="btn btn-secundario" onclick="fecharAdicionarSaldo()">Cancelar</button>
-      ` : ''}
-      ${w.pix.gerando ? `<div class="subtitulo" style="margin-top:10px"><span class="spin">⏳</span> Gerando cobrança Pix...</div>` : ''}
-      ${w.pix.erro ? `<div class="erro-campo">${w.pix.erro}</div><button class="btn btn-secundario btn-pequeno" style="margin-top:10px" onclick="confirmarValorCarteira()">Tentar novamente</button>` : ''}
-      ${w.pix.qrCode ? `
-      <img class="pix-qr" src="data:image/png;base64,${w.pix.qrCode}">
-      <div class="pix-copia"><input type="text" readonly value="${w.pix.copiaCola}"><button class="btn btn-secundario btn-pequeno" onclick="copiarPixCarteira()">Copiar</button></div>
-      <div class="pix-status ${w.pix.status==='pago'?'pago':'aguardando'}">${w.pix.status==='pago'?'✅ Pagamento confirmado!':'⏳ Aguardando pagamento...'}</div>
-      <button class="btn btn-secundario" onclick="fecharAdicionarSaldo()">Fechar</button>
-      ` : ''}
-    </div>`}
   </div>
 
   <div class="cartao">
@@ -2747,6 +2748,7 @@ function telaMotorista(){
     <button class="btn btn-secundario btn-pequeno" style="margin-top:10px" onclick="solicitarSaque()">💰 Pedir saque</button>
   </div>
   <button class="btn ${m.disponivel?'btn-secundario':'btn-verde'}" onclick="alternarDisponibilidade()">${m.disponivel?'🔴 Parar / ficar indisponível':'🟢 Iniciar rota'}</button>
+  ${direitosPlanoHTML(planoAtual, m.plano)}
   <div class="rodape-motorista">
     <div style="font-size:12px;color:var(--poeira)">Ligado como <b style="color:var(--osso)">${m.nome}</b>${planoAtual.limiteMensal!=null?` · ${entregasMes}/${planoAtual.limiteMensal} entregas este mês`:''}</div>
     <div style="display:flex;gap:8px">
@@ -2763,6 +2765,32 @@ function telaMotorista(){
         ? `<div class="vazio"><span class="emoji-grande">🛵</span>Sem pedidos por agora.</div>`
         : disponiveis.map(cartaoPedidoDisponivel).join('')
     }
+  </div>`;
+}
+
+// ---------- direitos do plano (mostrado assim que o motorista loga) ----------
+function direitosPlanoHTML(planoAtual, chave){
+  const atrasoSeg = Math.round(ATRASO_PRIORIDADE_PRO_MS/1000);
+  const linhas = chave==='pro' ? [
+    '✅ Sem limite de entregas por mês',
+    `✅ Até ${planoAtual.limiteSimultaneo} corridas ao mesmo tempo`,
+    `✅ Até ${planoAtual.limiteCancelamentosDia} cancelamentos por dia`,
+    '✅ Vê os pedidos novos na hora, antes de todo mundo',
+    '✅ Saque imediato'
+  ] : [
+    `⚠️ Até ${planoAtual.limiteMensal} entregas por mês`,
+    `⚠️ Até ${planoAtual.limiteSimultaneo} corridas ao mesmo tempo`,
+    `⚠️ Até ${planoAtual.limiteCancelamentosDia} cancelamentos por dia`,
+    `⚠️ Vê os pedidos novos ${atrasoSeg}s depois dos motoristas Pro`,
+    `⚠️ Saque em até ${planoAtual.saqueDias} dias`
+  ];
+  return `
+  <div class="cartao" style="padding:12px 14px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <b style="font-size:13px">${chave==='pro'?'⭐ Plano Pro':'🆓 Plano Free'} — o que você pode fazer</b>
+      ${chave==='free' ? `<button class="btn btn-secundario btn-pequeno" onclick="abrirComoFunciona('motorista')">Ver vantagens do Pro</button>` : ''}
+    </div>
+    <div style="margin-top:6px;font-size:12px;color:var(--poeira);line-height:1.7">${linhas.join('<br>')}</div>
   </div>`;
 }
 
