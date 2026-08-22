@@ -489,8 +489,8 @@ async function salvarConfigGeralAdmin(){
 
 let estado = {
   modo:'cliente',
-  form:{ nome:'', telefone:'', origem:'', destino:'', paradas:[], tipoRetirada:'agora', horarioAgendado:'', veiculo:'moto', descricao:'', distancia:null, duracaoMin:null, distanciaGPS:null, distanciaDivergente:false, origemCoord:null, destinoCoord:null, prioridade:false, origemFotoUrl:null, origemReferencia:'', roca:false, extras:extrasVazios() },
-  semEndereco:{ aberto:false, mapsLink:'', plusCode:'', erro:'', enviandoFoto:false },
+  form:{ nome:'', telefone:'', origem:'', destino:'', paradas:[], tipoRetirada:'agora', horarioAgendado:'', veiculo:'moto', descricao:'', distancia:null, duracaoMin:null, distanciaGPS:null, distanciaDivergente:false, origemCoord:null, destinoCoord:null, prioridade:false, origemFotoUrl:null, origemReferencia:'', destinoFotoUrl:null, destinoReferencia:'', roca:false, extras:extrasVazios() },
+  semEndereco:{ aberto:false, campo:'origem', mapsLink:'', plusCode:'', erro:'', enviandoFoto:false },
   calculando:false, falhaCalculo:false,
   filtroTelefoneCliente:'',
   abaPedidosCliente:'ativos', // ativos | historico
@@ -655,7 +655,7 @@ async function restaurarSessao(){
   }catch(e){ console.error(e); }
   estado.sessaoCarregando = false;
 }
-function debounce(chave, fn, delay=450){
+function debounce(chave, fn, delay=250){
   clearTimeout(temporizadoresDebounce[chave]);
   temporizadoresDebounce[chave] = setTimeout(fn, delay);
 }
@@ -695,7 +695,7 @@ async function buscarSugestoes(campo){
   const cont = document.getElementById('sugestoes-'+campo);
   if(!inputEl || !cont) return;
   const texto = inputEl.value.trim();
-  if(texto.length<4){ cont.innerHTML=''; estado.sugestoesTemp[campo]=[]; return; }
+  if(texto.length<2){ cont.innerHTML=''; estado.sugestoesTemp[campo]=[]; return; }
   cont.innerHTML = `<div class="sugestao-vazia">Buscando endereços...</div>`;
   const q = texto.toLowerCase().includes('mg') ? texto : texto+', MG, Brasil';
   const viewbox = `${REGIAO.minLon},${REGIAO.maxLat},${REGIAO.maxLon},${REGIAO.minLat}`;
@@ -830,6 +830,7 @@ function paraCamposApp(row){
     origem:row.origem, destino:row.destino,
     origemCoord:(row.origem_lat!=null&&row.origem_lng!=null)?{lat:row.origem_lat,lon:row.origem_lng}:null,
     origemFotoUrl: row.origem_foto_url || null, origemReferencia: row.origem_referencia || '',
+    destinoFotoUrl: row.destino_foto_url || null, destinoReferencia: row.destino_referencia || '',
     destinoCoord:(row.destino_lat!=null&&row.destino_lng!=null)?{lat:row.destino_lat,lon:row.destino_lng}:null,
     motoristaCoord:(row.motorista_lat!=null&&row.motorista_lng!=null)?{lat:row.motorista_lat,lon:row.motorista_lng}:null,
     fotoAntesUrl: row.foto_antes_url || null, fotoDepoisUrl: row.foto_depois_url || null,
@@ -864,6 +865,7 @@ function paraCamposDB(p){
     origem:p.origem, destino:p.destino,
     origem_lat:p.origemCoord?p.origemCoord.lat:null, origem_lng:p.origemCoord?p.origemCoord.lon:null,
     origem_foto_url:p.origemFotoUrl||null, origem_referencia:p.origemReferencia||null,
+    destino_foto_url:p.destinoFotoUrl||null, destino_referencia:p.destinoReferencia||null,
     destino_lat:p.destinoCoord?p.destinoCoord.lat:null, destino_lng:p.destinoCoord?p.destinoCoord.lon:null,
     veiculo:p.veiculo, descricao:p.descricao||null, distancia:p.distancia, preco:p.preco,
     status:p.status, criado_em:p.criadoEm, atualizado_em:p.atualizadoEm,
@@ -1313,20 +1315,21 @@ function usarDistanciaManual(){
   render();
 }
 
-// ---------- sem endereço certo (sítio/roça) ----------
-function abrirSemEndereco(){ estado.semEndereco = { aberto:true, mapsLink:'', plusCode:'', erro:'', enviandoFoto:false }; render(); }
+// ---------- sem endereço certo (sítio/roça) — funciona para recolha (origem) e entrega (destino) ----------
+function abrirSemEndereco(campo){ estado.semEndereco = { aberto:true, campo: campo||'origem', mapsLink:'', plusCode:'', erro:'', enviandoFoto:false }; render(); }
 function fecharSemEndereco(){ estado.semEndereco.aberto = false; render(); }
-async function usarGPSOrigemCliente(){
+async function usarGPSSemEndereco(){
   if(!navigator.geolocation){ mostrarToast('Teu navegador não suporta localização por GPS.'); return; }
+  const campo = estado.semEndereco.campo;
   estado.semEndereco.erro = '';
   mostrarToast('A obter tua localização...');
   navigator.geolocation.getCurrentPosition(
     (pos)=>{
       const lat = pos.coords.latitude, lon = pos.coords.longitude;
-      estado.form.origemCoord = { lat, lon };
-      estado.form.origem = `📍 Localização GPS (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
-      estado.form.distancia = null; estado.form.destinoCoord = estado.form.destinoCoord; // mantém destino se já calculado
-      const el = document.getElementById('c-origem'); if(el) el.value = estado.form.origem;
+      estado.form[campo+'Coord'] = { lat, lon };
+      estado.form[campo] = `📍 Localização GPS (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+      estado.form.distancia = null;
+      const el = document.getElementById('c-'+campo); if(el) el.value = estado.form[campo];
       fecharSemEndereco();
       mostrarToast('Localização capturada! Agora calcula a corrida.');
     },
@@ -1334,53 +1337,58 @@ async function usarGPSOrigemCliente(){
     { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
   );
 }
-function usarLinkMapsOrigem(){
+function usarLinkMapsSemEndereco(){
+  const campo = estado.semEndereco.campo;
   const input = document.getElementById('se-maps-link');
   const link = (input?.value||'').trim();
   if(!link){ estado.semEndereco.erro = 'Cola o link que a pessoa compartilhou.'; render(); return; }
   const match = link.match(/(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
   if(match){
     const lat = parseFloat(match[1]), lon = parseFloat(match[2]);
-    estado.form.origemCoord = { lat, lon };
-    estado.form.origem = `📍 Localização compartilhada (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
+    estado.form[campo+'Coord'] = { lat, lon };
+    estado.form[campo] = `📍 Localização compartilhada (${lat.toFixed(5)}, ${lon.toFixed(5)})`;
     estado.form.distancia = null;
-    const el = document.getElementById('c-origem'); if(el) el.value = estado.form.origem;
+    const el = document.getElementById('c-'+campo); if(el) el.value = estado.form[campo];
     fecharSemEndereco();
     mostrarToast('Localização do link capturada! Agora calcula a corrida.');
   } else {
-    estado.form.origemReferencia = link;
+    estado.form[campo+'Referencia'] = link;
     fecharSemEndereco();
     mostrarToast('Não consegui ler as coordenadas — guardei o link para o motorista abrir direto.');
   }
 }
-function usarPlusCodeOrigem(){
+function usarPlusCodeSemEndereco(){
+  const campo = estado.semEndereco.campo;
   const input = document.getElementById('se-plus-code');
   const code = (input?.value||'').trim();
   if(!code){ estado.semEndereco.erro = 'Digita o Plus Code.'; render(); return; }
-  estado.form.origemReferencia = (estado.form.origemReferencia ? estado.form.origemReferencia+' · ' : '') + `Plus Code: ${code}`;
+  estado.form[campo+'Referencia'] = (estado.form[campo+'Referencia'] ? estado.form[campo+'Referencia']+' · ' : '') + `Plus Code: ${code}`;
   fecharSemEndereco();
   mostrarToast('Plus Code guardado — o motorista vai poder colar no Google Maps.');
 }
-function focarReferenciaOrigem(){
+function focarReferenciaSemEndereco(){
+  const campo = estado.semEndereco.campo;
   fecharSemEndereco();
-  const el = document.getElementById('c-origem');
-  if(el){ el.focus(); mostrarToast('Descreve o ponto de referência no campo de recolha (ex: "Sítio Boa Vista, portão azul, perto da igreja").'); }
+  const el = document.getElementById('c-'+campo);
+  if(el){ el.focus(); mostrarToast(`Descreve o ponto de referência no campo de ${campo==='destino'?'entrega':'recolha'} (ex: "Sítio Boa Vista, portão azul, perto da igreja").`); }
 }
-async function processarFotoOrigemSelecionado(inputEl){
+async function processarFotoSemEnderecoSelecionado(inputEl){
   const file = inputEl.files && inputEl.files[0];
   if(!file) return;
+  const campo = estado.semEndereco.campo;
   estado.semEndereco.enviandoFoto = true; render();
-  const nomeArquivo = `origem-ref-${Date.now()}.jpg`;
+  const nomeArquivo = `${campo}-ref-${Date.now()}.jpg`;
   const { error: erroUp } = await sb.storage.from('entrega-fotos').upload(nomeArquivo, file, { upsert:true, contentType:file.type||'image/jpeg' });
   estado.semEndereco.enviandoFoto = false;
   if(erroUp){ mostrarToast('Erro ao enviar a foto. Tenta novamente.'); render(); return; }
   const { data: pub } = sb.storage.from('entrega-fotos').getPublicUrl(nomeArquivo);
-  estado.form.origemFotoUrl = pub.publicUrl;
+  estado.form[campo+'FotoUrl'] = pub.publicUrl;
   fecharSemEndereco();
   mostrarToast('Foto do local anexada ao pedido!');
 }
 function semEnderecoModalHTML(){
   const se = estado.semEndereco;
+  const ehDestino = se.campo==='destino';
   return `
   <div class="modal-fundo" onclick="if(event.target===this) fecharSemEndereco()">
     <div class="modal-chat" style="max-height:88vh">
@@ -1391,34 +1399,34 @@ function semEnderecoModalHTML(){
 
         <div class="cf-passo"><div class="num">1</div><div class="conteudo">
           <b>📍 Usar minha localização agora (o melhor)</b>
-          <span>Se estiveres no local, isso pega tua posição exata por GPS — não precisa escrever nada.</span>
-          <button class="btn btn-primario btn-pequeno" style="margin-top:8px" onclick="usarGPSOrigemCliente()">Usar minha localização</button>
+          <span>${ehDestino ? 'Se a entrega é onde estás agora (ou onde vais estar), isso pega a posição exata por GPS — não precisa escrever nada.' : 'Se estiveres no local, isso pega tua posição exata por GPS — não precisa escrever nada.'}</span>
+          <button class="btn btn-primario btn-pequeno" style="margin-top:8px" onclick="usarGPSSemEndereco()">Usar minha localização</button>
         </div></div>
 
         <div class="cf-passo"><div class="num">2</div><div class="conteudo">
           <b>📲 Colar link do WhatsApp/Google Maps</b>
           <span>Manda tua localização pra alguém no WhatsApp, copia o link que aparece e cola aqui.</span>
           <input type="text" id="se-maps-link" placeholder="Cola o link aqui" style="margin-top:8px">
-          <button class="btn btn-secundario btn-pequeno" style="margin-top:8px" onclick="usarLinkMapsOrigem()">Usar este link</button>
+          <button class="btn btn-secundario btn-pequeno" style="margin-top:8px" onclick="usarLinkMapsSemEndereco()">Usar este link</button>
         </div></div>
 
         <div class="cf-passo"><div class="num">3</div><div class="conteudo">
           <b>📝 Ponto de referência + telefone</b>
           <span>O clássico da roça: descreve o lugar (ex: "Sítio Boa Vista, portão azul, perto da igreja"). Teu telefone já vai junto no pedido.</span>
-          <button class="btn btn-secundario btn-pequeno" style="margin-top:8px" onclick="focarReferenciaOrigem()">Escrever referência</button>
+          <button class="btn btn-secundario btn-pequeno" style="margin-top:8px" onclick="focarReferenciaSemEndereco()">Escrever referência</button>
         </div></div>
 
         <div class="cf-passo"><div class="num">4</div><div class="conteudo">
           <b>🔗 Plus Code</b>
           <span>Se já tens um Plus Code do local (tipo 8FVC9G8F+6X), cola aqui.</span>
           <input type="text" id="se-plus-code" placeholder="Ex: 9G8F+6X" style="margin-top:8px">
-          <button class="btn btn-secundario btn-pequeno" style="margin-top:8px" onclick="usarPlusCodeOrigem()">Usar este código</button>
+          <button class="btn btn-secundario btn-pequeno" style="margin-top:8px" onclick="usarPlusCodeSemEndereco()">Usar este código</button>
         </div></div>
 
         <div class="cf-passo"><div class="num">5</div><div class="conteudo">
           <b>📸 Foto do local</b>
           <span>Uma foto do portão, entrada ou ponto conhecido ajuda o motorista a reconhecer de longe.</span>
-          <input type="file" accept="image/*" capture="environment" style="margin-top:8px" onchange="processarFotoOrigemSelecionado(this)" ${se.enviandoFoto?'disabled':''}>
+          <input type="file" accept="image/*" capture="environment" style="margin-top:8px" onchange="processarFotoSemEnderecoSelecionado(this)" ${se.enviandoFoto?'disabled':''}>
           ${se.enviandoFoto ? `<div class="subtitulo" style="margin-top:6px">A enviar foto...</div>` : ''}
         </div></div>
       </div>
@@ -1491,6 +1499,7 @@ async function criarPedido(){
     clienteNome:f.nome, clienteTelefone:f.telefone,
     origem:f.origem, destino:f.destino, origemCoord:f.origemCoord, destinoCoord:f.destinoCoord,
     origemFotoUrl:f.origemFotoUrl||null, origemReferencia:f.origemReferencia||'',
+    destinoFotoUrl:f.destinoFotoUrl||null, destinoReferencia:f.destinoReferencia||'',
     paradas:paradasValidas, paradasCoords:paradasCoordsValidas, paradaAtual:0, tipoRetirada:f.tipoRetirada, horarioAgendado:f.tipoRetirada==='agendado'?f.horarioAgendado:null,
     editado:false, canceladoEm:null, taxaCancelamento:0, prioridade:!!f.prioridade,
     veiculo:f.veiculo, descricao:f.descricao, distancia:f.distancia, distanciaGPS:f.distanciaGPS, distanciaDivergente:!!f.distanciaDivergente, preco:preco,
@@ -1509,7 +1518,7 @@ async function criarPedido(){
   }
   estado.ultimoPedidosJSON='';
   estado.filtroTelefoneCliente = f.telefone;
-  estado.form = { nome:f.nome, telefone:f.telefone, origem:'', destino:'', paradas:[], tipoRetirada:'agora', horarioAgendado:'', veiculo:'moto', descricao:'', distancia:null, duracaoMin:null, distanciaGPS:null, distanciaDivergente:false, origemCoord:null, destinoCoord:null, prioridade:false, origemFotoUrl:null, origemReferencia:'', roca:false, extras:extrasVazios() };
+  estado.form = { nome:f.nome, telefone:f.telefone, origem:'', destino:'', paradas:[], tipoRetirada:'agora', horarioAgendado:'', veiculo:'moto', descricao:'', distancia:null, duracaoMin:null, distanciaGPS:null, distanciaDivergente:false, origemCoord:null, destinoCoord:null, prioridade:false, origemFotoUrl:null, origemReferencia:'', destinoFotoUrl:null, destinoReferencia:'', roca:false, extras:extrasVazios() };
   mostrarToast(f.tipoRetirada==='agendado' ? 'Pedido agendado com sucesso!' : 'Pedido criado! Buscando um entregador...');
   await carregarPedidos();
 }
@@ -2237,7 +2246,8 @@ function cartaoPedidoDisponivel(p){
     ${extrasHTML(p)}
     ${p.distanciaAteMim!=null ? `<div style="font-size:12px;color:var(--osso);font-weight:600;margin-bottom:2px">📍 a ${p.distanciaAteMim.toFixed(1)} km de você</div>` : ''}
     <div style="font-size:12px;color:var(--poeira);margin-bottom:8px">${VEICULOS[p.veiculo].emoji} ${VEICULOS[p.veiculo].label} · ${p.distancia} km ${p.descricao?'· '+p.descricao:''}</div>
-    ${p.origemReferencia || p.origemFotoUrl ? `<div style="font-size:11.5px;color:var(--poeira);margin-bottom:8px">📍 recolha em local sem endereço fixo (referência${p.origemFotoUrl?' e foto':''} disponíveis após aceitar)</div>` : ''}
+    ${p.origemReferencia || p.origemFotoUrl ? `<div style="font-size:11.5px;color:var(--poeira);margin-bottom:4px">📍 recolha em local sem endereço fixo (referência${p.origemFotoUrl?' e foto':''} disponíveis após aceitar)</div>` : ''}
+    ${p.destinoReferencia || p.destinoFotoUrl ? `<div style="font-size:11.5px;color:var(--poeira);margin-bottom:8px">📍 entrega em local sem endereço fixo (referência${p.destinoFotoUrl?' e foto':''} disponíveis após aceitar)</div>` : ''}
     <button class="btn btn-primario btn-pequeno" onclick="aceitarPedido('${p.id}')">Aceitar pedido</button>
   </div>`;
 }
@@ -2282,6 +2292,10 @@ function cartaoPedidoAtivo(p){
     ${p.status==='indo_coletar' && (p.origemReferencia || p.origemFotoUrl) ? `<div class="subtitulo" style="margin-top:8px;background:var(--painel-alt);border-radius:8px;padding:8px 10px">
       ${p.origemReferencia ? `📝 ${p.origemReferencia}<br>` : ''}
       ${p.origemFotoUrl ? `<a href="${p.origemFotoUrl}" target="_blank" style="color:var(--mango)">📸 Ver foto do local</a>` : ''}
+    </div>` : ''}
+    ${p.status==='a_caminho' && (p.destinoReferencia || p.destinoFotoUrl) ? `<div class="subtitulo" style="margin-top:8px;background:var(--painel-alt);border-radius:8px;padding:8px 10px">
+      ${p.destinoReferencia ? `📝 ${p.destinoReferencia}<br>` : ''}
+      ${p.destinoFotoUrl ? `<a href="${p.destinoFotoUrl}" target="_blank" style="color:var(--mango)">📸 Ver foto do local</a>` : ''}
     </div>` : ''}
     ${p.iniciadoEm && p.status!=='entregue' ? `<div class="gps-ao-vivo"><span class="ponto-pulsante"></span> localização a atualizar em tempo real</div>` : ''}
     ${p.origemCoord && p.destinoCoord ? `<div class="mapa" id="${mapaId}"></div>` : ''}
@@ -2419,7 +2433,7 @@ function telaCliente(){
     <input type="text" id="c-origem" value="${f.origem}" placeholder="Rua, número, bairro, cidade" autocomplete="off">
     <div class="sugestoes" id="sugestoes-origem"></div>
     <div style="font-size:12px;margin-top:-4px;margin-bottom:10px">
-      <a onclick="abrirSemEndereco()" style="color:var(--mango);cursor:pointer;text-decoration:underline">📍 Sítio/roça sem endereço certo? Toque aqui</a>
+      <a onclick="abrirSemEndereco('origem')" style="color:var(--mango);cursor:pointer;text-decoration:underline">📍 Sítio/roça sem endereço certo? Toque aqui</a>
     </div>
     ${f.origemFotoUrl || f.origemReferencia ? `<div class="subtitulo" style="margin:-4px 0 10px;background:var(--painel-alt);border-radius:8px;padding:8px 10px">
       ${f.origemReferencia ? `📝 Referência: ${f.origemReferencia}<br>` : ''}
@@ -2428,6 +2442,13 @@ function telaCliente(){
     <label>Endereço de entrega</label>
     <input type="text" id="c-destino" value="${f.destino}" placeholder="Rua, número, bairro, cidade" autocomplete="off">
     <div class="sugestoes" id="sugestoes-destino"></div>
+    <div style="font-size:12px;margin-top:-4px;margin-bottom:10px">
+      <a onclick="abrirSemEndereco('destino')" style="color:var(--mango);cursor:pointer;text-decoration:underline">📍 Sítio/roça sem endereço certo? Toque aqui</a>
+    </div>
+    ${f.destinoFotoUrl || f.destinoReferencia ? `<div class="subtitulo" style="margin:-4px 0 10px;background:var(--painel-alt);border-radius:8px;padding:8px 10px">
+      ${f.destinoReferencia ? `📝 Referência: ${f.destinoReferencia}<br>` : ''}
+      ${f.destinoFotoUrl ? `📸 Foto do local anexada` : ''}
+    </div>` : ''}
     ${(f.paradas||[]).map((valor,idx)=>`
     <div class="linha-parada">
       <span class="badge-parada">+${idx+2}</span>
@@ -2741,20 +2762,24 @@ function telaMotorista(){
   const ganhosHoje = entreguesHojeArr.reduce((s,p)=>s+ganhoMotorista(p.preco),0);
   const entregasMes = entregasDoMesAtual(m.telefone);
   return `
-  <div class="saldo-card">
-    <div class="valor-saldo">R$ ${ganhosHoje.toFixed(2)}</div>
-    <div class="rotulo-saldo">Creditado hoje · ${entreguesHojeArr.length} entregas · Plano ${planoAtual.label}</div>
-    <div class="rotulo-saldo" style="margin-top:6px">Saldo disponível para saque: <b style="color:var(--osso)">R$ ${Number(m.saldo||0).toFixed(2)}</b></div>
-    <button class="btn btn-secundario btn-pequeno" style="margin-top:10px" onclick="solicitarSaque()">💰 Pedir saque</button>
-  </div>
-  <button class="btn ${m.disponivel?'btn-secundario':'btn-verde'}" onclick="alternarDisponibilidade()">${m.disponivel?'🔴 Parar / ficar indisponível':'🟢 Iniciar rota'}</button>
-  ${direitosPlanoHTML(planoAtual, m.plano)}
-  <div class="rodape-motorista">
-    <div style="font-size:12px;color:var(--poeira)">Ligado como <b style="color:var(--osso)">${m.nome}</b>${planoAtual.limiteMensal!=null?` · ${entregasMes}/${planoAtual.limiteMensal} entregas este mês`:''}</div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-secundario btn-pequeno botao-chat" onclick="abrirSuporte()">💬 Suporte${estado.suporteNaoLidas>0?`<span class="notif-bolinha">${estado.suporteNaoLidas}</span>`:''}</button>
-      <button class="btn btn-secundario btn-pequeno" onclick="sairMotorista()">Sair</button>
+  <div class="cartao">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+      <div style="font-size:12px;color:var(--poeira)">Ligado como <b style="color:var(--osso);font-size:14px">${m.nome}</b></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secundario btn-pequeno botao-chat" onclick="abrirSuporte()">💬 Suporte${estado.suporteNaoLidas>0?`<span class="notif-bolinha">${estado.suporteNaoLidas}</span>`:''}</button>
+        <button class="btn btn-secundario btn-pequeno" onclick="sairMotorista()">Sair</button>
+      </div>
     </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;background:var(--painel-alt);border:1px solid var(--linha);border-radius:12px;padding:14px 16px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.4px;color:var(--poeira)">Creditado hoje · ${entreguesHojeArr.length} entregas</div>
+        <div style="font-family:'Archivo Black';font-size:24px;color:var(--osso);margin-top:2px">R$ ${ganhosHoje.toFixed(2)}</div>
+        <div style="font-size:11.5px;color:var(--poeira);margin-top:4px">Saldo p/ saque: <b style="color:var(--osso)">R$ ${Number(m.saldo||0).toFixed(2)}</b>${planoAtual.limiteMensal!=null?` · ${entregasMes}/${planoAtual.limiteMensal} entregas este mês`:''}</div>
+      </div>
+      <button class="btn btn-primario btn-pequeno" style="margin-top:0;white-space:nowrap" onclick="solicitarSaque()">💰 Saque</button>
+    </div>
+    <button class="btn ${m.disponivel?'btn-secundario':'btn-verde'}" style="margin-top:14px" onclick="alternarDisponibilidade()">${m.disponivel?'🔴 Parar / ficar indisponível':'🟢 Iniciar rota'}</button>
+    ${direitosPlanoHTML(planoAtual, m.plano)}
   </div>
   ${ativos.length>0 ? `<div class="cartao"><h2>Em curso</h2>${ativos.map(cartaoPedidoAtivo).join('')}</div>` : ''}
   <div class="cartao">
@@ -2785,7 +2810,7 @@ function direitosPlanoHTML(planoAtual, chave){
     `⚠️ Saque em até ${planoAtual.saqueDias} dias`
   ];
   return `
-  <div class="cartao" style="padding:12px 14px">
+  <div style="margin-top:14px;padding:12px 14px;border-radius:12px;background:var(--painel-alt);border:1px solid var(--linha)">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
       <b style="font-size:13px">${chave==='pro'?'⭐ Plano Pro':'🆓 Plano Free'} — o que você pode fazer</b>
       ${chave==='free' ? `<button class="btn btn-secundario btn-pequeno" onclick="abrirComoFunciona('motorista')">Ver vantagens do Pro</button>` : ''}
@@ -3211,7 +3236,7 @@ function sairCliente(){
   estado.cliente = { nome:'', telefone:'', logado:false, carteira:{ saldo:0, carregando:false, adicionando:false, valorInput:'10', pix:{ qrCode:null, copiaCola:null, status:'pendente', gerando:false, erro:'', id:null } } };
   estado.filtroTelefoneCliente = '';
   removerLocal('ef_cliente_telefone');
-  estado.form = { nome:'', telefone:'', origem:'', destino:'', paradas:[], tipoRetirada:'agora', horarioAgendado:'', veiculo:'moto', descricao:'', distancia:null, duracaoMin:null, distanciaGPS:null, distanciaDivergente:false, origemCoord:null, destinoCoord:null, prioridade:false, origemFotoUrl:null, origemReferencia:'', roca:false, extras:extrasVazios() };
+  estado.form = { nome:'', telefone:'', origem:'', destino:'', paradas:[], tipoRetirada:'agora', horarioAgendado:'', veiculo:'moto', descricao:'', distancia:null, duracaoMin:null, distanciaGPS:null, distanciaDivergente:false, origemCoord:null, destinoCoord:null, prioridade:false, origemFotoUrl:null, origemReferencia:'', destinoFotoUrl:null, destinoReferencia:'', roca:false, extras:extrasVazios() };
   estado.edicaoPedido = null;
   estado.abaPedidosCliente = 'ativos';
   estado.painelCliente.tela='entrar';
@@ -4217,9 +4242,9 @@ window.criarPedido=criarPedido; window.calcularCorrida=calcularCorrida; window.a
 window.avancarStatus=avancarStatus; window.mudarVeiculo=mudarVeiculo; window.mudarModo=mudarModo; window.alternarRoca=alternarRoca;
 window.entrarComoMotorista=entrarComoMotorista; window.sairMotorista=sairMotorista; window.carregarPedidos=carregarPedidos;
 window.abrirGPS=abrirGPS; window.abrirChat=abrirChat; window.fecharChat=fecharChat; window.enviarMensagem=enviarMensagem;
-window.abrirSemEndereco=abrirSemEndereco; window.fecharSemEndereco=fecharSemEndereco; window.usarGPSOrigemCliente=usarGPSOrigemCliente;
-window.usarLinkMapsOrigem=usarLinkMapsOrigem; window.usarPlusCodeOrigem=usarPlusCodeOrigem; window.focarReferenciaOrigem=focarReferenciaOrigem;
-window.processarFotoOrigemSelecionado=processarFotoOrigemSelecionado;
+window.abrirSemEndereco=abrirSemEndereco; window.fecharSemEndereco=fecharSemEndereco; window.usarGPSSemEndereco=usarGPSSemEndereco;
+window.usarLinkMapsSemEndereco=usarLinkMapsSemEndereco; window.usarPlusCodeSemEndereco=usarPlusCodeSemEndereco; window.focarReferenciaSemEndereco=focarReferenciaSemEndereco;
+window.processarFotoSemEnderecoSelecionado=processarFotoSemEnderecoSelecionado;
 window.solicitarFoto=solicitarFoto; window.processarFotoSelecionada=processarFotoSelecionada; window.usarDistanciaManual=usarDistanciaManual; window.confirmarParadaIntermediaria=confirmarParadaIntermediaria;
 window.buscarSugestoes=buscarSugestoes; window.selecionarSugestao=selecionarSugestao;
 window.ampliarFoto=ampliarFoto; window.fecharFotoAmpliada=fecharFotoAmpliada; window.fecharAlertaMotorista=fecharAlertaMotorista;
