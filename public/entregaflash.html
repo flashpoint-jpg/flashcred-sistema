@@ -369,6 +369,7 @@
   .cf-tabela-planos td{padding:9px 8px;border-bottom:1px solid var(--linha);color:var(--osso);vertical-align:top;}
   .cf-tabela-planos td.destaque{color:var(--mango);font-weight:700;}
   .cf-nota{font-size:12px;color:var(--poeira);margin-top:8px;line-height:1.5;font-style:italic;}
+  .cf-ajuda{font-size:11.5px;color:var(--poeira);margin:-4px 0 4px;line-height:1.4;opacity:0.85;}
   .cf-titulo-secao{font-family:'Rajdhani';font-weight:700;font-size:16px;text-transform:uppercase;letter-spacing:0.4px;color:var(--osso);margin:22px 0 4px;}
   .aba-mini{display:flex;margin:0 0 14px;background:var(--painel-alt);border-radius:6px;padding:3px;border:1px solid var(--linha);}
   .aba-mini button{flex:1;padding:9px 0;border:none;background:transparent;color:var(--poeira);font-family:'Karla';font-weight:700;font-size:14.5px;border-radius:4px;cursor:pointer;}
@@ -867,11 +868,31 @@ function mostrarToast(msg){
   estado.toast = msg; render();
   setTimeout(()=>{ estado.toast=null; render(); }, 2800);
 }
+function tempoDecorrido(criadoEm){
+  const seg = Math.max(0, Math.floor((Date.now()-criadoEm)/1000));
+  if(seg<60) return 'agora mesmo';
+  const min = Math.floor(seg/60);
+  if(min<60) return `há ${min} min`;
+  const h = Math.floor(min/60), restoMin = min%60;
+  return `há ${h}h${restoMin>0?restoMin+'min':''}`;
+}
 
 // ---------- aviso sonoro + visual: motorista encontrado ----------
+// contexto de áudio único e "destravado" no primeiro toque — celulares bloqueiam som até haver interação do usuário
+let audioCtxGlobal = null;
+function obterAudioContext(){
+  try{
+    if(!audioCtxGlobal) audioCtxGlobal = new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtxGlobal.state==='suspended') audioCtxGlobal.resume();
+    return audioCtxGlobal;
+  }catch(e){ console.warn('audio indisponível', e); return null; }
+}
+document.addEventListener('click', ()=>{ obterAudioContext(); }, { once:true, capture:true });
+document.addEventListener('touchstart', ()=>{ obterAudioContext(); }, { once:true, capture:true });
 function tocarSomAlerta(){
   try{
-    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const ctx = obterAudioContext();
+    if(!ctx) return;
     const tocarNota=(freq,inicio,duracao)=>{
       const osc=ctx.createOscillator(), gain=ctx.createGain();
       osc.type='sine'; osc.frequency.value=freq;
@@ -884,6 +905,24 @@ function tocarSomAlerta(){
     tocarNota(740,0,0.16); tocarNota(988,0.16,0.22);
   }catch(e){ console.warn('audio indisponível', e); }
   if(navigator.vibrate) navigator.vibrate([120,60,120]);
+}
+// bip diferente (mais curto, 3 toques) — usado pro motorista quando chega pedido novo
+function tocarSomNovoPedido(){
+  try{
+    const ctx = obterAudioContext();
+    if(!ctx) return;
+    const tocarNota=(freq,inicio,duracao)=>{
+      const osc=ctx.createOscillator(), gain=ctx.createGain();
+      osc.type='square'; osc.frequency.value=freq;
+      osc.connect(gain); gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime+inicio);
+      gain.gain.exponentialRampToValueAtTime(0.16, ctx.currentTime+inicio+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime+inicio+duracao);
+      osc.start(ctx.currentTime+inicio); osc.stop(ctx.currentTime+inicio+duracao+0.05);
+    };
+    tocarNota(880,0,0.1); tocarNota(880,0.16,0.1); tocarNota(880,0.32,0.1);
+  }catch(e){ console.warn('audio indisponível', e); }
+  if(navigator.vibrate) navigator.vibrate([90,60,90,60,90]);
 }
 function dispararAlertaMotorista(pedido){
   estado.alertaMotorista = { nome: pedido.motoristaNome||'Um entregador', pedidoId: pedido.id };
@@ -911,6 +950,7 @@ function detectarMotoristaEncontrado(novos){
       mostrarToast('O motorista cancelou a corrida. A buscar outro entregador perto de ti...');
       notificar('Entrega Flash', 'O motorista cancelou a corrida. Estamos a buscar outro entregador perto de ti.', 'pedido-'+np.id);
     } else if(anterior && anterior!==np.status && MENSAGENS_STATUS[np.status]){
+      tocarSomAlerta();
       notificar('Entrega Flash', MENSAGENS_STATUS[np.status], 'pedido-'+np.id);
     }
     estado.statusAnterior[np.id] = np.status;
@@ -922,7 +962,8 @@ function detectarNovosPedidosMotorista(novos){
     if(np.status!=='buscando') return;
     if(estado.statusAnteriorMotorista[np.id]) return;
     estado.statusAnteriorMotorista[np.id] = true;
-    notificar('Novo pedido disponível!', `${np.origem} → ${np.destino} · R$ ${Number(np.preco).toFixed(2)}`, 'novo-'+np.id);
+    tocarSomNovoPedido();
+    notificar('🆕 Novo pedido disponível!', `${np.origem} → ${np.destino} · R$ ${Number(np.preco).toFixed(2)}`, 'novo-'+np.id);
   });
   const idsAtuais = new Set(novos.map(p=>p.id));
   Object.keys(estado.statusAnteriorMotorista).forEach(id=>{ if(!idsAtuais.has(id)) delete estado.statusAnteriorMotorista[id]; });
@@ -1227,8 +1268,8 @@ async function atualizarBadgeSuporteMotorista(){
   const m = estado.motorista;
   if(!m.telefone) return;
   const { count } = await sb.from('entrega_suporte').select('id',{count:'exact',head:true}).eq('motorista_telefone', m.telefone).eq('remetente_tipo','admin').eq('lido', false);
-  estado.suporteNaoLidas = count||0;
-  if(!estado.suporteAberto) render();
+  const novaContagem = count||0;
+  if(novaContagem!==estado.suporteNaoLidas){ estado.suporteNaoLidas = novaContagem; if(!estado.suporteAberto) render(); }
 }
 function assinarSuporte(telefone){
   if(estado.canalSuporte) sb.removeChannel(estado.canalSuporte);
@@ -1993,8 +2034,8 @@ async function carregarSaldoMotorista(){
   const m = estado.motorista;
   if(!m.telefone) return;
   const { data } = await sb.from('entrega_saldos').select('saldo').eq('telefone', m.telefone).maybeSingle();
-  m.saldo = data ? Number(data.saldo)||0 : 0;
-  render();
+  const novoSaldo = data ? Number(data.saldo)||0 : 0;
+  if(novoSaldo!==m.saldo){ m.saldo = novoSaldo; render(); }
 }
 function inicioDoDiaLocalMs(){
   const agora = new Date();
@@ -2005,8 +2046,8 @@ async function carregarCancelamentosMotorista(){
   if(!m.telefone) return;
   const { data, error } = await sb.from('entrega_cancelamentos_motorista').select('id').eq('motorista_telefone', m.telefone).gte('criado_em', inicioDoDiaLocalMs());
   if(error){ console.error(error); return; }
-  m.cancelamentosHoje = (data||[]).length;
-  render();
+  const novoTotal = (data||[]).length;
+  if(novoTotal!==m.cancelamentosHoje){ m.cancelamentosHoje = novoTotal; render(); }
 }
 async function avancarStatus(id){
   const p = estado.pedidos.find(x=>x.id===id);
@@ -2245,6 +2286,18 @@ function iniciarTickEta(){
     });
   },1000);
 }
+// ---------- tempo "há X min" nos pedidos disponíveis do motorista, atualiza sozinho sem re-render ----------
+let tempoPedidosTickInterval = null;
+function iniciarTickTempoPedidos(){
+  if(tempoPedidosTickInterval) return;
+  tempoPedidosTickInterval = setInterval(()=>{
+    document.querySelectorAll('.tempo-pedido').forEach(el=>{
+      const criado = Number(el.getAttribute('data-criado'));
+      if(!criado) return;
+      el.textContent = '⏱️ '+tempoDecorrido(criado);
+    });
+  },15000);
+}
 
 // ---------- trilha/selo ----------
 function trilhaHTML(status){
@@ -2397,13 +2450,18 @@ function cartaoPedidoCliente(p){
   </div>`;
 }
 function cartaoPedidoDisponivel(p){
+  const rkm = p.distancia>0 ? (p.preco/p.distancia) : null;
   return `
   <div class="pedido">
     <div class="linha-topo">
       <div class="end"><b>Recolha</b>${p.origem}<b style="margin-top:8px">Entrega</b>${p.destino}</div>
       <div class="preco">R$ ${p.preco.toFixed(2)}<span class="ganho">você recebe R$ ${ganhoMotorista(p.preco).toFixed(2)}</span></div>
     </div>
-    ${p.prioridade ? `<span class="selo selo-prioridade">🚀 Prioridade</span>` : ''}
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 6px">
+      ${p.prioridade ? `<span class="selo selo-prioridade">🚀 Prioridade</span>` : ''}
+      <span class="tempo-pedido" id="tempo-desde-${p.id}" data-criado="${p.criadoEm}" style="font-size:11.5px;color:var(--poeira)">⏱️ ${tempoDecorrido(p.criadoEm)}</span>
+      ${rkm!=null ? `<span style="font-size:11.5px;color:var(--poeira)">· ≈ R$ ${rkm.toFixed(2)}/km</span>` : ''}
+    </div>
     ${extrasHTML(p)}
     ${p.distanciaAteMim!=null ? `<div style="font-size:14px;color:var(--osso);font-weight:600;margin-bottom:2px">📍 a ${p.distanciaAteMim.toFixed(1)} km de você</div>` : ''}
     <div style="font-size:14px;color:var(--poeira);margin-bottom:8px">${VEICULOS[p.veiculo].emoji} ${VEICULOS[p.veiculo].label} · ${p.distancia} km ${p.descricao?'· '+p.descricao:''}</div>
@@ -3033,6 +3091,7 @@ function telaMotorista(){
       <button class="btn btn-primario btn-pequeno" style="margin-top:0;white-space:nowrap" onclick="solicitarSaque()">💰 Saque</button>
     </div>
     <button class="btn ${m.disponivel?'btn-secundario':'btn-verde'}" style="margin-top:14px" onclick="alternarDisponibilidade()">${m.disponivel?'🔴 Parar / ficar indisponível':'🟢 Iniciar rota'}</button>
+    ${!m.disponivel ? `<div class="cf-ajuda" style="text-align:center;margin-top:6px">👆 Clique aqui para começar a receber pedidos</div>` : ''}
     ${direitosPlanoHTML(planoAtual, m.plano)}
   </div>
   ${ativos.length>0 ? `<div class="cartao"><h2>Em curso</h2>${ativos.map(cartaoPedidoAtivo).join('')}</div>` : ''}
@@ -3956,45 +4015,63 @@ function adminAbaConfigHTML(){
 
   <div class="cf-titulo-secao" style="margin-top:6px">🆓 Plano Free</div>
   <label>% que a plataforma fica por entrega</label>
+  <div class="cf-ajuda">Ex: 20 = a Entrega Flash fica com 20% do valor de cada corrida, o motorista recebe os outros 80%.</div>
   <input type="number" id="cfg-free-taxa" value="${Math.round(p.free.taxaPlataforma*100)}" step="0.1">
   <label>Limite de entregas por mês (vazio = sem limite)</label>
+  <div class="cf-ajuda">Quantas entregas um motorista Free pode fazer no mês. Deixe em branco pra não limitar.</div>
   <input type="number" id="cfg-free-limite-mensal" value="${p.free.limiteMensal!=null?p.free.limiteMensal:''}">
   <label>Corridas simultâneas permitidas</label>
+  <div class="cf-ajuda">Quantos pedidos o motorista pode ter em andamento ao mesmo tempo, sem precisar finalizar um pra aceitar outro.</div>
   <input type="number" id="cfg-free-simultaneo" value="${p.free.limiteSimultaneo}">
   <label>Cancelamentos permitidos por dia</label>
+  <div class="cf-ajuda">Quantas vezes por dia o motorista pode cancelar uma corrida já aceita, sem levar bloqueio/punição.</div>
   <input type="number" id="cfg-free-cancel" value="${p.free.limiteCancelamentosDia}">
   <label>Prazo de saque (dias)</label>
+  <div class="cf-ajuda">Quantos dias depois de pedir o saque o motorista Free recebe o dinheiro.</div>
   <input type="number" id="cfg-free-saque" value="${p.free.saqueDias}">
 
   <div class="cf-titulo-secao">⭐ Plano Pro</div>
   <label>Taxa única do plano Pro (R$)</label>
+  <div class="cf-ajuda">Valor que o motorista paga uma única vez pra virar Pro (não é mensalidade).</div>
   <input type="number" id="cfg-pro-preco" value="${p.pro.preco}" step="0.01">
   <label>% que a plataforma fica por entrega</label>
+  <div class="cf-ajuda">Mesmo esquema do Free, mas pro motorista Pro (normalmente uma % menor, como vantagem do plano).</div>
   <input type="number" id="cfg-pro-taxa" value="${Math.round(p.pro.taxaPlataforma*100)}" step="0.1">
   <label>Limite de entregas por mês (vazio = sem limite)</label>
+  <div class="cf-ajuda">Igual ao do Free, mas pro plano Pro. Normalmente deixa vazio (sem limite) pra ser vantagem do plano.</div>
   <input type="number" id="cfg-pro-limite-mensal" value="${p.pro.limiteMensal!=null?p.pro.limiteMensal:''}">
   <label>Corridas simultâneas permitidas</label>
+  <div class="cf-ajuda">Quantos pedidos o motorista Pro pode ter em andamento ao mesmo tempo.</div>
   <input type="number" id="cfg-pro-simultaneo" value="${p.pro.limiteSimultaneo}">
   <label>Cancelamentos permitidos por dia</label>
+  <div class="cf-ajuda">Quantos cancelamentos por dia o motorista Pro pode fazer sem punição.</div>
   <input type="number" id="cfg-pro-cancel" value="${p.pro.limiteCancelamentosDia}">
   <label>Prazo de saque (dias, 0 = imediato)</label>
+  <div class="cf-ajuda">Quantos dias o motorista Pro espera pra receber o saque. Coloque 0 pra saque na hora.</div>
   <input type="number" id="cfg-pro-saque" value="${p.pro.saqueDias}">
 
   <div class="cf-titulo-secao">🚀 Prioridade e cancelamento (cliente)</div>
   <label>Valor extra da entrega prioritária (R$)</label>
+  <div class="cf-ajuda">Quanto o cliente paga a mais quando marca o pedido como "prioridade" (fura a fila de motoristas).</div>
   <input type="number" id="cfg-taxa-prioridade" value="${TAXA_PRIORIDADE_VALOR}" step="0.01">
   <label>Valor extra por endereço de entrega adicional (R$)</label>
+  <div class="cf-ajuda">Quanto cobra a mais por cada parada extra que o cliente adicionar além do destino principal.</div>
   <input type="number" id="cfg-taxa-parada-extra" value="${TAXA_PARADA_EXTRA_VALOR}" step="0.01">
   <label>Segundos de vantagem do Pro para ver pedidos novos</label>
+  <div class="cf-ajuda">Motoristas Pro e pedidos Prioridade veem pedidos novos na hora. Motoristas Free só veem depois desse tempo. Ex: 45 = Free espera 45 segundos.</div>
   <input type="number" id="cfg-atraso-pro" value="${ATRASO_PRIORIDADE_PRO_MS/1000}">
   <label>Janela de cancelamento grátis pro cliente (minutos)</label>
+  <div class="cf-ajuda">Tempo que o cliente tem, depois de pedir, pra cancelar sem pagar nenhuma taxa.</div>
   <input type="number" id="cfg-janela-cancel" value="${JANELA_CANCELAMENTO_MS/60000}">
   <label>Taxa de cancelamento tardio do cliente (%)</label>
+  <div class="cf-ajuda">% do valor do pedido que o cliente paga se cancelar depois de passada a janela grátis acima.</div>
   <input type="number" id="cfg-taxa-cancel-tardio" value="${Math.round(TAXA_CANCELAMENTO_TARDIO*100)}" step="0.1">
   <label>Raio de geofence para coletar/finalizar (km)</label>
+  <div class="cf-ajuda">Quão perto (em km) o motorista precisa estar do endereço pra conseguir marcar "coletei" ou "entreguei". Quanto menor, mais rígido.</div>
   <input type="number" id="cfg-raio-geofence" value="${RAIO_GEOFENCE_KM}" step="0.01">
 
   <div class="cf-titulo-secao">🚲🏍️🚗🚚 Preço por veículo</div>
+  <div class="cf-ajuda" style="margin-top:0">"R$/km cidade" é o preço cobrado por km dentro da cidade. "R$/km roça" é o preço por km pra entregas em sítio/zona rural (geralmente maior). "Mínimo" é o valor mais baixo que a corrida pode custar, mesmo se a distância for curta.</div>
   <label>🚲 Bicicleta — R$/km (centro apenas) / mínimo (R$)</label>
   <div style="display:flex;gap:8px">
     <input type="number" id="cfg-bici-km" value="${v.bicicleta.km}" step="0.01" style="flex:1">
@@ -4038,6 +4115,7 @@ function adminAbaConfigHTML(){
   <div class="cf-nota" style="margin-top:0">Caminhão é cobrado a partir do valor por km configurado — o preço final pode variar conforme o tipo e volume da carga (ajuste manual quando necessário).</div>
 
   <div class="cf-titulo-secao">🎁 Serviços extras (opcional no pedido)</div>
+  <div class="cf-ajuda" style="margin-top:0">Valor extra que o cliente paga se marcar esse serviço opcional na hora de pedir (ex: pedir pra levar numa bag térmica).</div>
   ${Object.entries(EXTRAS_INFO).map(([k,info])=>`
   <label>${info.emoji} ${info.label} — R$</label>
   <input type="number" id="cfg-extra-${k==='bagTermica'?'bag':k==='cargaPesada'?'carga':k}" value="${EXTRAS_VALORES[k]}" step="0.01">`).join('')}
@@ -4592,6 +4670,7 @@ if(typeof window.supabase==='undefined' || !window.supabase.createClient){
   carregarPedidos();
   setInterval(carregarPedidos, 15000);
   iniciarTickEta();
+  iniciarTickTempoPedidos();
   setTimeout(esconderSplash, 1200);
 }
 </script>
